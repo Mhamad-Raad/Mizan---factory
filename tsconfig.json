@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/money" },
+    { "path": "./packages/text" },
+    { "path": "./packages/permissions" },
+    { "path": "./packages/i18n" },
+    { "path": "./packages/ledger" },
+    { "path": "./packages/ui" },
+    { "path": "./apps/api" },
+    { "path": "./apps/web" }
+  ]
+}

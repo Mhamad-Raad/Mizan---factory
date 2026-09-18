@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mizan_test
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+        ports: ['5432:5432']
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mizan_test
+      DATABASE_MIGRATE_URL: postgresql://postgres:postgres@localhost:5432/mizan_test
+      SESSION_PEPPER: ci-pepper-not-a-secret
+      TZ: Asia/Baghdad
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+
+      # Rule 5: logical CSS properties only. Rule 6: no missing translation key.
+      - name: Lint (incl. logical-property rule)
+        run: pnpm lint
+      - name: Type-check
+        run: pnpm typecheck
+      - name: Translation completeness (build fails on a missing key)
+        run: pnpm check:i18n
+      - name: Token contrast (WCAG AA from the token sheet)
+        run: pnpm check:contrast
+
+      # Rule 4: a CI test fails on an undecorated route.
+      - name: Every API route carries a permission decorator
+        run: pnpm check:routes
+
+      - name: Migrate the test database
+        run: pnpm db:migrate
+      - name: Unit and API integration tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+      - name: Bundle budget (app shell <= 250 kB gzipped)
+        run: pnpm --filter @mizan/web check:budget

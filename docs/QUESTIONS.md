@@ -27,3 +27,13 @@ I0's acceptance criteria require the workshop to have been held and its outcome 
 The message catalogs use the left-column terms of the glossary in 1.6 for all three languages.
 **Proceeded with:** the glossary namespace is a separate catalog file per language, so a change of word is
 one edit per term and no screen changes. **Status:** open — client review scheduled for I6 (FR-1204).
+
+## Q-B-01 · 2026-09-19 · I0 · Kurdish and Arabic spellings of the same personal name do not match in search
+
+The fold table of 2.10.7 maps ئ (U+0626) to ی and keeps ە as a letter, so a customer stored as
+**ئەحمەد** is not found by searching **احمد**, and FR-501's duplicate check will not warn about the pair.
+This is the algorithm exactly as specified, and it is pinned by a test so it cannot change silently.
+**Proceeded with:** the specification's table unchanged; the fuzzy second pass already covers the
+گ/چ/پ/ژ keyboard problem. **Options if the client wants the names to match:** drop ئ at word start and
+treat ە as optional in a third, looser pass used only for duplicate warnings (never for scoping).
+**Status:** open — decide during the glossary session (Q-26).

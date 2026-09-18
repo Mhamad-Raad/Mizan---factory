@@ -1,0 +1,11 @@
+{
+  "extends": ["stylelint-config-standard"],
+  "plugins": ["stylelint-use-logical"],
+  "rules": {
+    "csstools/use-logical": [true, { "severity": "error" }],
+    "custom-property-pattern": null,
+    "selector-class-pattern": null,
+    "declaration-property-value-no-unknown": null,
+    "no-descending-specificity": null
+  }
+}
