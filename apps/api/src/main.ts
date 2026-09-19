@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
+import { StructuredLogger } from './common/logger.js';
 import { loadEnv } from './config/env.js';
 import { pendingMigrations } from './database/migrate.js';
 
@@ -18,7 +19,10 @@ if (pending.length > 0) {
   process.exit(1);
 }
 
-const app = await NestFactory.create(AppModule, { bodyParser: true });
+const app = await NestFactory.create(AppModule, {
+  bodyParser: true,
+  logger: env.NODE_ENV === 'production' ? new StructuredLogger() : undefined,
+});
 app.setGlobalPrefix('api/v1');
 app.use(cookieParser());
 app.use(

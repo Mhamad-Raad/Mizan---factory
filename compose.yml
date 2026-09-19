@@ -1,0 +1,108 @@
+# Mizan — production and staging topology (spec 2.14).
+#
+# Four services: Caddy serving the SPA and proxying /api, the API, PostgreSQL with a
+# persistent volume, and a backup container. One API replica is enough at the design volumes
+# of NFR-13; a second is `docker compose up --scale api=2`, which is why nothing in the API
+# keeps state in process memory.
+
+name: mizan
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: ops/docker/Dockerfile.web
+    environment:
+      MIZAN_DOMAIN: ${MIZAN_DOMAIN:?set the domain}
+      MIZAN_CSP_INLINE_HASH: ${MIZAN_CSP_INLINE_HASH:?run ops/docker/csp-hash.sh}
+    ports: ['80:80', '443:443', '443:443/udp']
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: ops/docker/Dockerfile.api
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      TZ: Asia/Baghdad
+      DATABASE_URL: ${DATABASE_URL:?}
+      DATABASE_MIGRATE_URL: ${DATABASE_MIGRATE_URL:?}
+      SESSION_PEPPER: ${SESSION_PEPPER:?}
+      APP_BASE_URL: ${APP_BASE_URL:?}
+      FIRST_ADMIN_USERNAME: ${FIRST_ADMIN_USERNAME:-admin}
+      FIRST_ADMIN_PASSWORD: ${FIRST_ADMIN_PASSWORD:-}
+      ERROR_TRACKING_DSN: ${ERROR_TRACKING_DSN:-}
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mizan}
+      POSTGRES_USER: ${POSTGRES_USER:-mizan_migrate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      TZ: Asia/Baghdad
+    command:
+      # Continuous WAL archiving is standard, not optional: a cash ledger cannot afford to
+      # lose a day, and the recovery point objective is fifteen minutes (NFR-08).
+      - postgres
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=/usr/local/bin/archive-wal.sh %p %f
+      - -c
+      - archive_timeout=900
+      - -c
+      - wal_level=replica
+      - -c
+      - log_min_duration_statement=500
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./ops/backup/archive-wal.sh:/usr/local/bin/archive-wal.sh:ro
+      - wal-archive:/wal-archive
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-mizan_migrate} -d ${POSTGRES_DB:-mizan}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backup:
+    image: postgres:15-alpine
+    environment:
+      PGHOST: db
+      PGDATABASE: ${POSTGRES_DB:-mizan}
+      PGUSER: ${POSTGRES_USER:-mizan_migrate}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      BACKUP_BUCKET: ${BACKUP_BUCKET:?}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:?}
+      BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
+      TZ: Asia/Baghdad
+    entrypoint: ['/bin/sh', '/opt/mizan/cron.sh']
+    volumes:
+      - ./ops/backup:/opt/mizan:ro
+      - wal-archive:/wal-archive
+      - backup-staging:/var/backups/mizan
+    depends_on:
+      db: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  wal-archive:
+  caddy-data:
+  caddy-config:
+  backup-staging:
