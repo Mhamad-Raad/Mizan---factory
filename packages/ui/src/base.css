@@ -261,6 +261,11 @@ input[type='tel'] {
   inline-size: 100%;
 }
 
+/* A link may wear the button's clothes; it must not lose the underline reset. */
+a.mz-button {
+  text-decoration: none;
+}
+
 .mz-icon-button {
   display: inline-flex;
   justify-content: center;

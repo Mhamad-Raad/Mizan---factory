@@ -23,10 +23,6 @@ import { SESSION_COOKIE, SessionService } from './session.service.js';
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
-  /** The effective permission set, cached per session for 60 seconds (spec 2.6.1). */
-  private readonly permissionCache = new Map<string, { keys: Set<string>; expiresAt: number }>();
-  private static readonly CACHE_MS = 60_000;
-
   constructor(
     private readonly reflector: Reflector,
     private readonly sessions: SessionService,
@@ -89,22 +85,25 @@ export class AuthGuard implements CanActivate {
     return true;
   }
 
+  /**
+   * The effective set is read per request. Section 2.6.1 allows a 60-second cache, but a
+   * cache held in one process is wrong the moment a second API replica exists (the Compose
+   * scale command in 2.14 makes that a matter of one command), and "the admin removed a
+   * permission but it still worked for a minute" is precisely the failure this system must
+   * not have. The read is a primary-key lookup on a table with a handful of rows per user;
+   * at the design volume of 30 concurrent users it does not register.
+   */
   private async permissionsOf(userId: string): Promise<Set<string>> {
-    const cached = this.permissionCache.get(userId);
-    if (cached && cached.expiresAt > Date.now()) return cached.keys;
-
     const { rows } = await this.database.query<{ permission_key: string }>(
       'SELECT permission_key FROM user_permissions WHERE user_id = $1',
       [userId],
     );
     // Implied keys are expanded at check time, so a stored set can never be subtly incomplete.
-    const keys = expandImplied(rows.map((row) => row.permission_key));
-    this.permissionCache.set(userId, { keys, expiresAt: Date.now() + AuthGuard.CACHE_MS });
-    return keys;
+    return expandImplied(rows.map((row) => row.permission_key));
   }
 
-  /** Called when a user's permissions change, so the change applies at their next request (FR-103). */
-  invalidate(userId: string): void {
-    this.permissionCache.delete(userId);
+  /** Kept so callers need not know whether a cache exists; a permission change is live at once. */
+  invalidate(_userId: string): void {
+    // Nothing to invalidate: permissions are never cached (see permissionsOf).
   }
 }

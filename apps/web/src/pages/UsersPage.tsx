@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { Avatar, Button, Chip, EmptyState, ErrorState, Skeleton, TextField, Toggle } from '@mizan/ui';
+import { Avatar, Button, Chip, EmptyState, ErrorState, Icon, Skeleton, TextField, Toggle } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { AppShell } from '../components/AppShell.js';
 import { useFormatter } from '../lib/store.js';
@@ -48,10 +48,11 @@ export function UsersPage() {
           onChange={setIncludeInactive}
         />
 
-        <Link to="/users/new" style={{ textDecoration: 'none' }}>
-          <Button block icon="plus">
-            {t('users:new_user')}
-          </Button>
+        {/* A link styled as a button, not a button inside a link: nesting them is invalid
+            HTML and gives screen readers two overlapping controls. */}
+        <Link to="/users/new" className="mz-button mz-button--primary mz-button--block">
+          <Icon name="plus" />
+          {t('users:new_user')}
         </Link>
 
         {users.isPending ? <Skeleton lines={6} /> : null}

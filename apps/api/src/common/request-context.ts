@@ -22,6 +22,8 @@ export type RequestWithContext = Request & {
   context?: RequestContext;
   /** The session the AuthGuard resolved, so controllers do not read the cookie twice. */
   session?: import('../auth/session.service.js').SessionWithUser;
+  /** Set only when this request reserved the idempotency key it carries. */
+  idempotencyKeyOwned?: string;
 };
 
 export function contextOf(request: RequestWithContext): RequestContext {

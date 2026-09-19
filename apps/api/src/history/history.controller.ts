@@ -13,7 +13,7 @@ const listSchema = z.object({
   entity_type: z.string().max(40).optional(),
   entity_id: z.string().max(64).optional(),
   action: z.string().max(40).optional(),
-  cursor: z.string().regex(/^\d+$/).optional(),
+  cursor: z.string().max(64).optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
 });
 

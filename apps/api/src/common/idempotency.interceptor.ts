@@ -51,6 +51,10 @@ export class IdempotencyInterceptor implements NestInterceptor {
       .digest('hex');
 
     const reserved = await this.reserve(key, userId, requestHash);
+    // Ownership is recorded on the request so the error filter releases a reservation only
+    // when *this* request made it. Releasing on any failure would let a duplicate that was
+    // told to try again shortly delete the reservation the first copy is still working under.
+    if (reserved) request.idempotencyKeyOwned = key;
     if (!reserved) {
       const stored = await this.awaitStored(key, userId);
       if (stored.request_hash !== requestHash) throw new ApiError('IDEMPOTENCY_MISMATCH');
@@ -116,9 +120,9 @@ export class IdempotencyInterceptor implements NestInterceptor {
     return rows[0] ?? null;
   }
 
-  /** Exposed for the error filter: a request that failed must not hold its key. */
+  /** Exposed for the error filter: a request that failed must not hold the key it reserved. */
   async releaseFor(request: RequestWithContext): Promise<void> {
-    const key = request.headers[IDEMPOTENCY_HEADER];
-    if (typeof key === 'string' && key.length > 0) await this.release(key);
+    const key = request.idempotencyKeyOwned;
+    if (key) await this.release(key);
   }
 }

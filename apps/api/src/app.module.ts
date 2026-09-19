@@ -1,4 +1,4 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { Inject, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ENV, loadEnv } from './config/env.js';
 import type { Env } from './config/env.js';
@@ -52,10 +52,11 @@ import { UsersService } from './users/users.service.js';
   exports: [Database, AuthGuard],
 })
 export class AppModule implements NestModule {
+  constructor(@Inject(ENV) private readonly env: Env) {}
+
   configure(consumer: MiddlewareConsumer): void {
+    const csrf = new CsrfMiddleware(this.env.APP_BASE_URL);
     consumer.apply(RequestIdMiddleware).forRoutes('*path');
-    consumer
-      .apply(new CsrfMiddleware(loadEnv().APP_BASE_URL).use.bind(new CsrfMiddleware(loadEnv().APP_BASE_URL)))
-      .forRoutes('*path');
+    consumer.apply(csrf.use.bind(csrf)).forRoutes('*path');
   }
 }

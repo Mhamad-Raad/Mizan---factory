@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { randomInt } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
 import { COMMON_PASSWORDS } from './common-passwords.js';
 
@@ -49,11 +50,22 @@ export class PasswordService {
     }
   }
 
-  /** A readable temporary password the admin reads out once (FR-108, FR-201). */
+  /**
+   * A temporary password the admin can read out once (FR-108, FR-201). Readable, but drawn
+   * from `crypto.randomInt`, never `Math.random`: this string is a credential, and
+   * `Math.random` is predictable from previous outputs.
+   *
+   * Three words from a 24-word list plus four digits is about 32 bits of entropy, which is
+   * ample for a one-use password that must be changed at first sign-in and is protected by
+   * the five-attempt lockout.
+   */
   generateTemporary(): string {
-    const words = ['balance', 'copper', 'ledger', 'market', 'orange', 'pencil', 'silver', 'window'];
-    const pick = () => words[Math.floor(Math.random() * words.length)] as string;
-    const digits = String(Math.floor(Math.random() * 9000) + 1000);
-    return `${pick()}-${pick()}-${digits}`;
+    const words = [
+      'balance', 'copper', 'ledger', 'market', 'orange', 'pencil', 'silver', 'window',
+      'anchor', 'basket', 'candle', 'desert', 'engine', 'forest', 'garden', 'harbour',
+      'island', 'jacket', 'kettle', 'lantern', 'meadow', 'needle', 'pepper', 'quarry',
+    ];
+    const pick = () => words[randomInt(words.length)] as string;
+    return `${pick()}-${pick()}-${pick()}-${randomInt(1000, 10_000)}`;
   }
 }

@@ -24,7 +24,10 @@ export interface HistoryFilters {
   entity_type?: string;
   entity_id?: string;
   action?: string;
-  /** Cursor pagination keeps infinite scroll stable while new rows arrive (spec 2.9.1). */
+  /**
+   * Keyset cursor, `<occurred_at ISO>|<id>`. Cursor pagination keeps infinite scroll stable
+   * while new rows arrive (spec 2.9.1) and, unlike OFFSET, does not get slower page by page.
+   */
   cursor?: string;
   limit?: number;
 }
@@ -47,14 +50,21 @@ export class HistoryRepository {
       values.push(filters.done_by);
       conditions.push(`a.actor_user_id = $${values.length}`);
     }
+    // Business days are Asia/Baghdad days, whatever the server's time zone (spec 2.9.4).
+    //
+    // The bound is converted to an instant rather than the column being converted to a date:
+    // wrapping `occurred_at` in an expression makes the predicate unusable by
+    // `audit_log_occurred_idx`, and at the design volume of two million rows (NFR-13) that is
+    // the difference between an index scan and reading the whole table on every filter.
     if (filters.from) {
-      // Business days are Asia/Baghdad days, whatever the server's time zone (spec 2.9.4).
       values.push(filters.from);
-      conditions.push(`(a.occurred_at AT TIME ZONE 'Asia/Baghdad')::date >= $${values.length}::date`);
+      conditions.push(`a.occurred_at >= ($${values.length}::date::timestamp AT TIME ZONE 'Asia/Baghdad')`);
     }
     if (filters.to) {
       values.push(filters.to);
-      conditions.push(`(a.occurred_at AT TIME ZONE 'Asia/Baghdad')::date <= $${values.length}::date`);
+      conditions.push(
+        `a.occurred_at < (($${values.length}::date + 1)::timestamp AT TIME ZONE 'Asia/Baghdad')`,
+      );
     }
     if (filters.entity_type) {
       values.push(filters.entity_type);
@@ -69,8 +79,11 @@ export class HistoryRepository {
       conditions.push(`a.action = $${values.length}::audit_action`);
     }
     if (filters.cursor) {
-      values.push(filters.cursor);
-      conditions.push(`a.id < $${values.length}::bigint`);
+      const [occurredAt, id] = filters.cursor.split('|');
+      values.push(occurredAt, id);
+      // Row-value comparison matches the composite index exactly, so this is a range start
+      // rather than a filter.
+      conditions.push(`(a.occurred_at, a.id) < ($${values.length - 1}::timestamptz, $${values.length}::bigint)`);
     }
 
     const limit = Math.min(filters.limit ?? 50, 100);
@@ -85,13 +98,14 @@ export class HistoryRepository {
          FROM audit_log a
          LEFT JOIN users u ON u.id = a.actor_user_id
          ${where}
-        ORDER BY a.id DESC
+        ORDER BY a.occurred_at DESC, a.id DESC
         LIMIT $${values.length}`,
       values,
     );
 
     const items = rows.slice(0, limit);
-    const next = rows.length > limit ? (items[items.length - 1]?.id ?? null) : null;
+    const last = items[items.length - 1];
+    const next = rows.length > limit && last ? `${last.occurred_at.toISOString()}|${last.id}` : null;
     return { items, next_cursor: next };
   }
 }
