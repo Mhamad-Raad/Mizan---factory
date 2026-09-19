@@ -48,6 +48,29 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@24.13.5)(tsx@4.23.13)
 
+  packages/i18n:
+    dependencies:
+      '@mizan/money':
+        specifier: workspace:*
+        version: link:../money
+    devDependencies:
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@24.13.5)(tsx@4.23.13)
+
+  packages/ledger:
+    dependencies:
+      '@mizan/money':
+        specifier: workspace:*
+        version: link:../money
+    devDependencies:
+      fast-check:
+        specifier: ^4.10.1
+        version: 4.10.1
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@24.13.5)(tsx@4.23.13)
+
   packages/money:
     dependencies:
       decimal.js:
@@ -57,6 +80,18 @@ importers:
       fast-check:
         specifier: ^4.10.1
         version: 4.10.1
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@24.13.5)(tsx@4.23.13)
+
+  packages/permissions:
+    devDependencies:
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@24.13.5)(tsx@4.23.13)
+
+  packages/text:
+    devDependencies:
       vitest:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@24.13.5)(tsx@4.23.13)

@@ -1,0 +1,23 @@
+{
+  "VALIDATION_FAILED": "Please check the highlighted fields",
+  "UNAUTHENTICATED": "Please sign in again",
+  "SESSION_LOCKED": "The screen is locked",
+  "PERMISSION_DENIED": "You do not have permission for this",
+  "NOT_FOUND": "Not found",
+  "VERSION_CONFLICT": "Someone changed this while you were editing",
+  "LAST_ADMIN": "The system must always keep one active admin",
+  "RATE_LIMITED": "Too many attempts — try again later",
+  "IDEMPOTENCY_MISMATCH": "This request was already sent with different data",
+  "INTERNAL": "Something went wrong on our side",
+  "NETWORK": "No connection — your work is kept",
+  "field.required": "This field is required",
+  "field.too_short": "Too short (minimum {{min}})",
+  "field.too_long": "Too long (maximum {{max}})",
+  "field.invalid_username": "Use letters, digits, dot or underscore only",
+  "field.username_taken": "This username is already used",
+  "field.phone_taken": "This phone number is already used",
+  "field.password_too_common": "This password is too common",
+  "field.password_is_username": "The password cannot be the username",
+  "field.passwords_do_not_match": "The two passwords do not match",
+  "field.pin_digits_only": "A PIN is 4 to 6 digits"
+}

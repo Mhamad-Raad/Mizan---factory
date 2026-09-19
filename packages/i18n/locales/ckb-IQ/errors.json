@@ -1,0 +1,23 @@
+{
+  "VALIDATION_FAILED": "تکایە خانە نیشانکراوەکان بپشکنە",
+  "UNAUTHENTICATED": "تکایە دووبارە بچۆ ژوورەوە",
+  "SESSION_LOCKED": "شاشەکە داخراوە",
+  "PERMISSION_DENIED": "دەسەڵاتت نییە بۆ ئەمە",
+  "NOT_FOUND": "نەدۆزرایەوە",
+  "VERSION_CONFLICT": "کەسێکی تر ئەمەی گۆڕی لە کاتی دەستکاریکردنت",
+  "LAST_ADMIN": "دەبێت هەمیشە یەک بەڕێوەبەری چالاک بمێنێتەوە",
+  "RATE_LIMITED": "هەوڵی زۆر — دواتر هەوڵبدەرەوە",
+  "IDEMPOTENCY_MISMATCH": "ئەم داواکارییە پێشتر بە داتایەکی جیاواز نێردراوە",
+  "INTERNAL": "هەڵەیەک لەلای ئێمە ڕوویدا",
+  "NETWORK": "پەیوەندی نییە — کارەکەت پارێزراوە",
+  "field.required": "ئەم خانەیە پێویستە",
+  "field.too_short": "زۆر کورتە (لانیکەم {{min}})",
+  "field.too_long": "زۆر درێژە (زۆرترین {{max}})",
+  "field.invalid_username": "تەنها پیت، ژمارە، خاڵ یان ژێرهێڵ بەکاربهێنە",
+  "field.username_taken": "ئەم ناوی بەکارهێنەرە پێشتر بەکارهاتووە",
+  "field.phone_taken": "ئەم ژمارە تەلەفۆنە پێشتر بەکارهاتووە",
+  "field.password_too_common": "ئەم وشەی نهێنییە زۆر باوە",
+  "field.password_is_username": "وشەی نهێنی ناتوانێت ناوی بەکارهێنەر بێت",
+  "field.passwords_do_not_match": "دوو وشەی نهێنییەکە وەک یەک نین",
+  "field.pin_digits_only": "کۆدی PIN لە ٤ بۆ ٦ ژمارەیە"
+}

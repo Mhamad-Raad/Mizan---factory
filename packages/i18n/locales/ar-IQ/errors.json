@@ -1,0 +1,23 @@
+{
+  "VALIDATION_FAILED": "يرجى مراجعة الحقول المحددة",
+  "UNAUTHENTICATED": "يرجى تسجيل الدخول مرة أخرى",
+  "SESSION_LOCKED": "الشاشة مقفلة",
+  "PERMISSION_DENIED": "ليس لديك صلاحية لهذا",
+  "NOT_FOUND": "غير موجود",
+  "VERSION_CONFLICT": "قام شخص آخر بتغيير هذا أثناء تعديلك",
+  "LAST_ADMIN": "يجب أن يبقى مدير نظام نشط واحد على الأقل",
+  "RATE_LIMITED": "محاولات كثيرة — حاول لاحقاً",
+  "IDEMPOTENCY_MISMATCH": "تم إرسال هذا الطلب سابقاً ببيانات مختلفة",
+  "INTERNAL": "حدث خطأ لدينا",
+  "NETWORK": "لا يوجد اتصال — تم حفظ عملك",
+  "field.required": "هذا الحقل مطلوب",
+  "field.too_short": "قصير جداً (الحد الأدنى {{min}})",
+  "field.too_long": "طويل جداً (الحد الأقصى {{max}})",
+  "field.invalid_username": "استخدم أحرفاً وأرقاماً ونقطة أو شرطة سفلية فقط",
+  "field.username_taken": "اسم المستخدم مستخدم بالفعل",
+  "field.phone_taken": "رقم الهاتف مستخدم بالفعل",
+  "field.password_too_common": "كلمة المرور شائعة جداً",
+  "field.password_is_username": "لا يمكن أن تكون كلمة المرور هي اسم المستخدم",
+  "field.passwords_do_not_match": "كلمتا المرور غير متطابقتين",
+  "field.pin_digits_only": "رمز PIN من ٤ إلى ٦ أرقام"
+}

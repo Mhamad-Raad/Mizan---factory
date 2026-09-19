@@ -21,3 +21,21 @@ Updated at every checkpoint: iteration · checkpoint · what is done · what is 
 - TypeScript project references, ESLint (flat) + Stylelint with `stylelint-use-logical` (rule 5), Prettier, Vitest.
 - CI workflow: lint · logical-property lint · type-check · unit · API integration (PostgreSQL service) · i18n missing-key check · undecorated-route check · bundle budget.
 - **Next:** checkpoint B — the five kernels with their tests.
+
+## I0 · Checkpoint B — done
+
+Five kernels, **143 unit tests green**, lint and type-check clean.
+
+| Kernel | What it holds | Tests |
+|---|---|---|
+| `@mizan/money` | integers in minor units with a safe-integer guard; half-away-from-zero rounding; dual-currency pairs carrying the rate that filled them; the entered-currency line-total rule; document totals as sums per currency; settle-in-full in both shapes; settlement tolerance | 26 |
+| `@mizan/text` | script normalisation across Arabic/Kurdish variants (32-pair table), the fuzzy keyboard pass, phone normalisation | 46 |
+| `@mizan/permissions` | the catalog of 1.5.2, the three presets, the six extras with their "partly" state, implied-key expansion, the refusal when another key still implies one | 30 |
+| `@mizan/i18n` | the formatting service (no `Intl` for `ckb`), Iraqi/Kurdish month and weekday names, both numeral sets, the `ckb` plural rule, Asia/Baghdad dates, `DualAmount` parts; 247 keys × 3 languages | 25 |
+| `@mizan/ledger` | append-only writer with balance before/after, exact reversals (once only), live-row detection, posting-order running balance, "as of" balances | 16 |
+
+The money tests reproduce the specification's own figures: $3,244.27 for 850 IQD/kg × 5,000 kg
+(not the $3,250 a rounded unit price gives), the wireframe order at 801,250 د.ع / $611.64, the
+−$381.68 adjustment of 2.4.2 and the $3,435.11 balance of 2.3.5.
+
+**Next:** checkpoint C — migrations, the I0 API with its guards, and the permission-matrix test.
