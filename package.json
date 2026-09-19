@@ -2,7 +2,7 @@
   "name": "mizan",
   "private": true,
   "version": "0.1.0",
-  "description": "Mizan \u2014 factory materials, orders and supplier-accounting web system",
+  "description": "Mizan — factory materials, orders and supplier-accounting web system",
   "packageManager": "pnpm@10.20.0",
   "engines": {
     "node": ">=22"
@@ -11,7 +11,7 @@
     "build": "pnpm -r --filter './packages/**' build && pnpm --filter @mizan/api build && pnpm --filter @mizan/web build",
     "typecheck": "tsc -b --pretty",
     "lint": "eslint . && pnpm lint:css",
-    "lint:css": "stylelint \"apps/web/src/**/*.css\" \"packages/ui/src/**/*.css\"",
+    "lint:css": "stylelint \"apps/web/src/**/*.css\" \"packages/ui/src/**/*.css\" --allow-empty-input",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm build:packages && vitest run",
@@ -19,7 +19,7 @@
     "check:i18n": "tsx scripts/check-i18n.ts",
     "check:routes": "pnpm --filter @mizan/api check:routes",
     "check:contrast": "tsx scripts/check-contrast.ts",
-    "db:up": "tsx scripts/db-setup.ts",
+    "db:up": "pnpm --filter @mizan/api db:up",
     "db:migrate": "pnpm --filter @mizan/api migrate",
     "db:seed": "pnpm --filter @mizan/api seed",
     "dev": "pnpm --parallel --filter @mizan/api --filter @mizan/web dev",
