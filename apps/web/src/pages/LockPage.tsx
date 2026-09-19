@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Avatar, Button, Card, PasswordField } from '@mizan/ui';
+import { Avatar, Button, Card, MizanMark, PasswordField } from '@mizan/ui';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { useApp } from '../lib/store.js';
 import { LanguageChips } from '../components/LanguageChips.js';
@@ -47,6 +47,10 @@ export function LockPage() {
 
   return (
     <div className="mz-app">
+      <header className="mz-login-band">
+        <MizanMark size={64} title={t('common:app_name')} />
+        <p className="mz-login-band__name">{t('common:app_name')}</p>
+      </header>
       <main className="mz-main">
         <Card>
           <div className="mz-stack">

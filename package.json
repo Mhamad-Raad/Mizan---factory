@@ -24,10 +24,13 @@
     "db:seed": "pnpm --filter @mizan/api seed",
     "dev": "pnpm --parallel --filter @mizan/api --filter @mizan/web dev",
     "verify": "pnpm lint && pnpm typecheck && pnpm check:i18n && pnpm check:contrast && pnpm test",
-    "build:packages": "tsc -b packages/money packages/text packages/permissions packages/i18n packages/ledger"
+    "build:packages": "tsc -b packages/money packages/text packages/permissions packages/i18n packages/ledger",
+    "test:e2e": "playwright test",
+    "test:e2e:update": "playwright test --update-snapshots"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.13.5",
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^7.1.1",

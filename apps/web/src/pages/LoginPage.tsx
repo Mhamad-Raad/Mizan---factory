@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, PasswordField, TextField } from '@mizan/ui';
+import { Button, Card, MizanMark, PasswordField, TextField } from '@mizan/ui';
 import { ApiError, NetworkError, apiRequest } from '../lib/api.js';
 import { useApp } from '../lib/store.js';
 import type { SessionUser } from '../lib/store.js';
@@ -69,8 +69,11 @@ export function LoginPage() {
 
   return (
     <div className="mz-app">
-      <header className="mz-header">
-        <h1 className="mz-header__title">{t('common:app_name')}</h1>
+      {/* A plum band with the mark above the form, so a shared tablet's screen says which
+          application this is before a word is read (spec 3.2.5, FR-1311). */}
+      <header className="mz-login-band">
+        <MizanMark size={64} title={t('common:app_name')} />
+        <p className="mz-login-band__name">{t('common:app_name')}</p>
       </header>
       <main className="mz-main">
         <Card>

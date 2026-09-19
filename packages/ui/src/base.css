@@ -121,6 +121,31 @@ input[type='tel'] {
   text-align: center;
 }
 
+.mz-login-band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-header);
+  padding-block: var(--space-5);
+  color: var(--color-on-header);
+}
+
+.mz-login-band__name {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+/*
+ * In the dark theme the header is a dark surface rather than plum, so it is the accent line
+ * that carries the identity — without it the header and the page are the same colour and the
+ * app loses the "which application am I in" cue at a glance (spec 3.2.4).
+ */
+[data-theme='dark'] .mz-header,
+[data-theme='dark'] .mz-login-band {
+  border-block-end: 2px solid var(--color-primary);
+}
+
 .mz-main {
   flex: 1;
   padding-block: var(--space-4) calc(var(--space-6) + 64px);

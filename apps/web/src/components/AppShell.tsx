@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Icon, IconButton } from '@mizan/ui';
+import { Icon, IconButton, MizanMark } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import { useApp } from '../lib/store.js';
 import { apiRequest } from '../lib/api.js';
@@ -47,7 +47,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
   return (
     <div className="mz-app">
       <header className="mz-header">
-        <Icon name="shield" size={24} aria-hidden />
+        <MizanMark size={26} />
         <h1 className="mz-header__title">{title}</h1>
         <IconButton icon="lock" label={t('auth:lock_now')} onClick={() => void lock()} />
       </header>
