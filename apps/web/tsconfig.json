@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist-types",
+    "rootDir": "src",
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../packages/money" },
+    { "path": "../../packages/text" },
+    { "path": "../../packages/permissions" },
+    { "path": "../../packages/i18n" },
+    { "path": "../../packages/ui" }
+  ]
+}

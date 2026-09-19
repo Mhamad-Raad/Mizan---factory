@@ -15,6 +15,7 @@ export default defineConfig({
       'packages/i18n',
       'packages/ledger',
       'apps/api',
+      'apps/web',
     ],
   },
 });
