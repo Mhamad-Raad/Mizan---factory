@@ -39,3 +39,40 @@ The money tests reproduce the specification's own figures: $3,244.27 for 850 IQD
 −$381.68 adjustment of 2.4.2 and the $3,435.11 balance of 2.3.5.
 
 **Next:** checkpoint C — migrations, the I0 API with its guards, and the permission-matrix test.
+
+## I0 · Checkpoint C — done
+
+Database and API. **60 API integration tests**, 25 routes, all declared.
+
+- Migrations 0001–0005: the enum types of 2.2.2, the seven I0 tables, the indices of 2.2.5,
+  and the grants that make rule 2 physical — `mizan_app` has no UPDATE or DELETE on
+  `audit_log` or `login_attempts`, which a test proves against the live database.
+- Auth: opaque peppered session cookie, shared-device and personal lifetimes, lock/unlock,
+  five-failure lockout, CSRF double-submit, Argon2id.
+- Users: create with preset and a one-time temporary password, edit under optimistic locking,
+  deactivate (never delete), reset password, the permission editor, sessions.
+- Every write records who, when, old → new and the note inside its own transaction.
+- History: keyset pagination, own-only scoping without `history.view_all`.
+- Idempotency keys are reserved *before* the work, so a double tap cannot write twice.
+
+## I0 · Checkpoint D — **awaiting the identity review (human)**
+
+Interface. Bundle **129 kB gzipped** against a 250 kB budget; 32 contrast pairs pass AA.
+
+- Token sheet for both themes; the measured ratios match the specification's table.
+- Pre-paint script sets language, direction, theme and text size before the first frame, with
+  validated fallbacks for private mode.
+- Screens: Login, Lock, forced password change, Users list, New employee, User detail
+  (Details · Permissions in simple mode · Activity), History, Settings.
+- Logical CSS only, enforced by lint; zero physical `left`/`right` in the compiled stylesheet.
+
+**Stop here per `KICKOFF-PROMPT.md`.** Run `pnpm dev`, open the app on a phone in all three
+languages and both themes, and compare it side by side with the palette system (FR-1311).
+
+## I0 · Review — done
+
+`docs/REVIEW-I0.md`: nine findings, all fixed, each with a regression test. Suite: **220 tests
+green** across the five kernels, the API and the web contracts.
+
+**Next:** checkpoint E — Docker Compose, staging deployment, the backup job and WAL archiving,
+then the demo script of 4.2 run on staging.
