@@ -6,10 +6,18 @@
 # Dependencies and build output
 node_modules/
 dist/
+dist-types/
 build/
 coverage/
 .turbo/
 *.tsbuildinfo
+
+# Test output
+test-results/
+playwright-report/
+blob-report/
+e2e/**/*-actual.png
+e2e/**/*-diff.png
 
 # Local tooling
 .DS_Store

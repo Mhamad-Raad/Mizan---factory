@@ -4,6 +4,10 @@ on:
   push: { branches: [main] }
   pull_request: { branches: [main] }
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   NODE_VERSION: '24'
 
@@ -15,14 +19,21 @@ jobs:
         image: postgres:15
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: mizan_test
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
         options: >-
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
         ports: ['5432:5432']
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mizan_test
-      DATABASE_MIGRATE_URL: postgresql://postgres:postgres@localhost:5432/mizan_test
-      SESSION_PEPPER: ci-pepper-not-a-secret
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      DATABASE_URL: postgresql://mizan_app:mizan_app@localhost:5432/mizan_test
+      DATABASE_MIGRATE_URL: postgresql://mizan_migrate:mizan_migrate@localhost:5432/mizan_test
+      TEST_DATABASE_URL: postgresql://mizan_app:mizan_app@localhost:5432/mizan_test
+      TEST_MIGRATE_URL: postgresql://mizan_migrate:mizan_migrate@localhost:5432/mizan_test
+      SESSION_PEPPER: ci-pepper-not-a-secret-0123456789
+      APP_BASE_URL: http://localhost:5173
       TZ: Asia/Baghdad
     steps:
       - uses: actions/checkout@v4
@@ -32,26 +43,52 @@ jobs:
         with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
       - run: pnpm install --frozen-lockfile
 
-      # Rule 5: logical CSS properties only. Rule 6: no missing translation key.
-      - name: Lint (incl. logical-property rule)
+      # Rule 5: logical CSS properties only, enforced by stylelint.
+      - name: Lint (including the logical-property rule)
         run: pnpm lint
       - name: Type-check
         run: pnpm typecheck
-      - name: Translation completeness (build fails on a missing key)
+
+      # Rule 6: the build fails on a string missing from any of the three languages.
+      - name: Translation completeness
         run: pnpm check:i18n
-      - name: Token contrast (WCAG AA from the token sheet)
+      - name: Token contrast (WCAG 2.1 AA, computed from the token sheet)
         run: pnpm check:contrast
 
-      # Rule 4: a CI test fails on an undecorated route.
-      - name: Every API route carries a permission decorator
+      - name: Create the test database and roles
+        run: |
+          psql -c "CREATE ROLE mizan_migrate LOGIN PASSWORD 'mizan_migrate' CREATEDB;"
+          psql -c "CREATE ROLE mizan_app LOGIN PASSWORD 'mizan_app';"
+          psql -c "CREATE DATABASE mizan_test OWNER mizan_migrate;"
+          psql -d mizan_test -c "GRANT ALL ON SCHEMA public TO mizan_migrate;"
+      - name: Migrate
+        run: pnpm db:migrate
+
+      # Rule 4: a route without a permission declaration fails the build.
+      - name: Every API route declares how it is protected
         run: pnpm check:routes
 
-      - name: Migrate the test database
-        run: pnpm db:migrate
       - name: Unit and API integration tests
         run: pnpm test
 
       - name: Build
         run: pnpm build
-      - name: Bundle budget (app shell <= 250 kB gzipped)
+      - name: Bundle budget (app shell ≤ 250 kB gzipped)
         run: pnpm --filter @mizan/web check:budget
+
+      # Visual and RTL regression on the key screens, in both directions and both themes.
+      - name: Install the browser for the screenshot tests
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Screenshot and RTL checks
+        run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      # The inline pre-paint script is allowed by hash, so the hash in deployment must match.
+      - name: CSP hash of the pre-paint script is current
+        run: |
+          echo "pre-paint script hash: $(sh ops/docker/csp-hash.sh)"

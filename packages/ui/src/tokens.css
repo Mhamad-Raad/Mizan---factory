@@ -1,0 +1,120 @@
+/**
+ * Mizan's identity, entirely in tokens (spec 3.2.4, rule 9 of CLAUDE.md).
+ *
+ * Components consume the semantic layer only, never a primitive and never a raw hex, which is
+ * why the same component renders blue in the palette system and plum here. The measured
+ * contrast of every pair in this sheet is asserted in CI (`pnpm check:contrast`).
+ *
+ * The alternative copper identity of 3.2.6 lives in `tokens-copper.css`; if the palette system
+ * turns out to be violet-blue, one import changes.
+ */
+
+:root {
+  /* ── primitives: deep plum on warm stone ───────────────────────────────── */
+  --plum-900: #33112a;
+  --plum-800: #5e1f4b;
+  --plum-700: #6a2555;
+  --plum-600: #7a2e63;
+  --plum-500: #66244f;
+  --plum-200: #e79acf;
+  --plum-150: #f0b0dc;
+  --plum-100: #f7e6f1;
+  --stone-50: #faf7f4;
+  --stone-100: #f3eee9;
+  --stone-200: #e4dcd8;
+  --stone-400: #9e9098;
+  --stone-600: #6b5f68;
+  --stone-900: #221b20;
+  --brass-600: #8c6a12;
+  --brass-300: #e4c260;
+
+  /* ── semantic tokens (light) ───────────────────────────────────────────── */
+  --color-bg: #faf7f4;
+  --color-surface: #fff;
+  --color-surface-2: #f3eee9;
+  --color-text: #221b20;
+  --color-text-muted: #6b5f68;
+  --color-border: #e4dcd8;
+  --color-border-strong: #9e9098;
+  --color-primary: #7a2e63;
+  --color-primary-hover: #66244f;
+  --color-on-primary: #fff;
+  --color-primary-soft: #f7e6f1;
+  --color-on-primary-soft: #6a2555;
+  --color-success: #1e7a4c;
+  --color-success-soft: #e3f3ea;
+  --color-warning: #8f5400;
+  --color-warning-soft: #fbebd1;
+  --color-danger: #b3261e;
+  --color-danger-soft: #fce4e2;
+  --color-header: #5e1f4b;
+  --color-on-header: #fff;
+  --color-brass: #8c6a12;
+  --color-focus: #7a2e63;
+  --color-neutral-chip-bg: #f3eee9;
+  --color-neutral-chip-text: #6b5f68;
+  --color-backdrop: rgb(34 27 32 / 40%);
+  --shadow-sheet: 0 -8px 24px rgb(34 27 32 / 12%);
+  --shadow-card: 0 1px 2px rgb(34 27 32 / 6%);
+
+  /* ── shape, spacing and motion (unchanged from the palette system, 3.2.1) ─ */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --tap-target: 44px;
+  --duration-micro: 180ms;
+  --duration-page: 300ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Font scale, driven by the Settings stepper through one variable (spec 2.10.9). */
+  --font-scale: 1;
+  --font-arabic: 'Vazirmatn', 'Noto Sans Arabic', 'Segoe UI', tahoma, sans-serif;
+  --font-latin: 'Inter', system-ui, sans-serif;
+
+  /* Reading direction as a number, so animations and gestures mirror (spec 2.10.6). */
+  --dir: 1;
+
+  color-scheme: light;
+}
+
+[dir='ltr'] {
+  --dir: -1;
+}
+
+[data-theme='dark'] {
+  --color-bg: #161116;
+  --color-surface: #211a21;
+  --color-surface-2: #2c232c;
+  --color-text: #f4ecf1;
+  --color-text-muted: #b4a5af;
+  --color-border: #3b2f3a;
+  --color-border-strong: #756573;
+  --color-primary: #e79acf;
+  --color-primary-hover: #f0b0dc;
+  --color-on-primary: #33112a;
+  --color-primary-soft: #3c1f35;
+  --color-on-primary-soft: #f2c4e4;
+  --color-success: #63cf98;
+  --color-success-soft: #163325;
+  --color-warning: #f0b450;
+  --color-warning-soft: #3a2a10;
+  --color-danger: #f58b84;
+  --color-danger-soft: #3e1a18;
+  --color-header: #211a21;
+  --color-on-header: #f4ecf1;
+  --color-brass: #e4c260;
+  --color-focus: #e79acf;
+  --color-neutral-chip-bg: #2c232c;
+  --color-neutral-chip-text: #b4a5af;
+  --color-backdrop: rgb(0 0 0 / 60%);
+  --shadow-sheet: 0 -8px 24px rgb(0 0 0 / 50%);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
+
+  color-scheme: dark;
+}

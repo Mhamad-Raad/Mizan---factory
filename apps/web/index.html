@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ckb" dir="rtl" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#5E1F4B" />
+    <meta name="description" content="Mizan" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Mizan</title>
+    <script>
+      /*
+       * Pre-paint preferences (spec 2.10.10). This runs before any stylesheet so the first
+       * frame is already in the right language, direction, theme and text size: no flash of
+       * the wrong one. It reads localStorage inside try/catch and validates every value
+       * against the allowed set, so a corrupted or blocked store degrades to the defaults
+       * (Kurdish Sorani, follow-device, default size, Western digits) rather than breaking.
+       *
+       * Under the CSP of section 2.13 this script is allowed by hash.
+       */
+      (function () {
+        var LOCALES = { 'ckb-IQ': 'rtl', 'ar-IQ': 'rtl', en: 'ltr' };
+        var SCALES = [0.875, 1, 1.125, 1.25];
+        var prefs = {};
+        try {
+          prefs = JSON.parse(localStorage.getItem('mizan.prefs.v1') || '{}') || {};
+        } catch (error) {
+          prefs = {};
+        }
+
+        var lang = LOCALES[prefs.lang] ? prefs.lang : 'ckb-IQ';
+        var theme = prefs.theme === 'light' || prefs.theme === 'dark' ? prefs.theme : 'auto';
+        var scale = SCALES.indexOf(prefs.fontScale) >= 0 ? prefs.fontScale : 1;
+
+        var resolved =
+          theme === 'auto'
+            ? window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+            : theme;
+
+        var root = document.documentElement;
+        root.setAttribute('lang', lang.split('-')[0]);
+        root.setAttribute('data-locale', lang);
+        root.setAttribute('dir', LOCALES[lang]);
+        root.setAttribute('data-theme', resolved);
+        root.style.setProperty('--font-scale', String(scale));
+
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', resolved === 'dark' ? '#211A21' : '#5E1F4B');
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

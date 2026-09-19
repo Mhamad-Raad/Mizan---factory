@@ -1,0 +1,36 @@
+{
+  "name": "@mizan/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "check:budget": "node scripts/check-budget.mjs",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mizan/i18n": "workspace:*",
+    "@mizan/money": "workspace:*",
+    "@mizan/permissions": "workspace:*",
+    "@mizan/text": "workspace:*",
+    "@mizan/ui": "workspace:*",
+    "@tanstack/react-query": "^5.103.1",
+    "i18next": "^26.4.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-i18next": "^17.0.14",
+    "react-router-dom": "^7.18.4",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "jsdom": "^30.1.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.0",
+    "vitest": "^3.2.7"
+  }
+}

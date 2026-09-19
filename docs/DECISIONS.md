@@ -56,3 +56,39 @@ swapped by changing one import if the palette turns out to be violet-blue. Relie
 the double-submit CSRF header) is identical in all environments, so the production behaviour is the one
 that is tested in CI (which runs with `NODE_ENV=test` over http on a loopback interface and asserts the
 flag in production mode). Relied on: 2.8, 2.13.
+
+## D-008 · 2026-09-19 · I0 · `pg` with a thin repository layer instead of Prisma
+
+A-02 names Prisma, so this is a **deviation, not a gap**, and it is recorded as one.
+
+The data layer this system actually needs is SQL that Prisma would carry as raw strings anyway:
+the derived views of 2.2.6 (running balances over a window function, `bool_and` completeness flags,
+the oldest-first purchase allocation), `SELECT … FOR UPDATE` on the counterparty row before every
+ledger write (2.9.5), partial unique indexes on `deleted_at IS NULL` (2.2.1), the check constraints
+of 2.2.5, and a database role that lacks UPDATE and DELETE on the append-only tables (2.13). With
+Prisma, all of those live in `$queryRaw` and in hand-written migrations, and the ORM's own schema
+file becomes a second description of the truth that has to be kept in step with the first.
+
+**Choice:** `pg` with one repository class per aggregate; every SQL statement is parameterised
+(2.13) and lives only in a repository, so the scope rules of 2.6.4 cannot be forgotten by a caller.
+A-02's own reversal note says "any Node framework works; the ledger/money module is plain
+TypeScript", and the kernels are indeed framework-free. Reversing this decision means rewriting the
+repositories and nothing else — no service, controller, guard or screen imports the driver.
+
+**Cost accepted:** no generated types for rows, so every repository maps columns to a typed
+interface by hand and the API integration tests cover the mapping.
+
+## D-009 · 2026-09-19 · I0 · Idempotency keys are reserved before the work, and that table is not history
+
+2.2.1 lists `idempotency_keys` among the append-only tables. Storing the response only *after*
+the handler ran leaves a window exactly as wide as the write itself: two copies of the same
+request — a double tap on a flaky connection, which is the case FR-1305 exists for — both pass
+the "have I seen this key?" check and both write. A test reproduces it.
+
+**Choice:** reserve the key with an INSERT *before* the handler runs (the primary key decides the
+race), complete it with the response afterwards, and release it if the request failed so a
+corrected retry is allowed. That needs UPDATE and DELETE on this one table, granted in migration
+0003. The table is a 24-hour cache of responses, not history: the tables that hold history —
+`audit_log`, `login_attempts` and the three ledgers — keep their INSERT-only grants, which a test
+asserts against the live database. A duplicate that arrives while the first copy is still running
+waits up to five seconds for its answer and is otherwise told to try again shortly.

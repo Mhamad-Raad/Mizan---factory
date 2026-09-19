@@ -1,0 +1,45 @@
+{
+  "name": "@mizan/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsc -b --watch --preserveWatchOutput & node --watch --env-file-if-exists=../../.env dist/main.js",
+    "start": "node --env-file-if-exists=../../.env dist/main.js",
+    "migrate": "tsx --env-file-if-exists=../../.env src/database/migrate.ts",
+    "seed": "tsx --env-file-if-exists=../../.env src/database/seed.ts",
+    "check:routes": "tsc -b && node --env-file-if-exists=../../.env dist/checks/undecorated-routes.js",
+    "test": "vitest run",
+    "db:up": "tsx --env-file-if-exists=../../.env src/database/setup.ts"
+  },
+  "dependencies": {
+    "@mizan/i18n": "workspace:*",
+    "@mizan/ledger": "workspace:*",
+    "@mizan/money": "workspace:*",
+    "@mizan/permissions": "workspace:*",
+    "@mizan/text": "workspace:*",
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/platform-express": "^11.1.6",
+    "@node-rs/argon2": "^2.0.2",
+    "cookie-parser": "^1.4.7",
+    "helmet": "^8.1.0",
+    "pg": "^8.16.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^11.1.6",
+    "@swc/core": "^1.16.2",
+    "@types/cookie-parser": "^1.4.9",
+    "@types/express": "^5.0.3",
+    "@types/pg": "^8.15.6",
+    "@types/supertest": "^6.0.3",
+    "supertest": "^7.1.4",
+    "tsx": "^4.23.13",
+    "unplugin-swc": "^1.6.0",
+    "vitest": "^3.2.7"
+  }
+}

@@ -1,0 +1,24 @@
+# The SPA is static files; Caddy serves them and proxies /api, as in section 2.14.
+FROM node:24-bookworm-slim AS build
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
+RUN corepack enable
+WORKDIR /repo
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json tsconfig.json ./
+COPY packages/money/package.json        packages/money/
+COPY packages/text/package.json         packages/text/
+COPY packages/permissions/package.json  packages/permissions/
+COPY packages/i18n/package.json         packages/i18n/
+COPY packages/ledger/package.json       packages/ledger/
+COPY packages/ui/package.json           packages/ui/
+COPY apps/api/package.json              apps/api/
+COPY apps/web/package.json              apps/web/
+RUN pnpm install --frozen-lockfile --filter @mizan/web...
+
+COPY packages packages
+COPY apps/web apps/web
+RUN pnpm --filter @mizan/web build && pnpm --filter @mizan/web check:budget
+
+FROM caddy:2-alpine AS runtime
+COPY --from=build /repo/apps/web/dist /srv
+COPY ops/docker/Caddyfile /etc/caddy/Caddyfile
