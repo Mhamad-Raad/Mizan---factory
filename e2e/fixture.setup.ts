@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { Client } from 'pg';
 import { request, test as setup } from '@playwright/test';
+import { todayInBaghdad } from '@mizan/i18n';
 import { ADMIN, SALES } from './accounts.js';
 
 /**
@@ -66,12 +67,8 @@ async function seedFixture(): Promise<void> {
     if (!changed.ok()) throw new Error(`could not set the admin password: ${changed.status()}`);
   }
 
-  const today = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Baghdad',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
+  // Business dates are Asia/Baghdad days, through the same helper the application uses.
+  const today = todayInBaghdad();
   const month = today.slice(0, 7);
 
   await post(context, session, '/settings/global-rates', { rate_iqd_per_usd: '1310' });
@@ -284,11 +281,3 @@ async function resetTestDatabase(): Promise<void> {
   }
 }
 
-function todayInBaghdad(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Baghdad',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-}

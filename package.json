@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@mizan/i18n": "workspace:*",
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.13.5",
     "@types/pg": "^8.23.1",
