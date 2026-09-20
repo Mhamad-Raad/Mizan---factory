@@ -46,6 +46,8 @@ export const EDITABLE_KEYS: readonly SettingKey[] = [
   'settle_tolerance_iqd',
   'settle_tolerance_usd_cents',
   'order_edit_window_days',
+  // Iteration 2 opens the buying side's own window (FR-405).
+  'purchase_edit_window_days',
   'allow_edit_after_payment',
   'locked_through',
   'rate_stale_days',
@@ -64,6 +66,7 @@ export const PUBLIC_SETTING_KEYS: readonly SettingKey[] = [
   'settle_tolerance_iqd',
   'settle_tolerance_usd_cents',
   'order_edit_window_days',
+  'purchase_edit_window_days',
   'allow_edit_after_payment',
   'locked_through',
 ];

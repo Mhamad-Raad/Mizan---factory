@@ -15,14 +15,32 @@ export class ReversalNotAllowedError extends Error {
   }
 }
 
+/**
+ * The ids that something reverses, in one pass.
+ *
+ * It exists because the obvious shape — ask "does anything reverse me?" per row — is quadratic
+ * in the length of a counterparty's ledger, and that ledger grows for the life of the system:
+ * at 2,250 entries it cost 25 ms of the read it sat in, and at 20,000 it would be seconds, on
+ * the **write** path of every edit and void as well (I2 review).
+ */
+export function reversedEntryIds(all: readonly LedgerEntry[]): ReadonlySet<string> {
+  const reversed = new Set<string>();
+  for (const entry of all) {
+    if (entry.reverses_entry_id) reversed.add(entry.reverses_entry_id);
+  }
+  return reversed;
+}
+
 /** A row is "live" when nothing reverses it; only live rows are reversed on edit or void. */
-export function isLive(entry: LedgerEntry, all: readonly LedgerEntry[]): boolean {
+export function isLive(entry: LedgerEntry, all: readonly LedgerEntry[] | ReadonlySet<string>): boolean {
   if (entry.entry_type === 'reversal') return false;
-  return !all.some((other) => other.reverses_entry_id === entry.id);
+  const reversed = all instanceof Set ? all : reversedEntryIds(all as readonly LedgerEntry[]);
+  return !reversed.has(entry.id);
 }
 
 export function liveEntries(all: readonly LedgerEntry[]): LedgerEntry[] {
-  return all.filter((entry) => isLive(entry, all));
+  const reversed = reversedEntryIds(all);
+  return all.filter((entry) => entry.entry_type !== 'reversal' && !reversed.has(entry.id));
 }
 
 /**

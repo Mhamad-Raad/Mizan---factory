@@ -41,5 +41,12 @@
   "payment_exceeds_remaining": "That is more than the remaining {{remaining}}",
   "discount_too_large": "The discount cannot be larger than the total",
   "ledger_rule": "That entry is not allowed",
+  "duplicate_company": "A company with this name already exists",
+  "company_inactive": "That company is hidden — show it again before recording a purchase",
+  "order_customer_immutable": "An order cannot be moved to another customer — void it and enter it again",
+  "purchase_company_immutable": "A purchase cannot be moved to another company — void it and enter it again",
+  "note_required_adjustment": "Say why the balance is being changed (at least three characters)",
+  "adjustment_unchanged": "That is the balance already — nothing to change",
+  "stock_insufficient": "There is not enough stock of {{item}}: {{available}} left, {{requested}} asked for",
   "no_settlement": "This order has no cash settlement to reverse"
 }

@@ -73,7 +73,7 @@ describe('permission matrix (FR-104, spec 2.12)', () => {
   it('every permission key a route asks for exists in the catalog', () => {
     const keys = routes
       .filter((route) => route.protection.kind === 'permission')
-      .map((route) => (route.protection as { key: string }).key);
+      .flatMap((route) => (route.protection as { keys: readonly string[] }).keys);
     for (const key of keys) expect(PERMISSION_KEYS).toContain(key);
   });
 

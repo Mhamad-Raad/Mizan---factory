@@ -14,6 +14,8 @@ import ckbSettings from '@mizan/i18n/locales/ckb-IQ/settings.json';
 import ckbMaterials from '@mizan/i18n/locales/ckb-IQ/materials.json';
 import ckbCustomers from '@mizan/i18n/locales/ckb-IQ/customers.json';
 import ckbOrders from '@mizan/i18n/locales/ckb-IQ/orders.json';
+import ckbCompanies from '@mizan/i18n/locales/ckb-IQ/companies.json';
+import ckbPurchases from '@mizan/i18n/locales/ckb-IQ/purchases.json';
 
 import arCommon from '@mizan/i18n/locales/ar-IQ/common.json';
 import arGlossary from '@mizan/i18n/locales/ar-IQ/glossary.json';
@@ -26,6 +28,8 @@ import arSettings from '@mizan/i18n/locales/ar-IQ/settings.json';
 import arMaterials from '@mizan/i18n/locales/ar-IQ/materials.json';
 import arCustomers from '@mizan/i18n/locales/ar-IQ/customers.json';
 import arOrders from '@mizan/i18n/locales/ar-IQ/orders.json';
+import arCompanies from '@mizan/i18n/locales/ar-IQ/companies.json';
+import arPurchases from '@mizan/i18n/locales/ar-IQ/purchases.json';
 
 import enCommon from '@mizan/i18n/locales/en/common.json';
 import enGlossary from '@mizan/i18n/locales/en/glossary.json';
@@ -38,6 +42,8 @@ import enSettings from '@mizan/i18n/locales/en/settings.json';
 import enMaterials from '@mizan/i18n/locales/en/materials.json';
 import enCustomers from '@mizan/i18n/locales/en/customers.json';
 import enOrders from '@mizan/i18n/locales/en/orders.json';
+import enCompanies from '@mizan/i18n/locales/en/companies.json';
+import enPurchases from '@mizan/i18n/locales/en/purchases.json';
 
 /**
  * The catalogs are bundled, not fetched: a floor tablet on a bad connection must not be able
@@ -56,6 +62,8 @@ const resources = {
     materials: ckbMaterials,
     customers: ckbCustomers,
     orders: ckbOrders,
+    companies: ckbCompanies,
+    purchases: ckbPurchases,
   },
   'ar-IQ': {
     common: arCommon,
@@ -69,6 +77,8 @@ const resources = {
     materials: arMaterials,
     customers: arCustomers,
     orders: arOrders,
+    companies: arCompanies,
+    purchases: arPurchases,
   },
   en: {
     common: enCommon,
@@ -82,6 +92,8 @@ const resources = {
     materials: enMaterials,
     customers: enCustomers,
     orders: enOrders,
+    companies: enCompanies,
+    purchases: enPurchases,
   },
 } as const;
 

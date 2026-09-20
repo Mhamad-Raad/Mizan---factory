@@ -20,6 +20,16 @@ export class PeriodService {
     return todayInBaghdad();
   }
 
+  /**
+   * A business date some whole months back, in Baghdad days — the default range of a document
+   * that covers a period rather than an account's whole life (D-025).
+   */
+  monthsAgo(months: number): string {
+    const [year, month, day] = this.today().split('-').map(Number) as [number, number, number];
+    const shifted = new Date(Date.UTC(year, month - 1 - months, day));
+    return shifted.toISOString().slice(0, 10);
+  }
+
   /** Back-dating is allowed and logged; a date in the future is not (FR-601). */
   assertNotFuture(isoDate: string, path = 'order_date'): void {
     if (isoDate > this.today()) {

@@ -184,3 +184,92 @@ order — and the service refuses unless the caller is the creator, an admin or 
 same shape applies to the void of somebody else's order, which stays behind `orders.void`.
 Relied on: FR-610, 2.6.2 ("ownership and period rules are checked in the service with the
 record loaded"), 2.9.3.
+
+## D-019 · 2026-09-20 · I2 · One ledger writer for both counterparties
+
+`company_ledger` is `customer_ledger` with a different owner column, a different entry-type
+enum and `purchase_id` where the other has `order_id`. Everything around it is identical: lock
+the counterparty row, compute the balance before and after inside the transaction, append,
+write the audit row, refuse a reversal of a reversal or of a re-basing marker.
+
+**Choice:** one abstract `AccountLedgerService` holds that behaviour and two thin subclasses
+supply the table, the owner column, the entity label and the reference columns. Duplicating it
+would mean the company side could drift from the customer side in exactly the place where a
+difference is a bug nobody sees for months. Relied on: 2.4.1 ("rules common to all three"),
+2.2.3.
+
+## D-020 · 2026-09-20 · I2 · The oldest-first allocation is computed, never stored
+
+FR-712 and A-29 ask for per-purchase "remaining" where unlinked payments and credits are
+applied oldest purchase first. **Choice:** a pure function in `@mizan/ledger` over the
+company's entries, called by the API and covered by a property test for the identity
+`Σ remaining (active purchases) + general bucket = company balance`. Nothing is stored: the
+allocation is presentation, so the rule can change without a data migration — which is the
+hedge A-29 itself names. Relied on: 2.2.6 `purchase_balances`, FR-712, A-29.
+
+## D-021 · 2026-09-20 · I2 · A purchase keeps no cost snapshot
+
+An order line snapshots the material's bought price for the Profit report (A-42). A purchase
+line *is* the bought price, so there is nothing to snapshot: the Profit report reads the order
+side. **Choice:** `purchase_lines` carries no `cost_*` columns; the shape otherwise mirrors
+`order_lines` so the two forms and their edit algorithms stay the same code path. Relied on:
+2.2.3 (`purchase_lines` has no cost snapshot), 2.11.
+
+## D-022 · 2026-09-20 · I2 · A purchase's prices travel under one `cost` key
+
+FR-460 (1.5.4) withholds "purchase prices or totals" from users without
+`fields.see_bought_price` while leaving "dates, companies and quantities" readable, and field
+flags are enforced by *removing* the field (2.6.2). The interceptor strips by key name, so
+scattering `unit_price_iqd`, `line_total_usd_cents`, `discount_*` and `total_*` across the DTO
+would mean naming a dozen keys — and forgetting one the day a field is added.
+
+**Choice:** every amount on a purchase sits under a single `cost` object (on the document, on
+each line, on `/purchases/:id/balance` and on the ledger rows of its History), the way an order
+line already carries its snapshot under `cost`. One rule, `cost: 'fields.see_bought_price'`,
+hides all of it; the audit diff adds `unit_price`, `line_total` and `purchase_total`, which is
+also why the document total in a purchase's `changes` is not called `total` — that is the
+pagination key of every list response and would be stripped from it. Relied on: 1.5.4, 2.4.4,
+2.6.2.
+
+## D-023 · 2026-09-20 · I2 · A route may require two permission keys
+
+The route table of 2.9.3 writes the money routes as `companies.view` + `fields.see_company_balances`
+(and `purchases.view` + `fields.see_company_balances` for `/purchases/:id/balance`). A ledger,
+a statement or a per-purchase breakdown **is** the balance: answering it with the amounts
+stripped out returns a shape the client cannot render and tells the caller what they may not
+know anyway.
+
+**Choice:** `@RequirePermission(...)` takes one key or several, all required, and the guard
+refuses naming the first missing one. The route check and the generated matrix read the list,
+so rule 4 still holds. The same reading applies to the customer routes I1 gated with
+`customers.view` alone — `GET /customers/:id/ledger`, its voucher and the statement now ask for
+`fields.see_customer_balances` as well, which is what 2.9.3 says and what I1 should have done.
+Relied on: 2.9.3, 2.6.2, FR-704.
+
+## D-024 · 2026-09-20 · I2 · A purchase's "remaining" is always the allocated figure
+
+FR-712 defines remaining per purchase as its total *less the entries linked to it* **and less
+its oldest-first share of everything unlinked**. The first draft of the list query read a
+purchase's remaining from the rows that happen to name it, which is cheap per row — and wrong:
+a supplier paid a lump sum against nothing in particular, and the list then showed
+"remaining 650,000" beside a purchase the company's own page showed as settled.
+
+**Choice:** there is one definition and it is the allocation. `GET /purchases/:id/balance`
+computes it (total, linked, its share, remaining) and the company's breakdown computes it once
+for the account; the purchases **list** carries no remaining column at all, and the company's
+Purchases tab reads each row's figure from the breakdown it already loads. A purchase's page
+and its company's page can therefore never disagree. Relied on: FR-712, 2.2.6
+(`purchase_balances` is a display allocation), A-29.
+
+## D-025 · 2026-09-21 · I2 · A statement covers a period, and says which
+
+FR-615 gives `GET /companies/:id/statement?from&to` and does not say what happens without a
+range. Returning the account's whole life is both wrong in kind — a statement is a document
+for a period — and, measured at fifteen years of purchases, 1.7 MB of JSON handed to a phone.
+
+**Choice:** no range means the last three months, and the response echoes the `from` and `to`
+it used so the sheet can tell the supplier what they are being handed. The same reasoning
+bounds the accounting tab (a page of entries with `total` and `has_more`) and the per-purchase
+breakdown (what is still owed, oldest first). The running balance is still computed over the
+whole ledger, so a page never carries a figure that disagrees with History. Relied on: FR-615,
+2.4.1 rule 5, 2.9.3.

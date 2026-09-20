@@ -239,3 +239,123 @@ catalog, D-010), Q-B-02 (which optional extras to keep — all of them built, D-
 **Next:** I2 — companies, purchases and supplier accounting. It needs nothing new from the
 client; `company_ledger` mirrors the customer ledger this iteration built, and the money,
 stock and period rules are already in the kernel.
+
+---
+
+# Iteration 2 — companies, purchases & company accounting (buying)
+
+Branch `feat/i2-buying`, brief `iterations/I2-companies-purchases-accounting.md`.
+
+## I2 · Checkpoint A — done · the schema and the privileges
+
+- `0008_buying.sql`: `companies`, `company_rates`, `purchases`, `purchase_lines`,
+  `company_ledger` (every entry type including `settlement_change`), the checks that mirror the
+  customer ledger row for row, the trigger that refuses a reversal of a re-basing marker, the
+  views `company_balances`, `company_ledger_running` and `purchase_linked_totals`, the
+  sequences `purchase_number_seq` and `company_ledger_seq`, and the covering indices the I1
+  review measured into place (`company_ledger_balance_idx`, `company_ledger_purchase_sum_idx`).
+- `0009_buying_privileges.sql`: the application role may INSERT into `company_ledger` and
+  `company_rates` and may never UPDATE or DELETE them; `update company_ledger` answers
+  *permission denied* on both databases, which the suite now asserts as well.
+
+## I2 · Checkpoint B — done · the kernel
+
+- `allocateOldestFirst` in `@mizan/ledger`: explicit links first, then unlinked payments,
+  credits and adjustments spread over the oldest purchases, never past zero, with everything
+  unallocatable in a `general` bucket. **50 ledger tests**, including a 300-run property test
+  for `Σ remaining + general = balance` (D-020).
+- The ledger writer refactored into one `AccountLedgerService` with `CustomerLedgerService` and
+  `CompanyLedgerService` as thin subclasses (D-019); every I1 ledger test still passes
+  unchanged.
+
+## I2 · Checkpoint C — done · the API
+
+**102 routes, all declared** (30 new); **168 API tests**, **371 across the workspace**.
+
+- Companies: profiles with settlement currency and assignment, the company rate with its
+  history and ±20 % guard, the accounting tab (grouped ledger, `as_of`, money-only), the
+  per-purchase breakdown, payments with conversion, override, split and settle-in-full,
+  adjustments by new balance or delta, manual credits, opening balances, reversal, the
+  settlement-currency change with its re-basing entry, the statement and the voucher.
+- Purchases: create with lines priced from the month **bought** price at the purchase's own
+  rate, one `purchase_in` movement per line, one company entry copying the purchase totals —
+  and none at all when no company is named (FR-407); edit as reverse-then-rewrite, void with
+  its reason, the 8-second undo, the purchase's own balance, History.
+- Two rules came out of this checkpoint and are written down: a purchase's money travels under
+  one `cost` key so one flag hides all of it (D-022), and a route may require two permission
+  keys — which also closed the I1 gap where `GET /customers/:id/ledger` asked only for
+  `customers.view` (D-023).
+
+**Next:** checkpoint D — the buying screens (Companies list and profile with its four tabs and
+sheets, Add material / Purchase, Purchase detail, Purchases list), the `companies` and
+`purchases` namespaces in all three languages, and the screenshots.
+
+## I2 · Checkpoint D — done (the real-phone review is owed by the client)
+
+The buying screens, mobile first. Bundle **177.6 kB gzipped** against the 250 kB budget;
+**596 message keys × 3 languages**, every reference in the interface *and in the API* resolving.
+
+- Companies list (search, highest balance first, hidden companies behind a chip) and New
+  company with the duplicate-name warning that links to the existing account; Company profile
+  with the rate and its "since", the balance in both currencies, and the four tabs of 3.3 —
+  Overview · Accounting (grouped `LedgerList`, filter chips, the per-purchase section with its
+  oldest-first figures) · Purchases · History — plus the sheets: Record payment (wireframe
+  3.4.2, with Settle in full, the live "after this payment" and "More → link to a purchase"),
+  Adjust owed (new balance or change, note required, now → after), Manual credit, Opening
+  balance, Set rate (with the ±20 % confirmation), Rate history, Settlement currency with its
+  re-basing rate, Assign, Statement.
+- Add material / Purchase form of 3.3: the company picker with **"No company — stock only"**
+  pinned at the top, line cards whose priced measure comes first, the month's bought price
+  filling itself with the other currency at the purchase's rate, "More" for the notes, the rate
+  for this purchase and "done by", the sticky totals footer, drafts and the 8-second undo.
+  Purchase detail with "We owe for this purchase", Edit, Void and Duplicate. Purchases list
+  with its date chips, filter sheet and the "Stock only" badge, reachable from Materials, from
+  a company and at `/purchases`.
+- `companies` and `purchases` message namespaces in Kurdish, Arabic and English, with the
+  glossary words the client ticked; two new icons in the registry; the bottom bar's **More**
+  now opens a sheet, because a link to the first hidden tab left Settings unreachable.
+- **11 new screenshots** of five screens in Kurdish, Arabic and English, both themes, taken
+  against the real API with seeded data, plus the 360 px overflow and 44 px target checks on
+  the purchase form at the largest text size. **30 Playwright checks** in total.
+
+## I2 · Checkpoint E — done
+
+- Review: `docs/REVIEW-I2.md`. Eleven findings, each fixed with a regression test — the worst
+  being a quadratic "which rows are still live?" scan that sat on the write path of every edit
+  and void as well as the read path of the accounting tab (43 ms → 12 ms at fifteen years of
+  data, and seconds → milliseconds at twenty thousand entries), and an accounting tab that
+  answered a phone with 1.7 MB of JSON because the filters 2.9.3 documents were never built.
+- Demo script of 4.4 is **executable** (`scripts/demo-i2.mjs`) and passes end to end: the
+  company and its own rate against a different global one, a purchase from a phone with its
+  stock and "first bought", a payment in dinars converting at the company's rate and one in
+  dollars with the dinar side typed by hand, the oldest-first view without anything linked, an
+  adjustment with its note and old → new (and the refusal without one), a rate change that
+  leaves every stored entry byte for byte, a settlement-currency change refused without a
+  re-basing rate and exact with one, an edit and a void with compensating movements, the
+  warehouse employee refused the void their preset does not grant, an opening debt with its
+  statement, and the identity Σ remaining + General = balance after all of it.
+- CI: lint · types · translations (interface **and** API) · contrast · migrations · route
+  declarations · **377 tests** · build · bundle budget · **30 Playwright checks**.
+
+## I2 — Definition of done (section 4.1)
+
+| # | Item | State |
+|---|---|---|
+| 1 | Three languages, glossary terms, build fails on a missing key | ✅ 596 keys × 3 from one table; the check now covers the API's error keys too |
+| 2 | RTL verified **on a real phone** in ckb, ar and en | ⚠️ automated at 360 px in all three, both themes; **the real-phone check is owed** |
+| 3 | Permissions enforced on every new endpoint | ✅ 102 routes declared (30 new); the money routes ask for two keys, as 2.9.3 writes them |
+| 4 | Every change in History with old → new, balances before → after | ✅ asserted per write path, including the adjustment, the reversal and the re-basing entry |
+| 5 | Every amount in both currencies through `DualAmount`, ≈ for conversions | ✅ on every screen; a company's balance carries ≈ at its own rate |
+| 6 | Both themes, all four text sizes, no overflow, contrast | ✅ 11 new screenshots, 32 contrast pairs, overflow and target checks at 1.25 |
+| 7 | Tests for money and stock logic | ✅ 52 kernel tests (incl. the 300-run allocation property test), 172 API tests |
+| 8 | Skeleton, empty, error and offline states | ✅ through one `QueryStates` on every new page and tab |
+| 9 | Accessibility basics | ✅ labels, focus order, 44 px asserted on the purchase form, reduced motion |
+| 10 | Demo on staging with seeded data | ⚠️ the demo script passes against a live deployment; **staging still needs a host** |
+
+**I2 is complete but for the two items that have been owed since I0:** the real-phone RTL and
+identity review (FR-1311, item 2) and a host for staging (item 10).
+
+**Still open with the client:** Q-A-03, Q-B-02 and Q-B-03 from I1, unchanged.
+
+**Next:** I3 — damaged items and returns. It reuses the company ledger's credit path for
+damage-driven credits, so nothing new is needed from the client to start.

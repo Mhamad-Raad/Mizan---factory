@@ -68,5 +68,11 @@
   "settle_in_full": "Settle in full",
   "document_rate": "Rate for this order",
   "period_lock": "Period lock",
-  "walk_in_customer": "Walk-in customer"
+  "walk_in_customer": "Walk-in customer",
+  "we_owe": "We owe",
+  "company_rate": "The company's rate",
+  "document_rate_purchase": "Rate for this purchase",
+  "remaining": "Remaining",
+  "companies": "Companies",
+  "purchases": "Purchases"
 }

@@ -13,6 +13,12 @@ import { NewMaterialPage } from './pages/NewMaterialPage.js';
 import { CustomersPage } from './pages/CustomersPage.js';
 import { CustomerDetailPage } from './pages/CustomerDetailPage.js';
 import { NewCustomerPage } from './pages/NewCustomerPage.js';
+import { CompaniesPage } from './pages/CompaniesPage.js';
+import { CompanyDetailPage } from './pages/CompanyDetailPage.js';
+import { NewCompanyPage } from './pages/NewCompanyPage.js';
+import { PurchasesPage } from './pages/PurchasesPage.js';
+import { PurchaseFormPage } from './pages/PurchaseFormPage.js';
+import { PurchaseDetailPage } from './pages/PurchaseDetailPage.js';
 import { OrdersPage } from './pages/OrdersPage.js';
 import { OrderFormPage } from './pages/OrderFormPage.js';
 import { OrderDetailPage } from './pages/OrderDetailPage.js';
@@ -33,6 +39,8 @@ function landingFor(user: SessionUser | null, permissions: string[]): string {
   if (may('orders.view')) return '/orders';
   if (may('materials.view')) return '/materials';
   if (may('customers.view')) return '/customers';
+  if (may('purchases.view')) return '/purchases';
+  if (may('companies.view')) return '/companies';
   if (user?.role === 'admin') return '/users';
   if (may('history.view')) return '/history';
   return '/settings';
@@ -126,6 +134,13 @@ export function App() {
       <Route path="/customers" element={<CustomersPage />} />
       <Route path="/customers/new" element={<NewCustomerPage />} />
       <Route path="/customers/:id" element={<CustomerDetailPage />} />
+      <Route path="/companies" element={<CompaniesPage />} />
+      <Route path="/companies/new" element={<NewCompanyPage />} />
+      <Route path="/companies/:id" element={<CompanyDetailPage />} />
+      <Route path="/purchases" element={<PurchasesPage />} />
+      <Route path="/purchases/new" element={<PurchaseFormPage mode="create" />} />
+      <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
+      <Route path="/purchases/:id/edit" element={<PurchaseFormPage mode="edit" />} />
       <Route path="/users" element={<UsersPage />} />
       <Route path="/users/new" element={<NewUserPage />} />
       <Route path="/users/:id" element={<UserDetailPage />} />

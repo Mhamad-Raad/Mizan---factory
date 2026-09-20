@@ -41,5 +41,12 @@
   "payment_exceeds_remaining": "هذا أكبر من المتبقي {{remaining}}",
   "discount_too_large": "لا يمكن أن يكون الخصم أكبر من المجموع",
   "ledger_rule": "هذا القيد غير مسموح",
+  "duplicate_company": "توجد شركة بهذا الاسم بالفعل",
+  "company_inactive": "هذه الشركة مخفية — أظهرها قبل تسجيل شراء",
+  "order_customer_immutable": "لا يمكن نقل الطلب إلى زبون آخر — أبطله وأدخله من جديد",
+  "purchase_company_immutable": "لا يمكن نقل الشراء إلى شركة أخرى — أبطله وأدخله من جديد",
+  "note_required_adjustment": "اذكر سبب تغيير الرصيد (ثلاثة أحرف على الأقل)",
+  "adjustment_unchanged": "هذا هو الرصيد الحالي — لا شيء ليتغير",
+  "stock_insufficient": "المخزون غير كافٍ من {{item}}: المتبقي {{available}} والمطلوب {{requested}}",
   "no_settlement": "لا توجد تسوية نقدية لعكسها في هذا الطلب"
 }

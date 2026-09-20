@@ -105,7 +105,8 @@ test.describe('the selling screens', () => {
     await page.goto('/materials');
     await page.getByRole('link').filter({ hasText: 'Copper' }).first().click();
     await expect(page.getByText('Copper wire 2 mm').first()).toBeVisible();
-    await expect(page.getByText('5,987.500', { exact: false }).first()).toBeVisible();
+    // 6,000 counted at go-live, 12.5 sold, 500 bought from Al-Noor in the buying fixture.
+    await expect(page.getByText('6,487.500', { exact: false }).first()).toBeVisible();
     await expect(page).toHaveScreenshot('material-detail-ckb-light.png', { fullPage: true });
   });
 

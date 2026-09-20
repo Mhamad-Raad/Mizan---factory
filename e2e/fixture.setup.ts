@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { Client } from 'pg';
 import { request, test as setup } from '@playwright/test';
 import { todayInBaghdad } from '@mizan/i18n';
-import { ADMIN, SALES } from './accounts.js';
+import { ACCOUNTANT, ADMIN, SALES, WAREHOUSE } from './accounts.js';
 
 /**
  * Seeds the data the selling screens are photographed with (spec 2.12, Definition of done
@@ -26,9 +26,11 @@ export interface Fixture {
   steelId: string;
   customerId: string;
   orderId: string;
+  companyId: string;
+  purchaseId: string;
 }
 
-setup('seed the selling fixture', async () => {
+setup('seed the selling and buying fixture', async () => {
   await seedFixture();
 });
 
@@ -95,7 +97,29 @@ async function seedFixture(): Promise<void> {
   const customerId = await createCustomer(context, session, salesUser, today);
   const orderId = await createOrder(context, session, { customerId, copperId, steelId, today });
 
-  process.env.E2E_FIXTURE = JSON.stringify({ copperId, steelId, customerId, orderId } satisfies Fixture);
+  // Iteration 2: the supplier side of the same yard — a company with its own rate, a purchase
+  // that put stock in and a part payment against it.
+  await ensureEmployee(context, session, {
+    display_name: 'Hemin',
+    account: WAREHOUSE,
+    preset_key: 'warehouse',
+  });
+  await ensureEmployee(context, session, {
+    display_name: 'Nazdar',
+    account: ACCOUNTANT,
+    preset_key: 'accountant',
+  });
+  const companyId = await createCompany(context, session);
+  const purchaseId = await createPurchase(context, session, { companyId, copperId, steelId, today });
+
+  process.env.E2E_FIXTURE = JSON.stringify({
+    copperId,
+    steelId,
+    customerId,
+    orderId,
+    companyId,
+    purchaseId,
+  } satisfies Fixture);
   await context.dispose();
 }
 
@@ -131,6 +155,65 @@ async function post(
   return (await response.json()) as Record<string, unknown>;
 }
 
+async function ensureEmployee(
+  context: Awaited<ReturnType<typeof request.newContext>>,
+  session: Headers,
+  input: { display_name: string; account: { username: string; password: string }; preset_key: string },
+): Promise<string> {
+  const created = (await post(context, session, '/users', {
+    display_name: input.display_name,
+    username: input.account.username,
+    role: 'employee',
+    preset_key: input.preset_key,
+  })) as { user?: { id: string }; temporary_password?: string };
+  await adoptPassword(input.account, created.temporary_password as string);
+  return created.user?.id as string;
+}
+
+async function createCompany(
+  context: Awaited<ReturnType<typeof request.newContext>>,
+  session: Headers,
+): Promise<string> {
+  const created = (await post(context, session, '/companies', {
+    name: 'Al-Noor Steel Co.',
+    contact_name: 'Abu Ahmad',
+    phone: '0751 222 3344',
+    settlement_currency: 'IQD',
+  })) as { id: string };
+
+  // The company's own rate, deliberately apart from the global 1,310 (FR-703, 2.3.3).
+  await post(context, session, `/companies/${created.id}/rates`, {
+    rate_iqd_per_usd: '1305',
+    note: 'agreed for September',
+  });
+  return created.id;
+}
+
+async function createPurchase(
+  context: Awaited<ReturnType<typeof request.newContext>>,
+  session: Headers,
+  input: { companyId: string; copperId: string; steelId: string; today: string },
+): Promise<string> {
+  const created = (await post(context, session, '/purchases', {
+    company_id: input.companyId,
+    purchase_date: input.today,
+    notes: 'delivered by lorry',
+    lines: [
+      { item_id: input.copperId, qty_kg: '500.000' },
+      { item_id: input.steelId, qty_count: 20, qty_kg: '48.000' },
+    ],
+  })) as { id: string };
+
+  await post(context, session, `/companies/${input.companyId}/payments`, {
+    amount: 200_000,
+    currency: 'IQD',
+    entry_date: input.today,
+    note: 'first instalment',
+  });
+
+  return created.id;
+}
+
 async function ensureSalesEmployee(
   context: Awaited<ReturnType<typeof request.newContext>>,
   session: Headers,
@@ -141,7 +224,7 @@ async function ensureSalesEmployee(
     role: 'employee',
     preset_key: 'sales',
   })) as { user?: { id: string }; temporary_password?: string };
-  await adoptPassword(created.temporary_password as string);
+  await adoptPassword(SALES, created.temporary_password as string);
   return created.user?.id as string;
 }
 
@@ -152,17 +235,20 @@ async function ensureSalesEmployee(
  * holds someone else's cookies sends that session's CSRF cookie without its header, and the
  * double-submit check refuses the call — correctly (spec 2.8).
  */
-async function adoptPassword(temporary: string): Promise<void> {
+async function adoptPassword(
+  account: { username: string; password: string },
+  temporary: string,
+): Promise<void> {
   const context = await request.newContext();
   try {
-    const session = await signIn(context, SALES.username, temporary);
-    if (!session) throw new Error('could not sign in as the sales employee with the temporary password');
+    const session = await signIn(context, account.username, temporary);
+    if (!session) throw new Error(`could not sign in as ${account.username} with the temporary password`);
     const changed = await context.post(`${BASE}/auth/change-password`, {
       headers: session,
-      data: { current: temporary, new: SALES.password },
+      data: { current: temporary, new: account.password },
     });
     if (!changed.ok()) {
-      throw new Error(`could not set the sales password: ${changed.status()} ${await changed.text()}`);
+      throw new Error(`could not set the password for ${account.username}: ${changed.status()} ${await changed.text()}`);
     }
   } finally {
     await context.dispose();
@@ -263,8 +349,9 @@ async function resetTestDatabase(): Promise<void> {
   try {
     await client.query(
       `TRUNCATE audit_log, login_attempts, idempotency_keys, user_permissions, sessions,
-                customer_ledger, stock_ledger, order_payment_type_changes, order_lines, orders,
-                customers, item_month_prices, items, global_rates, settings, users
+                customer_ledger, company_ledger, stock_ledger, order_payment_type_changes,
+                order_lines, orders, purchase_lines, purchases, customers, company_rates,
+                companies, item_month_prices, items, global_rates, settings, users
        RESTART IDENTITY CASCADE`,
     );
     // The order and voucher numbers are their own sequences, which TRUNCATE does not touch.
@@ -272,8 +359,10 @@ async function resetTestDatabase(): Promise<void> {
     // when the interface does.
     await client.query(
       `ALTER SEQUENCE order_number_seq RESTART;
+       ALTER SEQUENCE purchase_number_seq RESTART;
        ALTER SEQUENCE voucher_number_seq RESTART;
        ALTER SEQUENCE customer_ledger_seq RESTART;
+       ALTER SEQUENCE company_ledger_seq RESTART;
        ALTER SEQUENCE stock_ledger_seq RESTART;`,
     );
   } finally {

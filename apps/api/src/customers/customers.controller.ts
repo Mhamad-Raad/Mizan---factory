@@ -77,6 +77,7 @@ const ledgerSchema = z.object({
   money_only: z.enum(['true', 'false']).optional(),
   include_undone: z.enum(['true', 'false']).optional(),
   as_of: isoDate.optional(),
+  limit: z.coerce.number().int().positive().max(500).optional(),
 });
 
 const statementSchema = z.object({ from: isoDate.optional(), to: isoDate.optional() });
@@ -217,7 +218,7 @@ export class CustomersController {
   }
 
   @Get('customers/:id/ledger')
-  @RequirePermission('customers.view')
+  @RequirePermission('customers.view', 'fields.see_customer_balances')
   async ledger(
     @Req() request: RequestWithContext,
     @Param('id') id: string,
@@ -228,6 +229,7 @@ export class CustomersController {
       money_only: query.money_only === 'true',
       include_undone: query.include_undone === 'true',
       as_of: query.as_of,
+      limit: query.limit,
     });
   }
 
@@ -308,14 +310,14 @@ export class CustomersController {
 
   /** Proposed — not requested (FR-614): the figures for one printed voucher. */
   @Get('customers/:id/ledger/:entryId/voucher')
-  @RequirePermission('customers.view')
+  @RequirePermission('customers.view', 'fields.see_customer_balances')
   async voucher(@Req() request: RequestWithContext, @Param('id') id: string, @Param('entryId') entryId: string) {
     return this.customers.voucher(contextOf(request), id, entryId);
   }
 
   /** Proposed — not requested (FR-615): the figures for an account statement. */
   @Get('customers/:id/statement')
-  @RequirePermission('customers.view')
+  @RequirePermission('customers.view', 'fields.see_customer_balances')
   async statement(
     @Req() request: RequestWithContext,
     @Param('id') id: string,
