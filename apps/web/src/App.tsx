@@ -7,6 +7,15 @@ import { ApiError, apiRequest } from './lib/api.js';
 import { useApp } from './lib/store.js';
 import type { SessionUser } from './lib/store.js';
 import { LoginPage } from './pages/LoginPage.js';
+import { MaterialsPage } from './pages/MaterialsPage.js';
+import { MaterialDetailPage } from './pages/MaterialDetailPage.js';
+import { NewMaterialPage } from './pages/NewMaterialPage.js';
+import { CustomersPage } from './pages/CustomersPage.js';
+import { CustomerDetailPage } from './pages/CustomerDetailPage.js';
+import { NewCustomerPage } from './pages/NewCustomerPage.js';
+import { OrdersPage } from './pages/OrdersPage.js';
+import { OrderFormPage } from './pages/OrderFormPage.js';
+import { OrderDetailPage } from './pages/OrderDetailPage.js';
 import { LockPage } from './pages/LockPage.js';
 import { UsersPage } from './pages/UsersPage.js';
 import { NewUserPage } from './pages/NewUserPage.js';
@@ -14,6 +23,20 @@ import { UserDetailPage } from './pages/UserDetailPage.js';
 import { HistoryPage } from './pages/HistoryPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { ChangePasswordPage } from './pages/ChangePasswordPage.js';
+
+/**
+ * Where a user lands after signing in: the first tab they may open, in the order the bottom
+ * bar shows them (spec 2.10.1, 2.6.3). An admin holds every key, so they land on Orders.
+ */
+function landingFor(user: SessionUser | null, permissions: string[]): string {
+  const may = (key: string) => user?.role === 'admin' || permissions.includes(key);
+  if (may('orders.view')) return '/orders';
+  if (may('materials.view')) return '/materials';
+  if (may('customers.view')) return '/customers';
+  if (user?.role === 'admin') return '/users';
+  if (may('history.view')) return '/history';
+  return '/settings';
+}
 
 interface MeResponse {
   user: SessionUser;
@@ -93,13 +116,23 @@ export function App() {
     <Routes>
       <Route path="/lock" element={<LockPage />} />
       <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="/orders" element={<OrdersPage />} />
+      <Route path="/orders/new" element={<OrderFormPage mode="create" />} />
+      <Route path="/orders/:id" element={<OrderDetailPage />} />
+      <Route path="/orders/:id/edit" element={<OrderFormPage mode="edit" />} />
+      <Route path="/materials" element={<MaterialsPage />} />
+      <Route path="/materials/new" element={<NewMaterialPage />} />
+      <Route path="/materials/:id" element={<MaterialDetailPage />} />
+      <Route path="/customers" element={<CustomersPage />} />
+      <Route path="/customers/new" element={<NewCustomerPage />} />
+      <Route path="/customers/:id" element={<CustomerDetailPage />} />
       <Route path="/users" element={<UsersPage />} />
       <Route path="/users/new" element={<NewUserPage />} />
       <Route path="/users/:id" element={<UserDetailPage />} />
       <Route path="/history" element={<HistoryPage />} />
       <Route path="/settings" element={<SettingsPage />} />
       {/* The home route sends each user to the first page they may open (spec 2.10.1). */}
-      <Route path="/" element={<Navigate to={user?.role === 'admin' ? '/users' : '/settings'} replace />} />
+      <Route path="/" element={<Navigate to={landingFor(user, me.data?.permissions ?? [])} replace />} />
       <Route
         path="*"
         element={

@@ -20,7 +20,7 @@ export declare class NetworkError extends Error {
     constructor();
 }
 export interface RequestOptions {
-    method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     body?: unknown;
     locale?: Locale;
     /** Reuse a key across retries of the same submission, never across submissions. */

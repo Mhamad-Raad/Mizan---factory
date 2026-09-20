@@ -338,3 +338,107 @@ export function Toast({ message, actionLabel, onAction }: ToastProps) {
     </div>
   );
 }
+
+export interface NumberFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
+  label: string;
+  hint?: string;
+  error?: string;
+  /** The unit that sits at the inline end: kg, د.ع, $ (spec 2.10.6 point 5). */
+  unit?: string;
+  /** Kilograms take three decimals; counts and minor units take none. */
+  decimals?: number;
+}
+
+/**
+ * A numeric input that stays LTR inside an RTL form, with its unit at the inline end and
+ * Eastern digits accepted on the way in (spec 2.10.6 point 5, 2.10.4).
+ *
+ * It is deliberately not a `type="number"` field: the spinner is useless on a phone, and
+ * `inputmode="decimal"` opens the right keyboard without the browser reformatting what the
+ * employee typed.
+ */
+export function NumberField({ label, hint, error, unit, decimals = 0, onChange, ...rest }: NumberFieldProps) {
+  return (
+    <Field label={label} hint={hint} error={error}>
+      {(id) => (
+        <div className="mz-number">
+          <input
+            id={id}
+            className="mz-field__control"
+            inputMode={decimals > 0 ? 'decimal' : 'numeric'}
+            autoComplete="off"
+            aria-invalid={error ? true : undefined}
+            onChange={(event) => {
+              // Eastern Arabic-Indic and Persian digits are normalised to ASCII on input, so
+              // nothing downstream has to know which keyboard was used (spec 2.10.4).
+              const normalized = normalizeDigits(event.target.value);
+              if (normalized !== event.target.value) event.target.value = normalized;
+              onChange?.(event);
+            }}
+            {...rest}
+          />
+          {unit ? (
+            <span className="mz-number__unit" aria-hidden="true">
+              {unit}
+            </span>
+          ) : null}
+        </div>
+      )}
+    </Field>
+  );
+}
+
+const EASTERN_DIGITS = /[٠-٩۰-۹]/g;
+
+function normalizeDigits(value: string): string {
+  return value.replace(EASTERN_DIGITS, (digit) => {
+    const code = digit.codePointAt(0) as number;
+    const base = code >= 0x06f0 ? 0x06f0 : 0x0660;
+    return String(code - base);
+  });
+}
+
+export interface DateFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
+  label: string;
+  hint?: string;
+  error?: string;
+}
+
+/**
+ * A business date. The value is always `YYYY-MM-DD` (what the API takes), while the browser
+ * renders it in the device's own format; the interface shows dates through the formatting
+ * service everywhere it *displays* one (spec 2.10.4).
+ */
+export function DateField({ label, hint, error, ...rest }: DateFieldProps) {
+  return (
+    <Field label={label} hint={hint} error={error}>
+      {(id) => (
+        <input id={id} type="date" className="mz-field__control" dir="ltr" aria-invalid={error ? true : undefined} {...rest} />
+      )}
+    </Field>
+  );
+}
+
+export interface SheetFooterProps {
+  children: ReactNode;
+}
+
+/** The sticky footer a form keeps in the thumb zone on a phone (wireframe 3.4.1). */
+export function StickyFooter({ children }: SheetFooterProps) {
+  return <div className="mz-sticky-footer">{children}</div>;
+}
+
+export interface FabProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  label: string;
+  icon?: IconName;
+}
+
+/** The one primary action of a list page, in the thumb zone (spec 3.3). */
+export function Fab({ label, icon = 'plus', ...rest }: FabProps) {
+  return (
+    <button type="button" className="mz-fab" {...rest}>
+      <Icon name={icon} />
+      {label}
+    </button>
+  );
+}

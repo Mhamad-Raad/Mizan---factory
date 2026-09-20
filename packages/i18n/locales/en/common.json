@@ -45,5 +45,16 @@
   "conflict_current_version": "Current version",
   "draft_restored": "A saved draft was restored",
   "copy": "Copy",
-  "copied": "Copied"
+  "copied": "Copied",
+  "all": "All",
+  "share": "Share",
+  "print": "Print",
+  "iqd_symbol": "IQD",
+  "usd_symbol": "$",
+  "kg_symbol": "kg",
+  "count_symbol": "pcs",
+  "rate_used": "At the rate {{rate}}",
+  "manual_rate": "Manual rate {{rate}}",
+  "draft_found": "You have unsaved work from {{time}}",
+  "draft_restore": "Restore it"
 }

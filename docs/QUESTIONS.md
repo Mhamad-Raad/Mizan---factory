@@ -19,8 +19,10 @@ review.
 ## Q-A-03 · 2026-09-19 · I0 · Materials model workshop (Q-37) — blocking for I1
 
 I0's acceptance criteria require the workshop to have been held and its outcome recorded before I1 starts.
-**Proceeded with:** nothing in I0 depends on it; the I0 tables contain no materials.
-**Status:** open — must be closed before I1.
+**Proceeded with:** nothing in I0 depended on it; I1 started on the specification's own default — the catalog
+model with monthly prices (D-010), which is what 1.10 Q-37 says to build when the answer does not come.
+**Status:** open — I1 is built. If the answer turns out to be *batches*, the Materials page and the Profit
+report change; order lines already carry their own cost snapshot, so nothing recorded is lost (D-010).
 
 ## Q-A-04 · 2026-09-19 · I0 · Glossary tick-off (Q-26)
 
@@ -37,3 +39,22 @@ This is the algorithm exactly as specified, and it is pinned by a test so it can
 گ/چ/پ/ژ keyboard problem. **Options if the client wants the names to match:** drop ئ at word start and
 treat ە as optional in a third, looser pass used only for duplicate warnings (never for scoping).
 **Status:** open — decide during the glossary session (Q-26).
+
+## Q-B-02 · 2026-09-20 · I1 · Which of the optional extras do you want to keep? (Q-23)
+
+The ticked list of section 3 of `client/mizan-client-signoff-summary.md` has not come back.
+**Proceeded with:** the default of 1.10 Q-23 — everything the I1 brief lists is built: order receipt,
+payment vouchers with numbers, customer statement, order discount with "round down", customer credit
+limit (warns, never blocks), payment method and split payments, the walk-in customer, the period lock and
+the stale-rate prompt (D-011). Each is removable: a setting, a column or one endpoint.
+**Needed:** the ticks, so the screens can lose what you do not want before go-live. **Status:** open.
+
+## Q-B-03 · 2026-09-20 · I1 · A general customer payment does not change any order's status
+
+FR-606 allows a payment recorded from the customer profile without naming an order, and FR-607 derives an
+order's status from the entries carrying its `order_id`. Taken literally, a general payment lowers the
+balance but leaves every order "unpaid", which will surprise an employee who meant to pay off the oldest
+order. **Proceeded with:** the literal reading (D-012); the Orders tab lists unpaid orders first with
+their remaining amount so the payment can be linked deliberately. **Options if you want the other
+behaviour:** allocate unlinked customer payments oldest-first for *display* exactly as the company side
+does (A-29) — presentation only, no data migration. **Status:** open.

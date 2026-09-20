@@ -32,6 +32,10 @@ export interface LedgerEntry {
   note: string | null;
   /** Document links (`order_id`, `purchase_id`, `damage_id`, …) used by per-document views. */
   refs: Readonly<Record<string, string | null>>;
+  /** Printed voucher number, on money rows only (Proposed — not requested, FR-614). */
+  voucher_number?: number | null;
+  /** `cash` / `transfer` / `other` (Proposed — not requested, FR-617). */
+  method?: string | null;
 }
 
 export interface NewLedgerEntry {
@@ -44,6 +48,12 @@ export interface NewLedgerEntry {
   note?: string | null;
   reverses_entry_id?: string | null;
   refs?: Readonly<Record<string, string | null>>;
+  /** Ask the store for the next voucher number (Proposed — not requested, FR-614). */
+  assign_voucher_number?: boolean;
+  /** Proposed — not requested (FR-617); null on rows that are not money moving. */
+  method?: string | null;
+  /** Makes a retried write idempotent at the row level (spec 2.9.1, unique where not null). */
+  idempotency_key?: string | null;
 }
 
 /** Entry types that cannot be written without a note (spec 2.4.1 rule 4). */

@@ -92,3 +92,95 @@ corrected retry is allowed. That needs UPDATE and DELETE on this one table, gran
 `audit_log`, `login_attempts` and the three ledgers — keep their INSERT-only grants, which a test
 asserts against the live database. A duplicate that arrives while the first copy is still running
 waits up to five seconds for its answer and is otherwise told to try again shortly.
+
+## D-010 · 2026-09-20 · I1 · Q-37 (materials as a catalog or as batches) is still unanswered
+
+The materials workshop of Q-37 had not been held when I1 started, and `CLAUDE.md` forbids waiting in
+chat for an answer. **Choice:** the specification's own default — a **catalog**: one `items` row per
+material with a running stock derived from `stock_ledger` and one bought/sale price pair per calendar
+month in `item_month_prices`. Batch (lot) tracking stays out of v1 (2.15).
+
+**What it would cost to reverse:** the Materials page and the Profit report read `item_stats` and
+`item_month_prices`; a batch model would add a `lots` table, move the bought price onto the lot and
+change those two readers. Order lines already snapshot their own cost (`cost_unit_*`, `cost_source`), so
+the Profit report would keep working while the Materials page changed. Recorded against Q-A-03.
+Relied on: 1.10 Q-37 default, 1.9 A-16/A-17/A-42, 2.15.
+
+## D-011 · 2026-09-20 · I1 · Which "Proposed — not requested" items of I1 are built
+
+Q-23 is unanswered. Its default is "receipt, vouchers, statements, discount, cash-up and period lock
+strongly recommended; the rest built as listed unless cut". **Choice:** every Proposed item the I1 brief
+lists is built — the walk-in customer, `credit_limit_*` with a warning that never blocks, the order
+discount with "round down", `voucher_number` on money rows, `method`, split payments, the order receipt,
+the payment voucher, the customer statement, the period lock (`locked_through`) and the stale-rate
+prompt (`rate_stale_days`). Each is labelled "Proposed" in the code where it appears and each is one
+setting, one column or one endpoint away from removal; the daily cash-up belongs to I4 and is not built.
+Relied on: 1.10 Q-23 default, 1.8, 4.3 scope.
+
+## D-012 · 2026-09-20 · I1 · The order's ledger entry carries the net total, and "general" payments settle nothing by themselves
+
+FR-603 says the ledger entry carries the total net of the discount; FR-607 derives the order's status
+from the entries that carry its `order_id`. A payment recorded from the customer profile without an
+order (FR-606, Q-10) therefore carries no `order_id` and — deliberately — does not change any order's
+status: it lowers the customer balance only. **Choice:** keep that literal reading rather than
+allocating unlinked customer payments oldest-first the way `purchase_balances` does for companies
+(A-29): the client asked for oldest-first allocation on the *company* side only, and inventing it here
+would make an order's status depend on presentation. The Orders tab shows unpaid orders first so the
+employee can link the payment when they mean to. Relied on: 2.4.3, FR-606, FR-607, A-29 (company side only).
+
+## D-013 · 2026-09-20 · I1 · One running-balance view per ledger
+
+2.2.6 describes `ledger_running` as "window-function views giving the running balance per counterparty".
+**Choice:** one view per ledger, named `customer_ledger_running` (I1) and `company_ledger_running` (I2),
+rather than one view over a union: a union would lose the index on `(customer_id, posting_seq)` that
+makes a customer's ledger page cheap for the years of rows this system is expected to accumulate.
+Relied on: 2.2.6, 2.2.5, NFR-13.
+
+## D-014 · 2026-09-20 · I1 · Receipts, vouchers and statements return figures, not files
+
+FR-613 to FR-615 ask for a receipt, a voucher and a statement "as PDF or shareable image via
+the phone's share sheet". **Choice:** the API endpoints return the *figures* as JSON — the same
+stored values the screen shows — and the client renders and shares the page (`ShareDocumentSheet`,
+2.10.11). No server-side PDF engine enters a system that must run for years with rare updates: a
+headless browser or a PDF library would be the heaviest dependency in the repository and the one
+most likely to need attention. The rendering happens where the share sheet is, which is the phone.
+Relied on: 3.4 (share sheet), 2.10.11, NFR-12; reversible by adding a renderer behind the same
+routes with `?format=pdf`.
+
+## D-015 · 2026-09-20 · I1 · An over-payment stays on the order it was paid against
+
+FR-606 refuses a payment larger than the remaining amount "unless the user confirms: record the
+excess as customer credit". Splitting it into a payment for the remainder plus a separate credit
+row would make the daily cash-up (FR-1013) count less cash than actually arrived. **Choice:** with
+that confirmation the whole amount received is written as **one** payment row linked to the order;
+the order then shows a negative remaining (over-paid) and the customer's balance carries the credit,
+exactly as `purchase_balances` describes for an over-linked purchase (2.2.6). The money recorded is
+the money received. Relied on: FR-606, 2.2.6, FR-1013.
+
+## D-016 · 2026-09-20 · I1 · The walk-in customer is stored in English and rendered from the glossary
+
+The walk-in customer (A-33) is a data row, but its name appears on screens in three languages.
+**Choice:** the seed stores the name "Walk-in customer" with `is_system = true`, and every screen
+renders a system customer's name from the glossary catalog instead of the stored string, so it
+reads زبون نقدي in Arabic and کڕیاری نەقد in Kurdish without a translated column. Relied on:
+1.6 row 87, 2.10.3, FR-1201.
+
+## D-017 · 2026-09-20 · I1 · The 8-second undo is its own route, not a flag on the void
+
+FR-610 gives the creator an undo for eight seconds after saving, "fully logged, hidden from
+lists by default, and needs no `orders.void` key". A flag on `POST /orders/:id/void` would mean
+that route could no longer carry `@RequirePermission('orders.void')` — and the generated
+permission-matrix test (rule 4) would stop proving that voiding is gated. **Choice:**
+`POST /orders/:id/undo` behind `orders.create` (which every creator holds by definition), with
+the service checking that the caller *is* the creator and that the order is younger than eight
+seconds; it writes the same void with reason "undo". Relied on: FR-610, 2.6.2, 2.9.3.
+
+## D-018 · 2026-09-20 · I1 · Editing an order is gated in the service, not by the route's key
+
+FR-610 allows an edit by "its creator or an admin (or a user with `orders.edit`)". A route can
+carry only one key, so `PUT /orders/:id` carries `orders.view` — every caller who can see the
+order — and the service refuses unless the caller is the creator, an admin or holds
+`orders.edit`, then applies the payment and period rules of 2.5.3 with the record loaded. The
+same shape applies to the void of somebody else's order, which stays behind `orders.void`.
+Relied on: FR-610, 2.6.2 ("ownership and period rules are checked in the service with the
+record loaded"), 2.9.3.

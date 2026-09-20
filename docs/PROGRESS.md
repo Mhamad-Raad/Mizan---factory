@@ -118,3 +118,124 @@ Deployment, backups and monitoring.
 
 **Before I1:** the materials workshop (Q-37) must be settled — catalog or batches — because the
 Materials page and the Profit report are built differently for each.
+
+---
+
+## Checkpoints for Iteration 1
+
+The same A–E shape as I0 (D-002), applied to selling.
+
+| # | Checkpoint | Gate | Human? |
+|---|---|---|---|
+| A | Decisions recorded, schema, indices, views, grants | migrations apply; the application role still cannot touch a ledger row | no |
+| B | Kernel: month prices, cost snapshot, stock, order status, ledger grouping | unit tests green | no |
+| C | API: materials, customers, orders, global rate | API integration tests green; no undecorated route | no |
+| D | Frontend: the selling screens in three languages | screenshots in ckb/ar/en, both themes, 360 px | **yes — real-phone RTL review** |
+| E | Review, demo script, Definition of done | review findings fixed with regression tests; demo script executed | no |
+
+## I1 · Checkpoint A — done
+
+- Migration `0006_selling.sql`: `items`, `item_month_prices`, `global_rates`, `customers`,
+  `orders`, `order_lines`, `order_payment_type_changes`, `customer_ledger`, `stock_ledger`;
+  the sequences for order numbers, voucher numbers and posting order; the check constraints of
+  2.2.5 (one priced measure per line, money pairs whole, one sign per entry, the re-basing
+  shape, notes where a human owes an explanation); the derived views `customer_balances`,
+  `customer_ledger_running`, `order_balances`, `item_stock`, `item_stats`; a trigger that
+  refuses the reversal of a re-basing row even from a direct insert.
+- Migration `0007_selling_privileges.sql`: the four append-only tables are INSERT + SELECT for
+  `mizan_app`; the mutable tables have **no DELETE at all**, because a record is deactivated or
+  soft-deleted and lines are replaced by soft-deleting the old set.
+- Decisions D-010 to D-018 in `docs/DECISIONS.md`; the three questions the client still owes
+  are Q-A-03 (the materials model), Q-B-02 (the optional extras) and Q-B-03 (general payments).
+
+## I1 · Checkpoint B — done
+
+Kernel additions, **61 new unit tests** (104 in `money` and `ledger` together).
+
+| Kernel | What was added |
+|---|---|
+| `@mizan/money` | the month price list with the silent carry-forward of FR-306 (each side chosen on its own), the line price defaulted in the currency it was entered in with the other side at the document rate, the cost snapshot copied as stored for the Profit report, the stale-rate test of FR-1106 |
+| `@mizan/ledger` | the stock model of 2.5 (sum of the priced measure, the other measure only while every movement carried it, exact reversals that keep a null measure null, warn-or-refuse on negative stock), the derived order status of 2.4.3, and the presentation rules of 2.4.5 — edited documents, undone pairs, cash-order pairs and re-basing markers |
+
+## I1 · Checkpoint C — done
+
+The API. **113 API integration tests**, 72 routes, all declared.
+
+- Materials: list with stock and this month's prices, create/edit/deactivate/delete, the price
+  list with `PUT /items/:id/prices/:month` and `copy-month`, movements, opening stock and
+  corrections, per-material History. Bought prices leave the API only for holders of
+  `fields.see_bought_price` — enforced once, on the controller.
+- Customers: profile, assignment, the duplicate check that runs over every record whatever the
+  caller's scope, the ledger grouped per 2.4.5 with its running balance and an "as of" reading,
+  payments (plain, settle-in-full in both shapes, split, over-payment on confirmation), credit,
+  refund, adjustment, opening balance, reversal, the settlement-currency re-basing entry, and
+  the voucher and statement figures.
+- Orders: create with lines priced from the month list or overridden, the cost snapshot per
+  line, one stock movement per line, the receivable and — for a cash order — the settlement
+  carrying the currency handed over; edit as reverse-then-rewrite; void that leaves payments as
+  credit; the payment-type switch both ways with its own history; the 8-second undo; the
+  receipt figures.
+- Settings: the global rate with its history and ±20 % guard, and the selling rules
+  (negative stock, tolerances, edit window, period lock, stale-rate days).
+
+## I1 · Checkpoint D — done (the real-phone review is owed by the client)
+
+The selling screens, mobile first. Bundle **167.9 kB gzipped** against the 250 kB budget;
+**481 message keys × 3 languages**, every reference resolving.
+
+- Materials list and detail (stock, prices with the month editor, movements, History),
+  New material; Customers list and profile (balance, orders, ledger, History) with the payment,
+  credit, refund, opening-balance, assign and statement sheets, New customer with the duplicate
+  warning that names the assignee; Orders list with its date chips and filter sheet, the order
+  form of wireframe 3.4.1 (customer picker, "Paid in" for cash, line cards, More with the rate
+  for this order, sticky totals, discount and round down, drafts and the 8-second undo), and
+  the order detail with payments, payment-type change, void and receipt.
+- New components: `MoneyInput`, `QuantityInput`, `LedgerList`, `TotalsFooter`,
+  `MonthPriceEditor`, `PaymentSheet`, `PickerSheet`, `ShareDocumentSheet`, `DraftBanner`, the
+  status chips, and one `QueryStates` so no page can forget its skeleton, empty, error and
+  offline states.
+- **15 screenshots** of eight screens in Kurdish, Arabic and English, both themes, taken
+  against the real API with seeded data, plus the 360 px overflow and 44 px target checks at
+  the largest text size.
+
+## I1 · Checkpoint E — done
+
+- Review: `docs/REVIEW-I1.md`. Thirteen findings, each fixed with a regression test — the
+  worst being a cash settlement that recorded dinars as cents, and an Orders list that
+  aggregated every order ever placed to show twenty-five rows (85 ms → 1.4 ms at 60,000
+  orders, measured).
+- Demo script of 4.3 is **executable** (`scripts/demo-i1.mjs`) and passes end to end: the rate,
+  two materials with their prices typed in dinars and the dollars filling themselves, opening
+  stock, a customer with an opening debt, a borrowed order rounded down, a part payment with
+  its voucher, settle-in-full in dollars with no residue, a cash order for the walk-in customer
+  paid in dollars, an edit with compensating movements, a void with a refund, the scope rules
+  between two sales employees, the period lock naming its date, and the invariant that the
+  balance equals the sum of the ledger.
+- CI: lint (with the logical-property rule) · types · translations · contrast · migrations ·
+  route declarations · **333 tests** · build · bundle budget · **19 Playwright checks**.
+
+## I1 — Definition of done (section 4.1)
+
+| # | Item | State |
+|---|---|---|
+| 1 | Three languages, glossary terms, build fails on a missing key | ✅ 481 keys × 3 from one table; checked in CI |
+| 2 | RTL verified **on a real phone** in ckb, ar and en | ⚠️ automated at 360 px in all three, both themes; **the real-phone check is owed** |
+| 3 | Permissions enforced on every new endpoint | ✅ 72 routes declared; the matrix is generated from route metadata |
+| 4 | Every change in History with old → new, balances before → after | ✅ asserted per write path, including the payment-type switch and the re-basing entry |
+| 5 | Every amount in both currencies through `DualAmount`, ≈ for conversions | ✅ on every screen; balances carry ≈ at today's rate |
+| 6 | Both themes, all four text sizes, no overflow, contrast | ✅ 15 screenshots, 32 contrast pairs, overflow and target checks at 1.25 |
+| 7 | Tests for money and stock logic | ✅ 104 kernel tests, 113 API tests |
+| 8 | Skeleton, empty, error and offline states | ✅ through one `QueryStates` on every page |
+| 9 | Accessibility basics | ✅ labels, focus order, 44 px asserted, reduced motion |
+| 10 | Demo on staging with seeded data | ⚠️ the demo script passes against a live deployment; **staging still needs a host** |
+
+**I1 is complete but for the two items that were already owed after I0:** the real-phone RTL
+and identity review (FR-1311, item 2) and a host for staging (item 10).
+
+**Still open with the client:** Q-A-03 (materials as a catalog or as batches — built as a
+catalog, D-010), Q-B-02 (which optional extras to keep — all of them built, D-011) and Q-B-03
+(a general payment changes no order's status, D-012).
+
+**Next:** I2 — companies, purchases and supplier accounting. It needs nothing new from the
+client; `company_ledger` mirrors the customer ledger this iteration built, and the money,
+stock and period rules are already in the kernel.

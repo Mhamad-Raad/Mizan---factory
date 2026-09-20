@@ -45,5 +45,16 @@
   "conflict_current_version": "النسخة الحالية",
   "draft_restored": "تمت استعادة مسودة محفوظة",
   "copy": "نسخ",
-  "copied": "تم النسخ"
+  "copied": "تم النسخ",
+  "all": "الكل",
+  "share": "مشاركة",
+  "print": "طباعة",
+  "iqd_symbol": "د.ع",
+  "usd_symbol": "$",
+  "kg_symbol": "كغم",
+  "count_symbol": "قطعة",
+  "rate_used": "بسعر الصرف {{rate}}",
+  "manual_rate": "سعر صرف يدوي {{rate}}",
+  "draft_found": "لديك عمل غير محفوظ من {{time}}",
+  "draft_restore": "استعادته"
 }

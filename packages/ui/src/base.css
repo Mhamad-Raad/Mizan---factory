@@ -148,7 +148,7 @@ input[type='tel'] {
 
 .mz-main {
   flex: 1;
-  padding-block: var(--space-4) calc(var(--space-6) + 64px);
+  padding-block: var(--space-4) calc(var(--space-6) + var(--tabbar-height));
   padding-inline: var(--space-4);
   inline-size: 100%;
   max-inline-size: 1200px;
@@ -371,7 +371,9 @@ a.mz-button {
   border-radius: calc(var(--radius-md) - 3px);
   background: none;
   padding-block: var(--space-2);
-  min-block-size: 40px;
+
+  /* A touch target is never smaller than 44 px, whatever the text size around it (NFR-10). */
+  min-block-size: var(--tap-target);
   color: var(--color-text-muted);
   font-weight: 500;
 }
@@ -541,6 +543,17 @@ a.mz-button {
   overflow-wrap: anywhere;
 }
 
+/**
+ * The trailing cell of a row: amounts, chips, a status. It keeps itself to its content and
+ * never squeezes the body — at 360 px a body squeezed to a few pixels wraps one character per
+ * line, which is exactly what the screenshot suite caught.
+ */
+.mz-list__end {
+  flex: 0 0 auto;
+  max-inline-size: 55%;
+  text-align: end;
+}
+
 .mz-avatar {
   display: inline-flex;
   flex: none;
@@ -661,4 +674,166 @@ a.mz-button {
 /* Direction-aware icon mirroring: one registry, no duplicate assets (spec 2.10.6 point 2). */
 [dir='rtl'] [data-mirror='true'] {
   transform: scaleX(-1);
+}
+
+/* ── numeric input with its unit at the inline end (spec 2.10.6 point 5) ──────────── */
+
+.mz-number {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.mz-number .mz-field__control {
+  padding-inline-end: 3.5rem;
+}
+
+.mz-number__unit {
+  position: absolute;
+  inset-inline-end: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  pointer-events: none;
+}
+
+/* ── the sticky footer of a form, and the floating action of a list ──────────────── */
+
+.mz-sticky-footer {
+  position: sticky;
+
+  /* Above the tab bar, never behind it: the Save button has to stay in the thumb zone. */
+  inset-block-end: var(--tabbar-height);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-block-start: var(--space-4);
+  padding-block: var(--space-3);
+  padding-inline: var(--space-4);
+  border-block-start: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sheet);
+}
+
+.mz-fab {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  min-block-size: var(--tap-target);
+  padding-block: var(--space-3);
+  padding-inline: var(--space-4);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mz-fab:hover {
+  background: var(--color-primary-hover);
+}
+
+/* ── the pieces the selling screens are built from ──────────────────────────────── */
+
+.mz-line-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.mz-line-card__head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.mz-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.mz-totals {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+/* A ledger row: date and description at the start, amounts and balance at the end. */
+.mz-ledger-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-3);
+  padding-block: var(--space-3);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.mz-ledger-row:last-child {
+  border-block-end: 0;
+}
+
+.mz-ledger-row__amounts {
+  text-align: end;
+}
+
+.mz-ledger-row--undone {
+  opacity: 0.6;
+}
+
+.mz-ledger-row--marker {
+  grid-template-columns: 1fr;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+  padding-inline: var(--space-3);
+}
+
+.mz-price-month {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding-block: var(--space-2);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.mz-price-month--current {
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-sm);
+  padding-inline: var(--space-2);
+}
+
+.mz-warning {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-soft);
+  color: var(--color-text);
+  font-size: 0.875rem;
+}
+
+.mz-receipt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.mz-receipt__line {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
 }

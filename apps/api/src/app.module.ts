@@ -15,8 +15,21 @@ import { RequestIdMiddleware } from './common/request-id.middleware.js';
 import { SensitiveFieldInterceptor } from './common/sensitive-field.interceptor.js';
 import { Database } from './database/pool.js';
 import { HealthController } from './health/health.controller.js';
+import { CustomersController } from './customers/customers.controller.js';
+import { CustomersRepository } from './customers/customers.repository.js';
+import { CustomersService } from './customers/customers.service.js';
 import { HistoryController } from './history/history.controller.js';
 import { HistoryRepository } from './history/history.repository.js';
+import { ItemsController } from './items/items.controller.js';
+import { ItemsRepository } from './items/items.repository.js';
+import { ItemsService } from './items/items.service.js';
+import { CustomerLedgerService } from './ledger/customer-ledger.service.js';
+import { OrdersController } from './orders/orders.controller.js';
+import { OrdersRepository } from './orders/orders.repository.js';
+import { OrdersService } from './orders/orders.service.js';
+import { RatesService } from './rates/rates.service.js';
+import { PeriodService } from './settings/period.service.js';
+import { StockService } from './stock/stock.service.js';
 import { SettingsController } from './settings/settings.controller.js';
 import { SettingsService } from './settings/settings.service.js';
 import { UsersController } from './users/users.controller.js';
@@ -24,12 +37,21 @@ import { UsersRepository } from './users/users.repository.js';
 import { UsersService } from './users/users.service.js';
 
 /**
- * One module for Iteration 0. The business modules of I1–I3 (materials, customers, orders,
- * companies, purchases, damages) are added as their iterations come; nothing here anticipates
- * them.
+ * One module. Iteration 1 adds materials, customers and orders, with the shared money
+ * services they all go through: the global rate, the customer ledger writer, the stock ledger
+ * and the period lock. Companies, purchases and damages arrive with their own iterations.
  */
 @Module({
-  controllers: [AuthController, UsersController, HistoryController, SettingsController, HealthController],
+  controllers: [
+    AuthController,
+    UsersController,
+    HistoryController,
+    SettingsController,
+    ItemsController,
+    CustomersController,
+    OrdersController,
+    HealthController,
+  ],
   providers: [
     { provide: ENV, useFactory: (): Env => loadEnv() },
     Database,
@@ -42,6 +64,16 @@ import { UsersService } from './users/users.service.js';
     UsersService,
     HistoryRepository,
     SettingsService,
+    PeriodService,
+    RatesService,
+    StockService,
+    CustomerLedgerService,
+    ItemsRepository,
+    ItemsService,
+    CustomersRepository,
+    CustomersService,
+    OrdersRepository,
+    OrdersService,
     IdempotencyInterceptor,
     // The guard runs on every route: a route without a decorator is refused, not opened.
     { provide: APP_GUARD, useExisting: AuthGuard },

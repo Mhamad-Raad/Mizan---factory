@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
 /**
- * The system settings of specification 2.2.3. Only the keys Iteration 0 needs are editable
- * here; the money, stock and period-lock keys are seeded now and become editable in the
- * iteration that uses them, so nothing is built ahead of its brief.
+ * The system settings of specification 2.2.3. A key becomes editable in the iteration that
+ * uses it, so nothing is built ahead of its brief: I0 opened the device and lock keys, I1
+ * opens the money, stock, edit-window and period-lock keys that selling needs.
  */
 export const SETTING_SCHEMAS = {
   week_start: z.enum(['sat', 'sun', 'mon']),
@@ -18,20 +18,55 @@ export const SETTING_SCHEMAS = {
   pin_min_length_shared: z.number().int().min(4).max(6),
   pin_min_length_personal: z.number().int().min(4).max(6),
   allow_pin_switch_on_shared: z.boolean(),
+  /** `null` = editable until the period is locked; a number of days when the admin sets one. */
+  order_edit_window_days: z.number().int().min(0).max(365).nullable(),
+  purchase_edit_window_days: z.number().int().min(0).max(365).nullable(),
+  allow_edit_after_payment: z.boolean(),
+  /** Proposed — not requested (FR-1109): business dates on or before this are frozen. */
+  locked_through: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  /** Proposed — not requested (FR-1106): days before the global rate is called stale. */
+  rate_stale_days: z.number().int().min(1).max(60),
+  go_live_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
 } as const;
 
 export type SettingKey = keyof typeof SETTING_SCHEMAS;
 
-/** What an admin may change in I0 (spec 4.2: idle-lock minutes, week start, date format). */
-export const I0_EDITABLE_KEYS: readonly SettingKey[] = [
+/**
+ * What an admin may change through `PATCH /settings` today: the I0 device keys plus the keys
+ * Iteration 1 puts on the Settings → System card (FR-1107, brief 4.3).
+ */
+export const EDITABLE_KEYS: readonly SettingKey[] = [
   'idle_lock_shared_minutes',
   'idle_lock_default_minutes',
   'week_start',
   'date_format',
+  'allow_negative_stock',
+  'default_customer_currency',
+  'rate_guard_percent',
+  'settle_tolerance_iqd',
+  'settle_tolerance_usd_cents',
+  'order_edit_window_days',
+  'allow_edit_after_payment',
+  'locked_through',
+  'rate_stale_days',
 ];
 
-/** Everyone may read these; the rest are admin-only (FR-1107). */
-export const PUBLIC_SETTING_KEYS: readonly SettingKey[] = ['week_start', 'date_format'];
+/**
+ * Everyone may read these; the rest are admin-only (FR-1107). Beyond the two formatting keys
+ * they are the rules an employee's own forms are subject to, so a screen can warn before the
+ * API refuses instead of surprising them after a save.
+ */
+export const PUBLIC_SETTING_KEYS: readonly SettingKey[] = [
+  'week_start',
+  'date_format',
+  'allow_negative_stock',
+  'default_customer_currency',
+  'settle_tolerance_iqd',
+  'settle_tolerance_usd_cents',
+  'order_edit_window_days',
+  'allow_edit_after_payment',
+  'locked_through',
+];
 
 export type Settings = {
   [K in SettingKey]: z.infer<(typeof SETTING_SCHEMAS)[K]>;
@@ -50,4 +85,10 @@ export const DEFAULT_SETTINGS: Settings = {
   pin_min_length_shared: 6,
   pin_min_length_personal: 4,
   allow_pin_switch_on_shared: true,
+  order_edit_window_days: null,
+  purchase_edit_window_days: null,
+  allow_edit_after_payment: false,
+  locked_through: null,
+  rate_stale_days: 3,
+  go_live_date: null,
 };

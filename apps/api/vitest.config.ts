@@ -23,8 +23,13 @@ export default defineConfig({
     name: 'api',
     include: ['src/**/*.test.ts'],
     environment: 'node',
-    /** The API tests share one database, so the files run in sequence. */
+    /**
+     * The API tests share one database, so the files run one at a time, in one process: two
+     * files emptying the same tables at once would be untraceable. Tracing the run (see
+     * `TEST_TRACE` in the harness) confirms the ordering is strictly sequential.
+     */
     fileParallelism: false,
+    poolOptions: { forks: { singleFork: true } },
     testTimeout: 30_000,
     hookTimeout: 30_000,
   },

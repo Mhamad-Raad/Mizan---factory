@@ -3,3 +3,6 @@ export * from './balance.js';
 export * from './reversal.js';
 export * from './store.js';
 export * from './writer.js';
+export * from './stock.js';
+export * from './status.js';
+export * from './presentation.js';
