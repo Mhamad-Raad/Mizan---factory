@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BottomSheet, Button, DateField, SegmentedControl, TextField, Toggle } from '@mizan/ui';
+import { convert } from '@mizan/money';
 import type { Currency, Rate } from '@mizan/money';
 import { MoneyInput, centsToInput, parseMinor } from './MoneyInput.js';
 import type { MoneyValue } from './MoneyInput.js';
@@ -17,6 +18,8 @@ export interface PaymentBody {
   method?: 'cash' | 'transfer' | 'other';
   split?: { amount: number; currency: Currency }[] | null;
   note?: string | null;
+  /** The document this payment is *said* to be for (wireframe 3.4.2, "More"). */
+  purchase_id?: string | null;
 }
 
 export interface PaymentSheetProps {
@@ -32,6 +35,17 @@ export interface PaymentSheetProps {
   needsExcessConfirmation?: boolean;
   onSave: (body: PaymentBody) => void;
   title?: string;
+  /** Money out is worded differently from money in; the company side passes its own labels. */
+  amountLabel?: string;
+  remainingLabel?: string;
+  saveLabel?: string;
+  remainingHint?: string;
+  /**
+   * The open purchases of this company, for "More → link to a purchase" (wireframe 3.4.2).
+   * Leaving a payment unlinked is the normal case: the oldest-first view allocates it anyway
+   * (FR-712), so the picker is behind More and never required.
+   */
+  purchases?: { id: string; label: string }[];
 }
 
 /**
@@ -51,6 +65,11 @@ export function PaymentSheet({
   needsExcessConfirmation,
   onSave,
   title,
+  amountLabel,
+  remainingLabel,
+  saveLabel,
+  remainingHint,
+  purchases,
 }: PaymentSheetProps) {
   const { t } = useTranslation();
   const formatter = useFormatter();
@@ -67,6 +86,8 @@ export function PaymentSheet({
   const [splitting, setSplitting] = useState(false);
   const [splitIqd, setSplitIqd] = useState('');
   const [splitUsd, setSplitUsd] = useState('');
+  const [showMore, setShowMore] = useState(false);
+  const [purchaseId, setPurchaseId] = useState('');
 
   const splitParts = () => {
     const parts: { amount: number; currency: Currency }[] = [];
@@ -79,6 +100,24 @@ export function PaymentSheet({
 
   const canSave = splitting ? splitParts().length >= 2 : amount.amount !== null && amount.amount > 0;
 
+  /**
+   * "After this payment" (wireframe 3.4.2): the remainder in the settlement currency, taking
+   * the entered side as authoritative and converting only for the preview. Settle in full
+   * lands on nothing owed by definition.
+   */
+  const paidInSettlement = splitting
+    ? splitParts().reduce(
+        (total, part) =>
+          total + (part.currency === settlement_currency ? part.amount : convert(part.amount, part.currency, rate)),
+        0,
+      )
+    : amount.amount === null
+      ? 0
+      : amount.currency === settlement_currency
+        ? amount.amount
+        : (amount.other_amount ?? convert(amount.amount, amount.currency, rate));
+  const afterPayment = settleInFull ? 0 : remaining - paidInSettlement;
+
   return (
     <BottomSheet
       title={title ?? t('customers:record_payment')}
@@ -88,7 +127,7 @@ export function PaymentSheet({
     >
       <div className="mz-stack">
         <div className="mz-row mz-row--between">
-          <span>{t('orders:remaining')}</span>
+          <span>{remainingLabel ?? t('orders:remaining')}</span>
           <DualAmount
             amount_iqd={settlement_currency === 'IQD' ? remaining : 0}
             amount_usd_cents={settlement_currency === 'USD' ? remaining : 0}
@@ -99,7 +138,7 @@ export function PaymentSheet({
         {!splitting ? (
           <>
             <MoneyInput
-              label={t('customers:amount_received')}
+              label={amountLabel ?? t('customers:amount_received')}
               value={amount}
               rate={rate}
               onChange={setAmount}
@@ -155,6 +194,42 @@ export function PaymentSheet({
 
         <TextField label={t('common:note')} value={note} onChange={(event) => setNote(event.target.value)} />
 
+        {purchases && purchases.length > 0 ? (
+          <>
+            <Button variant="ghost" onClick={() => setShowMore(!showMore)} aria-expanded={showMore}>
+              {t('common:more')}
+            </Button>
+            {showMore ? (
+              <label className="mz-field">
+                <span className="mz-field__label">{t('companies:link_purchase')}</span>
+                <select
+                  className="mz-field__control"
+                  value={purchaseId}
+                  onChange={(event) => setPurchaseId(event.target.value)}
+                >
+                  <option value="">{t('companies:no_link')}</option>
+                  {purchases.map((purchase) => (
+                    <option key={purchase.id} value={purchase.id}>
+                      {purchase.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </>
+        ) : null}
+
+        {/* The balance this payment leaves behind, live as the amount is typed (3.4.2). */}
+        <div className="mz-row mz-row--between">
+          <span className="mz-caption">{t('customers:after_payment')}</span>
+          <DualAmount
+            amount_iqd={settlement_currency === 'IQD' ? afterPayment : 0}
+            amount_usd_cents={settlement_currency === 'USD' ? afterPayment : 0}
+            primary={settlement_currency}
+            kind="derived"
+          />
+        </div>
+
         {needsExcessConfirmation ? (
           <div className="mz-warning" role="alert">
             {t('customers:excess_warning', {
@@ -178,19 +253,23 @@ export function PaymentSheet({
               method,
               split: splitting ? splitParts() : null,
               note: note.trim() === '' ? null : note.trim(),
+              purchase_id: purchaseId === '' ? null : purchaseId,
             })
           }
         >
-          {needsExcessConfirmation ? t('customers:record_excess') : t('customers:record_payment')}
+          {needsExcessConfirmation
+            ? t('customers:record_excess')
+            : (saveLabel ?? t('customers:record_payment'))}
         </Button>
 
         <span className="mz-caption">
-          {t('customers:remaining_hint', {
+          {remainingHint ??
+            t('customers:remaining_hint', {
             amount:
               settlement_currency === 'USD'
-                ? `$${centsToInput(remaining)}`
-                : formatter.money(remaining, settlement_currency),
-          })}
+                  ? `$${centsToInput(remaining)}`
+                  : formatter.money(remaining, settlement_currency),
+            })}
         </span>
       </div>
     </BottomSheet>

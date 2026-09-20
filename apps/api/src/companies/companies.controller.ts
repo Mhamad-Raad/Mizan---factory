@@ -102,6 +102,12 @@ const ledgerSchema = z.object({
   money_only: z.enum(['true', 'false']).optional(),
   include_undone: z.enum(['true', 'false']).optional(),
   as_of: isoDate.optional(),
+  // The filters of 2.9.3, and the bound that keeps a fifteen-year account off a phone's plan.
+  type: z.enum(['purchase', 'payment', 'credit', 'adjustment', 'opening', 'settlement_change', 'reversal']).optional(),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  done_by: z.string().uuid().optional(),
+  limit: z.coerce.number().int().positive().max(500).optional(),
 });
 
 const statementSchema = z.object({ from: isoDate.optional(), to: isoDate.optional() });
@@ -263,14 +269,23 @@ export class CompaniesController {
       money_only: query.money_only === 'true',
       include_undone: query.include_undone === 'true',
       as_of: query.as_of,
+      type: query.type,
+      from: query.from,
+      to: query.to,
+      done_by: query.done_by,
+      limit: query.limit,
     });
   }
 
   /** "How much we owe per purchase" with the oldest-first allocation (FR-704, FR-712). */
   @Get('companies/:id/purchase-breakdown')
   @RequirePermission('companies.view', 'fields.see_company_balances')
-  async breakdown(@Param('id') id: string) {
-    return this.companies.purchaseBreakdown(id);
+  async breakdown(
+    @Param('id') id: string,
+    @Query(zodBody(z.object({ limit: z.coerce.number().int().positive().max(200).optional() })))
+    query: { limit?: number },
+  ) {
+    return this.companies.purchaseBreakdown(id, query);
   }
 
   @Post('companies/:id/payments')

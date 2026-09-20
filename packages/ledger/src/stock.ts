@@ -93,14 +93,28 @@ export function pricedStock(
     : { measure: 'kg', quantity: stock.stock_kg, complete: stock.kg_complete };
 }
 
+/** The same one-pass shape as the ledger's, for the same reason (I2 review). */
+export function reversedMovementIds(all: readonly StockMovement[]): ReadonlySet<string> {
+  const reversed = new Set<string>();
+  for (const movement of all) {
+    if (movement.reverses_entry_id) reversed.add(movement.reverses_entry_id);
+  }
+  return reversed;
+}
+
 /** A movement is live while nothing reverses it; only live movements are reversed (2.5.3). */
-export function isLiveMovement(movement: StockMovement, all: readonly StockMovement[]): boolean {
+export function isLiveMovement(
+  movement: StockMovement,
+  all: readonly StockMovement[] | ReadonlySet<string>,
+): boolean {
   if (movement.movement_type === 'reversal') return false;
-  return !all.some((other) => other.reverses_entry_id === movement.id);
+  const reversed = all instanceof Set ? all : reversedMovementIds(all as readonly StockMovement[]);
+  return !reversed.has(movement.id);
 }
 
 export function liveMovements(all: readonly StockMovement[]): StockMovement[] {
-  return all.filter((movement) => isLiveMovement(movement, all));
+  const reversed = reversedMovementIds(all);
+  return all.filter((movement) => movement.movement_type !== 'reversal' && !reversed.has(movement.id));
 }
 
 /**

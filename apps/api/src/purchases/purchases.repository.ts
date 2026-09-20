@@ -34,8 +34,6 @@ export interface PurchaseListRow extends PurchaseRow {
   settlement_currency: Currency | null;
   acting_user_name: string | null;
   voided_by_name: string | null;
-  /** What the entries naming this purchase leave owing on it (FR-712). */
-  remaining: string | null;
   line_count: string;
 }
 
@@ -134,22 +132,16 @@ const LINE_COLUMNS = `l.id, l.purchase_id, l.line_no, l.item_id, l.qty_count, l.
                       l.line_total_usd_cents::text AS line_total_usd_cents, l.note`;
 
 /**
- * What one purchase still owes, read per row rather than from a grouped view — the pattern the
- * I1 review measured into place (REVIEW-I1 finding 2): the page is chosen by
- * `purchases_date_idx` first, and only those rows are summed, through the covering index of
- * migration 0008.
+ * A purchase row carries no "remaining" column on purpose.
+ *
+ * FR-712 defines remaining as the total less the entries linked to it **and** its oldest-first
+ * share of everything unlinked — and that share depends on the company's other purchases, so
+ * it cannot be read from one row. Summing only the linked entries here would put a different,
+ * larger figure beside the same purchase on the list than on its own page. The allocation is
+ * computed instead: once per company for the breakdown, and on `/purchases/:id/balance`.
  */
-const REMAINING_LATERAL = `
-  LEFT JOIN LATERAL (
-    SELECT coalesce(sum(CASE WHEN co.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0)
-             AS remaining
-      FROM company_ledger l
-     WHERE l.purchase_id = p.id
-  ) bal ON true`;
-
 const LIST_COLUMNS = `co.name AS company_name, co.settlement_currency::text AS settlement_currency,
                       u.display_name AS acting_user_name, v.display_name AS voided_by_name,
-                      bal.remaining::text AS remaining,
                       (SELECT count(*)::text FROM purchase_lines l
                         WHERE l.purchase_id = p.id AND l.deleted_at IS NULL) AS line_count`;
 
@@ -164,7 +156,6 @@ export class PurchasesRepository {
          LEFT JOIN companies co ON co.id = p.company_id
          LEFT JOIN users u ON u.id = p.acting_user_id
          LEFT JOIN users v ON v.id = p.voided_by
-         ${REMAINING_LATERAL}
         WHERE p.id = $1 AND p.deleted_at IS NULL`,
       [id],
     );
@@ -227,8 +218,7 @@ export class PurchasesRepository {
       FROM purchases p
       LEFT JOIN companies co ON co.id = p.company_id
       LEFT JOIN users u ON u.id = p.acting_user_id
-      LEFT JOIN users v ON v.id = p.voided_by
-      ${REMAINING_LATERAL}`;
+      LEFT JOIN users v ON v.id = p.voided_by`;
     const where = `WHERE ${conditions.join(' AND ')}`;
 
     const countValues = [...values];

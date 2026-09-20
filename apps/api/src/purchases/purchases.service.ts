@@ -10,6 +10,7 @@ import {
   selectMonthPrice,
 } from '@mizan/money';
 import type { Currency, Measure, Rate, RateSource } from '@mizan/money';
+import { allocateOldestFirst } from '@mizan/ledger';
 import { AuditService } from '../audit/audit.service.js';
 import { ApiError } from '../common/errors.js';
 import { can } from '../common/request-context.js';
@@ -109,8 +110,6 @@ export interface PurchaseDto {
     discount_usd_cents: number;
     total_iqd: number;
     total_usd_cents: number;
-    /** What the entries naming this purchase leave owing on it (FR-712); null with no company. */
-    remaining: number | null;
   };
   lines: PurchaseLineDto[];
   version: number;
@@ -491,38 +490,56 @@ export class PurchasesService {
   }
 
   /**
-   * "We owe for this purchase" (FR-712): its total, what names it, and what is left — all in
-   * the company's settlement currency, and all under `cost` so the field-level flag strips them
-   * together. A stock-only purchase owes nobody, so every figure is null (FR-407).
+   * "We owe for this purchase" (FR-712): the total, what is linked to it, its share of the
+   * payments and credits that named no purchase, and what is left — all in the company's
+   * settlement currency and all under `cost`, so one flag hides them together.
+   *
+   * The share is the reason this is not a single-row read: FR-712 defines remaining as the
+   * total less the linked entries **less its oldest-first share of everything unlinked**, and
+   * that depends on the company's other purchases. A stock-only purchase owes nobody, so every
+   * figure is null (FR-407).
    */
   async balanceOf(id: string): Promise<{
     purchase_id: string;
     settlement_currency: Currency | null;
-    cost: { total: number | null; linked: number | null; remaining: number | null };
+    cost: { total: number | null; linked: number | null; allocated: number | null; remaining: number | null };
   }> {
     const purchase = await this.requirePurchase(id);
-    if (!purchase.company_id) {
+    if (!purchase.company_id || !purchase.settlement_currency) {
       return {
         purchase_id: id,
         settlement_currency: null,
-        cost: { total: null, linked: null, remaining: null },
+        cost: { total: null, linked: null, allocated: null, remaining: null },
       };
     }
-    const { rows } = await this.database.query<{ total: string; linked: string }>(
-      'SELECT total::text AS total, linked::text AS linked FROM purchase_linked_totals WHERE purchase_id = $1',
-      [id],
+
+    const [entries, siblings] = await Promise.all([
+      this.ledger.entriesFor(this.database, purchase.company_id),
+      this.companies.purchasesForAllocation(purchase.company_id),
+    ]);
+    const settlement = purchase.settlement_currency;
+    const allocation = allocateOldestFirst(
+      entries,
+      siblings.map((row) => ({
+        id: row.id,
+        total: settlement === 'IQD' ? Number(row.total_iqd) : Number(row.total_usd_cents),
+        purchase_date: row.purchase_date,
+        voided: row.status === 'void',
+        number: Number(row.number),
+      })),
+      settlement,
     );
-    const row = rows[0];
+
+    const mine = allocation.purchases.find((row) => row.purchase_id === id);
     return {
       purchase_id: id,
-      settlement_currency: purchase.settlement_currency,
+      settlement_currency: settlement,
       cost: {
-        // `total` is what the purchase put on the account (a positive owing) and `linked` what
-        // the entries naming it took off; their sum is what is left, never a subtraction of two
-        // separately rounded figures.
-        total: Number(row?.total ?? 0),
-        linked: Number(row?.linked ?? 0),
-        remaining: Number(row?.total ?? 0) + Number(row?.linked ?? 0),
+        // A voided purchase is never allocated against, so it reports nothing owing (A-29).
+        total: mine?.total ?? 0,
+        linked: mine?.linked ?? 0,
+        allocated: mine?.allocated ?? 0,
+        remaining: mine?.remaining ?? 0,
       },
     };
   }
@@ -920,7 +937,6 @@ function toPurchaseDto(row: PurchaseListRow, lines: readonly PurchaseLineRow[]):
       discount_usd_cents: Number(row.discount_usd_cents),
       total_iqd: Number(row.total_iqd),
       total_usd_cents: Number(row.total_usd_cents),
-      remaining: row.company_id ? Number(row.remaining ?? 0) : null,
     },
     lines: lines.map((line) => toPurchaseLineDto(line, firstOfMonth(row.purchase_date))),
     version: row.version,

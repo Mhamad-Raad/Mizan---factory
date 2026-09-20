@@ -127,6 +127,12 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     }).format(new Date());
   }
 
+  /** The same whole-month arithmetic the API uses for a statement's default range (D-025). */
+  function monthsAgo(months: number): string {
+    const [year, month, day] = today().split('-').map(Number) as [number, number, number];
+    return new Date(Date.UTC(year, month - 1 - months, day)).toISOString().slice(0, 10);
+  }
+
   /** Not `async`: the caller chains `.expect(...)` on the supertest request itself. */
   function createPurchase(session: Session, body: Record<string, unknown>) {
     return as(ctx.http, session)
@@ -318,7 +324,7 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       const balance = await as(ctx.http, accountant)
         .get(`/api/v1/purchases/${response.body.id}/balance`)
         .expect(200);
-      expect(balance.body.cost).toEqual({ total: null, linked: null, remaining: null });
+      expect(balance.body.cost).toEqual({ total: null, linked: null, allocated: null, remaining: null });
 
       // And it is findable as "stock only" rather than lost among the company purchases.
       const list = await as(ctx.http, accountant).get('/api/v1/purchases?company=stock_only').expect(200);
@@ -711,12 +717,25 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
           row,
         ]),
       );
-      expect(byId.get(first.body.id)?.remaining).toBe(0);
+      // The oldest purchase was absorbed by the payment, so it is counted rather than sent.
+      expect(byId.has(first.body.id)).toBe(false);
+      expect(breakdown.body.settled_count).toBe(1);
       expect(byId.get(second.body.id)?.remaining).toBe(110_000);
       expect(breakdown.body.allocation.general).toBe(0);
       // The identity the kernel's property test pins: Σ remaining + general = balance.
       expect(breakdown.body.allocation.balance).toBe(110_000);
       expect(await balanceOf(alNoor)).toBe(110_000);
+
+      // And one purchase's own page reads the same figure as the company's breakdown — the
+      // share of an unlinked payment, not the total it happens to have been invoiced for.
+      const firstBalance = await as(ctx.http, accountant)
+        .get(`/api/v1/purchases/${first.body.id}/balance`)
+        .expect(200);
+      expect(firstBalance.body.cost).toMatchObject({ total: 70_000, linked: 0, allocated: -70_000, remaining: 0 });
+      const secondBalance = await as(ctx.http, accountant)
+        .get(`/api/v1/purchases/${second.body.id}/balance`)
+        .expect(200);
+      expect(secondBalance.body.cost).toMatchObject({ allocated: -30_000, remaining: 110_000 });
     });
 
     it('honours an explicit link before the oldest-first spread, and reports it per purchase', async () => {
@@ -743,8 +762,10 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       const balance = await as(ctx.http, accountant)
         .get(`/api/v1/purchases/${second.body.id}/balance`)
         .expect(200);
-      expect(balance.body.cost).toMatchObject({ total: 140_000, linked: -140_000, remaining: 0 });
+      expect(balance.body.cost).toMatchObject({ total: 140_000, linked: -140_000, allocated: 0, remaining: 0 });
 
+      // The older purchase keeps its whole total: the payment named the newer one, and an
+      // explicit link always wins over the oldest-first spread (FR-712).
       const firstBalance = await as(ctx.http, accountant)
         .get(`/api/v1/purchases/${first.body.id}/balance`)
         .expect(200);
@@ -809,6 +830,135 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       const reread = await as(ctx.http, accountant).get(`/api/v1/purchases/${purchase.body.id}`).expect(200);
       expect(reread.body.rate_iqd_per_usd).toBe('1310.0000');
       expect(reread.body.cost.total_usd_cents).toBe(Number(before[0]?.amount_usd_cents));
+    });
+  });
+
+  // ─────────────────────────── the I2 review findings (docs/REVIEW-I2.md) ───────────────────────────
+
+  describe('what the review measured and fixed', () => {
+    beforeEach(async () => {
+      await as(ctx.http, accountant)
+        .post(`/api/v1/companies/${alNoor}/rates`)
+        .send({ rate_iqd_per_usd: '1310' })
+        .expect(201);
+    });
+
+    it('filters the accounting tab by type, date and who did it, and bounds what it returns', async () => {
+      await createPurchase(warehouse, {
+        purchase_date: '2026-09-01',
+        lines: [{ item_id: steel, qty_kg: '100.000' }],
+      }).expect(201);
+      for (const amount of [10_000, 20_000, 30_000]) {
+        await as(ctx.http, accountant)
+          .post(`/api/v1/companies/${alNoor}/payments`)
+          .send({ amount, currency: 'IQD', entry_date: today(), note: `instalment ${amount}` })
+          .expect(201);
+      }
+
+      const all = await as(ctx.http, accountant).get(`/api/v1/companies/${alNoor}/ledger`).expect(200);
+      expect(all.body.total).toBe(4);
+      expect(all.body.has_more).toBe(false);
+
+      // The filters of 2.9.3, which the first draft of this route ignored.
+      const payments = await as(ctx.http, accountant)
+        .get(`/api/v1/companies/${alNoor}/ledger?type=payment`)
+        .expect(200);
+      expect(payments.body.total).toBe(3);
+      expect(payments.body.items.every((row: { entry_type: string }) => row.entry_type === 'payment')).toBe(true);
+
+      const september = await as(ctx.http, accountant)
+        .get(`/api/v1/companies/${alNoor}/ledger?from=2026-09-01&to=2026-09-01`)
+        .expect(200);
+      expect(september.body.total).toBe(1);
+      expect(september.body.items[0].entry_type).toBe('purchase');
+
+      const mine = await as(ctx.http, accountant)
+        .get(`/api/v1/companies/${alNoor}/ledger?done_by=${accountantUserId}`)
+        .expect(200);
+      expect(mine.body.total).toBe(3);
+
+      // The bound, and the running balance still computed over the whole ledger: the newest
+      // row's balance is the account balance, not a sum of the page.
+      const bounded = await as(ctx.http, accountant)
+        .get(`/api/v1/companies/${alNoor}/ledger?limit=2`)
+        .expect(200);
+      expect(bounded.body.items).toHaveLength(2);
+      expect(bounded.body.total).toBe(4);
+      expect(bounded.body.has_more).toBe(true);
+      expect(bounded.body.items[0].balance_after).toBe(bounded.body.balance);
+    });
+
+    it('sends only the purchases that still owe something in the breakdown', async () => {
+      const settled = await createPurchase(warehouse, {
+        purchase_date: '2026-09-01',
+        lines: [{ item_id: steel, qty_kg: '100.000' }],
+      }).expect(201);
+      const owing = await createPurchase(warehouse, {
+        purchase_date: '2026-09-10',
+        lines: [{ item_id: steel, qty_kg: '100.000' }],
+      }).expect(201);
+
+      // 70,000 owed on each; 70,000 paid, so the oldest is settled and the newer is not.
+      await as(ctx.http, accountant)
+        .post(`/api/v1/companies/${alNoor}/payments`)
+        .send({ amount: 70_000, currency: 'IQD', entry_date: today(), note: 'on account' })
+        .expect(201);
+
+      const breakdown = await as(ctx.http, accountant)
+        .get(`/api/v1/companies/${alNoor}/purchase-breakdown`)
+        .expect(200);
+
+      expect(breakdown.body.allocation.purchases.map((row: { purchase_id: string }) => row.purchase_id)).toEqual([
+        owing.body.id,
+      ]);
+      expect(breakdown.body.settled_count).toBe(1);
+      expect(breakdown.body.owing_count).toBe(1);
+      expect(breakdown.body.owing_total).toBe(70_000);
+      expect(breakdown.body.purchases.map((row: { id: string }) => row.id)).toEqual([owing.body.id]);
+      // The identity stays checkable from the response when the rows are cut to a page.
+      expect(breakdown.body.owing_total + breakdown.body.allocation.general).toBe(
+        breakdown.body.allocation.balance,
+      );
+      // The identity survives the trimming, because a settled purchase contributes zero.
+      const sum = breakdown.body.allocation.purchases.reduce(
+        (total: number, row: { remaining: number }) => total + row.remaining,
+        0,
+      );
+      expect(sum + breakdown.body.allocation.general).toBe(breakdown.body.allocation.balance);
+      expect(await balanceOf(alNoor)).toBe(70_000);
+      void settled;
+    });
+
+    it('covers the last three months when a statement is asked for without a period', async () => {
+      const statement = await as(ctx.http, accountant).get(`/api/v1/companies/${alNoor}/statement`).expect(200);
+      expect(statement.body.from).toBe(monthsAgo(3));
+      expect(statement.body.to).toBeNull();
+
+      const asked = await as(ctx.http, accountant)
+        .get(`/api/v1/companies/${alNoor}/statement?from=2026-09-01&to=2026-09-30`)
+        .expect(200);
+      expect(asked.body.from).toBe('2026-09-01');
+    });
+
+    it('bounds the customer ledger the same way, which the review found unbounded too', async () => {
+      const customer = await as(ctx.http, admin)
+        .post('/api/v1/customers')
+        .send({ name: 'Kawa Trading' })
+        .expect(201);
+      for (const amount of [1_000, 2_000, 3_000]) {
+        await as(ctx.http, admin)
+          .post(`/api/v1/customers/${customer.body.id}/opening-balance`)
+          .send({ amount, currency: 'IQD', entry_date: today(), note: 'go-live' })
+          .expect(201);
+      }
+
+      const bounded = await as(ctx.http, admin)
+        .get(`/api/v1/customers/${customer.body.id}/ledger?limit=2`)
+        .expect(200);
+      expect(bounded.body.items).toHaveLength(2);
+      expect(bounded.body.total).toBe(3);
+      expect(bounded.body.has_more).toBe(true);
+      expect(bounded.body.items[0].balance_after).toBe(6_000);
     });
   });
 

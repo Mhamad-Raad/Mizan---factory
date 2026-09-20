@@ -38,6 +38,12 @@ export interface LedgerListProps {
   settlement_currency: Currency;
   /** Rendered at the end of a row: a voucher action, a link to the order, a reversal. */
   actions?: (row: LedgerRow) => React.ReactNode;
+  /**
+   * Which catalog names the entry types. The two ledgers read differently in every language —
+   * a customer's `payment` is money received, a company's is money paid — so the namespace is
+   * the caller's choice and the component stays one component (spec 1.6, 2.4.2).
+   */
+  namespace?: 'customers' | 'companies';
 }
 
 /**
@@ -49,7 +55,7 @@ export interface LedgerListProps {
  * The running balance is the one the API computed in posting order, so it always equals the
  * before/after History recorded for that write (2.4.1 rule 5).
  */
-export function LedgerList({ items, settlement_currency, actions }: LedgerListProps) {
+export function LedgerList({ items, settlement_currency, actions, namespace = 'customers' }: LedgerListProps) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -68,7 +74,7 @@ export function LedgerList({ items, settlement_currency, actions }: LedgerListPr
           >
             <div>
               <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                <strong>{t(`customers:entry.${row.entry_type}`)}</strong>
+                <strong>{t(`${namespace}:entry.${row.entry_type}`)}</strong>
                 {row.kind === 'edited' ? <Chip tone="warning">{t('customers:edited')}</Chip> : null}
                 {row.kind === 'undone' ? <Chip>{t('customers:undone')}</Chip> : null}
                 {row.kind === 'cash_order' && row.received_currency ? (
@@ -119,7 +125,7 @@ export function LedgerList({ items, settlement_currency, actions }: LedgerListPr
                 {row.rows.map((underlying) => (
                   <li key={underlying.id} className="mz-list__item">
                     <span className="mz-list__body">
-                      <span className="mz-list__title">{t(`customers:entry.${underlying.entry_type}`)}</span>
+                      <span className="mz-list__title">{t(`${namespace}:entry.${underlying.entry_type}`)}</span>
                       <span className="mz-caption">
                         {formatter.date(underlying.entry_date)}
                         {underlying.performed_by_name ? ` · ${underlying.performed_by_name}` : ''}

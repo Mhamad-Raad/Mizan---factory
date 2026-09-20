@@ -89,11 +89,26 @@ export function MaterialsPage() {
           </FilterChip>
         </div>
 
-        <Can permission="materials.create">
-          <Link to="/materials/new" className="mz-button mz-button--primary mz-button--block">
-            {t('materials:new_material')}
+        {/* The warehouse's primary action on this page is a purchase, not a new material
+            (spec 3.3: FAB "Add material" for `purchases.create`). */}
+        <Can permission="purchases.create">
+          <Link to="/purchases/new" className="mz-button mz-button--primary mz-button--block">
+            {t('purchases:add_material')}
           </Link>
         </Can>
+
+        <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          <Can permission="materials.create">
+            <Link to="/materials/new" className="mz-button mz-button--secondary">
+              {t('materials:new_material')}
+            </Link>
+          </Can>
+          <Can permission="purchases.view">
+            <Link to="/purchases" className="mz-button mz-button--ghost">
+              {t('purchases:title')}
+            </Link>
+          </Can>
+        </div>
 
         <QueryStates
           query={items}

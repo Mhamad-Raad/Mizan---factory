@@ -77,6 +77,7 @@ const ledgerSchema = z.object({
   money_only: z.enum(['true', 'false']).optional(),
   include_undone: z.enum(['true', 'false']).optional(),
   as_of: isoDate.optional(),
+  limit: z.coerce.number().int().positive().max(500).optional(),
 });
 
 const statementSchema = z.object({ from: isoDate.optional(), to: isoDate.optional() });
@@ -228,6 +229,7 @@ export class CustomersController {
       money_only: query.money_only === 'true',
       include_undone: query.include_undone === 'true',
       as_of: query.as_of,
+      limit: query.limit,
     });
   }
 

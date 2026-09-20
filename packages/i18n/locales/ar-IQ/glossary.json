@@ -68,5 +68,11 @@
   "settle_in_full": "تسديد كامل",
   "document_rate": "سعر الصرف لهذه العملية",
   "period_lock": "إقفال الفترة",
-  "walk_in_customer": "زبون نقدي"
+  "walk_in_customer": "زبون نقدي",
+  "we_owe": "علينا",
+  "company_rate": "سعر صرف الشركة",
+  "document_rate_purchase": "سعر الصرف لهذا الشراء",
+  "remaining": "المتبقي",
+  "companies": "الشركات",
+  "purchases": "المشتريات"
 }

@@ -534,12 +534,21 @@ export class CustomersService {
   async ledgerOf(
     context: RequestContext,
     id: string,
-    options: { raw?: boolean; money_only?: boolean; as_of?: string; include_undone?: boolean },
+    options: {
+      raw?: boolean;
+      money_only?: boolean;
+      as_of?: string;
+      include_undone?: boolean;
+      /** The bound the I2 review added on both ledgers: a long account is not a page. */
+      limit?: number;
+    },
   ): Promise<{
     customer: { id: string; name: string; settlement_currency: Currency; is_system: boolean };
     balance: number;
     balance_as_of: number | null;
     items: LedgerGroupDto[];
+    total: number;
+    has_more: boolean;
   }> {
     const row = await this.requireCustomer(context, id);
     // The walk-in customer has no ledger at all: its net is always zero and its orders are
@@ -552,9 +561,15 @@ export class CustomersService {
       settlement_currency: row.settlement_currency,
     };
     const { groups, entries } = await this.ledger.groupsFor(this.database, customer, options);
-    const names = await this.userNames(entries);
 
     const visible = options.include_undone ? groups : groups.filter((group) => !group.hidden_by_default);
+    // Newest first on screen; the running balance was computed in posting order (2.4.1), over
+    // the whole ledger, so the page returned still carries the figures History recorded.
+    const newestFirst = [...visible].reverse();
+    const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
+    const page = newestFirst.slice(0, limit);
+    const names = await this.userNames(page.flatMap((group) => group.rows.map((line) => line.entry)));
+
     return {
       customer: {
         id: row.id,
@@ -566,8 +581,9 @@ export class CustomersService {
       balance_as_of: options.as_of
         ? balanceAsOf(entries, row.settlement_currency, options.as_of)
         : null,
-      // Newest first on screen; the running balance was computed in posting order (2.4.1).
-      items: visible.reverse().map((group) => toGroupDto(group, names)),
+      items: page.map((group) => toGroupDto(group, names)),
+      total: visible.length,
+      has_more: newestFirst.length > page.length,
     };
   }
 

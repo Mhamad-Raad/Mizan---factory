@@ -30,6 +30,8 @@ export type IconName =
   | 'orders'
   | 'materials'
   | 'customers'
+  | 'companies'
+  | 'purchases'
   | 'more';
 
 /** Icons that imply a direction, and therefore mirror (spec 2.10.6). */
@@ -65,6 +67,9 @@ const PATHS: Record<IconName, string> = {
   orders: 'M8 3h8a2 2 0 0 1 2 2v16l-6-3-6 3V5a2 2 0 0 1 2-2Zm0 5h8m-8 4h5',
   materials: 'M3 8.5 12 4l9 4.5-9 4.5-9-4.5Zm0 6L12 19l9-4.5',
   customers: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 9v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1',
+  // A warehouse front for a supplier company, and a crate coming in for a purchase.
+  companies: 'M3 21V7l7-4v18M10 21h11V11l-5-2M6 11h1m-1 4h1m7-4h2m-2 4h2m-2 4h2',
+  purchases: 'M21 8v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8m-1 0h20l-2-4H4L2 8Zm7 4h6',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
 };
 

@@ -245,3 +245,31 @@ so rule 4 still holds. The same reading applies to the customer routes I1 gated 
 `customers.view` alone — `GET /customers/:id/ledger`, its voucher and the statement now ask for
 `fields.see_customer_balances` as well, which is what 2.9.3 says and what I1 should have done.
 Relied on: 2.9.3, 2.6.2, FR-704.
+
+## D-024 · 2026-09-20 · I2 · A purchase's "remaining" is always the allocated figure
+
+FR-712 defines remaining per purchase as its total *less the entries linked to it* **and less
+its oldest-first share of everything unlinked**. The first draft of the list query read a
+purchase's remaining from the rows that happen to name it, which is cheap per row — and wrong:
+a supplier paid a lump sum against nothing in particular, and the list then showed
+"remaining 650,000" beside a purchase the company's own page showed as settled.
+
+**Choice:** there is one definition and it is the allocation. `GET /purchases/:id/balance`
+computes it (total, linked, its share, remaining) and the company's breakdown computes it once
+for the account; the purchases **list** carries no remaining column at all, and the company's
+Purchases tab reads each row's figure from the breakdown it already loads. A purchase's page
+and its company's page can therefore never disagree. Relied on: FR-712, 2.2.6
+(`purchase_balances` is a display allocation), A-29.
+
+## D-025 · 2026-09-21 · I2 · A statement covers a period, and says which
+
+FR-615 gives `GET /companies/:id/statement?from&to` and does not say what happens without a
+range. Returning the account's whole life is both wrong in kind — a statement is a document
+for a period — and, measured at fifteen years of purchases, 1.7 MB of JSON handed to a phone.
+
+**Choice:** no range means the last three months, and the response echoes the `from` and `to`
+it used so the sheet can tell the supplier what they are being handed. The same reasoning
+bounds the accounting tab (a page of entries with `total` and `has_more`) and the per-purchase
+breakdown (what is still owed, oldest first). The running balance is still computed over the
+whole ledger, so a page never carries a figure that disagrees with History. Relied on: FR-615,
+2.4.1 rule 5, 2.9.3.

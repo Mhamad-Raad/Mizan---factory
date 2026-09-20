@@ -18,6 +18,9 @@ const LOCALES = ['ckb-IQ', 'ar-IQ', 'en'] as const;
 const SOURCE_LOCALE = 'en';
 const CATALOG_DIR = join(ROOT, 'packages/i18n/locales');
 const SCAN_DIRS = [join(ROOT, 'apps/web/src'), join(ROOT, 'packages/ui/src')];
+/** The API names a catalog key for every field error it returns (spec 2.9.1), so those are
+ * user-visible strings too — and an untranslatable one reaches the screen as a bare code. */
+const API_DIR = join(ROOT, 'apps/api/src');
 /** Keys that legitimately read the same in every language. */
 const SAME_IN_EVERY_LANGUAGE = new Set(['common:app_name']);
 
@@ -111,6 +114,19 @@ for (const directory of SCAN_DIRS) {
   }
 }
 
+const apiKeyPattern = /message_key: '([a-z_]+:[A-Za-z0-9_.]+)'/g;
+let apiCount = 0;
+for (const file of walk(API_DIR)) {
+  const source = readFileSync(file, 'utf8');
+  for (const match of source.matchAll(apiKeyPattern)) {
+    const key = match[1] as string;
+    apiCount += 1;
+    if (!known.has(key)) {
+      problems.push(`${file.replace(ROOT, '')} answers with "${key}", which no catalog defines`);
+    }
+  }
+}
+
 if (problems.length > 0) {
   console.error(`\n${problems.length} translation problem(s):\n`);
   for (const problem of problems) console.error(`  - ${problem}`);
@@ -120,5 +136,5 @@ if (problems.length > 0) {
 
 console.log(
   `i18n ok: ${keyCount} keys x ${LOCALES.length} languages across ${namespaces.length} namespaces; ` +
-    `${usedCount} key references in the interface all resolve.`,
+    `${usedCount} key references in the interface and ${apiCount} in the API all resolve.`,
 );

@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Icon, IconButton, MizanMark } from '@mizan/ui';
+import { BottomSheet, Icon, IconButton, MizanMark } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import { useApp } from '../lib/store.js';
 import { apiRequest } from '../lib/api.js';
@@ -22,6 +23,8 @@ const DESTINATIONS: Destination[] = [
   { to: '/orders', labelKey: 'orders:title', icon: 'orders', permission: 'orders.view' },
   { to: '/materials', labelKey: 'glossary:materials', icon: 'materials', permission: 'materials.view' },
   { to: '/customers', labelKey: 'customers:title', icon: 'customers', permission: 'customers.view' },
+  { to: '/companies', labelKey: 'companies:title', icon: 'companies', permission: 'companies.view' },
+  { to: '/purchases', labelKey: 'purchases:title', icon: 'purchases', permission: 'purchases.view' },
   { to: '/users', labelKey: 'glossary:users', icon: 'users', adminOnly: true },
   { to: '/history', labelKey: 'glossary:history', icon: 'history', permission: 'history.view' },
   { to: '/settings', labelKey: 'glossary:settings', icon: 'settings' },
@@ -37,6 +40,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
   const permissions = useApp((state) => state.permissions);
   const isOnline = useApp((state) => state.isOnline);
   const setLocked = useApp((state) => state.setLocked);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const permitted = DESTINATIONS.filter((destination) => {
     if (destination.adminOnly) return user?.role === 'admin';
@@ -76,13 +80,38 @@ export function AppShell({ title, children }: { title: string; children: React.R
             {t(destination.labelKey)}
           </NavLink>
         ))}
+        {/* Everything past the fourth tab lives behind More, as a sheet — a link to the
+            first of them would leave Settings unreachable on a phone (spec 3.3). */}
         {more.length > 0 ? (
-          <NavLink to={more[0]?.to ?? '/settings'} className="mz-tabbar__item">
+          <button type="button" className="mz-tabbar__item" onClick={() => setMoreOpen(true)}>
             <Icon name="more" />
             {t('common:more')}
-          </NavLink>
+          </button>
         ) : null}
       </nav>
+
+      {moreOpen ? (
+        <BottomSheet title={t('common:more')} open onClose={() => setMoreOpen(false)} closeLabel={t('common:close')}>
+          <ul className="mz-list">
+            {more.map((destination) => (
+              <li key={destination.to}>
+                <NavLink
+                  to={destination.to}
+                  className="mz-list__item mz-list__item--interactive"
+                  onClick={() => setMoreOpen(false)}
+                >
+                  <span className="mz-list__body">
+                    <span className="mz-list__title">
+                      <Icon name={destination.icon} /> {t(destination.labelKey)}
+                    </span>
+                  </span>
+                  <Icon name="chevron" />
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </BottomSheet>
+      ) : null}
     </div>
   );
 }

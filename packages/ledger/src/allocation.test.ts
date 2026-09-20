@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { completePair } from '@mizan/money';
-import { allocateOldestFirst } from './index.js';
+import { allocateOldestFirst, liveEntries, reversedEntryIds } from './index.js';
 import type { AllocationPurchase, LedgerEntry } from './index.js';
 
 const RATE = '1310.0000';
@@ -193,5 +193,43 @@ describe('per-purchase allocation, oldest first (FR-704, FR-712, A-29)', () => {
       ),
       { numRuns: 300 },
     );
+  });
+});
+
+/**
+ * The scan for "what is still live" is a single pass, because it sits on the read path of the
+ * accounting tab **and** on the write path of every edit and void, over a ledger that grows
+ * for the life of the system. The shape is what is asserted here; the I2 review measured the
+ * quadratic version at 25 ms per read on a supplier of fifteen years.
+ */
+describe('finding the live rows (I2 review)', () => {
+  it('is linear in the size of the ledger', () => {
+    const size = 20_000;
+    const entries: LedgerEntry[] = [];
+    for (let index = 0; index < size; index += 1) {
+      entries.push(entry({ entry_type: 'payment', amount: -1_000 }));
+    }
+    // Reverse every tenth row, which is far more correction than a real account sees.
+    for (let index = 0; index < size; index += 10) {
+      entries.push(entry({ entry_type: 'reversal', amount: 1_000, reverses_entry_id: entries[index]?.id ?? null }));
+    }
+
+    const started = performance.now();
+    const live = liveEntries(entries);
+    const elapsed = performance.now() - started;
+
+    expect(live).toHaveLength(size - size / 10);
+    // The quadratic version needed minutes for this input; a pass over it is milliseconds.
+    expect(elapsed).toBeLessThan(500);
+  });
+
+  it('collects every reversed id in one pass, and nothing else', () => {
+    const first = entry({ entry_type: 'purchase', amount: 100 });
+    const second = entry({ entry_type: 'payment', amount: -40 });
+    const reversal = entry({ entry_type: 'reversal', amount: 40, reverses_entry_id: second.id });
+
+    const reversed = reversedEntryIds([first, second, reversal]);
+    expect([...reversed]).toEqual([second.id]);
+    expect(liveEntries([first, second, reversal]).map((row) => row.id)).toEqual([first.id]);
   });
 });

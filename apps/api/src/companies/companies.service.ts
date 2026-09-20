@@ -523,27 +523,64 @@ export class CompaniesService {
 
   // ──────────────────────────── the accounting tab (FR-704) ────────────────────────────
 
+  /**
+   * The accounting tab (FR-704) with the filters of 2.9.3 — type, date range, who did it — and
+   * a bound on how many rows come back.
+   *
+   * The running balance is still computed over the **whole** ledger in posting order, because
+   * that is what makes it the same number History recorded (2.4.1 rule 5); the filters and the
+   * limit decide only what is returned. Without the bound a supplier of fifteen years answers
+   * this route with 1.7 MB of JSON to a phone, which is what the I2 review measured.
+   */
   async ledgerOf(
     id: string,
-    options: { raw?: boolean; money_only?: boolean; as_of?: string; include_undone?: boolean },
+    options: {
+      raw?: boolean;
+      money_only?: boolean;
+      as_of?: string;
+      include_undone?: boolean;
+      type?: string;
+      from?: string;
+      to?: string;
+      done_by?: string;
+      limit?: number;
+    },
   ): Promise<{
     company: { id: string; name: string; settlement_currency: Currency };
     balance: number;
     balance_as_of: number | null;
     items: LedgerGroupDto[];
+    /** How many groups the filters matched, and whether the answer was cut at the limit. */
+    total: number;
+    has_more: boolean;
   }> {
     const row = await this.requireCompany(id);
     const account = toAccount(row);
     const { groups, entries } = await this.ledger.groupsFor(this.database, account, options);
-    const names = await this.userNames(entries);
 
-    const visible = options.include_undone ? groups : groups.filter((group) => !group.hidden_by_default);
+    const matching = groups.filter((group) => {
+      if (!options.include_undone && group.hidden_by_default) return false;
+      const entry = group.anchor.entry;
+      if (options.type && entry.entry_type !== options.type) return false;
+      if (options.from && entry.entry_date < options.from) return false;
+      if (options.to && entry.entry_date > options.to) return false;
+      if (options.done_by && entry.performed_by_user_id !== options.done_by) return false;
+      return true;
+    });
+
+    // Newest first on screen; the running balance was computed in posting order (2.4.1).
+    const newestFirst = [...matching].reverse();
+    const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
+    const page = newestFirst.slice(0, limit);
+    const names = await this.userNames(page.flatMap((group) => group.rows.map((line) => line.entry)));
+
     return {
       company: { id: row.id, name: row.name, settlement_currency: row.settlement_currency },
       balance: balanceOf(entries, row.settlement_currency),
       balance_as_of: options.as_of ? balanceAsOf(entries, row.settlement_currency, options.as_of) : null,
-      // Newest first on screen; the running balance was computed in posting order (2.4.1).
-      items: visible.reverse().map((group) => toGroupDto(group, names)),
+      items: page.map((group) => toGroupDto(group, names)),
+      total: matching.length,
+      has_more: newestFirst.length > page.length,
     };
   }
 
@@ -552,10 +589,18 @@ export class CompaniesService {
    * of everything unlinked, and the identity `Σ remaining + General = balance` — which the
    * kernel's property test pins (D-020).
    */
-  async purchaseBreakdown(id: string): Promise<{
+  async purchaseBreakdown(
+    id: string,
+    options: { limit?: number } = {},
+  ): Promise<{
     settlement_currency: Currency;
     allocation: AllocationResult;
     purchases: { id: string; number: number; purchase_date: string; status: string }[];
+    /** Active purchases the allocation leaves at nothing owing; they are not sent row by row. */
+    settled_count: number;
+    /** How many still owe something, and their total — so the identity is checkable as sent. */
+    owing_count: number;
+    owing_total: number;
   }> {
     const row = await this.requireCompany(id);
     const [entries, purchases] = await Promise.all([
@@ -576,15 +621,31 @@ export class CompaniesService {
       row.settlement_currency,
     );
 
+    // Only what is still owed travels, oldest first — which is the order the money goes out
+    // in — and at most a page of it. A supplier of fifteen years whose payments lag has
+    // hundreds of purchases with something left on them, and sending them all was a third of
+    // a megabyte to a phone (measured in the I2 review). `owing_total` keeps the identity
+    // checkable from the response even when the rows are cut: owing_total + general = balance.
+    const owing = allocation.purchases.filter((purchase) => purchase.remaining !== 0);
+    const owingTotal = owing.reduce((total, purchase) => total + purchase.remaining, 0);
+    const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+    const page = owing.slice(0, limit);
+    const pageIds = new Set(page.map((purchase) => purchase.purchase_id));
+
     return {
       settlement_currency: row.settlement_currency,
-      allocation,
-      purchases: purchases.map((purchase) => ({
-        id: purchase.id,
-        number: Number(purchase.number),
-        purchase_date: purchase.purchase_date,
-        status: purchase.status,
-      })),
+      allocation: { ...allocation, purchases: page },
+      purchases: purchases
+        .filter((purchase) => pageIds.has(purchase.id))
+        .map((purchase) => ({
+          id: purchase.id,
+          number: Number(purchase.number),
+          purchase_date: purchase.purchase_date,
+          status: purchase.status,
+        })),
+      settled_count: allocation.purchases.length - owing.length,
+      owing_count: owing.length,
+      owing_total: owingTotal,
     };
   }
 
@@ -1009,7 +1070,13 @@ export class CompaniesService {
     return this.history.list({ entity_type: 'company', entity_id: id, ...options });
   }
 
-  /** The statement figures (FR-615, Proposed — not requested); the client renders it (D-014). */
+  /**
+   * The statement figures (FR-615, Proposed — not requested); the client renders it (D-014).
+   *
+   * A statement is a document for a period, so when no period is given it covers the last
+   * three months rather than the whole account — and it echoes the range it used, so the
+   * screen can say what the supplier is being handed (D-025).
+   */
   async statement(
     id: string,
     range: { from?: string; to?: string },
@@ -1026,6 +1093,7 @@ export class CompaniesService {
     const { groups, entries } = await this.ledger.groupsFor(this.database, account);
     const names = await this.userNames(entries);
 
+    range = { from: range.from ?? this.period.monthsAgo(3), to: range.to };
     const opening = range.from
       ? entries
           .filter((entry) => entry.entry_date < (range.from as string))

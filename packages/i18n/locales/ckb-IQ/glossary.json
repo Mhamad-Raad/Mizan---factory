@@ -68,5 +68,11 @@
   "settle_in_full": "یەکلاکردنەوەی تەواو",
   "document_rate": "نرخی ئاڵوگۆڕی ئەم مامەڵەیە",
   "period_lock": "داخستنی ماوە",
-  "walk_in_customer": "کڕیاری نەقد"
+  "walk_in_customer": "کڕیاری نەقد",
+  "we_owe": "قەرزی ئێمە",
+  "company_rate": "نرخی ئاڵوگۆڕی کۆمپانیا",
+  "document_rate_purchase": "نرخی ئاڵوگۆڕی ئەم کڕینە",
+  "remaining": "ماوە",
+  "companies": "کۆمپانیاکان",
+  "purchases": "کڕینەکان"
 }

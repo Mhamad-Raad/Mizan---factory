@@ -1,6 +1,6 @@
 import { amountIn } from '@mizan/money';
 import type { Currency } from '@mizan/money';
-import { isLive } from './reversal.js';
+import { liveEntries } from './reversal.js';
 import type { LedgerEntry } from './types.js';
 
 /**
@@ -58,7 +58,7 @@ export function allocateOldestFirst(
   purchases: readonly AllocationPurchase[],
   settlementCurrency: Currency,
 ): AllocationResult {
-  const live = entries.filter((entry) => isLive(entry, entries));
+  const live = liveEntries(entries);
   const balance = entries.reduce((total, entry) => total + amountIn(entry, settlementCurrency), 0);
 
   const active = [...purchases]
