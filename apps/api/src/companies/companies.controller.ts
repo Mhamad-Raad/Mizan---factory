@@ -5,9 +5,10 @@ import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
-import { CustomersService } from './customers.service.js';
+import { CompaniesService } from './companies.service.js';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const rate = z.string().regex(/^\d+(\.\d{1,4})?$/);
 const money = z.object({
   amount: z.number().int(),
   currency: z.enum(['IQD', 'USD']),
@@ -18,7 +19,6 @@ const method = z.enum(['cash', 'transfer', 'other']);
 const listSchema = z.object({
   q: z.string().max(200).optional(),
   assigned_to: z.string().uuid().optional(),
-  balance: z.enum(['owes', 'settled', 'credit']).optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
   sort: z.enum(['name', 'balance']).optional(),
   page: z.coerce.number().int().positive().optional(),
@@ -27,16 +27,21 @@ const listSchema = z.object({
 
 const createSchema = z.object({
   name: z.string().min(1).max(200),
+  contact_name: z.string().max(200).nullish(),
   phone: z.string().max(40).nullish(),
   address: z.string().max(500).nullish(),
   notes: z.string().max(2000).nullish(),
   settlement_currency: z.enum(['IQD', 'USD']).optional(),
   assigned_user_id: z.string().uuid().nullish(),
-  credit_limit: money.nullish(),
 });
 
-const updateSchema = createSchema.partial().extend({ version: z.number().int().positive() });
+const updateSchema = createSchema
+  .omit({ settlement_currency: true, assigned_user_id: true })
+  .partial()
+  .extend({ version: z.number().int().positive() });
+
 const statusSchema = z.object({ version: z.number().int().positive(), note: z.string().max(2000).nullish() });
+
 const assignSchema = z.object({
   user_id: z.string().uuid().nullable(),
   note: z.string().max(2000).nullish(),
@@ -46,15 +51,20 @@ const assignSchema = z.object({
 const currencySchema = z.object({
   currency: z.enum(['IQD', 'USD']),
   note: z.string().min(1).max(2000),
-  rebase_rate: z.string().regex(/^\d+(\.\d{1,4})?$/).nullish(),
+  rebase_rate: rate.nullish(),
   version: z.number().int().positive().optional(),
 });
 
+const rateSchema = z.object({
+  rate_iqd_per_usd: z.union([rate, z.number().positive()]),
+  note: z.string().max(2000).nullish(),
+  confirm: z.boolean().optional(),
+});
+
 const paymentSchema = money.extend({
-  order_id: z.string().uuid().nullish(),
+  purchase_id: z.string().uuid().nullish(),
   entry_date: isoDate,
   settle_in_full: z.boolean().optional(),
-  allow_excess: z.boolean().optional(),
   performed_by: z.string().uuid().nullish(),
   method: method.nullish(),
   split: z.array(money).min(2).max(4).nullish(),
@@ -64,11 +74,26 @@ const paymentSchema = money.extend({
 const entrySchema = money.extend({
   entry_date: isoDate,
   note: z.string().min(1).max(2000),
-  order_id: z.string().uuid().nullish(),
+  purchase_id: z.string().uuid().nullish(),
   damage_id: z.string().uuid().nullish(),
   performed_by: z.string().uuid().nullish(),
-  method: method.nullish(),
 });
+
+const adjustmentSchema = z
+  .object({
+    new_balance: z.number().int().nullish(),
+    delta: z.number().int().nullish(),
+    currency: z.enum(['IQD', 'USD']),
+    other_amount: z.number().int().nullish(),
+    entry_date: isoDate,
+    note: z.string().min(3).max(2000),
+    purchase_id: z.string().uuid().nullish(),
+  })
+  // FR-706: either the new balance or the change, never both — they would contradict.
+  .refine((body) => (body.new_balance ?? null) === null || (body.delta ?? null) === null, {
+    message: 'send either new_balance or delta',
+    path: ['delta'],
+  });
 
 const reverseSchema = z.object({ note: z.string().min(1).max(2000), entry_date: isoDate.optional() });
 
@@ -86,24 +111,23 @@ const historySchema = z.object({
 });
 
 /**
- * Customers, their balances and the money movements against them (FR-501 to FR-507, FR-606).
+ * Companies and supplier accounting (FR-701 to FR-712).
  *
- * Scope (spec 2.6.4) is applied in the repository from the request context, so these handlers
- * never have to remember it; `balance` is stripped from every response for a caller without
- * `fields.see_customer_balances` (FR-503).
+ * There is no scope rule: everyone with `companies.view` sees every company (FR-711). What is
+ * withheld is *money* — `balance` and the per-purchase breakdown are stripped from every
+ * response for a caller without `fields.see_company_balances` (FR-704, spec 2.6.2).
  */
 @Controller()
-@SensitiveFields({ balance: 'fields.see_customer_balances' })
-export class CustomersController {
-  constructor(private readonly customers: CustomersService) {}
+@SensitiveFields({ balance: 'fields.see_company_balances' })
+export class CompaniesController {
+  constructor(private readonly companies: CompaniesService) {}
 
-  @Get('customers')
-  @RequirePermission('customers.view')
+  @Get('companies')
+  @RequirePermission('companies.view')
   async list(@Req() request: RequestWithContext, @Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
-    return this.customers.list(contextOf(request), {
+    return this.companies.list(contextOf(request), {
       q: query.q,
       assigned_to: query.assigned_to,
-      balance: query.balance,
       include_inactive: query.include_inactive === 'true',
       sort: query.sort,
       page: query.page,
@@ -111,76 +135,67 @@ export class CustomersController {
     });
   }
 
-  /**
-   * The duplicate warning of FR-501, asked before the form is submitted. It runs over every
-   * customer, so it sits behind `customers.create` rather than `customers.view_all`.
-   */
-  @Get('customers/duplicates')
-  @RequirePermission('customers.create')
-  async duplicates(@Query(zodBody(z.object({ name: z.string().min(1).max(200) }))) query: { name: string }) {
-    return this.customers.checkDuplicates(query.name);
-  }
-
-  @Post('customers')
-  @RequirePermission('customers.create')
+  @Post('companies')
+  @RequirePermission('companies.create')
   @HttpCode(201)
   async create(@Req() request: RequestWithContext, @Body(zodBody(createSchema)) body: z.infer<typeof createSchema>) {
-    return this.customers.create(contextOf(request), {
+    return this.companies.create(contextOf(request), {
       name: body.name,
+      contact_name: body.contact_name ?? null,
       phone: body.phone ?? null,
       address: body.address ?? null,
       notes: body.notes ?? null,
       settlement_currency: body.settlement_currency,
       assigned_user_id: body.assigned_user_id ?? null,
-      credit_limit: body.credit_limit ?? null,
     });
   }
 
-  @Get('customers/:id')
-  @RequirePermission('customers.view')
-  async get(@Req() request: RequestWithContext, @Param('id') id: string) {
-    return this.customers.get(contextOf(request), id);
+  @Get('companies/:id')
+  @RequirePermission('companies.view')
+  async get(@Param('id') id: string) {
+    return this.companies.get(id);
   }
 
-  @Patch('customers/:id')
-  @RequirePermission('customers.edit')
+  @Patch('companies/:id')
+  @RequirePermission('companies.edit')
   async update(
     @Req() request: RequestWithContext,
     @Param('id') id: string,
     @Body(zodBody(updateSchema)) body: z.infer<typeof updateSchema>,
   ) {
-    return this.customers.update(contextOf(request), id, {
+    return this.companies.update(contextOf(request), id, {
       ...body,
+      contact_name: body.contact_name ?? undefined,
       phone: body.phone ?? undefined,
       address: body.address ?? undefined,
       notes: body.notes ?? undefined,
-      credit_limit: body.credit_limit ?? undefined,
     });
   }
 
-  @Post('customers/:id/deactivate')
-  @RequirePermission('customers.edit')
+  @Post('companies/:id/deactivate')
+  @RequirePermission('companies.edit')
   @HttpCode(200)
   async deactivate(
     @Req() request: RequestWithContext,
     @Param('id') id: string,
     @Body(zodBody(statusSchema)) body: z.infer<typeof statusSchema>,
   ) {
-    return this.customers.setActive(contextOf(request), id, false, body);
+    return this.companies.setActive(contextOf(request), id, false, body);
   }
 
-  @Post('customers/:id/reactivate')
-  @RequirePermission('customers.edit')
+  @Post('companies/:id/reactivate')
+  @RequirePermission('companies.edit')
   @HttpCode(200)
   async reactivate(
     @Req() request: RequestWithContext,
     @Param('id') id: string,
     @Body(zodBody(statusSchema)) body: z.infer<typeof statusSchema>,
   ) {
-    return this.customers.setActive(contextOf(request), id, true, body);
+    return this.companies.setActive(contextOf(request), id, true, body);
   }
 
-  @Delete('customers/:id')
+  /** Delete sets `deleted_at`; rows are never physically removed (A-32). */
+  @Delete('companies/:id')
   @AdminOnly()
   @HttpCode(204)
   async remove(
@@ -188,27 +203,27 @@ export class CustomersController {
     @Param('id') id: string,
     @Body(zodBody(z.object({ version: z.number().int().positive() }))) body: { version: number },
   ) {
-    await this.customers.softDelete(contextOf(request), id, body.version);
+    await this.companies.softDelete(contextOf(request), id, body.version);
   }
 
-  @Put('customers/:id/assignment')
-  @RequirePermission('customers.assign')
+  @Put('companies/:id/assignment')
+  @RequirePermission('companies.assign')
   async assign(
     @Req() request: RequestWithContext,
     @Param('id') id: string,
     @Body(zodBody(assignSchema)) body: z.infer<typeof assignSchema>,
   ) {
-    return this.customers.assign(contextOf(request), id, body);
+    return this.companies.assign(contextOf(request), id, body);
   }
 
-  @Put('customers/:id/settlement-currency')
+  @Put('companies/:id/settlement-currency')
   @AdminOnly()
   async setSettlementCurrency(
     @Req() request: RequestWithContext,
     @Param('id') id: string,
     @Body(zodBody(currencySchema)) body: z.infer<typeof currencySchema>,
   ) {
-    return this.customers.setSettlementCurrency(contextOf(request), id, {
+    return this.companies.setSettlementCurrency(contextOf(request), id, {
       currency: body.currency,
       note: body.note,
       rebase_rate: body.rebase_rate ?? null,
@@ -216,14 +231,34 @@ export class CustomersController {
     });
   }
 
-  @Get('customers/:id/ledger')
-  @RequirePermission('customers.view', 'fields.see_customer_balances')
-  async ledger(
+  @Get('companies/:id/rates')
+  @RequirePermission('companies.view')
+  async rates(@Param('id') id: string) {
+    return this.companies.rateHistoryOf(id);
+  }
+
+  @Post('companies/:id/rates')
+  @RequirePermission('companies.set_rate')
+  @HttpCode(201)
+  async setRate(
     @Req() request: RequestWithContext,
+    @Param('id') id: string,
+    @Body(zodBody(rateSchema)) body: z.infer<typeof rateSchema>,
+  ) {
+    return this.companies.setRate(contextOf(request), id, {
+      rate_iqd_per_usd: String(body.rate_iqd_per_usd),
+      note: body.note ?? null,
+      confirm: body.confirm,
+    });
+  }
+
+  @Get('companies/:id/ledger')
+  @RequirePermission('companies.view', 'fields.see_company_balances')
+  async ledger(
     @Param('id') id: string,
     @Query(zodBody(ledgerSchema)) query: z.infer<typeof ledgerSchema>,
   ) {
-    return this.customers.ledgerOf(contextOf(request), id, {
+    return this.companies.ledgerOf(id, {
       raw: query.raw === 'true',
       money_only: query.money_only === 'true',
       include_undone: query.include_undone === 'true',
@@ -231,17 +266,24 @@ export class CustomersController {
     });
   }
 
-  @Post('customers/:id/payments')
-  @RequirePermission('orders.record_payment')
+  /** "How much we owe per purchase" with the oldest-first allocation (FR-704, FR-712). */
+  @Get('companies/:id/purchase-breakdown')
+  @RequirePermission('companies.view', 'fields.see_company_balances')
+  async breakdown(@Param('id') id: string) {
+    return this.companies.purchaseBreakdown(id);
+  }
+
+  @Post('companies/:id/payments')
+  @RequirePermission('companies.record_payment')
   @HttpCode(201)
   async payment(
     @Req() request: RequestWithContext,
     @Param('id') id: string,
     @Body(zodBody(paymentSchema)) body: z.infer<typeof paymentSchema>,
   ) {
-    return this.customers.recordPayment(contextOf(request), id, {
+    return this.companies.recordPayment(contextOf(request), id, {
       ...body,
-      order_id: body.order_id ?? null,
+      purchase_id: body.purchase_id ?? null,
       performed_by: body.performed_by ?? null,
       method: body.method ?? null,
       split: body.split ?? null,
@@ -250,52 +292,49 @@ export class CustomersController {
     });
   }
 
-  @Post('customers/:id/credits')
-  @RequirePermission('orders.credit')
+  @Post('companies/:id/adjustments')
+  @RequirePermission('companies.adjust_owed')
+  @HttpCode(201)
+  async adjustment(
+    @Req() request: RequestWithContext,
+    @Param('id') id: string,
+    @Body(zodBody(adjustmentSchema)) body: z.infer<typeof adjustmentSchema>,
+  ) {
+    return this.companies.recordAdjustment(contextOf(request), id, {
+      new_balance: body.new_balance ?? null,
+      delta: body.delta ?? null,
+      currency: body.currency,
+      other_amount: body.other_amount ?? null,
+      entry_date: body.entry_date,
+      note: body.note,
+      purchase_id: body.purchase_id ?? null,
+    });
+  }
+
+  @Post('companies/:id/credits')
+  @RequirePermission('companies.record_credit')
   @HttpCode(201)
   async credit(
     @Req() request: RequestWithContext,
     @Param('id') id: string,
     @Body(zodBody(entrySchema)) body: z.infer<typeof entrySchema>,
   ) {
-    return this.customers.recordEntry(contextOf(request), id, 'credit', toEntryInput(body));
+    return this.companies.recordEntry(contextOf(request), id, 'credit', toEntryInput(body));
   }
 
-  @Post('customers/:id/refunds')
-  @RequirePermission('orders.credit')
-  @HttpCode(201)
-  async refund(
-    @Req() request: RequestWithContext,
-    @Param('id') id: string,
-    @Body(zodBody(entrySchema)) body: z.infer<typeof entrySchema>,
-  ) {
-    return this.customers.recordEntry(contextOf(request), id, 'refund', toEntryInput(body));
-  }
-
-  @Post('customers/:id/adjustments')
-  @RequirePermission('orders.credit')
-  @HttpCode(201)
-  async adjustment(
-    @Req() request: RequestWithContext,
-    @Param('id') id: string,
-    @Body(zodBody(entrySchema)) body: z.infer<typeof entrySchema>,
-  ) {
-    return this.customers.recordEntry(contextOf(request), id, 'adjustment', toEntryInput(body));
-  }
-
-  @Post('customers/:id/opening-balance')
-  @RequirePermission('customers.opening_balance')
+  @Post('companies/:id/opening-balance')
+  @RequirePermission('companies.opening_balance')
   @HttpCode(201)
   async openingBalance(
     @Req() request: RequestWithContext,
     @Param('id') id: string,
     @Body(zodBody(entrySchema)) body: z.infer<typeof entrySchema>,
   ) {
-    return this.customers.recordEntry(contextOf(request), id, 'opening', toEntryInput(body));
+    return this.companies.recordEntry(contextOf(request), id, 'opening', toEntryInput(body));
   }
 
-  @Post('customers/:id/ledger/:entryId/reverse')
-  @RequirePermission('orders.record_payment')
+  @Post('companies/:id/ledger/:entryId/reverse')
+  @RequirePermission('companies.record_payment')
   @HttpCode(201)
   async reverse(
     @Req() request: RequestWithContext,
@@ -303,35 +342,33 @@ export class CustomersController {
     @Param('entryId') entryId: string,
     @Body(zodBody(reverseSchema)) body: z.infer<typeof reverseSchema>,
   ) {
-    return this.customers.reverseEntry(contextOf(request), id, entryId, body);
+    return this.companies.reverseEntry(contextOf(request), id, entryId, body);
   }
 
-  /** Proposed — not requested (FR-614): the figures for one printed voucher. */
-  @Get('customers/:id/ledger/:entryId/voucher')
-  @RequirePermission('customers.view', 'fields.see_customer_balances')
-  async voucher(@Req() request: RequestWithContext, @Param('id') id: string, @Param('entryId') entryId: string) {
-    return this.customers.voucher(contextOf(request), id, entryId);
+  /** Proposed — not requested (FR-614). */
+  @Get('companies/:id/ledger/:entryId/voucher')
+  @RequirePermission('companies.view', 'fields.see_company_balances')
+  async voucher(@Param('id') id: string, @Param('entryId') entryId: string) {
+    return this.companies.voucher(id, entryId);
   }
 
-  /** Proposed — not requested (FR-615): the figures for an account statement. */
-  @Get('customers/:id/statement')
-  @RequirePermission('customers.view', 'fields.see_customer_balances')
+  /** Proposed — not requested (FR-615). */
+  @Get('companies/:id/statement')
+  @RequirePermission('companies.view', 'fields.see_company_balances')
   async statement(
-    @Req() request: RequestWithContext,
     @Param('id') id: string,
     @Query(zodBody(statementSchema)) query: z.infer<typeof statementSchema>,
   ) {
-    return this.customers.statement(contextOf(request), id, query);
+    return this.companies.statement(id, query);
   }
 
-  @Get('customers/:id/history')
-  @RequirePermission('customers.view')
+  @Get('companies/:id/history')
+  @RequirePermission('companies.view')
   async history(
-    @Req() request: RequestWithContext,
     @Param('id') id: string,
     @Query(zodBody(historySchema)) query: z.infer<typeof historySchema>,
   ) {
-    return this.customers.historyOf(contextOf(request), id, query);
+    return this.companies.historyOf(id, query);
   }
 }
 
@@ -342,9 +379,8 @@ function toEntryInput(body: z.infer<typeof entrySchema>) {
     other_amount: body.other_amount ?? null,
     entry_date: body.entry_date,
     note: body.note,
-    order_id: body.order_id ?? null,
+    purchase_id: body.purchase_id ?? null,
     damage_id: body.damage_id ?? null,
     performed_by: body.performed_by ?? null,
-    method: body.method ?? null,
   };
 }

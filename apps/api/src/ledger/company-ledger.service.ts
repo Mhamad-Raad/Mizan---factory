@@ -4,15 +4,15 @@ import { AccountLedgerService } from './account-ledger.service.js';
 import type { LedgerAccount } from './account-ledger.service.js';
 import type { LedgerShape } from './account-ledger.store.js';
 
-/** The customer side of the shared writer: `customer_ledger`, pointing at orders (2.4.1). */
+/** The supplier side of the shared writer: `company_ledger`, pointing at purchases (2.4.1). */
 @Injectable()
-export class CustomerLedgerService extends AccountLedgerService {
+export class CompanyLedgerService extends AccountLedgerService {
   protected readonly shape: LedgerShape = {
-    table: 'customer_ledger',
-    ownerColumn: 'customer_id',
-    entryTypeEnum: 'customer_entry_type',
-    documentColumn: 'order_id',
-    ownerTable: 'customers',
+    table: 'company_ledger',
+    ownerColumn: 'company_id',
+    entryTypeEnum: 'company_entry_type',
+    documentColumn: 'purchase_id',
+    ownerTable: 'companies',
   };
 
   /**
@@ -24,14 +24,17 @@ export class CustomerLedgerService extends AccountLedgerService {
     super(audit);
   }
 
-  protected readonly entityType = 'customer' as const;
+  protected readonly entityType = 'company' as const;
 
   protected label(account: LedgerAccount): string {
-    return `Customer: ${account.name}`;
+    return `Company: ${account.name}`;
   }
 }
 
-/** The rows an order owns: reversed on an edit or a void, unlike the payments against it. */
-export const ORDER_DOCUMENT_TYPES = ['order', 'cash_settlement'] as const;
+/**
+ * The only row a purchase owns. A purchase has no settlement entry — the supplier side has no
+ * "cash purchase" — so a void reverses this one row and leaves every payment standing (FR-405).
+ */
+export const PURCHASE_DOCUMENT_TYPES = ['purchase'] as const;
 
-export type LedgerCustomer = LedgerAccount;
+export type LedgerCompany = LedgerAccount;

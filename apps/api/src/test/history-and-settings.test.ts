@@ -145,7 +145,8 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
 
       const response = await as(ctx.http, employeeSession).get('/api/v1/settings').expect(200);
       // The two formatting keys plus the rules an employee's forms must respect, so a screen
-      // can warn before the API refuses (I1); never an admin-only key such as the PIN policy.
+      // can warn before the API refuses (I1, and the buying window from I2); never an
+      // admin-only key such as the PIN policy.
       expect(Object.keys(response.body).sort()).toEqual([
         'allow_edit_after_payment',
         'allow_negative_stock',
@@ -153,6 +154,7 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
         'default_customer_currency',
         'locked_through',
         'order_edit_window_days',
+        'purchase_edit_window_days',
         'settle_tolerance_iqd',
         'settle_tolerance_usd_cents',
         'week_start',
@@ -178,12 +180,22 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
     });
 
     it('refuses a key that is not editable in this iteration', async () => {
-      // `purchase_edit_window_days` belongs to purchases, which arrive in I2: seeded, not yet
-      // editable, so an admin who sends it is told rather than quietly ignored.
+      // `pin_min_length_shared` is seeded but belongs to no iteration's Settings page yet, so
+      // an admin who sends it is told rather than quietly ignored.
+      await as(ctx.http, adminSession)
+        .patch('/api/v1/settings')
+        .send({ pin_min_length_shared: 4 })
+        .expect(422);
+    });
+
+    it('opens the purchase edit window that buying needs (I2)', async () => {
       await as(ctx.http, adminSession)
         .patch('/api/v1/settings')
         .send({ purchase_edit_window_days: 3 })
-        .expect(422);
+        .expect(200);
+
+      const after = await as(ctx.http, adminSession).get('/api/v1/settings').expect(200);
+      expect(after.body.purchase_edit_window_days).toBe(3);
     });
 
     it('opens the stock and money rules that selling needs (I1)', async () => {

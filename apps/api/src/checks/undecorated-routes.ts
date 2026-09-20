@@ -14,7 +14,7 @@ const undecorated = routes.filter((route) => route.protection.kind === 'none');
 for (const route of routes) {
   const label =
     route.protection.kind === 'permission'
-      ? route.protection.key
+      ? route.protection.keys.join(' + ')
       : route.protection.kind === 'admin'
         ? 'admin only'
         : route.protection.kind;

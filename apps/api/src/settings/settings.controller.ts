@@ -21,6 +21,8 @@ const patchSchema = z
     settle_tolerance_iqd: z.number().int().min(0).max(100_000).optional(),
     settle_tolerance_usd_cents: z.number().int().min(0).max(10_000).optional(),
     order_edit_window_days: z.number().int().min(0).max(365).nullable().optional(),
+    // Iteration 2: the same window for purchases (FR-405).
+    purchase_edit_window_days: z.number().int().min(0).max(365).nullable().optional(),
     allow_edit_after_payment: z.boolean().optional(),
     locked_through: z
       .string()

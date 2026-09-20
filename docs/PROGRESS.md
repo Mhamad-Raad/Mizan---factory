@@ -239,3 +239,53 @@ catalog, D-010), Q-B-02 (which optional extras to keep — all of them built, D-
 **Next:** I2 — companies, purchases and supplier accounting. It needs nothing new from the
 client; `company_ledger` mirrors the customer ledger this iteration built, and the money,
 stock and period rules are already in the kernel.
+
+---
+
+# Iteration 2 — companies, purchases & company accounting (buying)
+
+Branch `feat/i2-buying`, brief `iterations/I2-companies-purchases-accounting.md`.
+
+## I2 · Checkpoint A — done · the schema and the privileges
+
+- `0008_buying.sql`: `companies`, `company_rates`, `purchases`, `purchase_lines`,
+  `company_ledger` (every entry type including `settlement_change`), the checks that mirror the
+  customer ledger row for row, the trigger that refuses a reversal of a re-basing marker, the
+  views `company_balances`, `company_ledger_running` and `purchase_linked_totals`, the
+  sequences `purchase_number_seq` and `company_ledger_seq`, and the covering indices the I1
+  review measured into place (`company_ledger_balance_idx`, `company_ledger_purchase_sum_idx`).
+- `0009_buying_privileges.sql`: the application role may INSERT into `company_ledger` and
+  `company_rates` and may never UPDATE or DELETE them; `update company_ledger` answers
+  *permission denied* on both databases, which the suite now asserts as well.
+
+## I2 · Checkpoint B — done · the kernel
+
+- `allocateOldestFirst` in `@mizan/ledger`: explicit links first, then unlinked payments,
+  credits and adjustments spread over the oldest purchases, never past zero, with everything
+  unallocatable in a `general` bucket. **50 ledger tests**, including a 300-run property test
+  for `Σ remaining + general = balance` (D-020).
+- The ledger writer refactored into one `AccountLedgerService` with `CustomerLedgerService` and
+  `CompanyLedgerService` as thin subclasses (D-019); every I1 ledger test still passes
+  unchanged.
+
+## I2 · Checkpoint C — done · the API
+
+**102 routes, all declared** (30 new); **168 API tests**, **371 across the workspace**.
+
+- Companies: profiles with settlement currency and assignment, the company rate with its
+  history and ±20 % guard, the accounting tab (grouped ledger, `as_of`, money-only), the
+  per-purchase breakdown, payments with conversion, override, split and settle-in-full,
+  adjustments by new balance or delta, manual credits, opening balances, reversal, the
+  settlement-currency change with its re-basing entry, the statement and the voucher.
+- Purchases: create with lines priced from the month **bought** price at the purchase's own
+  rate, one `purchase_in` movement per line, one company entry copying the purchase totals —
+  and none at all when no company is named (FR-407); edit as reverse-then-rewrite, void with
+  its reason, the 8-second undo, the purchase's own balance, History.
+- Two rules came out of this checkpoint and are written down: a purchase's money travels under
+  one `cost` key so one flag hides all of it (D-022), and a route may require two permission
+  keys — which also closed the I1 gap where `GET /customers/:id/ledger` asked only for
+  `customers.view` (D-023).
+
+**Next:** checkpoint D — the buying screens (Companies list and profile with its four tabs and
+sheets, Add material / Purchase, Purchase detail, Purchases list), the `companies` and
+`purchases` namespaces in all three languages, and the screenshots.

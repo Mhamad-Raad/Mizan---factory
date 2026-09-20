@@ -28,7 +28,7 @@ import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import { HistoryRepository } from '../history/history.repository.js';
 import { ItemsRepository } from '../items/items.repository.js';
-import { CustomerLedgerService } from '../ledger/customer-ledger.service.js';
+import { CustomerLedgerService, ORDER_DOCUMENT_TYPES } from '../ledger/customer-ledger.service.js';
 import type { LedgerCustomer } from '../ledger/customer-ledger.service.js';
 import { RatesService } from '../rates/rates.service.js';
 import { PeriodService } from '../settings/period.service.js';
@@ -37,9 +37,6 @@ import { StockService } from '../stock/stock.service.js';
 import { OrdersRepository } from './orders.repository.js';
 import type { NewOrderLine, OrderFilters, OrderListRow, OrderScope } from './orders.repository.js';
 import type { OrderDto, OrderLineDto, OrderLineRow, PaymentType } from './order.types.js';
-
-/** The rows a document entry and its settlement are made of, reversed on an edit or a void. */
-const DOCUMENT_ENTRY_TYPES = ['order', 'cash_settlement'];
 
 /** How long the creator may undo an order from the save toast (FR-610). */
 const UNDO_WINDOW_MS = 8_000;
@@ -165,7 +162,7 @@ export class OrdersService {
     const actingUserId = await this.actingUser(context, input.acting_user_id);
 
     const created = await this.database.transaction(async (tx) => {
-      const locked = await this.ledger.lockCustomer(tx, customer.id);
+      const locked = await this.ledger.lockOwner(tx, customer.id);
       if (!locked) throw ApiError.notFound();
 
       const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource);
@@ -300,7 +297,7 @@ export class OrdersService {
 
       const customerRow = await this.customers.findByIdUnscoped(order.customer_id, tx);
       if (!customerRow) throw ApiError.notFound();
-      const locked = await this.ledger.lockCustomer(tx, order.customer_id);
+      const locked = await this.ledger.lockOwner(tx, order.customer_id);
       if (!locked) throw ApiError.notFound();
 
       if (await this.orders.hasManualPayment(id, tx)) {
@@ -320,7 +317,12 @@ export class OrdersService {
         { ref_type: 'order_line', ref_ids: oldLines.map((line) => line.id) },
         { created_by: context.userId, note: 'order edited', entry_date: input.order_date },
       );
-      await this.reverseDocumentEntries(context, tx, locked, id, 'order edited', input.order_date);
+      await this.ledger.reverseLiveForDocument(context, tx, locked, id, {
+        note: 'order edited',
+        entry_date: input.order_date,
+        types: ORDER_DOCUMENT_TYPES,
+        related: { order_id: id, customer_id: order.customer_id },
+      });
 
       const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource, {
         previous: oldLines,
@@ -436,7 +438,7 @@ export class OrdersService {
       if (!order) throw ApiError.notFound();
       if (order.status === 'void') throw new ApiError('DOCUMENT_VOID', { order_id: id });
 
-      const locked = await this.ledger.lockCustomer(tx, order.customer_id);
+      const locked = await this.ledger.lockOwner(tx, order.customer_id);
       if (!locked) throw ApiError.notFound();
 
       const lines = await this.orders.linesOf(id, tx);
@@ -445,7 +447,12 @@ export class OrdersService {
         { ref_type: 'order_line', ref_ids: lines.map((line) => line.id) },
         { created_by: context.userId, note: input.reason, entry_date: order.order_date },
       );
-      await this.reverseDocumentEntries(context, tx, locked, id, input.reason, order.order_date);
+      await this.ledger.reverseLiveForDocument(context, tx, locked, id, {
+        note: input.reason,
+        entry_date: order.order_date,
+        types: ORDER_DOCUMENT_TYPES,
+        related: { order_id: id, customer_id: order.customer_id },
+      });
 
       const updated = await this.orders.updateOrder(
         id,
@@ -526,7 +533,7 @@ export class OrdersService {
     await this.database.transaction(async (tx) => {
       const order = await this.orders.lock(id, tx);
       if (!order) throw ApiError.notFound();
-      const locked = await this.ledger.lockCustomer(tx, order.customer_id);
+      const locked = await this.ledger.lockOwner(tx, order.customer_id);
       if (!locked) throw ApiError.notFound();
 
       let ledgerEntryId: string | null = null;
@@ -1131,34 +1138,6 @@ export class OrdersService {
       rate_iqd_per_usd: amountUsd === 0 ? input.rate : impliedRate(amountIqd, amountUsd),
       rate_source: 'manual',
     };
-  }
-
-  /**
-   * Reverses the document's own entries — the receivable and its settlement — and leaves
-   * payments, credits and refunds standing: that money did arrive (FR-610, 2.5.3 step 2).
-   */
-  private async reverseDocumentEntries(
-    context: RequestContext,
-    tx: Db,
-    customer: LedgerCustomer,
-    orderId: string,
-    note: string,
-    entryDate: string,
-  ): Promise<void> {
-    const entries = await this.ledger.entriesFor(tx, customer.id);
-    const live = entries.filter(
-      (entry) =>
-        entry.refs.order_id === orderId &&
-        DOCUMENT_ENTRY_TYPES.includes(entry.entry_type) &&
-        !entries.some((other) => other.reverses_entry_id === entry.id),
-    );
-    for (const entry of live) {
-      await this.ledger.reverse(context, tx, customer, entry.id, {
-        note,
-        entry_date: entryDate,
-        related: { order_id: orderId, customer_id: customer.id },
-      });
-    }
   }
 
   private async versionConflict(context: RequestContext, id: string): Promise<ApiError> {

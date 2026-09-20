@@ -11,7 +11,7 @@ import {
 } from '../common/decorators.js';
 
 export type RouteProtection =
-  | { kind: 'permission'; key: string }
+  | { kind: 'permission'; keys: readonly string[] }
   | { kind: 'admin' }
   | { kind: 'session' }
   | { kind: 'public' }
@@ -70,13 +70,14 @@ export async function collectRoutes(): Promise<RouteInfo[]> {
         if (httpMethod === undefined) continue;
         const handlerPath = (Reflect.getMetadata(PATH_METADATA, method) as string) ?? '';
 
-        const permission = Reflect.getMetadata(PERMISSION_KEY, method) as string | undefined;
+        const declared = Reflect.getMetadata(PERMISSION_KEY, method) as string | string[] | undefined;
+        const permission = declared === undefined ? undefined : typeof declared === 'string' ? [declared] : declared;
         const adminOnly = Reflect.getMetadata(ADMIN_ONLY_KEY, method) as boolean | undefined;
         const sessionOnly = Reflect.getMetadata(SESSION_ONLY_KEY, method) as boolean | undefined;
         const isPublic = Reflect.getMetadata(PUBLIC_KEY, method) as boolean | undefined;
 
-        const protection: RouteProtection = permission
-          ? { kind: 'permission', key: permission }
+        const protection: RouteProtection = permission?.length
+          ? { kind: 'permission', keys: permission }
           : adminOnly
             ? { kind: 'admin' }
             : sessionOnly

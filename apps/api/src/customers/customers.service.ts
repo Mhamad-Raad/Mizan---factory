@@ -984,7 +984,7 @@ export class CustomersService {
 
   /** Locks the customer for a money write, which is where every balance figure starts (2.9.5). */
   private async lockFor(tx: Db, id: string): Promise<LedgerCustomer> {
-    const customer = await this.ledger.lockCustomer(tx, id);
+    const customer = await this.ledger.lockOwner(tx, id);
     if (!customer) throw ApiError.notFound();
     return customer;
   }

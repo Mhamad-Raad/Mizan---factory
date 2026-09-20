@@ -12,7 +12,13 @@ export const PUBLIC_KEY = 'mizan:public';
 export const SESSION_ONLY_KEY = 'mizan:session_only';
 export const ALLOW_WHEN_LOCKED_KEY = 'mizan:allow_when_locked';
 
-export const RequirePermission = (permission: string) => SetMetadata(PERMISSION_KEY, permission);
+/**
+ * One key, or several that are **all** required — the specification's route table writes the
+ * money routes as `companies.view` + `fields.see_company_balances` (2.9.3), and a route that
+ * needs two keys must ask for two rather than leaning on a response filter.
+ */
+export const RequirePermission = (...permissions: [string, ...string[]]) =>
+  SetMetadata(PERMISSION_KEY, permissions);
 
 export const AdminOnly = () => SetMetadata(ADMIN_ONLY_KEY, true);
 

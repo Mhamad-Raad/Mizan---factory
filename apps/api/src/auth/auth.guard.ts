@@ -37,11 +37,15 @@ export class AuthGuard implements CanActivate {
     const isPublic = this.reflector.getAllAndOverride<boolean>(PUBLIC_KEY, [handler, controller]);
     if (isPublic) return true;
 
-    const permission = this.reflector.getAllAndOverride<string>(PERMISSION_KEY, [handler, controller]);
+    const declared = this.reflector.getAllAndOverride<string | readonly string[]>(PERMISSION_KEY, [
+      handler,
+      controller,
+    ]);
+    const permission = declared === undefined ? undefined : typeof declared === 'string' ? [declared] : declared;
     const adminOnly = this.reflector.getAllAndOverride<boolean>(ADMIN_ONLY_KEY, [handler, controller]);
     const sessionOnly = this.reflector.getAllAndOverride<boolean>(SESSION_ONLY_KEY, [handler, controller]);
 
-    if (!permission && !adminOnly && !sessionOnly) {
+    if (!permission?.length && !adminOnly && !sessionOnly) {
       // Fail closed: an undecorated route is a mistake, not an open door.
       throw new ApiError('PERMISSION_DENIED', { required: 'undeclared' });
     }
@@ -79,8 +83,10 @@ export class AuthGuard implements CanActivate {
     if (adminOnly && session.role !== 'admin') {
       throw new ApiError('PERMISSION_DENIED', { required: 'admin' });
     }
-    if (permission && session.role !== 'admin' && !keys.has(permission)) {
-      throw ApiError.permissionDenied(permission);
+    if (permission && session.role !== 'admin') {
+      // Every declared key is required: the route table's `+` is a conjunction (spec 2.9.3).
+      const missing = permission.find((key) => !keys.has(key));
+      if (missing) throw ApiError.permissionDenied(missing);
     }
     return true;
   }
