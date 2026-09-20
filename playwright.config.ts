@@ -27,17 +27,48 @@ export default defineConfig({
     timezoneId: 'Asia/Baghdad',
   },
   projects: [
+    /**
+     * The fixture is seeded through the API as a setup project rather than in `globalSetup`,
+     * because the web servers below are started *after* global setup and the seeding needs
+     * the API to be answering.
+     */
+    { name: 'setup', testMatch: /fixture\.setup\.ts/ },
     {
       name: 'phone',
+      dependencies: ['setup'],
+      testIgnore: /fixture\.setup\.ts/,
       use: { ...devices['Pixel 7'], viewport: { width: 360, height: 740 } },
     },
   ],
+  /**
+   * The SPA and the API, so the screens are photographed with real data. The API is started
+   * from its build output (CI builds before this step) against the test database, never the
+   * development one.
+   */
   webServer: process.env.E2E_BASE_URL
     ? undefined
-    : {
-        command: 'pnpm --filter @mizan/web dev',
-        url: 'http://localhost:5173',
-        reuseExistingServer: true,
-        timeout: 60_000,
-      },
+    : [
+        {
+          command: 'pnpm --filter @mizan/api start',
+          url: 'http://localhost:3000/api/v1/health',
+          reuseExistingServer: true,
+          timeout: 60_000,
+          env: {
+            DATABASE_URL:
+              process.env.TEST_DATABASE_URL ?? 'postgresql://mizan_app:mizan_app@localhost:5432/mizan_test',
+            DATABASE_MIGRATE_URL:
+              process.env.TEST_MIGRATE_URL ?? 'postgresql://mizan_migrate:mizan_migrate@localhost:5432/mizan_test',
+            SESSION_PEPPER: process.env.SESSION_PEPPER ?? 'e2e-pepper-not-a-secret-0123456789',
+            APP_BASE_URL: 'http://localhost:5173',
+            NODE_ENV: 'development',
+            TZ: 'Asia/Baghdad',
+          },
+        },
+        {
+          command: 'pnpm --filter @mizan/web dev',
+          url: 'http://localhost:5173',
+          reuseExistingServer: true,
+          timeout: 60_000,
+        },
+      ],
 });

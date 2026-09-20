@@ -148,7 +148,7 @@ input[type='tel'] {
 
 .mz-main {
   flex: 1;
-  padding-block: var(--space-4) calc(var(--space-6) + 64px);
+  padding-block: var(--space-4) calc(var(--space-6) + var(--tabbar-height));
   padding-inline: var(--space-4);
   inline-size: 100%;
   max-inline-size: 1200px;
@@ -371,7 +371,9 @@ a.mz-button {
   border-radius: calc(var(--radius-md) - 3px);
   background: none;
   padding-block: var(--space-2);
-  min-block-size: 40px;
+
+  /* A touch target is never smaller than 44 px, whatever the text size around it (NFR-10). */
+  min-block-size: var(--tap-target);
   color: var(--color-text-muted);
   font-weight: 500;
 }
@@ -541,6 +543,17 @@ a.mz-button {
   overflow-wrap: anywhere;
 }
 
+/**
+ * The trailing cell of a row: amounts, chips, a status. It keeps itself to its content and
+ * never squeezes the body — at 360 px a body squeezed to a few pixels wraps one character per
+ * line, which is exactly what the screenshot suite caught.
+ */
+.mz-list__end {
+  flex: 0 0 auto;
+  max-inline-size: 55%;
+  text-align: end;
+}
+
 .mz-avatar {
   display: inline-flex;
   flex: none;
@@ -687,7 +700,9 @@ a.mz-button {
 
 .mz-sticky-footer {
   position: sticky;
-  inset-block-end: 0;
+
+  /* Above the tab bar, never behind it: the Save button has to stay in the thumb zone. */
+  inset-block-end: var(--tabbar-height);
   z-index: 5;
   display: flex;
   flex-direction: column;

@@ -26,25 +26,39 @@ if (adminId) {
 } else {
   const passwordHash = await hash(password, ARGON2_OPTIONS);
   const displayName = process.env.FIRST_ADMIN_DISPLAY_NAME ?? 'Administrator';
-  const inserted = await client.query<{ id: string }>(
-    `INSERT INTO users (username, display_name, display_name_normalized, role, password_hash,
-                        must_change_password, is_active)
-     VALUES ($1, $2, $3, 'admin', $4, true, true)
-     RETURNING id`,
-    [username, displayName, normalizeForSearch(displayName), passwordHash],
-  );
-  const id = inserted.rows[0]?.id as string;
+
+  // The admin and its History row commit together, or neither does (rule 3): a user that
+  // exists with no record of being created is exactly what the audit log is for.
+  await client.query('BEGIN');
+  let id: string;
+  try {
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO users (username, display_name, display_name_normalized, role, password_hash,
+                          must_change_password, is_active)
+       VALUES ($1, $2, $3, 'admin', $4, true, true)
+       RETURNING id`,
+      [username, displayName, normalizeForSearch(displayName), passwordHash],
+    );
+    id = inserted.rows[0]?.id as string;
+    await client.query(
+      // `actor_user_id` is a uuid and `entity_id` is text, so the id is passed twice: one
+      // parameter cannot be both, which is what made this insert fail silently until now.
+      `INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, entity_label, changes, note, request_id)
+       VALUES ($1, 'create', 'user', $2, $3, $4, $5, gen_random_uuid())`,
+      [
+        id,
+        id,
+        `Employee: ${username}`,
+        JSON.stringify({ role: { old: null, new: 'admin' }, is_active: { old: null, new: true } }),
+        'seeded from the environment at first boot',
+      ],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
   adminId = id;
-  await client.query(
-    `INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, entity_label, changes, note, request_id)
-     VALUES ($1, 'create', 'user', $1, $2, $3, $4, gen_random_uuid())`,
-    [
-      id,
-      `Employee: ${username}`,
-      JSON.stringify({ role: { old: null, new: 'admin' }, is_active: { old: null, new: true } }),
-      'seeded from the environment at first boot',
-    ],
-  );
   console.log(`created first admin "${username}" (${id}) — must change password at first sign-in`);
 }
 

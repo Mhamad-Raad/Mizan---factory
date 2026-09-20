@@ -112,7 +112,7 @@ export function CustomersPage() {
                       </span>
                     ) : null}
                   </span>
-                  <span style={{ textAlign: 'end' }}>
+                  <span className="mz-list__end">
                     {customer.balance ? (
                       <DualAmount
                         amount_iqd={customer.balance.amount_iqd}

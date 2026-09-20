@@ -256,14 +256,16 @@ export function CustomerDetailPage() {
                                 <span className="mz-list__title">
                                   {t('orders:number', { number: formatter.number(order.number) })}
                                 </span>
-                                <span className="mz-caption">{formatter.date(order.order_date)}</span>
-                              </span>
-                              <span style={{ textAlign: 'end' }}>
+                                <span className="mz-caption" style={{ display: 'block' }}>
+                                  {formatter.date(order.order_date)}
+                                </span>
                                 <DualAmount
                                   amount_iqd={order.total_iqd}
                                   amount_usd_cents={order.total_usd_cents}
                                   primary={settlement}
                                 />
+                              </span>
+                              <span className="mz-list__end">
                                 <OrderStatusChip status={order.status} />
                               </span>
                             </Link>
@@ -295,18 +297,18 @@ export function CustomerDetailPage() {
                             <span className="mz-list__title">
                               {t('orders:number', { number: formatter.number(order.number) })}
                             </span>
-                            <span className="mz-caption">{formatter.date(order.order_date)}</span>
-                          </span>
-                          <span style={{ textAlign: 'end' }}>
+                            <span className="mz-caption" style={{ display: 'block' }}>
+                              {formatter.date(order.order_date)}
+                            </span>
                             <DualAmount
                               amount_iqd={order.total_iqd}
                               amount_usd_cents={order.total_usd_cents}
                               primary={settlement}
                             />
-                            <span className="mz-row" style={{ gap: 'var(--space-1)', justifyContent: 'flex-end' }}>
-                              <PaymentTypeChip type={order.payment_type} />
-                              <OrderStatusChip status={order.status} />
-                            </span>
+                          </span>
+                          <span className="mz-list__end">
+                            <PaymentTypeChip type={order.payment_type} />
+                            <OrderStatusChip status={order.status} />
                           </span>
                         </Link>
                       </li>

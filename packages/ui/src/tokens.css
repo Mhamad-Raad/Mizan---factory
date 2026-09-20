@@ -68,6 +68,10 @@
   --space-5: 1.5rem;
   --space-6: 2rem;
   --tap-target: 44px;
+
+  /* The height the bottom tab bar occupies: pages reserve it, and a sticky footer sits on
+     top of it rather than behind it (spec 3.3, wireframe 3.4.1). */
+  --tabbar-height: 64px;
   --duration-micro: 180ms;
   --duration-page: 300ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
