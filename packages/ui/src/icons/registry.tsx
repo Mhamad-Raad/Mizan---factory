@@ -26,7 +26,11 @@ export type IconName =
   | 'refresh'
   | 'trash'
   | 'logout'
-  | 'shield';
+  | 'shield'
+  | 'orders'
+  | 'materials'
+  | 'customers'
+  | 'more';
 
 /** Icons that imply a direction, and therefore mirror (spec 2.10.6). */
 export const MIRRORED_ICONS: ReadonlySet<IconName> = new Set<IconName>([
@@ -58,6 +62,10 @@ const PATHS: Record<IconName, string> = {
   trash: 'M3 6h18M8 6V4h8v2m1 0v14H7V6',
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14 5-5-5-5m5 5H9',
   shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z',
+  orders: 'M8 3h8a2 2 0 0 1 2 2v16l-6-3-6 3V5a2 2 0 0 1 2-2Zm0 5h8m-8 4h5',
+  materials: 'M3 8.5 12 4l9 4.5-9 4.5-9-4.5Zm0 6L12 19l9-4.5',
+  customers: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 9v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
 };
 
 export interface IconProps extends SVGProps<SVGSVGElement> {

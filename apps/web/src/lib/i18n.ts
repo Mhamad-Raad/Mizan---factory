@@ -11,6 +11,9 @@ import ckbUsers from '@mizan/i18n/locales/ckb-IQ/users.json';
 import ckbPermissions from '@mizan/i18n/locales/ckb-IQ/permissions.json';
 import ckbHistory from '@mizan/i18n/locales/ckb-IQ/history.json';
 import ckbSettings from '@mizan/i18n/locales/ckb-IQ/settings.json';
+import ckbMaterials from '@mizan/i18n/locales/ckb-IQ/materials.json';
+import ckbCustomers from '@mizan/i18n/locales/ckb-IQ/customers.json';
+import ckbOrders from '@mizan/i18n/locales/ckb-IQ/orders.json';
 
 import arCommon from '@mizan/i18n/locales/ar-IQ/common.json';
 import arGlossary from '@mizan/i18n/locales/ar-IQ/glossary.json';
@@ -20,6 +23,9 @@ import arUsers from '@mizan/i18n/locales/ar-IQ/users.json';
 import arPermissions from '@mizan/i18n/locales/ar-IQ/permissions.json';
 import arHistory from '@mizan/i18n/locales/ar-IQ/history.json';
 import arSettings from '@mizan/i18n/locales/ar-IQ/settings.json';
+import arMaterials from '@mizan/i18n/locales/ar-IQ/materials.json';
+import arCustomers from '@mizan/i18n/locales/ar-IQ/customers.json';
+import arOrders from '@mizan/i18n/locales/ar-IQ/orders.json';
 
 import enCommon from '@mizan/i18n/locales/en/common.json';
 import enGlossary from '@mizan/i18n/locales/en/glossary.json';
@@ -29,6 +35,9 @@ import enUsers from '@mizan/i18n/locales/en/users.json';
 import enPermissions from '@mizan/i18n/locales/en/permissions.json';
 import enHistory from '@mizan/i18n/locales/en/history.json';
 import enSettings from '@mizan/i18n/locales/en/settings.json';
+import enMaterials from '@mizan/i18n/locales/en/materials.json';
+import enCustomers from '@mizan/i18n/locales/en/customers.json';
+import enOrders from '@mizan/i18n/locales/en/orders.json';
 
 /**
  * The catalogs are bundled, not fetched: a floor tablet on a bad connection must not be able
@@ -44,6 +53,9 @@ const resources = {
     permissions: ckbPermissions,
     history: ckbHistory,
     settings: ckbSettings,
+    materials: ckbMaterials,
+    customers: ckbCustomers,
+    orders: ckbOrders,
   },
   'ar-IQ': {
     common: arCommon,
@@ -54,6 +66,9 @@ const resources = {
     permissions: arPermissions,
     history: arHistory,
     settings: arSettings,
+    materials: arMaterials,
+    customers: arCustomers,
+    orders: arOrders,
   },
   en: {
     common: enCommon,
@@ -64,6 +79,9 @@ const resources = {
     permissions: enPermissions,
     history: enHistory,
     settings: enSettings,
+    materials: enMaterials,
+    customers: enCustomers,
+    orders: enOrders,
   },
 } as const;
 

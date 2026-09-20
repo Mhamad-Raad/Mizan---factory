@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, SegmentedControl, TextField, Toggle } from '@mizan/ui';
+import { Button, Card, DateField, NumberField, SegmentedControl, TextField, Toggle } from '@mizan/ui';
 import { LANGUAGE_NAMES, LOCALES } from '@mizan/i18n';
 import type { Locale } from '@mizan/i18n';
-import { apiRequest } from '../lib/api.js';
+import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { AppShell } from '../components/AppShell.js';
-import { useApp, useFormatter } from '../lib/store.js';
+import { useApp, useFormatter, usePermission } from '../lib/store.js';
 import type { FontScale, Theme } from '../lib/preferences.js';
 
 /**
@@ -21,6 +21,7 @@ export function SettingsPage() {
   const setPreference = useApp((state) => state.setPreference);
   const persisted = useApp((state) => state.preferencesPersisted);
   const user = useApp((state) => state.user);
+  const maySetRate = usePermission('settings.set_global_rate');
 
   return (
     <AppShell title={t('settings:title')}>
@@ -100,6 +101,8 @@ export function SettingsPage() {
 
         <AccountCard />
 
+        {/* A user who may set the rate sees that card even without the rest (spec 3.3). */}
+        {user?.role === 'admin' || maySetRate ? <GlobalRateCard /> : null}
         {user?.role === 'admin' ? <SystemCard /> : null}
       </div>
     </AppShell>
@@ -178,6 +181,139 @@ interface SystemSettings {
   idle_lock_default_minutes: number;
   week_start: 'sat' | 'sun' | 'mon';
   date_format: 'dd/MM/yyyy';
+  /** Iteration 1: the rules selling is subject to (FR-1107, FR-1109, A-34). */
+  allow_negative_stock: boolean;
+  default_customer_currency: 'IQD' | 'USD';
+  rate_guard_percent: number;
+  settle_tolerance_iqd: number;
+  settle_tolerance_usd_cents: number;
+  order_edit_window_days: number | null;
+  allow_edit_after_payment: boolean;
+  locked_through: string | null;
+  rate_stale_days: number;
+}
+
+interface GlobalRate {
+  current: { rate_iqd_per_usd: string; effective_from: string; is_stale: boolean } | null;
+  items: { id: string; rate_iqd_per_usd: string; effective_from: string; note: string | null; created_by_name: string | null }[];
+}
+
+/**
+ * The global default rate (FR-1106): the customer-side rate every order and payment is filled
+ * with, its full history, and the prompt when it has not been touched for a few days. A user
+ * who holds only `settings.set_global_rate` sees this card and nothing else of the system
+ * settings (spec 3.3).
+ */
+function GlobalRateCard() {
+  const { t } = useTranslation();
+  const formatter = useFormatter();
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState('');
+  const [note, setNote] = useState('');
+  const [guard, setGuard] = useState<{ previous: string; next: string; percent: number } | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const rates = useQuery({
+    queryKey: ['global-rate'],
+    queryFn: () => apiRequest<GlobalRate>('/settings/global-rates'),
+  });
+
+  const save = useMutation({
+    mutationFn: (confirm: boolean) =>
+      apiRequest<GlobalRate['current']>('/settings/global-rates', {
+        method: 'POST',
+        body: { rate_iqd_per_usd: value.trim(), note: note.trim() === '' ? null : note.trim(), confirm },
+        idempotencyKey: newIdempotencyKey(),
+      }),
+    onSuccess: async () => {
+      setValue('');
+      setNote('');
+      setGuard(null);
+      setMessage(t('settings:rate_saved'));
+      await queryClient.invalidateQueries({ queryKey: ['global-rate'] });
+    },
+    onError: (error) => {
+      // ±20 % (the `rate_guard_percent` setting) asks for a confirmation rather than
+      // refusing: a typo of 13,100 for 1,310 would value every later document at a tenth.
+      if (error instanceof ApiError && error.code === 'RATE_GUARD') {
+        setGuard({
+          previous: String(error.params.previous ?? ''),
+          next: String(error.params.next ?? ''),
+          percent: Number(error.params.percent ?? 0),
+        });
+      }
+    },
+  });
+
+  return (
+    <Card>
+      <div className="mz-stack">
+        <h2 className="mz-heading">{t('glossary:global_default_rate')}</h2>
+
+        {rates.data?.current ? (
+          <p data-tabular>
+            {formatter.rate(rates.data.current.rate_iqd_per_usd)}
+            <span className="mz-caption" style={{ display: 'block' }}>
+              {t('settings:rate_since', { time: formatter.timestamp(new Date(rates.data.current.effective_from)) })}
+            </span>
+          </p>
+        ) : (
+          <p className="mz-field__error">{t('settings:no_rate_yet')}</p>
+        )}
+
+        {rates.data?.current?.is_stale ? (
+          <div className="mz-warning" role="status">
+            {t('settings:rate_stale', { rate: formatter.rate(rates.data.current.rate_iqd_per_usd) })}
+          </div>
+        ) : null}
+
+        <NumberField
+          label={t('settings:new_rate')}
+          hint={t('settings:new_rate_hint')}
+          decimals={4}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+        <TextField label={t('common:note')} value={note} onChange={(event) => setNote(event.target.value)} />
+
+        {guard ? (
+          <div className="mz-warning" role="alert">
+            {t('settings:rate_guard', { previous: guard.previous, next: guard.next, percent: guard.percent })}
+          </div>
+        ) : null}
+
+        <Button
+          block
+          loading={save.isPending}
+          disabled={value.trim() === ''}
+          onClick={() => save.mutate(guard !== null)}
+        >
+          {guard ? t('glossary:confirm') : t('settings:set_rate')}
+        </Button>
+
+        {(rates.data?.items ?? []).length > 0 ? (
+          <ul className="mz-list">
+            {(rates.data?.items ?? []).map((row) => (
+              <li key={row.id} className="mz-list__item">
+                <span className="mz-list__body">
+                  <span className="mz-list__title" data-tabular>
+                    {formatter.rate(row.rate_iqd_per_usd)}
+                  </span>
+                  <span className="mz-caption">
+                    {formatter.timestamp(new Date(row.effective_from))}
+                    {row.created_by_name ? ` · ${row.created_by_name}` : ''}
+                    {row.note ? ` · ${row.note}` : ''}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {message ? <p className="mz-muted">{message}</p> : null}
+      </div>
+    </Card>
+  );
 }
 
 function SystemCard() {
@@ -230,6 +366,75 @@ function SystemCard() {
             { value: 'mon', label: t('settings:week_start_mon') },
           ]}
         />
+
+        {/* Iteration 1: the selling rules. Each one is a rule an employee's form obeys, so
+            each one is visible to them through `GET /settings` (FR-1107). */}
+        <Toggle
+          label={t('settings:allow_negative_stock')}
+          hint={t('settings:allow_negative_stock_hint')}
+          checked={settings.data.allow_negative_stock}
+          onChange={(checked) => save.mutate({ allow_negative_stock: checked })}
+        />
+        <SegmentedControl
+          label={t('settings:default_customer_currency')}
+          value={settings.data.default_customer_currency}
+          onChange={(value) => save.mutate({ default_customer_currency: value })}
+          options={[
+            { value: 'IQD', label: t('glossary:iqd') },
+            { value: 'USD', label: t('glossary:usd') },
+          ]}
+        />
+        <div className="mz-grid-2">
+          <NumberField
+            label={t('settings:settle_tolerance_iqd')}
+            unit={t('common:iqd_symbol')}
+            defaultValue={settings.data.settle_tolerance_iqd}
+            onBlur={(event) => save.mutate({ settle_tolerance_iqd: Number(event.target.value) })}
+          />
+          <NumberField
+            label={t('settings:settle_tolerance_usd')}
+            defaultValue={settings.data.settle_tolerance_usd_cents}
+            onBlur={(event) => save.mutate({ settle_tolerance_usd_cents: Number(event.target.value) })}
+          />
+        </div>
+        <NumberField
+          label={t('settings:rate_guard_percent')}
+          defaultValue={settings.data.rate_guard_percent}
+          onBlur={(event) => save.mutate({ rate_guard_percent: Number(event.target.value) })}
+        />
+        <NumberField
+          label={t('settings:order_edit_window')}
+          hint={t('settings:order_edit_window_hint')}
+          defaultValue={settings.data.order_edit_window_days ?? ''}
+          onBlur={(event) =>
+            save.mutate({
+              order_edit_window_days: event.target.value.trim() === '' ? null : Number(event.target.value),
+            })
+          }
+        />
+        <Toggle
+          label={t('settings:allow_edit_after_payment')}
+          hint={t('settings:allow_edit_after_payment_hint')}
+          checked={settings.data.allow_edit_after_payment}
+          onChange={(checked) => save.mutate({ allow_edit_after_payment: checked })}
+        />
+
+        {/* Proposed — not requested (FR-1109): the period lock. */}
+        <DateField
+          label={t('settings:locked_through')}
+          hint={t('settings:locked_through_hint')}
+          defaultValue={settings.data.locked_through ?? ''}
+          onBlur={(event) =>
+            save.mutate({ locked_through: event.target.value.trim() === '' ? null : event.target.value })
+          }
+        />
+        <NumberField
+          label={t('settings:rate_stale_days')}
+          hint={t('settings:rate_stale_days_hint')}
+          defaultValue={settings.data.rate_stale_days}
+          onBlur={(event) => save.mutate({ rate_stale_days: Number(event.target.value) })}
+        />
+
         {message ? <p className="mz-muted">{message}</p> : null}
       </div>
     </Card>

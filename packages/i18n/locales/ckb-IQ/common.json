@@ -45,5 +45,16 @@
   "conflict_current_version": "وەشانی ئێستا",
   "draft_restored": "ڕەشنووسێکی پاشەکەوتکراو گەڕێندرایەوە",
   "copy": "لەبەرگرتنەوە",
-  "copied": "لەبەرگیرایەوە"
+  "copied": "لەبەرگیرایەوە",
+  "all": "هەموو",
+  "share": "هاوبەشکردن",
+  "print": "چاپکردن",
+  "iqd_symbol": "د.ع",
+  "usd_symbol": "$",
+  "kg_symbol": "کگم",
+  "count_symbol": "دانە",
+  "rate_used": "بە نرخی ئاڵوگۆڕی {{rate}}",
+  "manual_rate": "نرخی ئاڵوگۆڕی دەستی {{rate}}",
+  "draft_found": "کارێکی پاشەکەوتنەکراوت هەیە لە {{time}}",
+  "draft_restore": "بگەڕێنەوە"
 }
