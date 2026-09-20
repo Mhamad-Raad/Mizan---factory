@@ -318,6 +318,12 @@ CREATE TABLE customer_ledger (
 );
 
 CREATE INDEX customer_ledger_running_idx ON customer_ledger (customer_id, posting_seq);
+-- Covering indices for the two sums that are read on every screen: a customer's balance and
+-- an order's remaining amount. With the amounts in the index those sums are index-only scans,
+-- which is what keeps a list page cheap after five years of rows (NFR-13, review measurement).
+CREATE INDEX customer_ledger_balance_idx ON customer_ledger (customer_id) INCLUDE (amount_iqd, amount_usd_cents);
+CREATE INDEX customer_ledger_order_sum_idx ON customer_ledger (order_id) INCLUDE (amount_iqd, amount_usd_cents)
+  WHERE order_id IS NOT NULL;
 CREATE INDEX customer_ledger_date_idx ON customer_ledger (customer_id, entry_date);
 CREATE INDEX customer_ledger_order_idx ON customer_ledger (order_id) WHERE order_id IS NOT NULL;
 CREATE INDEX customer_ledger_performed_idx ON customer_ledger (performed_by_user_id, entry_date DESC);
@@ -387,6 +393,9 @@ CREATE TABLE stock_ledger (
 );
 
 CREATE INDEX stock_ledger_running_idx ON stock_ledger (item_id, posting_seq);
+-- The same for stock: the material list and card sum one item's movements, and the quantities
+-- ride along in the index so the sum never touches the heap.
+CREATE INDEX stock_ledger_item_sum_idx ON stock_ledger (item_id) INCLUDE (qty_count, qty_kg);
 CREATE INDEX stock_ledger_date_idx ON stock_ledger (item_id, entry_date);
 CREATE INDEX stock_ledger_ref_idx ON stock_ledger (ref_type, ref_id);
 CREATE UNIQUE INDEX stock_ledger_reverses_key ON stock_ledger (reverses_entry_id) WHERE reverses_entry_id IS NOT NULL;

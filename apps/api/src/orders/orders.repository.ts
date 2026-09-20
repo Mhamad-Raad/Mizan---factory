@@ -47,6 +47,51 @@ const LINE_COLUMNS = `l.id, l.order_id, l.line_no, l.item_id, l.qty_count, l.qty
                       l.cost_unit_usd_cents::text AS cost_unit_usd_cents,
                       l.cost_month_price_id, l.cost_source::text AS cost_source, l.note`;
 
+/**
+ * What is still owed on one order, read per row rather than from the `order_balances` view.
+ *
+ * The view groups the whole ledger, and a predicate on `orders.order_date` cannot be pushed
+ * inside that grouping — so showing today's twenty-five orders aggregated *every* order ever
+ * placed (measured: 85 ms and an external merge sort at 60,000 orders, growing linearly). As
+ * a LATERAL it is one index-only scan per row of the page, whatever the table holds.
+ */
+const REMAINING_LATERAL = `
+  LEFT JOIN LATERAL (
+    SELECT coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0)
+             AS remaining
+      FROM customer_ledger l
+     WHERE l.order_id = o.id
+  ) bal ON true`;
+
+/** The currency the customer physically handed over, from the live settlement row (FR-604). */
+const RECEIVED_LATERAL = `
+  LEFT JOIN LATERAL (
+    SELECT e.entered_currency
+      FROM customer_ledger e
+     WHERE e.order_id = o.id AND e.entry_type = 'cash_settlement'
+       AND NOT EXISTS (SELECT 1 FROM customer_ledger r WHERE r.reverses_entry_id = e.id)
+     ORDER BY e.posting_seq DESC
+     LIMIT 1
+  ) settle ON true`;
+
+/** The derived status of 2.4.3, in the same three steps as `orderStatus()` in @mizan/ledger. */
+const STATUS_EXPRESSION = `
+  CASE
+    WHEN o.status = 'void' THEN 'void'
+    WHEN bal.remaining <= 0 THEN 'paid'
+    WHEN bal.remaining >= (CASE WHEN c.settlement_currency = 'IQD' THEN o.total_iqd ELSE o.total_usd_cents END)
+      THEN 'unpaid'
+    ELSE 'partially_paid'
+  END`;
+
+const LIST_COLUMNS = `c.name AS customer_name, c.is_system AS customer_is_system,
+                      c.settlement_currency::text AS settlement_currency,
+                      u.display_name AS acting_user_name, v.display_name AS voided_by_name,
+                      bal.remaining::text AS remaining, ${STATUS_EXPRESSION} AS derived_status,
+                      settle.entered_currency::text AS received_currency,
+                      (SELECT count(*)::text FROM order_lines l
+                        WHERE l.order_id = o.id AND l.deleted_at IS NULL) AS line_count`;
+
 /** The scope of the caller for orders (spec 2.6.4). */
 export interface OrderScope {
   userId: string;
@@ -123,25 +168,13 @@ export class OrdersRepository {
     const values: unknown[] = [id];
     const scoped = this.scopeCondition(scope, values);
     const { rows } = await (tx ?? this.database).query<OrderListRow>(
-      `SELECT ${orderColumns('o')}, c.name AS customer_name, c.is_system AS customer_is_system,
-              c.settlement_currency::text AS settlement_currency,
-              u.display_name AS acting_user_name, v.display_name AS voided_by_name,
-              b.remaining::text AS remaining, b.status AS derived_status,
-              settle.entered_currency::text AS received_currency,
-              (SELECT count(*)::text FROM order_lines l WHERE l.order_id = o.id AND l.deleted_at IS NULL) AS line_count
+      `SELECT ${orderColumns('o')}, ${LIST_COLUMNS}
          FROM orders o
          JOIN customers c ON c.id = o.customer_id
          LEFT JOIN users u ON u.id = o.acting_user_id
          LEFT JOIN users v ON v.id = o.voided_by
-         LEFT JOIN order_balances b ON b.order_id = o.id
-         LEFT JOIN LATERAL (
-           SELECT e.entered_currency
-             FROM customer_ledger e
-            WHERE e.order_id = o.id AND e.entry_type = 'cash_settlement'
-              AND NOT EXISTS (SELECT 1 FROM customer_ledger r WHERE r.reverses_entry_id = e.id)
-            ORDER BY e.posting_seq DESC
-            LIMIT 1
-         ) settle ON true
+         ${REMAINING_LATERAL}
+         ${RECEIVED_LATERAL}
         WHERE o.id = $1 AND o.deleted_at IS NULL ${scoped ? `AND ${scoped}` : ''}`,
       values,
     );
@@ -190,8 +223,10 @@ export class OrdersRepository {
       conditions.push(`o.payment_type = $${values.length}::payment_type`);
     }
     if (filters.status) {
+      // The status is derived, so filtering by it means deriving it for each candidate row —
+      // which is why the date chips of FR-611 matter: they bound the candidate set first.
       values.push(filters.status);
-      conditions.push(`b.status = $${values.length}`);
+      conditions.push(`${STATUS_EXPRESSION} = $${values.length}`);
     }
     if (!filters.include_undone) {
       // Orders voided through the 8-second undo are hidden by default (2.4.5, FR-610).
@@ -217,7 +252,8 @@ export class OrdersRepository {
       JOIN customers c ON c.id = o.customer_id
       LEFT JOIN users u ON u.id = o.acting_user_id
       LEFT JOIN users v ON v.id = o.voided_by
-      LEFT JOIN order_balances b ON b.order_id = o.id`;
+      ${REMAINING_LATERAL}
+      ${RECEIVED_LATERAL}`;
     const where = `WHERE ${conditions.join(' AND ')}`;
 
     const countValues = [...values];
@@ -227,21 +263,8 @@ export class OrdersRepository {
 
     const [list, count] = await Promise.all([
       this.database.query<OrderListRow>(
-        `SELECT ${orderColumns('o')}, c.name AS customer_name, c.is_system AS customer_is_system,
-                c.settlement_currency::text AS settlement_currency,
-                u.display_name AS acting_user_name, v.display_name AS voided_by_name,
-                b.remaining::text AS remaining, b.status AS derived_status,
-                settle.entered_currency::text AS received_currency,
-                (SELECT count(*)::text FROM order_lines l WHERE l.order_id = o.id AND l.deleted_at IS NULL) AS line_count
+        `SELECT ${orderColumns('o')}, ${LIST_COLUMNS}
          ${from}
-         LEFT JOIN LATERAL (
-           SELECT e.entered_currency
-             FROM customer_ledger e
-            WHERE e.order_id = o.id AND e.entry_type = 'cash_settlement'
-              AND NOT EXISTS (SELECT 1 FROM customer_ledger r WHERE r.reverses_entry_id = e.id)
-            ORDER BY e.posting_seq DESC
-            LIMIT 1
-         ) settle ON true
          ${where}
          ORDER BY o.order_date DESC, o.number DESC
          LIMIT $${values.length - 1} OFFSET $${values.length}`,
@@ -255,9 +278,11 @@ export class OrdersRepository {
 
   async linesOf(orderId: string, tx?: Db): Promise<OrderLineRow[]> {
     const { rows } = await (tx ?? this.database).query<OrderLineRow>(
-      `SELECT ${LINE_COLUMNS}, i.name AS item_name, i.pricing_unit::text AS item_pricing_unit
+      `SELECT ${LINE_COLUMNS}, i.name AS item_name, i.pricing_unit::text AS item_pricing_unit,
+              to_char(p.month, 'YYYY-MM-DD') AS price_month
          FROM order_lines l
          JOIN items i ON i.id = l.item_id
+         LEFT JOIN item_month_prices p ON p.id = l.month_price_id
         WHERE l.order_id = $1 AND l.deleted_at IS NULL
         ORDER BY l.line_no ASC`,
       [orderId],

@@ -592,10 +592,18 @@ export class CustomersService {
    *  · a split part-IQD/part-USD payment, stored as two rows sharing one note (FR-617);
    *  · more than is owed, which is refused until the user confirms the excess as credit.
    */
-  async recordPayment(context: RequestContext, id: string, input: PaymentInput): Promise<WriteResultDto[]> {
+  async recordPayment(
+    context: RequestContext,
+    id: string,
+    input: PaymentInput,
+    options: { authorisedByOrder?: boolean } = {},
+  ): Promise<WriteResultDto[]> {
     this.period.assertNotFuture(input.entry_date, 'entry_date');
     await this.period.assertNotLocked(input.entry_date);
-    await this.requireCustomer(context, id);
+    // The orders module passes `authorisedByOrder` when the order's own scope rule already
+    // let this caller through (2.6.4): an employee keeps paying off an order they entered
+    // even after its customer was reassigned.
+    if (!options.authorisedByOrder) await this.requireCustomer(context, id);
 
     const rate = await this.rates.requireCurrent();
     const tolerance = {
@@ -1050,7 +1058,13 @@ export class CustomersService {
     return toWriteResult(result);
   }
 
-  /** Adds the order's new remaining and status to the results of a write (FR-607). */
+  /**
+   * Adds the order's new remaining and status to the results of a write (FR-607).
+   *
+   * It reads the status without refusing a voided order: reversing a payment that belongs to
+   * an order which was voided afterwards is exactly what an admin does when the money is
+   * handed back, and the answer should carry that order's state, not an error.
+   */
   private async withOrderStatus(
     tx: Db,
     results: WriteResultDto[],
@@ -1058,11 +1072,39 @@ export class CustomersService {
     customer: LedgerCustomer,
   ): Promise<WriteResultDto[]> {
     if (!orderId) return results;
-    const order = await this.orderFor(tx, orderId, customer.id);
+    const order = await this.orderStatusOf(tx, orderId, customer.id);
+    if (!order) return results;
     return results.map((result) => ({
       ...result,
       order: { id: order.id, remaining: order.remaining, status: order.status },
     }));
+  }
+
+  /** The order's derived state, whether it is active or void (2.4.3). */
+  private async orderStatusOf(
+    tx: Db,
+    orderId: string,
+    customerId: string,
+  ): Promise<{ id: string; remaining: number; total: number; status: string } | null> {
+    const { rows } = await tx.query<{
+      order_id: string;
+      remaining: string;
+      total: string;
+      status: string;
+      customer_id: string;
+    }>(
+      `SELECT order_id, remaining::text AS remaining, total::text AS total, status, customer_id
+         FROM order_balances WHERE order_id = $1`,
+      [orderId],
+    );
+    const row = rows[0];
+    if (!row || row.customer_id !== customerId) return null;
+    return {
+      id: row.order_id,
+      remaining: Number(row.remaining),
+      total: Number(row.total),
+      status: row.status,
+    };
   }
 
   private async versionConflict(id: string): Promise<ApiError> {

@@ -285,6 +285,19 @@ export class OrdersService {
       if (!order) throw ApiError.notFound();
       if (order.version !== input.version) throw await this.versionConflict(context, id);
 
+      // An edit is a full replace of the *same* order: moving it to another customer would
+      // move a debt between two balances, which is a void and a new order, not an edit.
+      if (input.customer_id !== order.customer_id) {
+        throw ApiError.validation([
+          {
+            path: 'customer_id',
+            code: 'IMMUTABLE',
+            message_key: 'errors:order_customer_immutable',
+            params: {},
+          },
+        ]);
+      }
+
       const customerRow = await this.customers.findByIdUnscoped(order.customer_id, tx);
       if (!customerRow) throw ApiError.notFound();
       const locked = await this.ledger.lockCustomer(tx, order.customer_id);
@@ -622,7 +635,15 @@ export class OrdersService {
   ): Promise<WriteResultDto[]> {
     const order = await this.requireOrder(context, id);
     if (order.status === 'void') throw new ApiError('DOCUMENT_VOID', { order_id: id });
-    return this.customersService.recordPayment(context, order.customer_id, { ...input, order_id: id });
+    // The order's own scope rule already authorised this caller — an employee may pay off an
+    // order they entered even after the customer was reassigned to somebody else (2.6.4), so
+    // the customer-level check is not applied a second time here.
+    return this.customersService.recordPayment(
+      context,
+      order.customer_id,
+      { ...input, order_id: id },
+      { authorisedByOrder: true },
+    );
   }
 
   async historyOf(context: RequestContext, id: string, options: { cursor?: string; limit?: number }) {
@@ -1059,8 +1080,22 @@ export class OrdersService {
   }): Promise<MoneyPair> {
     const settlementSide = -input.remaining;
 
-    if (input.receivedAmount === null && input.receivedCurrency === input.settlementCurrency) {
-      const other = input.otherSideFallback ?? convert(input.remaining, input.settlementCurrency, input.rate);
+    if (input.receivedCurrency === input.settlementCurrency) {
+      // Paid in the settlement currency: the settlement is the exact negation of what is
+      // owed, in *both* columns, so the order closes at zero and no junk lands in the other
+      // one. A different amount handed over in the same currency is not a rate difference —
+      // it is a discount (FR-616) or a part payment, and the form is told so rather than
+      // having cents quietly recorded as dinars.
+      if (input.receivedAmount !== null && input.receivedAmount !== input.remaining) {
+        throw new ApiError('RECEIVED_AMOUNT_OUT_OF_TOLERANCE', {
+          expected: input.remaining,
+          received: input.receivedAmount,
+          currency: input.receivedCurrency,
+          reason: 'same_currency',
+        });
+      }
+      const other =
+        input.otherSideFallback ?? convert(input.remaining, input.settlementCurrency, input.rate);
       return {
         amount_iqd: input.settlementCurrency === 'IQD' ? settlementSide : -other,
         amount_usd_cents: input.settlementCurrency === 'IQD' ? -other : settlementSide,
@@ -1070,10 +1105,10 @@ export class OrdersService {
       };
     }
 
-    const expected =
-      input.receivedCurrency === input.settlementCurrency
-        ? input.remaining
-        : convert(input.remaining, input.settlementCurrency, input.rate);
+    // Received in the other currency: the settlement side is the exact amount owed and the
+    // other side is what was physically handed over, stored as a manual-rate pair and bounded
+    // by the settlement tolerance (2.3.6).
+    const expected = convert(input.remaining, input.settlementCurrency, input.rate);
     const received = input.receivedAmount ?? expected;
     const tolerance = {
       settle_tolerance_iqd: await this.settings.get('settle_tolerance_iqd'),
@@ -1172,7 +1207,7 @@ function storedLineSummary(line: OrderLineRow) {
   };
 }
 
-function toOrderLineDto(line: OrderLineRow): OrderLineDto {
+function toOrderLineDto(line: OrderLineRow, orderMonth: string): OrderLineDto {
   return {
     id: line.id,
     line_no: line.line_no,
@@ -1186,7 +1221,12 @@ function toOrderLineDto(line: OrderLineRow): OrderLineDto {
     price_entered_currency: line.price_entered_currency,
     price_source: line.price_source,
     month_price_id: line.month_price_id,
-    price_from_month: null,
+    // Set only when the price was carried forward from an earlier month, which is what the
+    // line's quiet marker says (FR-306).
+    price_from_month:
+      line.price_source === 'month' && line.price_month && line.price_month !== orderMonth
+        ? line.price_month
+        : null,
     line_total_iqd: Number(line.line_total_iqd),
     line_total_usd_cents: Number(line.line_total_usd_cents),
     rate_iqd_per_usd: line.rate_iqd_per_usd,
@@ -1235,7 +1275,7 @@ function toOrderDto(row: OrderListRow, lines: readonly OrderLineRow[]): OrderDto
     voided_at: row.voided_at?.toISOString() ?? null,
     remaining,
     received_currency: row.received_currency,
-    lines: lines.map(toOrderLineDto),
+    lines: lines.map((line) => toOrderLineDto(line, firstOfMonth(row.order_date))),
     version: row.version,
     created_at: row.created_at.toISOString(),
   };

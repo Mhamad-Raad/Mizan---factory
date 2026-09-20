@@ -52,6 +52,8 @@ export interface OrderLineRow {
   note: string | null;
   item_name?: string;
   item_pricing_unit?: 'per_piece' | 'per_kg';
+  /** The month the defaulted price came from, for the "from August" marker (FR-306). */
+  price_month?: string | null;
 }
 
 /**

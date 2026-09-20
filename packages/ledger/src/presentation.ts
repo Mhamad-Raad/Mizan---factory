@@ -56,8 +56,15 @@ export const MONEY_MOVEMENT_TYPES: readonly string[] = [
   'adjustment',
 ];
 
+/**
+ * Only a *document* entry is ever replaced: an edit rewrites the order row and its cash
+ * settlement. A reversed payment is undone, not edited — a later payment against the same
+ * order is a new payment, and grouping the two as one "edited" row would hide both facts.
+ */
+const REPLACEABLE_TYPES: readonly string[] = ['order', 'cash_settlement', 'purchase'];
+
 function keyOf(entry: LedgerEntry): string | null {
-  // An edit replaces a *document* entry: the replacement carries the same type and document.
+  if (!REPLACEABLE_TYPES.includes(entry.entry_type)) return null;
   const documentId = entry.refs.order_id ?? entry.refs.purchase_id ?? null;
   return documentId ? `${entry.entry_type}|${documentId}` : null;
 }

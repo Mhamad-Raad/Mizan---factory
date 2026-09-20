@@ -1015,3 +1015,253 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
     });
   });
 });
+
+/**
+ * Regressions for the defects found in the Iteration 1 review. Each one fails against the
+ * code as it was written before the review.
+ */
+describe('iteration 1 review regressions', () => {
+  let ctx: TestApp;
+  let admin: Session;
+  let sales: Session;
+  let salesUserId: string;
+  let otherSalesUserId: string;
+  let otherSales: Session;
+  let copper: string;
+  let kawa: string;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+  }, 60_000);
+
+  afterAll(async () => {
+    await ctx.close();
+  });
+
+  function today(): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Baghdad',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+  }
+
+  beforeEach(async () => {
+    await resetDatabase();
+    const adminUser = await seedUser({ username: 'admin.review', role: 'admin', displayName: 'Dara' });
+    const salesUser = await seedUser({
+      username: 'rebaz.review',
+      displayName: 'Rebaz',
+      permissions: [
+        'orders.create',
+        'orders.edit',
+        'orders.void',
+        'orders.record_payment',
+        'orders.credit',
+        'customers.create',
+        'fields.see_customer_balances',
+      ],
+    });
+    const other = await seedUser({
+      username: 'sara.review',
+      displayName: 'Sara',
+      permissions: ['orders.view', 'customers.view', 'fields.see_customer_balances'],
+    });
+    salesUserId = salesUser.id;
+    otherSalesUserId = other.id;
+
+    admin = await signIn(ctx.http, adminUser);
+    sales = await signIn(ctx.http, salesUser);
+    otherSales = await signIn(ctx.http, other);
+
+    await as(ctx.http, admin).post('/api/v1/settings/global-rates').send({ rate_iqd_per_usd: '1310' }).expect(201);
+
+    const item = await as(ctx.http, admin)
+      .post('/api/v1/items')
+      .send({ name: 'Copper wire 2 mm', pricing_unit: 'per_kg' })
+      .expect(201);
+    copper = item.body.id;
+    await as(ctx.http, admin)
+      .put(`/api/v1/items/${copper}/prices/${today().slice(0, 7)}`)
+      .send({ sale: { amount: 850, currency: 'IQD' }, bought: { amount: 700, currency: 'IQD' } })
+      .expect(200);
+    await as(ctx.http, admin)
+      .post(`/api/v1/items/${copper}/opening-stock`)
+      .send({ entry_date: today(), qty_kg: '1000.000', note: 'go-live' })
+      .expect(201);
+
+    const customer = await as(ctx.http, admin)
+      .post('/api/v1/customers')
+      .send({ name: 'Kawa Trading', assigned_user_id: salesUserId })
+      .expect(201);
+    kawa = customer.body.id;
+  });
+
+  function cashOrder(body: Record<string, unknown>) {
+    return as(ctx.http, sales)
+      .post('/api/v1/orders')
+      .send({
+        customer_id: kawa,
+        order_date: today(),
+        payment_type: 'cash',
+        lines: [{ item_id: copper, qty_kg: '100.000' }],
+        ...body,
+      });
+  }
+
+  it('never records dinars handed over as cents on a cash settlement', async () => {
+    // 85,000 د.ع is owed and 84,900 د.ع is handed over: in the *same* currency that is a
+    // discount or a part payment, not a rate difference. Before the fix the 84,900 was
+    // written into the dollar column as 84,900 cents — a $849 settlement.
+    const refused = await cashOrder({ received_currency: 'IQD', received_amount: 84_900 }).expect(422);
+    expect(refused.body.error.code).toBe('RECEIVED_AMOUNT_OUT_OF_TOLERANCE');
+    expect(refused.body.error.params.reason).toBe('same_currency');
+
+    const exact = await cashOrder({ received_currency: 'IQD' }).expect(201);
+    const raw = await as(ctx.http, sales).get(`/api/v1/customers/${kawa}/ledger?raw=true`).expect(200);
+    const settlement = raw.body.items.find((row: { entry_type: string }) => row.entry_type === 'cash_settlement');
+    // The settlement is the exact negation of the order entry, in both columns.
+    expect(settlement).toMatchObject({
+      amount_iqd: -85_000,
+      amount_usd_cents: -exact.body.total_usd_cents,
+      entered_currency: 'IQD',
+    });
+    expect(exact.body.remaining).toBe(0);
+  });
+
+  it('reverses a payment that belongs to an order voided afterwards', async () => {
+    const order = await as(ctx.http, sales)
+      .post('/api/v1/orders')
+      .send({
+        customer_id: kawa,
+        order_date: today(),
+        payment_type: 'borrowed',
+        lines: [{ item_id: copper, qty_kg: '100.000' }],
+      })
+      .expect(201);
+    const payment = await as(ctx.http, sales)
+      .post(`/api/v1/orders/${order.body.id}/payments`)
+      .send({ amount: 30_000, currency: 'IQD', entry_date: today() })
+      .expect(201);
+    await as(ctx.http, sales)
+      .post(`/api/v1/orders/${order.body.id}/void`)
+      .send({ reason: 'cancelled' })
+      .expect(200);
+
+    // Before the fix this answered 409 DOCUMENT_VOID: the status lookup refused the very
+    // order whose payment was being handed back.
+    const reversed = await as(ctx.http, admin)
+      .post(`/api/v1/customers/${kawa}/ledger/${payment.body[0].entry_id}/reverse`)
+      .send({ note: 'money returned in cash' })
+      .expect(201);
+    expect(reversed.body).toMatchObject({ entry_type: 'reversal', amount_iqd: 30_000 });
+    expect(reversed.body.order.status).toBe('void');
+
+    const customer = await as(ctx.http, sales).get(`/api/v1/customers/${kawa}`).expect(200);
+    expect(customer.body.balance.amount_iqd).toBe(0);
+  });
+
+  it('lets the employee who entered an order pay it off after the customer is reassigned', async () => {
+    const order = await as(ctx.http, sales)
+      .post('/api/v1/orders')
+      .send({
+        customer_id: kawa,
+        order_date: today(),
+        payment_type: 'borrowed',
+        lines: [{ item_id: copper, qty_kg: '100.000' }],
+      })
+      .expect(201);
+
+    await as(ctx.http, admin)
+      .put(`/api/v1/customers/${kawa}/assignment`)
+      .send({ user_id: otherSalesUserId, note: 'handover' })
+      .expect(200);
+
+    // The customer is out of Rebaz's scope now, but the order he entered is not (2.6.4).
+    await as(ctx.http, sales).get(`/api/v1/customers/${kawa}`).expect(404);
+    const payment = await as(ctx.http, sales)
+      .post(`/api/v1/orders/${order.body.id}/payments`)
+      .send({ amount: 30_000, currency: 'IQD', entry_date: today() })
+      .expect(201);
+    expect(payment.body[0].order.status).toBe('partially_paid');
+
+    // A payment not tied to an order still obeys the customer scope.
+    await as(ctx.http, sales)
+      .post(`/api/v1/customers/${kawa}/payments`)
+      .send({ amount: 1_000, currency: 'IQD', entry_date: today() })
+      .expect(404);
+    expect(otherSales).toBeDefined();
+  });
+
+  it('refuses an edit that would move the order to another customer', async () => {
+    const other = await as(ctx.http, admin)
+      .post('/api/v1/customers')
+      .send({ name: 'Zana Metals', assigned_user_id: salesUserId })
+      .expect(201);
+    const order = await as(ctx.http, sales)
+      .post('/api/v1/orders')
+      .send({
+        customer_id: kawa,
+        order_date: today(),
+        payment_type: 'borrowed',
+        lines: [{ item_id: copper, qty_kg: '100.000' }],
+      })
+      .expect(201);
+
+    // Before the fix the new customer was silently ignored, which reads as a successful edit.
+    const refused = await as(ctx.http, sales)
+      .put(`/api/v1/orders/${order.body.id}`)
+      .send({
+        customer_id: other.body.id,
+        order_date: today(),
+        payment_type: 'borrowed',
+        version: order.body.version,
+        lines: [{ item_id: copper, qty_kg: '100.000' }],
+      })
+      .expect(422);
+    expect(refused.body.error.fields[0].code).toBe('IMMUTABLE');
+  });
+
+  it('marks a line whose price was carried forward from an earlier month (FR-306)', async () => {
+    const zinc = await as(ctx.http, admin)
+      .post('/api/v1/items')
+      .send({ name: 'Zinc bar', pricing_unit: 'per_kg' })
+      .expect(201);
+    // Priced in January only, so an order today carries that price forward quietly.
+    await as(ctx.http, admin)
+      .put(`/api/v1/items/${zinc.body.id}/prices/${today().slice(0, 4)}-01`)
+      .send({ sale: { amount: 1_000, currency: 'IQD' } })
+      .expect(200);
+
+    const order = await as(ctx.http, sales)
+      .post('/api/v1/orders')
+      .send({
+        customer_id: kawa,
+        order_date: today(),
+        payment_type: 'borrowed',
+        lines: [{ item_id: zinc.body.id, qty_kg: '1.000' }],
+      })
+      .expect(201);
+
+    // Before the fix this was always null, so the saved order never showed "from January".
+    expect(order.body.lines[0].price_from_month).toBe(`${today().slice(0, 4)}-01-01`);
+
+    const thisMonth = await as(ctx.http, admin)
+      .put(`/api/v1/items/${zinc.body.id}/prices/${today().slice(0, 7)}`)
+      .send({ sale: { amount: 1_200, currency: 'IQD' } })
+      .expect(200);
+    expect(thisMonth.body.sale.amount_iqd).toBe(1_200);
+
+    const withOwnPrice = await as(ctx.http, sales)
+      .post('/api/v1/orders')
+      .send({
+        customer_id: kawa,
+        order_date: today(),
+        payment_type: 'borrowed',
+        lines: [{ item_id: zinc.body.id, qty_kg: '1.000' }],
+      })
+      .expect(201);
+    expect(withOwnPrice.body.lines[0].price_from_month).toBeNull();
+  });
+});

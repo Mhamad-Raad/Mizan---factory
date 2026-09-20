@@ -184,3 +184,26 @@ describe('ledger presentation (spec 2.4.5)', () => {
     expect(money.map((group) => group.anchor.entry.entry_type)).toEqual(['payment', 'credit']);
   });
 });
+
+describe('iteration 1 review regression (spec 2.4.5)', () => {
+  it('shows a reversed payment as undone even when a later payment follows it', () => {
+    const order = row({ entry_type: 'order', amount: 800_000, refs: { order_id: 'o9' } });
+    const wrongPayment = row({ entry_type: 'payment', amount: -300_000, refs: { order_id: 'o9' } });
+    const reversal = row({
+      entry_type: 'reversal',
+      amount: 300_000,
+      reverses_entry_id: wrongPayment.id,
+      note: 'wrong customer',
+      refs: { order_id: 'o9' },
+    });
+    const correctPayment = row({ entry_type: 'payment', amount: -200_000, refs: { order_id: 'o9' } });
+
+    const groups = groupLedger([order, wrongPayment, reversal, correctPayment], 'IQD');
+
+    // Before the fix the three payment rows collapsed into one "edited" row showing 200,000,
+    // hiding both that a payment was undone and that a new one arrived.
+    expect(groups.map((group) => group.kind)).toEqual(['entry', 'undone', 'entry']);
+    expect(groups[2]?.amount_iqd).toBe(-200_000);
+    expect(groups[2]?.anchor.balance_after).toBe(600_000);
+  });
+});
