@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { Client } from 'pg';
 import request from 'supertest';
+import { expect } from 'vitest';
 import type { App } from 'supertest/types.js';
 import { AppModule } from '../app.module.js';
 import { ARGON2_OPTIONS } from '../auth/password.service.js';
@@ -27,15 +28,42 @@ export interface TestApp {
   close: () => Promise<void>;
 }
 
+/**
+ * `TEST_TRACE=1` prints when an app is created or closed and when the database is emptied,
+ * with the test that caused it. Two runs of that were what identified the listener churn
+ * below; it is left in because the next person chasing a flake will want it.
+ */
+function trace(what: string): void {
+  if (process.env.TEST_TRACE !== '1') return;
+  process.stdout.write(
+    `[trace ${new Date().toISOString()}] ${what} :: ${expect.getState().currentTestName ?? '-'}\n`,
+  );
+}
+
+/**
+ * One application per test file, listening on **one** ephemeral port for the whole file.
+ *
+ * The `listen` matters. Handed a server that is not listening, supertest binds a fresh
+ * ephemeral port for every single request and closes it afterwards — about fifteen hundred
+ * times per run of this suite. Under that churn a request occasionally reaches a socket whose
+ * listener is already going away, and the answer is a bare 404 (or a "Parse Error: Expected
+ * HTTP/") from a route that plainly exists. It looks exactly like a race in the application
+ * and is nothing of the kind, which is the worst sort of flake to leave in a suite that has to
+ * be trusted for years.
+ */
 export async function createTestApp(): Promise<TestApp> {
+  trace('app create');
   const app = await NestFactory.create(AppModule, { logger: process.env.TEST_LOG === '1' ? undefined : false });
   app.setGlobalPrefix('api/v1');
   app.use(cookieParser());
   await app.init();
+  await app.listen(0, '127.0.0.1');
+
   return {
     app,
     http: app.getHttpServer() as App,
     close: async () => {
+      trace('app close');
       await app.close();
     },
   };
@@ -50,6 +78,7 @@ export async function createTestApp(): Promise<TestApp> {
  * documented defaults and a test that locked a period cannot leak into the next file.
  */
 export async function resetDatabase(): Promise<void> {
+  trace('truncate start');
   const client = new Client({ connectionString: TEST_MIGRATE_URL });
   await client.connect();
   await client.query(
@@ -59,6 +88,7 @@ export async function resetDatabase(): Promise<void> {
      RESTART IDENTITY CASCADE`,
   );
   await client.end();
+  trace('truncate done');
 }
 
 export interface SeededUser {
@@ -127,14 +157,18 @@ export async function signIn(
   user: SeededUser,
   options: { isSharedDevice?: boolean } = {},
 ): Promise<Session> {
-  const response = await request(http)
-    .post('/api/v1/auth/login')
-    .send({
-      username_or_phone: user.username,
-      password: user.password,
-      is_shared_device: options.isSharedDevice ?? false,
-    })
-    .expect(200);
+  const response = await request(http).post('/api/v1/auth/login').send({
+    username_or_phone: user.username,
+    password: user.password,
+    is_shared_device: options.isSharedDevice ?? false,
+  });
+  if (response.status !== 200) {
+    // A failed sign-in inside a hook is otherwise reported as a bare status code, which says
+    // nothing about *why* — and the why is usually a fixture problem, not an auth problem.
+    throw new Error(
+      `sign-in for ${user.username} answered ${response.status}: ${JSON.stringify(response.body)}`,
+    );
+  }
 
   const cookies = response.headers['set-cookie'] as unknown as string[];
   const csrf = (cookies.find((cookie) => cookie.startsWith('mizan_csrf=')) ?? '')
