@@ -44,12 +44,19 @@ export async function createTestApp(): Promise<TestApp> {
 /**
  * Truncating the append-only tables needs the migrate role, because `mizan_app` has no DELETE
  * on them — which is exactly the guarantee under test elsewhere in this suite.
+ *
+ * `settings` is emptied rather than reset row by row: every key falls back to
+ * `DEFAULT_SETTINGS` when its row is absent, so one DELETE restores the whole system to its
+ * documented defaults and a test that locked a period cannot leak into the next file.
  */
 export async function resetDatabase(): Promise<void> {
   const client = new Client({ connectionString: TEST_MIGRATE_URL });
   await client.connect();
   await client.query(
-    'TRUNCATE audit_log, login_attempts, idempotency_keys, user_permissions, sessions, users RESTART IDENTITY CASCADE',
+    `TRUNCATE audit_log, login_attempts, idempotency_keys, user_permissions, sessions,
+              customer_ledger, stock_ledger, order_payment_type_changes, order_lines, orders,
+              customers, item_month_prices, items, global_rates, settings, users
+     RESTART IDENTITY CASCADE`,
   );
   await client.end();
 }
@@ -142,9 +149,21 @@ export function as(http: App, session: Session) {
   return {
     get: (url: string) => withAuth(request(http).get(url)),
     post: (url: string) => withAuth(request(http).post(url)),
+    put: (url: string) => withAuth(request(http).put(url)),
     patch: (url: string) => withAuth(request(http).patch(url)),
     delete: (url: string) => withAuth(request(http).delete(url)),
   };
+}
+
+/** Runs SQL as the migrate role, for the assertions that read rows the API never returns. */
+export async function withDatabase<T>(work: (client: Client) => Promise<T>): Promise<T> {
+  const client = new Client({ connectionString: TEST_MIGRATE_URL });
+  await client.connect();
+  try {
+    return await work(client);
+  } finally {
+    await client.end();
+  }
 }
 
 export async function auditRows(filter: { action?: string; entityId?: string } = {}) {

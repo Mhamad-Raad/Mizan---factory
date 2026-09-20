@@ -372,7 +372,13 @@ CREATE TABLE stock_ledger (
   created_by          uuid NOT NULL REFERENCES users (id),
   CONSTRAINT stock_ledger_carries_a_measure CHECK (qty_count IS NOT NULL OR qty_kg IS NOT NULL),
   CONSTRAINT stock_ledger_reversal_link CHECK ((movement_type = 'reversal') = (reverses_entry_id IS NOT NULL)),
-  CONSTRAINT stock_ledger_ref_pair CHECK ((ref_type IS NULL) = (ref_id IS NULL)),
+  -- `manual` is the reference of an opening count or a correction: it names no document,
+  -- so it is the one ref_type that carries no id (spec 2.5.1).
+  CONSTRAINT stock_ledger_ref_pair CHECK (
+    (ref_type IS NULL AND ref_id IS NULL)
+    OR (ref_type = 'manual' AND ref_id IS NULL)
+    OR (ref_type <> 'manual' AND ref_id IS NOT NULL)
+  ),
   CONSTRAINT stock_ledger_unit_cost_pair CHECK ((unit_cost_iqd IS NULL) = (unit_cost_usd_cents IS NULL)),
   CONSTRAINT stock_ledger_note_required CHECK (
     movement_type NOT IN ('opening', 'adjustment', 'reversal') OR length(btrim(coalesce(note, ''))) > 0
@@ -447,8 +453,10 @@ SELECT i.id AS item_id,
        i.pricing_unit,
        coalesce(sum(s.qty_count), 0)::bigint AS stock_count,
        coalesce(sum(s.qty_kg), 0)::numeric(14,3) AS stock_kg,
-       coalesce(bool_and(s.qty_count IS NOT NULL), true) AS count_complete,
-       coalesce(bool_and(s.qty_kg IS NOT NULL), true) AS kg_complete
+       -- FILTER keeps the LEFT JOIN's synthetic all-null row out of the aggregate: without it
+       -- a material that has never moved would report its measures as *incomplete*.
+       coalesce(bool_and(s.qty_count IS NOT NULL) FILTER (WHERE s.id IS NOT NULL), true) AS count_complete,
+       coalesce(bool_and(s.qty_kg IS NOT NULL) FILTER (WHERE s.id IS NOT NULL), true) AS kg_complete
   FROM items i
   LEFT JOIN stock_ledger s ON s.item_id = i.id
  GROUP BY i.id, i.pricing_unit;

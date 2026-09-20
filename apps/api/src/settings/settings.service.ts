@@ -3,23 +3,26 @@ import { AuditService } from '../audit/audit.service.js';
 import { ApiError } from '../common/errors.js';
 import type { RequestContext } from '../common/request-context.js';
 import { Database } from '../database/pool.js';
-import { DEFAULT_SETTINGS, I0_EDITABLE_KEYS, SETTING_SCHEMAS } from './settings.types.js';
+import { DEFAULT_SETTINGS, EDITABLE_KEYS, SETTING_SCHEMAS } from './settings.types.js';
 import type { SettingKey, Settings } from './settings.types.js';
 
+/**
+ * The system settings (FR-1107).
+ *
+ * They are read from the database on every request that needs them, deliberately: a setting
+ * like `locked_through` or `allow_negative_stock` is a *rule*, and a cache — even a short one
+ * — means a second API replica can keep applying the old rule after an admin changed it,
+ * which is the defect the I0 review found in the permission cache. The read is a primary-key
+ * scan of a table with a dozen rows, which PostgreSQL answers from shared buffers.
+ */
 @Injectable()
 export class SettingsService {
-  /** Settings are read on nearly every request; a short cache keeps that off the database. */
-  private cache: { values: Settings; expiresAt: number } | null = null;
-  private static readonly CACHE_MS = 5_000;
-
   constructor(
     private readonly database: Database,
     private readonly audit: AuditService,
   ) {}
 
   async all(): Promise<Settings> {
-    if (this.cache && this.cache.expiresAt > Date.now()) return this.cache.values;
-
     const { rows } = await this.database.query<{ key: string; value: unknown }>(
       'SELECT key, value FROM settings',
     );
@@ -30,9 +33,7 @@ export class SettingsService {
       const parsed = schema.safeParse(row.value);
       if (parsed.success) values[row.key] = parsed.data;
     }
-    const settings = values as Settings;
-    this.cache = { values: settings, expiresAt: Date.now() + SettingsService.CACHE_MS };
-    return settings;
+    return values as Settings;
   }
 
   async get<K extends SettingKey>(key: K): Promise<Settings[K]> {
@@ -47,7 +48,7 @@ export class SettingsService {
     await this.database.transaction(async (tx) => {
       for (const [key, value] of Object.entries(patch)) {
         const settingKey = key as SettingKey;
-        if (!I0_EDITABLE_KEYS.includes(settingKey)) {
+        if (!EDITABLE_KEYS.includes(settingKey)) {
           throw ApiError.validation([
             { path: key, code: 'NOT_EDITABLE', message_key: 'errors:field.required', params: { field: key } },
           ]);
@@ -85,7 +86,6 @@ export class SettingsService {
       }
     });
 
-    this.cache = null;
     return this.all();
   }
 }
