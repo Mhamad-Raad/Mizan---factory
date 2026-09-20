@@ -15,12 +15,18 @@ import { RequestIdMiddleware } from './common/request-id.middleware.js';
 import { SensitiveFieldInterceptor } from './common/sensitive-field.interceptor.js';
 import { Database } from './database/pool.js';
 import { HealthController } from './health/health.controller.js';
+import { CustomersController } from './customers/customers.controller.js';
+import { CustomersRepository } from './customers/customers.repository.js';
+import { CustomersService } from './customers/customers.service.js';
 import { HistoryController } from './history/history.controller.js';
 import { HistoryRepository } from './history/history.repository.js';
 import { ItemsController } from './items/items.controller.js';
 import { ItemsRepository } from './items/items.repository.js';
 import { ItemsService } from './items/items.service.js';
 import { CustomerLedgerService } from './ledger/customer-ledger.service.js';
+import { OrdersController } from './orders/orders.controller.js';
+import { OrdersRepository } from './orders/orders.repository.js';
+import { OrdersService } from './orders/orders.service.js';
 import { RatesService } from './rates/rates.service.js';
 import { PeriodService } from './settings/period.service.js';
 import { StockService } from './stock/stock.service.js';
@@ -42,6 +48,8 @@ import { UsersService } from './users/users.service.js';
     HistoryController,
     SettingsController,
     ItemsController,
+    CustomersController,
+    OrdersController,
     HealthController,
   ],
   providers: [
@@ -62,6 +70,10 @@ import { UsersService } from './users/users.service.js';
     CustomerLedgerService,
     ItemsRepository,
     ItemsService,
+    CustomersRepository,
+    CustomersService,
+    OrdersRepository,
+    OrdersService,
     IdempotencyInterceptor,
     // The guard runs on every route: a route without a decorator is refused, not opened.
     { provide: APP_GUARD, useExisting: AuthGuard },
