@@ -422,14 +422,17 @@ SELECT o.id AS order_id,
        CASE WHEN c.settlement_currency = 'IQD' THEN o.total_iqd ELSE o.total_usd_cents END AS total,
        coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0)::bigint
          AS remaining,
+       -- The same three lines as `orderStatus()` in @mizan/ledger, so the view and the kernel
+       -- cannot drift: nothing owed is paid (an over-settled order too — "partially paid"
+       -- would be plainly wrong), everything still owed is unpaid, anything between is partial.
        CASE
          WHEN o.status = 'void' THEN 'void'
-         WHEN coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0) = 0
+         WHEN coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0) <= 0
            THEN 'paid'
          WHEN coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0)
-              < (CASE WHEN c.settlement_currency = 'IQD' THEN o.total_iqd ELSE o.total_usd_cents END)
-           THEN 'partially_paid'
-         ELSE 'unpaid'
+              >= (CASE WHEN c.settlement_currency = 'IQD' THEN o.total_iqd ELSE o.total_usd_cents END)
+           THEN 'unpaid'
+         ELSE 'partially_paid'
        END AS status
   FROM orders o
   JOIN customers c ON c.id = o.customer_id

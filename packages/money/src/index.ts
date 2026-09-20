@@ -14,3 +14,20 @@ export {
 export type { LineInput, LineTotals, DocumentTotals } from './line.js';
 export { settleInFull, withinTolerance, toleranceFor } from './tolerance.js';
 export type { SettleInFullInput, SettleInFullResult, Tolerance } from './tolerance.js';
+export {
+  firstOfMonth,
+  priceSideOf,
+  selectMonthPrice,
+  defaultLinePrice,
+  costSnapshotOf,
+  rateIsStale,
+} from './prices.js';
+export type {
+  PriceSide,
+  PriceSource,
+  MonthPriceRow,
+  MonthPriceValue,
+  MonthPriceSelection,
+  DefaultedLinePrice,
+  CostSnapshot,
+} from './prices.js';
