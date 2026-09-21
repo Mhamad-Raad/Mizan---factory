@@ -15,6 +15,7 @@ interface Tile {
   amount_usd_cents?: number;
   cost?: { amount_iqd: number; amount_usd_cents: number } | null;
   balance?: { amount_iqd: number; amount_usd_cents: number } | null;
+  owed?: { amount_iqd: number; amount_usd_cents: number } | null;
 }
 
 /** Where each tile leads, so a number is never a dead end (spec 3.3). */
@@ -73,6 +74,9 @@ export function DashboardPage() {
                   ) : null}
                   {tile.cost ? (
                     <DualAmount amount_iqd={tile.cost.amount_iqd} amount_usd_cents={tile.cost.amount_usd_cents} />
+                  ) : null}
+                  {tile.owed ? (
+                    <DualAmount amount_iqd={tile.owed.amount_iqd} amount_usd_cents={tile.owed.amount_usd_cents} />
                   ) : null}
                   {/* A balance is a pair: the dinars owed and the dollars owed, never a sum
                       of the two (rule 1). */}

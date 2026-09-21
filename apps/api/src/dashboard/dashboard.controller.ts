@@ -18,6 +18,8 @@ export interface DashboardTile {
   cost?: { amount_iqd: number; amount_usd_cents: number } | null;
   /** Customer balances: their own key, their own flag, and always a pair (D-022, rule 1). */
   balance?: { amount_iqd: number; amount_usd_cents: number } | null;
+  /** What we owe suppliers — a *company* balance, so not the bought-price flag's business. */
+  owed?: { amount_iqd: number; amount_usd_cents: number } | null;
 }
 
 /**
@@ -35,7 +37,11 @@ export interface DashboardTile {
  * phone: asked one after another, the request cost the sum of every tile (I4 review).
  */
 @Controller('dashboard')
-@SensitiveFields({ cost: 'fields.see_bought_price', balance: 'fields.see_customer_balances' })
+@SensitiveFields({
+  cost: 'fields.see_bought_price',
+  balance: 'fields.see_customer_balances',
+  owed: 'fields.see_company_balances',
+})
 export class DashboardController {
   constructor(
     private readonly database: Database,
@@ -187,7 +193,10 @@ export class DashboardController {
       {
         key: 'we_owe_companies',
         count: Number(rows[0]?.companies ?? 0),
-        cost: {
+        // Under `owed`, not `cost`: what we owe a supplier is a balance, and hiding it from
+        // somebody who may see supplier balances but not bought prices was the wrong flag
+        // answering the wrong question (D-022).
+        owed: {
           amount_iqd: Number(rows[0]?.iqd ?? 0),
           amount_usd_cents: Number(rows[0]?.usd_cents ?? 0),
         },
