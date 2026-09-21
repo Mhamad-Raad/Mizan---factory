@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField, NumberField, Tabs, TextField, Toast } from '@mizan/ui';
@@ -190,6 +190,19 @@ export function MaterialDetailPage() {
 
               {tab === 'overview' ? (
                 <div className="mz-stack">
+                  {/* The damage this material has had, and the form to record more (FR-801). */}
+                  <Can permission="damages.view">
+                    <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                      <Link to={`/damages?item=${id}`} className="mz-button mz-button--ghost">
+                        {t('damages:of_material')}
+                      </Link>
+                      <Can permission="damages.create">
+                        <Link to={`/damages/new?item=${id}`} className="mz-button mz-button--secondary">
+                          {t('damages:record')}
+                        </Link>
+                      </Can>
+                    </div>
+                  </Can>
                   <Card>
                     <h3 className="mz-heading">{t('materials:this_month_prices')}</h3>
                     <div className="mz-row mz-row--between" style={{ marginBlockStart: 'var(--space-2)' }}>

@@ -273,3 +273,31 @@ bounds the accounting tab (a page of entries with `total` and `has_more`) and th
 breakdown (what is still owed, oldest first). The running balance is still computed over the
 whole ledger, so a page never carries a figure that disagrees with History. Relied on: FR-615,
 2.4.1 rule 5, 2.9.3.
+
+## D-026 · 2026-09-21 · I3 · A damage record's attribution is validated, its material match is not
+
+FR-802 says the order picker is "filtered by material" and the purchase picker shows
+"purchases of that company containing the material". Those are picker rules; the question is
+what the API refuses.
+
+**Choice:** the API validates what it can know for certain — the order or company exists and is
+not void, and a named purchase belongs to the named company — and does **not** require the
+document to still contain the material. An order edited after the goods came back may no longer
+carry that line, and refusing the link then would leave the record unattributable, which is
+worse than a link the employee chose deliberately (A-23 puts the choice in their hands
+precisely because there is no lot tracking). The database enforces that the attribution and its
+links agree in both directions, so a record can never say "us" and name a company. Relied on:
+FR-802, A-23, 2.2.5 (check constraints).
+
+## D-027 · 2026-09-21 · I3 · A damage record is frozen once its return is recorded
+
+FR-804 allows editing quantities and attribution with compensating movements, and FR-803 tracks
+the return status. Nothing says what happens when the two meet: editing the quantity of a
+record whose goods a supplier has already taken back and credited would move stock that is no
+longer ours and leave the credit valuing a quantity that no longer exists.
+
+**Choice:** an edit is refused with `EDIT_WINDOW_CLOSED { reason: 'return_recorded' }` once the
+status has left `pending` (or `not_returnable`); the correction is a void and a new record,
+which is what the specification prescribes for exactly this case on orders and purchases
+(2.5.3). The credit itself is reversed on the company ledger, where reversal is the only
+correction. Relied on: FR-803, FR-804, 2.5.3, 2.4.1 rule 3.

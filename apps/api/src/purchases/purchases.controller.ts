@@ -46,6 +46,7 @@ const voidSchema = z.object({
 
 const listSchema = z.object({
   company_id: z.string().uuid().optional(),
+  item_id: z.string().uuid().optional(),
   company: z.literal('stock_only').optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),

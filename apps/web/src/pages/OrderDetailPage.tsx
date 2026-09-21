@@ -225,6 +225,12 @@ export function OrderDetailPage() {
                     {t('orders:duplicate')}
                   </Link>
                 ) : null}
+                {/* What came back damaged from this order (FR-802, FR-806). */}
+                <Can permission="damages.view">
+                  <Link to={`/damages?order=${id}`} className="mz-button mz-button--ghost">
+                    {t('glossary:damaged_items')}
+                  </Link>
+                </Can>
               </div>
 
               <SegmentedControl

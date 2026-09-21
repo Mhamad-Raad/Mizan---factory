@@ -63,6 +63,7 @@ const paymentSchema = money.extend({
 
 const listSchema = z.object({
   customer_id: z.string().uuid().optional(),
+  item_id: z.string().uuid().optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),
   done_by: z.string().uuid().optional(),

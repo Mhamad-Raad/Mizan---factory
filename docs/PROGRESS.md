@@ -359,3 +359,116 @@ identity review (FR-1311, item 2) and a host for staging (item 10).
 
 **Next:** I3 — damaged items and returns. It reuses the company ledger's credit path for
 damage-driven credits, so nothing new is needed from the client to start.
+
+---
+
+# Iteration 3 — damaged items & returns
+
+Branch `feat/i3-damages`, brief `iterations/I3-damaged-items-returns.md`.
+
+## I3 · Checkpoint A — done · the schema and the privileges
+
+- `0010_damages.sql`: the `damages` table with the sequence `damage_number_seq`, the indices
+  the list and its filters need, a covering index for the period totals, the view
+  `damage_totals`, and the two foreign keys that the money links declared in I1 and I2
+  (`customer_ledger.damage_id`, `company_ledger.damage_id`) were waiting for. Three rules live
+  in its constraints rather than in the application: the attribution and its links agree in
+  both directions, the stock effect is `none` exactly when the goods had already been sold, and
+  the return status is `not_returnable` exactly when the goods cannot go back.
+- `0011_damages_privileges.sql`: `damages` is INSERT + SELECT + UPDATE for the application role
+  and has no DELETE — a record is edited or voided, never removed.
+
+## I3 · Checkpoint B — done · the kernel
+
+`@mizan/ledger/damage.ts` holds the four rules the form, the write path, the return sheet and
+the totals all ask: what damage does to stock (A-30), the return-status machine of FR-803, the
+value snapshot from the damage month's bought price (FR-807) and what a return to a supplier is
+worth — the purchase line's price, else the month's, at the company's own rate (A-39). **19 new
+kernel tests**, including the figures of flow 3.5.5 (4 kg × 5,900 د.ع = 23,600 د.ع ≈ 18.02 $).
+
+## I3 · Checkpoint C — done · the API
+
+**110 routes, all declared** (8 new); **205 API tests**, **413 across the workspace**.
+
+- `/damages`: the list with the filters of FR-801 (material, period, attribution, return status,
+  returnable, employee, company, order, purchase, free text) and the period totals of FR-807;
+  create with its stock movement and value snapshot; read with the credit pre-fill and the
+  credits that name it; update with compensating movements; void; `/return` for "Mark returned",
+  "Written off" and the supplier credit; `/return-to-stock`; history.
+- The credits are written through the two existing ledger writers, so a return to a supplier is
+  an ordinary company credit that names the damage record and the purchase, and a customer's
+  returned goods an ordinary customer credit that names the damage record and the order — each
+  validated to belong to the account it is recorded against, which the review of I2 taught.
+- Two rules the specification left open are written down: the attribution links are validated
+  but the material match is left to the pickers (D-026), and a record is frozen once its return
+  has been recorded (D-027).
+
+**Next:** checkpoint D — the Damaged items list with its chips and totals, the Record damage
+form with its attribution tiles and stock-effect sentence, the damage detail with its four
+actions, and the links from the material, order and purchase pages.
+
+## I3 · Checkpoint D — done (the real-phone review is owed by the client)
+
+The damage screens, mobile first. Bundle **186.8 kB gzipped** against the 250 kB budget;
+**665 message keys × 3 languages**, every reference in the interface and in the API resolving.
+
+- Damaged items list with the chips of 3.3 (pending return, returnable, this month, voided,
+  filters), the period totals of FR-807 — quantities always, value only with the bought-price
+  flag — and rows that lead with the material, its quantity and its two chips.
+- Record damage (wireframe 3.4.3): the material picker with its stock, the priced measure first,
+  the date, the four attribution tiles with the order and company/purchase pickers **filtered by
+  the material**, the returnable toggle, the reason, More for the note and "done by", and a
+  footer that says what the save will do to stock before it is tapped. The same form edits a
+  record.
+- The damage record with its chips, its links to the material, order, company and purchase, the
+  stock sentence, the estimated value, and the four actions of FR-803 to FR-806 — Mark returned
+  (with "and record a credit" pre-filled from the purchase line), Written off, Record customer
+  credit, Return to stock — plus the credits that name it and its History.
+- "Damaged" links from the material, order and purchase pages, which open the list filtered to
+  that record; the `damages` namespace in all three languages; `ReturnStatusChip` and
+  `AttributionChip`; the attribution tiles in the component library.
+- **8 new screenshots** in Kurdish, Arabic and English, both themes, plus the 360 px overflow
+  and 44 px target checks on the record form at the largest text size. **41 Playwright checks**
+  in total.
+
+## I3 · Checkpoint E — done
+
+- Review: `docs/REVIEW-I3.md`. Eight findings, each fixed with a regression test — the one that
+  mattered was `GET /damages/:id` answering **500** for a record whose material had been
+  re-classified since it was written, because the kernel threw where it should have answered
+  "unknown"; the screenshot suite also caught a 28 px tap target on every `Toggle` in the
+  system, which had been there since I1.
+- Demo script of 4.5 is **executable** (`scripts/demo-i3.mjs`) and passes end to end: 4 kg
+  damaged from a supplier delivery with its stock movement and its value, 2.5 kg back from a
+  customer order that leaves stock alone, the return that credits Al-Noor 23,600 د.ع from the
+  purchase line's own price at the company's rate, the customer credit that moves a balance only
+  because somebody recorded it, a usable lot put back into stock through a `return_in` movement,
+  and the list's filters and totals seen with and without the bought-price permission.
+- CI: lint · types · translations (interface **and** API) · contrast · migrations · route
+  declarations · **431 tests** · build · bundle budget · **41 Playwright checks**.
+
+## I3 — Definition of done (section 4.1)
+
+| # | Item | State |
+|---|---|---|
+| 1 | Three languages, glossary terms, build fails on a missing key | ✅ 665 keys × 3 from one table; the check covers the API's error keys too |
+| 2 | RTL verified **on a real phone** in ckb, ar and en | ⚠️ automated at 360 px in all three, both themes; **the real-phone check is owed** |
+| 3 | Permissions enforced on every new endpoint | ✅ 110 routes declared (8 new); the credit inside a return additionally needs `companies.record_credit`, checked with the record loaded |
+| 4 | Every change in History with old → new, balances before → after | ✅ create, edit, void, status change and both credits asserted |
+| 5 | Every amount in both currencies through `DualAmount`, ≈ for conversions | ✅ the value, the period totals and every credit |
+| 6 | Both themes, all four text sizes, no overflow, contrast | ✅ 8 new screenshots, overflow and target checks at 1.25 — which is what found the toggle |
+| 7 | Tests for money and stock logic | ✅ 66 kernel tests (22 new), 206 API tests (34 new) |
+| 8 | Skeleton, empty, error and offline states | ✅ through one `QueryStates` on every new page and tab |
+| 9 | Accessibility basics | ✅ labels, focus order, 44 px asserted — and a real 28 px defect fixed |
+| 10 | Demo on staging with seeded data | ⚠️ the demo script passes against a live deployment; **staging still needs a host** |
+
+**I3 is complete but for the two items that have been owed since I0:** the real-phone RTL and
+identity review (FR-1311, item 2) and a host for staging (item 10).
+
+**Still open with the client:** Q-A-03, Q-B-02 and Q-B-03 from I1; Q-16 and Q-17 were both built
+as the specification's defaults state them (no stock change for a customer-order damage; a
+supplier return credits what we owe with an editable amount; a customer's returned goods change
+nothing until a credit is recorded).
+
+**Next:** I4 — reports and History. It reads what I1 to I3 have written and adds no new writes,
+so it needs nothing from the client to start.

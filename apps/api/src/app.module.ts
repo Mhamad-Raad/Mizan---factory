@@ -19,6 +19,9 @@ import { CompaniesController } from './companies/companies.controller.js';
 import { CompaniesRepository } from './companies/companies.repository.js';
 import { CompaniesService } from './companies/companies.service.js';
 import { CustomersController } from './customers/customers.controller.js';
+import { DamagesController } from './damages/damages.controller.js';
+import { DamagesRepository } from './damages/damages.repository.js';
+import { DamagesService } from './damages/damages.service.js';
 import { CustomersRepository } from './customers/customers.repository.js';
 import { CustomersService } from './customers/customers.service.js';
 import { HistoryController } from './history/history.controller.js';
@@ -44,10 +47,10 @@ import { UsersRepository } from './users/users.repository.js';
 import { UsersService } from './users/users.service.js';
 
 /**
- * One module. Iteration 1 added materials, customers and orders; Iteration 2 adds the buying
- * side — companies, their rates and accounting, and purchases — through the same shared money
- * services, with the company ledger writer beside the customer one (D-019). Damages, reports
- * and the rest arrive with their own iterations.
+ * One module. Iteration 1 added materials, customers and orders; Iteration 2 the buying side —
+ * companies, their rates and accounting, and purchases; Iteration 3 damaged items and returns,
+ * which write stock through the same stock service and money through the two ledger writers
+ * rather than a third path of their own. Reports and the rest arrive with their own iterations.
  */
 @Module({
   controllers: [
@@ -60,6 +63,7 @@ import { UsersService } from './users/users.service.js';
     OrdersController,
     CompaniesController,
     PurchasesController,
+    DamagesController,
     HealthController,
   ],
   providers: [
@@ -89,6 +93,8 @@ import { UsersService } from './users/users.service.js';
     CompaniesService,
     PurchasesRepository,
     PurchasesService,
+    DamagesRepository,
+    DamagesService,
     IdempotencyInterceptor,
     // The guard runs on every route: a route without a decorator is refused, not opened.
     { provide: APP_GUARD, useExisting: AuthGuard },

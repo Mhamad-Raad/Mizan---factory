@@ -48,5 +48,9 @@
   "note_required_adjustment": "اذكر سبب تغيير الرصيد (ثلاثة أحرف على الأقل)",
   "adjustment_unchanged": "هذا هو الرصيد الحالي — لا شيء ليتغير",
   "stock_insufficient": "المخزون غير كافٍ من {{item}}: المتبقي {{available}} والمطلوب {{requested}}",
+  "credit_needs_company": "الإشعار الدائن يخص الشركة التي جاءت منها المواد؛ هذا السجل لا يذكر شركة",
+  "return_not_allowed": "هذا السجل «{{from}}» ولا يمكن تسجيله كـ «{{action}}»",
+  "return_to_stock_customer_only": "المواد التي أعادها الزبون فقط يمكن إرجاعها إلى المخزون",
+  "already_returned_to_stock": "هذه المواد أُعيدت إلى المخزون بالفعل",
   "no_settlement": "لا توجد تسوية نقدية لعكسها في هذا الطلب"
 }

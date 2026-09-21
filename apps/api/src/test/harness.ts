@@ -84,8 +84,8 @@ export async function resetDatabase(): Promise<void> {
   await client.query(
     `TRUNCATE audit_log, login_attempts, idempotency_keys, user_permissions, sessions,
               customer_ledger, company_ledger, stock_ledger, order_payment_type_changes,
-              order_lines, orders, purchase_lines, purchases, customers, company_rates,
-              companies, item_month_prices, items, global_rates, settings, users
+              order_lines, orders, purchase_lines, purchases, damages, customers,
+              company_rates, companies, item_month_prices, items, global_rates, settings, users
      RESTART IDENTITY CASCADE`,
   );
   // `RESTART IDENTITY` only touches sequences a truncated table owns. Document numbers,
@@ -94,6 +94,7 @@ export async function resetDatabase(): Promise<void> {
   await client.query(
     `ALTER SEQUENCE order_number_seq RESTART;
      ALTER SEQUENCE purchase_number_seq RESTART;
+     ALTER SEQUENCE damage_number_seq RESTART;
      ALTER SEQUENCE voucher_number_seq RESTART;
      ALTER SEQUENCE customer_ledger_seq RESTART;
      ALTER SEQUENCE company_ledger_seq RESTART;

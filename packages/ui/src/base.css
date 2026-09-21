@@ -395,22 +395,37 @@ a.mz-button {
   min-block-size: 48px;
 }
 
+/*
+ * The switch is 28 px of pill inside a 44 px **target** (NFR-10): a thumb the size of a thumb
+ * would be a clumsy-looking switch, and a 28 px target is one a warehouse glove misses. The
+ * pill is drawn by the pseudo-element so the button itself can be the full tap height.
+ */
 .mz-toggle__track {
   flex: none;
   position: relative;
-  transition: background var(--duration-micro) var(--ease-out);
   border: 0;
+  background: none;
+  inline-size: 48px;
+  block-size: var(--tap-target);
+}
+
+.mz-toggle__track::before {
+  content: '';
+  position: absolute;
+  transition: background var(--duration-micro) var(--ease-out);
   border-radius: 999px;
   background: var(--color-border-strong);
   inline-size: 48px;
   block-size: 28px;
+  inset-block-start: calc((var(--tap-target) - 28px) / 2);
+  inset-inline-start: 0;
 }
 
-.mz-toggle__track[aria-checked='true'] {
+.mz-toggle__track[aria-checked='true']::before {
   background: var(--color-primary);
 }
 
-.mz-toggle__track[aria-checked='mixed'] {
+.mz-toggle__track[aria-checked='mixed']::before {
   background: linear-gradient(to inline-end, var(--color-primary) 50%, var(--color-border-strong) 50%);
 }
 
@@ -421,7 +436,7 @@ a.mz-button {
   background: #fff;
   inline-size: 22px;
   block-size: 22px;
-  inset-block-start: 3px;
+  inset-block-start: calc((var(--tap-target) - 22px) / 2);
   inset-inline-start: 3px;
 }
 
@@ -836,4 +851,42 @@ a.mz-button {
   display: flex;
   justify-content: space-between;
   gap: var(--space-3);
+}
+
+/*
+ * The attribution tiles of wireframe 3.4.3: four large targets in a grid that stays two-wide
+ * at 360 px, so "Where did it come from?" is answered with one thumb. Logical properties
+ * throughout, like everything else here (rule 5).
+ */
+.mz-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.mz-tile {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-3) var(--space-2);
+  min-block-size: 56px;
+  color: var(--color-text);
+  font-weight: 500;
+  text-align: center;
+}
+
+.mz-tile--selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-on-primary-soft);
+  font-weight: 600;
+}
+
+.mz-tile:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
