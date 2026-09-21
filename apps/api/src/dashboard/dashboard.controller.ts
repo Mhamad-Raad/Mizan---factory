@@ -116,24 +116,20 @@ export class DashboardController {
       // because dinars and cents are not addable — the worst defect of the I1 review, and it
       // had come back here as one mixed number labelled dinars on the tile.
       this.database.query<{ count: string; iqd: string; usd_cents: string }>(
-        `WITH remaining AS (
-           SELECT o.id,
-                  coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd
-                                    ELSE l.amount_usd_cents END), 0) AS settlement_remaining,
-                  coalesce(sum(l.amount_iqd), 0) AS remaining_iqd,
-                  coalesce(sum(l.amount_usd_cents), 0) AS remaining_usd_cents
-             FROM orders o
-             JOIN customers c ON c.id = o.customer_id
-             LEFT JOIN customer_ledger l ON l.order_id = o.id
-            WHERE o.status = 'active' AND o.deleted_at IS NULL
-              AND ($1::uuid IS NULL OR c.assigned_user_id = $1::uuid OR o.acting_user_id = $1::uuid
-                   OR c.is_system = true)
-            GROUP BY o.id, c.settlement_currency
-         )
-         SELECT count(*)::text AS count,
-                coalesce(sum(remaining_iqd), 0)::text AS iqd,
-                coalesce(sum(remaining_usd_cents), 0)::text AS usd_cents
-           FROM remaining WHERE settlement_remaining > 0`,
+        // From the maintained sum of migration 0015 rather than from a pass over the whole
+        // ledger: 1.0 s → 20 ms at the design point of NFR-13, and the figure is still a sum
+        // over the ledger — `check-integrity.mjs` proves it on every restore drill (2.2.6).
+        `SELECT count(*)::text AS count,
+                coalesce(sum(r.remaining_iqd), 0)::text AS iqd,
+                coalesce(sum(r.remaining_usd_cents), 0)::text AS usd_cents
+           FROM order_remaining r
+           JOIN orders o ON o.id = r.order_id
+           JOIN customers c ON c.id = o.customer_id
+          WHERE o.status = 'active' AND o.deleted_at IS NULL
+            AND ($1::uuid IS NULL OR c.assigned_user_id = $1::uuid OR o.acting_user_id = $1::uuid
+                 OR c.is_system = true)
+            AND (CASE WHEN c.settlement_currency = 'IQD' THEN r.remaining_iqd
+                      ELSE r.remaining_usd_cents END) > 0`,
         [scoped],
       ),
     ]);

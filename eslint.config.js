@@ -42,4 +42,11 @@ export default tseslint.config(
     files: ['**/*.test.ts', '**/*.test.tsx', 'scripts/**', '**/vitest.config.ts'],
     rules: { '@typescript-eslint/no-explicit-any': 'off', 'no-restricted-syntax': 'off' },
   },
+  {
+    // The k6 load test of 2.12 runs inside k6, not node: `__ENV` is its own global, and its
+    // `k6/*` imports resolve in that runtime. It is linted for style and not for environment.
+    files: ['load/**'],
+    languageOptions: { globals: { __ENV: 'readonly' } },
+    rules: { 'import/no-unresolved': 'off', 'no-undef': 'off' },
+  },
 );

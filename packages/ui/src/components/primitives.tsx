@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../icons/registry.js';
 import type { IconName } from '../icons/registry.js';
 
@@ -304,9 +305,26 @@ export interface BottomSheetProps {
   children: ReactNode;
 }
 
+/**
+ * A modal bottom sheet (wireframes 3.4, spec 3.3).
+ *
+ * While it is open the page behind it is marked `inert`: it cannot be reached by the keyboard,
+ * it is out of the accessibility tree, and a screen reader reads the sheet rather than the
+ * dimmed list underneath. Without that, `aria-modal` is a claim the page does not keep — which
+ * is what the I6 axe pass found, reporting the *dimmed* rows behind the sheet as unreadable
+ * text, because to a machine they were still text somebody was expected to read (NFR-10).
+ */
 export function BottomSheet({ title, open, onClose, closeLabel, children }: BottomSheetProps) {
+  useEffect(() => {
+    if (!open) return;
+    const app = document.querySelector('.mz-app');
+    if (!(app instanceof HTMLElement)) return;
+    app.setAttribute('inert', '');
+    return () => app.removeAttribute('inert');
+  }, [open]);
+
   if (!open) return null;
-  return (
+  return createPortal(
     <>
       <div className="mz-backdrop" onClick={onClose} role="presentation" />
       <div className="mz-sheet" role="dialog" aria-modal="true" aria-label={title}>
@@ -316,7 +334,9 @@ export function BottomSheet({ title, open, onClose, closeLabel, children }: Bott
         </div>
         {children}
       </div>
-    </>
+    </>,
+    // Outside the inert app, so the sheet itself stays interactive.
+    document.body,
   );
 }
 

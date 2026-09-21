@@ -49,6 +49,9 @@ export interface OrderLineRow {
   cost_unit_usd_cents: string | null;
   cost_month_price_id: string | null;
   cost_source: 'month' | 'fallback' | 'none';
+  /** The margin the kernel computed when the line was saved (D-039); null without a cost. */
+  margin_iqd: string | null;
+  margin_usd_cents: string | null;
   note: string | null;
   item_name?: string;
   item_pricing_unit?: 'per_piece' | 'per_kg';

@@ -320,8 +320,13 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     });
 
     it('refuses a future date and a date inside a locked period', async () => {
-      const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-      const future = await recordDamage(warehouse, { damage_date: tomorrow }).expect(422);
+      // Tomorrow counted from the **Baghdad** day, not from the process clock: at 01:00
+      // Baghdad time "now + 24 h" in UTC is still today here, and the API was right to accept
+      // it (the recurring lesson of the I3 review, this time in a test).
+      const tomorrow = new Date(`${today()}T00:00:00Z`);
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      const tomorrowInBaghdad = tomorrow.toISOString().slice(0, 10);
+      const future = await recordDamage(warehouse, { damage_date: tomorrowInBaghdad }).expect(422);
       expect(future.body.error.fields[0]).toMatchObject({ code: 'FUTURE_DATE' });
 
       await as(ctx.http, admin).patch('/api/v1/settings').send({ locked_through: today() }).expect(200);
