@@ -218,7 +218,8 @@ export async function auditRows(filter: { action?: string; entityId?: string } =
   await client.connect();
   try {
     const { rows } = await client.query(
-      `SELECT action::text AS action, entity_type, entity_id, entity_label, changes, note, actor_user_id
+      `SELECT action::text AS action, entity_type, entity_id, entity_label, changes, note,
+              actor_user_id, auth_method::text AS auth_method, session_id::text AS session_id
          FROM audit_log
         WHERE ($1::text IS NULL OR action::text = $1) AND ($2::text IS NULL OR entity_id = $2)
         ORDER BY id ASC`,

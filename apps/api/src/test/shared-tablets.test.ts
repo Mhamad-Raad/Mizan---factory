@@ -414,6 +414,112 @@ describe('shared tablets: PIN sign-in and user switching (FR-106)', () => {
     });
   });
 
+  describe('what History says about the method (2.8)', () => {
+    it('names the method on the sign-in row itself, for both kinds', async () => {
+      const rebaz = await seedUser({ username: 'rebaz' });
+      await setPin(rebaz, '123456');
+      const { ticket } = await signInWithPassword(rebaz);
+      await pinLogin({ ticket, pin: '123456', is_shared_device: true }).expect(200);
+
+      const logins = await auditRows({ action: 'login' });
+      const methods = logins.filter((row) => row.actor_user_id === rebaz.id).map((row) => row.auth_method);
+      // A sign-in row that does not say how it was signed in is the one row where the question
+      // matters most: it is what a disputed payment is traced back to.
+      expect(methods).toContain('password');
+      expect(methods).toContain('ticket_pin');
+    });
+
+    it('marks a failed PIN attempt as a PIN attempt', async () => {
+      const rebaz = await seedUser({ username: 'rebaz' });
+      await setPin(rebaz, '123456');
+      const { ticket } = await signInWithPassword(rebaz);
+      await pinLogin({ ticket, pin: '000000', is_shared_device: true }).expect(401);
+
+      const [failure] = (await auditRows({ action: 'login_failed' })).slice(-1);
+      expect(failure.auth_method).toBe('ticket_pin');
+    });
+
+    it('records a handover against the session that ended, with its own method', async () => {
+      const sara = await seedUser({ username: 'sara', displayName: 'Sara' });
+      const rebaz = await seedUser({ username: 'rebaz', displayName: 'Rebaz' });
+      await setPin(rebaz, '222222');
+      const rebazTicket = (await signInWithPassword(rebaz)).ticket;
+      const sarasSignIn = await signInWithPassword(sara);
+      const csrf = sarasSignIn.cookies
+        .find((cookie) => cookie.startsWith('mizan_csrf='))!
+        .split(';')[0]!
+        .split('=')[1]!;
+
+      await request(ctx.http)
+        .post('/api/v1/auth/login')
+        .set('Cookie', sarasSignIn.cookies)
+        .set('X-CSRF-Token', csrf)
+        .send({ ticket: rebazTicket, pin: '222222', is_shared_device: true, switch_from_session: true })
+        .expect(200);
+
+      const [handover] = await auditRows({ action: 'switch_user' });
+      expect(handover.auth_method).toBe('password');
+    });
+  });
+
+  describe('guessing a password through the lock screen (2.8 rate limiting)', () => {
+    it('counts wrong passwords at the unlock, so a stolen locked tablet locks the account out', async () => {
+      const rebaz = await seedUser({ username: 'rebaz' });
+      const session = await signIn(ctx.http, rebaz);
+      await as(ctx.http, session).post('/api/v1/auth/lock').expect(204);
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        await as(ctx.http, session)
+          .post('/api/v1/auth/unlock')
+          .send({ password: 'not-the-password' })
+          .expect(422);
+      }
+
+      // The username is locked out on the Login page too: the guessing counted (FR-101).
+      const login = await request(ctx.http)
+        .post('/api/v1/auth/login')
+        .send({ username_or_phone: rebaz.username, password: rebaz.password })
+        .expect(429);
+      expect(login.body.error.code).toBe('RATE_LIMITED');
+    });
+
+    it('still lets the locked-out employee unlock with their PIN, so a mistyped password does not end their shift', async () => {
+      const rebaz = await seedUser({ username: 'rebaz' });
+      await setPin(rebaz, '123456');
+      const session = await signIn(ctx.http, rebaz);
+      await as(ctx.http, session).post('/api/v1/auth/lock').expect(204);
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        await as(ctx.http, session)
+          .post('/api/v1/auth/unlock')
+          .send({ password: 'not-the-password' })
+          .expect(422);
+      }
+      // The lockout stops new sign-ins — the brute-force path — and not the person standing at
+      // the tablet who knows their own PIN.
+      await as(ctx.http, session).post('/api/v1/auth/unlock').send({ pin: '123456' }).expect(204);
+      await as(ctx.http, session).get('/api/v1/auth/me').expect(200);
+    });
+
+    it('counts wrong passwords at the PIN form, which is the same credential', async () => {
+      const rebaz = await seedUser({ username: 'rebaz' });
+      const session = await signIn(ctx.http, rebaz);
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        await as(ctx.http, session)
+          .post('/api/v1/auth/pin')
+          .send({ pin: '123456', current_password: 'not-the-password' })
+          .expect(422);
+      }
+
+      const login = await request(ctx.http)
+        .post('/api/v1/auth/login')
+        .send({ username_or_phone: rebaz.username, password: rebaz.password })
+        .expect(429);
+      expect(login.body.error.code).toBe('RATE_LIMITED');
+    });
+  });
+
   // ─────────────────────── the admin's Sessions tab (FR-1304) ───────────────────────
 
   describe('sessions and tickets, from the admin side', () => {

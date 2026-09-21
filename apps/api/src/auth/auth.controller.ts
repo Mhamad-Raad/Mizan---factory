@@ -101,11 +101,13 @@ export class AuthController {
 
   private async previousSession(
     request: RequestWithContext,
-  ): Promise<{ sessionId: string; userId: string } | null> {
+  ): Promise<{ sessionId: string; userId: string; authMethod: 'password' | 'ticket_pin' } | null> {
     const token = (request.cookies as Record<string, string> | undefined)?.[SESSION_COOKIE];
     if (!token) return null;
     const session = await this.sessions.resolve(token);
-    return session ? { sessionId: session.id, userId: session.user_id } : null;
+    return session
+      ? { sessionId: session.id, userId: session.user_id, authMethod: session.auth_method }
+      : null;
   }
 
   /**

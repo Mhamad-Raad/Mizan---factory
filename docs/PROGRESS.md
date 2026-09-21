@@ -684,3 +684,56 @@ because a grid of `orders.record_payment` is a grid nobody can be asked to use.
 
 **Next:** checkpoint D — the review with the tablet flows walked through, the demo script of
 4.7, and the Definition of done.
+
+## I5 · Checkpoint D — done
+
+- Review: `docs/REVIEW-I5.md`. **Seven findings**, each fixed with a regression test. Measured
+  against **18,042 sessions and 6,000 device tickets** — thirty employees signing in twice a day
+  on two tablets for five years.
+  - The two that mattered: **a stolen locked tablet was an unlimited password oracle** — the
+    five-in-fifteen lockout of 2.8 lived only on the Login page, so the lock screen's password
+    fallback, the PIN form and change-password all guessed for free; and **a sign-in row did not
+    say how it was signed in**, because `recordAnonymous` never wrote `auth_method` or
+    `session_id`, which made the one row where the question matters most the one row that could
+    not answer it (present since I0, invisible until there were two methods to tell apart).
+  - The lockout deliberately does **not** stop an unlock: a mistyped password must not end an
+    employee's shift on a tablet they are standing in front of, and their own PIN still works.
+  - Data growth and RTL: a tablet accumulated one live ticket per sign-in (the client now says
+    which ticket it replaces, and at most five stay live per employee); the icon-mirroring rule
+    reached inside left-to-right islands, so the pad's backspace arrow pointed away from the
+    digits it deletes in Kurdish.
+- Demo script of 4.7 is **executable** (`scripts/demo-i5.mjs`) and passes end to end, twice —
+  once against an empty deployment and once against one it had already run against: Sara's
+  four-digit PIN refused on a shared tablet and her six-digit one accepted, the 423 while
+  locked, the attempts-left count, the handover that ends her session and starts Rebaz's, the
+  payment his PIN session recorded and what History says about it, the admin revoking the ticket
+  and then switching PIN sign-in off altogether, and the Advanced grid granting one key with
+  old set → new set in History.
+- CI: lint · types · translations (interface **and** API) · contrast · migrations · route
+  declarations · **515 tests** · build · bundle budget · **62 Playwright checks**.
+
+## I5 — Definition of done (section 4.1)
+
+| # | Item | State |
+|---|---|---|
+| 1 | Three languages, glossary terms, build fails on a missing key | ✅ 904 keys × 3, including all 48 permission names the Advanced grid needs |
+| 2 | RTL verified **on a real phone** in ckb, ar and en | ⚠️ automated at 360 px in all three, both themes; the Kurdish pad found a real mirroring defect; **the real-phone check is owed** |
+| 3 | Permissions enforced on every new endpoint | ✅ 123 routes declared (2 new): `POST /auth/pin` is session-only and one's own, `DELETE /users/:id/device-tickets` is admin-only |
+| 4 | Every change recorded in History | ✅ and more of it than before: sign-ins, failed PINs, lockouts and handovers now carry their method and session (finding 3) |
+| 5 | Every amount in both currencies through `DualAmount` | ✅ nothing in this iteration is money |
+| 6 | Both themes, all four text sizes, no overflow, contrast | ✅ 5 new screenshots including the pad in Kurdish dark at 1.25, plus the 44 px check on every key |
+| 7 | Tests for money and stock logic | ✅ none added; 278 API tests (30 new) cover the credential rules instead |
+| 8 | Skeleton, empty, error and offline states | ✅ the Sessions tab through `QueryStates`; the lock screen is a form, and every refusal is its own sentence |
+| 9 | Accessibility basics | ✅ the pad's keys are 44 px+ in every language and size, its dots are labelled "n / m", and the disclosure summary is a full target |
+| 10 | Demo on staging with seeded data | ⚠️ the demo script passes against a live deployment; **staging still needs a host** |
+
+**I5 is complete but for the two items owed since I0:** the real-phone RTL and identity review
+(FR-1311, item 2) and a host for staging (item 10).
+
+**Still open with the client:** Q-A-03, Q-B-02 and Q-B-03 from I1, and **Q-25** (lock timings and
+PIN acceptability), which this iteration built to the specification's defaults — 5 idle minutes
+and 6-digit PINs on shared devices, 30 minutes and 4 digits on personal ones, all of them
+settings the admin can change.
+
+**Next:** I6 — polish and go-live: the remaining Proposed items the client chose, the real-device
+pass, the seeded load test, and the go-live checklist.

@@ -6,7 +6,7 @@ import type { RequestContext } from '../common/request-context.js';
 import { Database } from '../database/pool.js';
 import { UsersRepository } from '../users/users.repository.js';
 import { toUserDto } from '../users/user.types.js';
-import type { UserDto } from '../users/user.types.js';
+import type { UserDto, UserRow } from '../users/user.types.js';
 import { DeviceTicketService, MAX_PIN_ATTEMPTS } from './device-ticket.service.js';
 import { PasswordService, checkPasswordRules } from './password.service.js';
 import { SessionService } from './session.service.js';
@@ -163,6 +163,8 @@ export class AuthService {
             device_ticket_id: issued.row.id,
           },
           request_id: ctx.requestId,
+          session_id: created.session.id,
+          auth_method: 'password',
           ip: ctx.ip,
           user_agent: ctx.userAgent,
           related: { user_id: user.id },
@@ -186,7 +188,7 @@ export class AuthService {
   async loginWithPin(
     input: PinLoginInput,
     ctx: LoginContext,
-    previous: { sessionId: string; userId: string } | null,
+    previous: { sessionId: string; userId: string; authMethod: 'password' | 'ticket_pin' } | null,
   ): Promise<{ token: string; user: UserDto; permissions: string[] }> {
     const ticket = await this.tickets.resolve(input.ticket);
     if (!ticket) {
@@ -262,6 +264,8 @@ export class AuthService {
             entity_label: 'Handed the device over',
             changes: { to_user_id: user.id, to_user: user.display_name },
             request_id: ctx.requestId,
+            session_id: previous.sessionId,
+            auth_method: previous.authMethod,
             ip: ctx.ip,
             user_agent: ctx.userAgent,
             related: { user_id: previous.userId },
@@ -285,6 +289,8 @@ export class AuthService {
             switched_from_user_id: input.switch_from_session ? previous?.userId ?? null : null,
           },
           request_id: ctx.requestId,
+          session_id: created.session.id,
+          auth_method: 'ticket_pin',
           ip: ctx.ip,
           user_agent: ctx.userAgent,
           related: { user_id: user.id },
@@ -307,6 +313,7 @@ export class AuthService {
     if (!user) throw new ApiError('UNAUTHENTICATED');
 
     if (!(await this.passwords.verify(user.password_hash, currentPassword))) {
+      await this.chargeWrongPassword(user, context);
       throw ApiError.validation([
         { path: 'current_password', code: 'INVALID', message_key: 'auth:invalid_credentials', params: {} },
       ]);
@@ -380,6 +387,7 @@ export class AuthService {
     if (!user) throw new ApiError('UNAUTHENTICATED');
 
     if (!(await this.passwords.verify(user.password_hash, current))) {
+      await this.chargeWrongPassword(user, context);
       throw ApiError.validation([
         { path: 'current', code: 'INVALID', message_key: 'auth:invalid_credentials', params: {} },
       ]);
@@ -474,6 +482,7 @@ export class AuthService {
     } else {
       method = 'password';
       if (!credentials.password || !(await this.passwords.verify(user.password_hash, credentials.password))) {
+        await this.chargeWrongPassword(user, context);
         throw ApiError.validation([
           { path: 'password', code: 'INVALID', message_key: 'auth:invalid_credentials', params: {} },
         ]);
@@ -492,6 +501,40 @@ export class AuthService {
   }
 
   /**
+   * A wrong password, wherever it was typed: the Login page, the lock screen's password
+   * fallback, or the PIN form (2.8 rate limiting).
+   *
+   * All three are the same credential, so all three count toward the same five-in-fifteen
+   * lockout. Counting only the Login page left a stolen **locked** tablet as an unlimited
+   * password oracle, and the PIN form as another (I5 review).
+   */
+  private async chargeWrongPassword(user: UserRow, context: RequestContext): Promise<void> {
+    const failures = await this.users.recentFailures(user.username, FAILURE_WINDOW_MINUTES);
+    const lockUntil = failures + 1 >= MAX_FAILURES ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null;
+    await this.users.registerFailure(user.id, lockUntil);
+    await this.users.recordLoginAttempt({
+      username: user.username,
+      userId: user.id,
+      ip: context.ip,
+      succeeded: false,
+    });
+    await this.audit.recordAnonymous({
+      actor_user_id: user.id,
+      action: lockUntil ? 'lockout' : 'login_failed',
+      entity_type: 'session',
+      entity_id: user.username,
+      entity_label: `Failed sign-in: ${user.username}`,
+      changes: { reason: lockUntil ? 'lockout' : 'invalid_password' },
+      request_id: context.requestId,
+      session_id: context.sessionId || null,
+      auth_method: 'password',
+      ip: context.ip,
+      user_agent: context.userAgent,
+      related: { user_id: user.id },
+    });
+  }
+
+  /**
    * A failed PIN attempt. It is *not* written to `login_attempts`, because that table drives the
    * password lockout of 2.8 and a PIN has its own consequence — the ticket is revoked after five
    * — so mixing them would lock a username out of the Login page because somebody mistyped six
@@ -506,6 +549,7 @@ export class AuthService {
       entity_label: 'Failed PIN sign-in',
       changes: { reason, auth_method: 'ticket_pin' },
       request_id: ctx.requestId,
+      auth_method: 'ticket_pin',
       ip: ctx.ip,
       user_agent: ctx.userAgent,
       related: userId ? { user_id: userId } : {},
@@ -532,6 +576,7 @@ export class AuthService {
       entity_label: `Failed sign-in: ${identifier}`,
       changes: { reason },
       request_id: ctx.requestId,
+      auth_method: 'password',
       ip: ctx.ip,
       user_agent: ctx.userAgent,
       related: userId ? { user_id: userId } : {},
