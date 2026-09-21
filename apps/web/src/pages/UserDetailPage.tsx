@@ -2,11 +2,23 @@ import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { EXTRAS, PRESETS, applyExtra, applyPreset, diffSets, extraState, isCustomisedBeyondExtras } from '@mizan/permissions';
+import {
+  EXTRAS,
+  PAGES,
+  PERMISSIONS,
+  PRESETS,
+  applyExtra,
+  applyPreset,
+  diffSets,
+  extraState,
+  isCustomisedBeyondExtras,
+  setKey,
+} from '@mizan/permissions';
 import type { ExtraKey, PresetKey } from '@mizan/permissions';
 import { Button, Card, Chip, ErrorState, SegmentedControl, Skeleton, Tabs, TextField, Toggle } from '@mizan/ui';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { AppShell } from '../components/AppShell.js';
+import { QueryStates } from '../components/states.js';
 import { useFormatter } from '../lib/store.js';
 
 interface UserDetail {
@@ -29,7 +41,7 @@ interface AuditRow {
   note: string | null;
 }
 
-type TabKey = 'details' | 'permissions' | 'activity';
+type TabKey = 'details' | 'permissions' | 'sessions' | 'activity';
 
 export function UserDetailPage() {
   const { id = '' } = useParams();
@@ -66,11 +78,13 @@ export function UserDetailPage() {
           tabs={[
             { value: 'details', label: t('users:tab_details') },
             { value: 'permissions', label: t('users:tab_permissions') },
+            { value: 'sessions', label: t('settings:sessions') },
             { value: 'activity', label: t('users:tab_activity') },
           ]}
         />
         {tab === 'details' ? <DetailsTab user={user.data} /> : null}
         {tab === 'permissions' ? <PermissionsTab user={user.data} /> : null}
+        {tab === 'sessions' ? <SessionsTab userId={user.data.id} /> : null}
         {tab === 'activity' ? <ActivityTab userId={user.data.id} /> : null}
       </div>
     </AppShell>
@@ -311,6 +325,21 @@ function PermissionsTab({ user }: { user: UserDetail }) {
 
         {customised ? <Chip tone="warning" icon="warning">{t('permissions:customised_in_advanced')}</Chip> : null}
 
+        {/* The full grid, folded away (FR-204, wireframe 3.4.4): the simple editor covers the
+            three roles this factory has, and the grid is for the rare one it does not. */}
+        <details className="mz-disclosure">
+          <summary className="mz-disclosure__summary">{t('settings:advanced_permissions')}</summary>
+          <p className="mz-caption">{t('settings:advanced_permissions_hint')}</p>
+          <PermissionGrid
+            keys={keys}
+            onChange={(next, note) => {
+              setBlocked(null);
+              setDraft({ keys: next, preset });
+              setNotes(note ? [note] : []);
+            }}
+          />
+        </details>
+
         <div className="mz-row mz-row--between">
           <span className="mz-muted">{t('permissions:n_changes', { count: changeCount })}</span>
           <Button
@@ -329,6 +358,193 @@ function PermissionsTab({ user }: { user: UserDetail }) {
         </p>
       </div>
     </Card>
+  );
+}
+
+/**
+ * Every key, grouped by the screen it belongs to (FR-204, wireframe 3.4.4).
+ *
+ * Turning a key on turns on what it implies, and the row says so — an admin who grants "record
+ * a payment" should see that "see customer balances" came with it rather than discover it
+ * later. Turning one off takes away the keys that cannot stand without it, for the same reason.
+ */
+function PermissionGrid({
+  keys,
+  onChange,
+}: {
+  keys: readonly string[];
+  onChange: (keys: string[], note: string | null) => void;
+}) {
+  const { t } = useTranslation();
+  const granted = useMemo(() => new Set(keys), [keys]);
+
+  return (
+    <div className="mz-stack">
+      {PAGES.map((page) => (
+        <div key={page} className="mz-stack" style={{ gap: 'var(--space-2)' }}>
+          <h4 className="mz-caption">{t(`permissions:page.${page}`, { defaultValue: page })}</h4>
+          {PERMISSIONS.filter((definition) => definition.page === page).map((definition) => {
+            const on = granted.has(definition.key);
+            return (
+              <Toggle
+                key={definition.key}
+                label={t(`permissions:${definition.labelKey}`, { defaultValue: definition.key })}
+                hint={
+                  definition.implies.length > 0
+                    ? t('settings:implied_by', { key: definition.implies.join(', ') })
+                    : undefined
+                }
+                checked={on}
+                onChange={(next) => {
+                  const result = setKey(keys, definition.key, next);
+                  const alsoGranted =
+                    result.alsoGranted.length > 0
+                      ? t('permissions:also_granted', { keys: result.alsoGranted.join(', ') })
+                      : null;
+                  const alsoRevoked =
+                    result.alsoRevoked.length > 0
+                      ? t('permissions:also_revoked', { keys: result.alsoRevoked.join(', ') })
+                      : null;
+                  onChange([...result.keys], alsoGranted ?? alsoRevoked);
+                }}
+              />
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface SessionRow {
+  id: string;
+  is_locked: boolean;
+  is_shared_device: boolean;
+  auth_method: 'password' | 'ticket_pin';
+  device_label: string | null;
+  last_seen_at: string;
+}
+
+interface TicketRow {
+  id: string;
+  device_label: string | null;
+  is_shared_device: boolean;
+  expires_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  revoke_reason: string | null;
+}
+
+/**
+ * The Sessions tab (FR-1304, spec 2.8): where this employee is signed in, and which browsers
+ * may sign them in with a PIN. Both answer the same question — who can act as this person right
+ * now, and from what — so they sit on one screen, and both can be taken away from here.
+ */
+function SessionsTab({ userId }: { userId: string }) {
+  const { t } = useTranslation();
+  const formatter = useFormatter();
+  const queryClient = useQueryClient();
+  const [message, setMessage] = useState<string | null>(null);
+
+  const sessions = useQuery({
+    queryKey: ['user-sessions', userId],
+    queryFn: () =>
+      apiRequest<{ sessions: SessionRow[]; device_tickets: TicketRow[] }>(`/users/${userId}/sessions`),
+  });
+
+  const revokeSession = useMutation({
+    mutationFn: (sessionId: string) =>
+      apiRequest(`/users/${userId}/sessions/${sessionId}`, { method: 'DELETE' }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['user-sessions', userId] });
+    },
+  });
+
+  const revokeTickets = useMutation({
+    mutationFn: () => apiRequest(`/users/${userId}/device-tickets`, { method: 'DELETE' }),
+    onSuccess: async () => {
+      setMessage(t('settings:pin_devices_revoked'));
+      await queryClient.invalidateQueries({ queryKey: ['user-sessions', userId] });
+    },
+  });
+
+  const live = (sessions.data?.device_tickets ?? []).filter((ticket) => ticket.revoked_at === null);
+
+  return (
+    <QueryStates query={sessions} skeletonLines={6}>
+      <div className="mz-stack">
+        <Card>
+          <div className="mz-stack">
+            <h3 className="mz-heading">{t('settings:sessions')}</h3>
+            <p className="mz-caption">{t('settings:sessions_hint')}</p>
+            {(sessions.data?.sessions ?? []).length === 0 ? (
+              <p className="mz-muted">{t('history:empty')}</p>
+            ) : null}
+            {(sessions.data?.sessions ?? []).map((session) => (
+              <div key={session.id} className="mz-stack" style={{ gap: 'var(--space-1)' }}>
+                <span className="mz-list__title">
+                  {session.device_label ?? t('settings:session_unlabelled')}
+                </span>
+                <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                  {session.is_shared_device ? <Chip>{t('settings:session_shared')}</Chip> : null}
+                  {session.is_locked ? <Chip>{t('settings:session_locked')}</Chip> : null}
+                  <Chip tone={session.auth_method === 'ticket_pin' ? 'warning' : 'neutral'}>
+                    {session.auth_method === 'ticket_pin' ? t('auth:pin') : t('auth:password')}
+                  </Chip>
+                </span>
+                <span className="mz-caption">
+                  {t('settings:session_last_seen', {
+                    when: formatter.timestamp(new Date(session.last_seen_at)),
+                  })}
+                </span>
+                <Button
+                  variant="ghost"
+                  loading={revokeSession.isPending}
+                  onClick={() => revokeSession.mutate(session.id)}
+                >
+                  {t('settings:session_revoke')}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
+          <div className="mz-stack">
+            <h3 className="mz-heading">{t('settings:pin_devices')}</h3>
+            {live.length === 0 ? <p className="mz-muted">{t('settings:pin_devices_empty')}</p> : null}
+            {(sessions.data?.device_tickets ?? []).map((ticket) => (
+              <div key={ticket.id} className="mz-stack" style={{ gap: 'var(--space-1)' }}>
+                <span className="mz-list__title">
+                  {ticket.device_label ?? t('settings:session_unlabelled')}
+                </span>
+                <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                  {ticket.is_shared_device ? <Chip>{t('settings:session_shared')}</Chip> : null}
+                  {ticket.revoked_at ? (
+                    <Chip tone="warning">{t('settings:pin_device_revoked')}</Chip>
+                  ) : (
+                    <Chip>
+                      {t('settings:pin_device_expires', { date: formatter.date(ticket.expires_at.slice(0, 10)) })}
+                    </Chip>
+                  )}
+                </span>
+              </div>
+            ))}
+            {message ? <p className="mz-muted">{message}</p> : null}
+            {live.length > 0 ? (
+              <Button
+                variant="secondary"
+                block
+                loading={revokeTickets.isPending}
+                onClick={() => revokeTickets.mutate()}
+              >
+                {t('settings:pin_devices_revoke')}
+              </Button>
+            ) : null}
+          </div>
+        </Card>
+      </div>
+    </QueryStates>
   );
 }
 

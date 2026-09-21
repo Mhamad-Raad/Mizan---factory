@@ -3,6 +3,7 @@ import {
   DEFAULT_PREFERENCES,
   PREFERENCES_KEY,
   applyPreferences,
+  forgetTicket,
   readPreferences,
   rememberUser,
   readRecentUsers,
@@ -77,6 +78,36 @@ describe('device preferences (FR-1103)', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true }));
     expect(resolveTheme('auto')).toBe('dark');
     expect(resolveTheme('light')).toBe('light');
+  });
+
+  it('keeps the ticket a browser holds when a PIN sign-in remembers the user again', () => {
+    // A password sign-in hands over a ticket; a PIN sign-in hands over none, and must not
+    // erase the one that let it happen (FR-106).
+    rememberUser({ username: 'rebaz', displayName: 'Rebaz', lastAt: '2026-09-20', lang: 'en', ticket: 'abc' });
+    rememberUser({ username: 'rebaz', displayName: 'Rebaz', lastAt: '2026-09-21', lang: 'ckb-IQ' });
+
+    const [entry] = readRecentUsers();
+    expect(entry?.ticket).toBe('abc');
+    expect(entry?.lang).toBe('ckb-IQ');
+    expect(entry?.lastAt).toBe('2026-09-21');
+  });
+
+  it('forgets only the ticket when the server refuses it, keeping the name on the lock screen', () => {
+    rememberUser({ username: 'rebaz', displayName: 'Rebaz', lastAt: '2026-09-21', lang: 'en', ticket: 'abc' });
+    forgetTicket('rebaz');
+
+    const [entry] = readRecentUsers();
+    expect(entry?.displayName).toBe('Rebaz');
+    expect(entry?.ticket).toBeNull();
+  });
+
+  it('falls back to the specification\'s PIN policy when the stored one is nonsense', () => {
+    localStorage.setItem(
+      PREFERENCES_KEY,
+      JSON.stringify({ ...DEFAULT_PREFERENCES, pinPolicy: { shared: 2, personal: 'four', switchOnShared: 'no' } }),
+    );
+    // Two digits on a shared tablet is not a policy; six is (FR-106).
+    expect(readPreferences().pinPolicy).toEqual({ shared: 6, personal: 4, switchOnShared: true });
   });
 
   it('remembers at most three recent users with the language each of them chose', () => {

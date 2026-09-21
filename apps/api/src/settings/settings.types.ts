@@ -51,6 +51,12 @@ export const EDITABLE_KEYS: readonly SettingKey[] = [
   'allow_edit_after_payment',
   'locked_through',
   'rate_stale_days',
+  // Iteration 5 puts the shared-tablet rules in the admin's hands (FR-106, 2.8): how long a
+  // PIN must be on each kind of device, and whether a PIN may sign anybody in on a tablet
+  // everybody holds.
+  'pin_min_length_shared',
+  'pin_min_length_personal',
+  'allow_pin_switch_on_shared',
 ];
 
 /**
@@ -69,6 +75,11 @@ export const PUBLIC_SETTING_KEYS: readonly SettingKey[] = [
   'purchase_edit_window_days',
   'allow_edit_after_payment',
   'locked_through',
+  // The PIN form says the rule before the API refuses it, and a client that is about to lock
+  // needs to know whether its lock screen may offer a PIN at all (FR-106).
+  'pin_min_length_shared',
+  'pin_min_length_personal',
+  'allow_pin_switch_on_shared',
 ];
 
 export type Settings = {

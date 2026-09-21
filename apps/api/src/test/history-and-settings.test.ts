@@ -144,22 +144,26 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
       const employeeSession = await signIn(ctx.http, employee);
 
       const response = await as(ctx.http, employeeSession).get('/api/v1/settings').expect(200);
-      // The two formatting keys plus the rules an employee's forms must respect, so a screen
-      // can warn before the API refuses (I1, and the buying window from I2); never an
-      // admin-only key such as the PIN policy.
+      // The two formatting keys plus the rules an employee's own forms must respect, so a
+      // screen can warn before the API refuses: the selling and buying windows from I1 and I2,
+      // and from I5 the PIN policy their own lock screen and PIN form are subject to.
       expect(Object.keys(response.body).sort()).toEqual([
         'allow_edit_after_payment',
         'allow_negative_stock',
+        'allow_pin_switch_on_shared',
         'date_format',
         'default_customer_currency',
         'locked_through',
         'order_edit_window_days',
+        'pin_min_length_personal',
+        'pin_min_length_shared',
         'purchase_edit_window_days',
         'settle_tolerance_iqd',
         'settle_tolerance_usd_cents',
         'week_start',
       ]);
-      expect('pin_min_length_shared' in response.body).toBe(false);
+      // An admin-only key stays admin-only.
+      expect('rate_guard_percent' in response.body).toBe(false);
       expect('rate_guard_percent' in response.body).toBe(false);
     });
 
@@ -180,11 +184,12 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
     });
 
     it('refuses a key that is not editable in this iteration', async () => {
-      // `pin_min_length_shared` is seeded but belongs to no iteration's Settings page yet, so
-      // an admin who sends it is told rather than quietly ignored.
+      // `go_live_date` is seeded but belongs to no iteration's Settings page yet, so an admin
+      // who sends it is told rather than quietly ignored. (The PIN policy moved out of this
+      // test in I5, which is the iteration that gave it a screen.)
       await as(ctx.http, adminSession)
         .patch('/api/v1/settings')
-        .send({ pin_min_length_shared: 4 })
+        .send({ go_live_date: '2026-10-01' })
         .expect(422);
     });
 

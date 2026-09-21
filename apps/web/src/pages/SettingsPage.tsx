@@ -101,6 +101,7 @@ export function SettingsPage() {
 
         <AccountCard />
 
+        <PinCard />
         {/* A user who may set the rate sees that card even without the rest (spec 3.3). */}
         {user?.role === 'admin' || maySetRate ? <GlobalRateCard /> : null}
         {user?.role === 'admin' ? <SystemCard /> : null}
@@ -176,6 +177,116 @@ function AccountCard() {
   );
 }
 
+/**
+ * My PIN (FR-106). A PIN is optional and personal: it unlocks this employee's own session, and
+ * on a browser where they have signed in with their password it also signs them in from the
+ * lock screen. Setting one asks for the password, because an unlocked tablet on a bench must
+ * not be enough to mint a credential.
+ */
+function PinCard() {
+  const { t } = useTranslation();
+  const user = useApp((state) => state.user);
+  const preferences = useApp((state) => state.preferences);
+  const queryClient = useQueryClient();
+
+  const [pin, setPin] = useState('');
+  const [repeat, setRepeat] = useState('');
+  const [password, setPassword] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // A PIN set on a personal phone may be too short for a shared tablet, so the form asks for
+  // what *this* device needs and says why.
+  const minimum = preferences.sharedDevice ? preferences.pinPolicy.shared : preferences.pinPolicy.personal;
+
+  const save = useMutation({
+    mutationFn: (next: string | null) =>
+      apiRequest('/auth/pin', { method: 'POST', body: { pin: next, current_password: password } }),
+    onSuccess: async (_result, next) => {
+      setMessage(next === null ? t('auth:pin_removed') : t('auth:pin_set'));
+      setError(null);
+      setPin('');
+      setRepeat('');
+      setPassword('');
+      await queryClient.invalidateQueries({ queryKey: ['me'] });
+    },
+    onError: (caught) => {
+      setMessage(null);
+      if (caught instanceof ApiError) {
+        const field = caught.fields?.[0];
+        setError(field ? t(field.message_key, field.params) : t('auth:invalid_credentials'));
+      } else setError(t('errors:INTERNAL'));
+    },
+  });
+
+  const mismatch = repeat.length > 0 && repeat !== pin;
+  const tooShort = pin.length > 0 && pin.length < minimum;
+
+  return (
+    <Card>
+      <div className="mz-stack">
+        <h2 className="mz-heading">{t('auth:pin')}</h2>
+        <p className="mz-caption">{t('auth:pin_hint')}</p>
+
+        <TextField
+          label={t('auth:pin')}
+          type="password"
+          inputMode="numeric"
+          dir="ltr"
+          value={pin}
+          onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 6))}
+          error={tooShort ? t('auth:pin_rules', { min: minimum, max: 6 }) : undefined}
+          autoComplete="off"
+        />
+        <TextField
+          label={t('auth:repeat_pin')}
+          type="password"
+          inputMode="numeric"
+          dir="ltr"
+          value={repeat}
+          onChange={(event) => setRepeat(event.target.value.replace(/\D/g, '').slice(0, 6))}
+          error={mismatch ? t('auth:pin_mismatch') : undefined}
+          autoComplete="off"
+        />
+        <TextField
+          label={t('auth:current_password')}
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          autoComplete="current-password"
+        />
+
+        {error ? (
+          <p className="mz-field__error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {message ? <p className="mz-muted">{message}</p> : null}
+
+        <Button
+          block
+          loading={save.isPending}
+          disabled={!password || pin.length < minimum || mismatch}
+          onClick={() => save.mutate(pin)}
+        >
+          {user?.has_pin ? t('auth:change_pin') : t('auth:set_pin')}
+        </Button>
+        {user?.has_pin ? (
+          <Button
+            variant="ghost"
+            block
+            loading={save.isPending}
+            disabled={!password}
+            onClick={() => save.mutate(null)}
+          >
+            {t('auth:remove_pin')}
+          </Button>
+        ) : null}
+      </div>
+    </Card>
+  );
+}
+
 interface SystemSettings {
   idle_lock_shared_minutes: number;
   idle_lock_default_minutes: number;
@@ -191,6 +302,10 @@ interface SystemSettings {
   allow_edit_after_payment: boolean;
   locked_through: string | null;
   rate_stale_days: number;
+  /** Iteration 5: the shared-tablet rules (FR-106, 2.8). */
+  pin_min_length_shared: number;
+  pin_min_length_personal: number;
+  allow_pin_switch_on_shared: boolean;
 }
 
 interface GlobalRate {
@@ -433,6 +548,28 @@ function SystemCard() {
           hint={t('settings:rate_stale_days_hint')}
           defaultValue={settings.data.rate_stale_days}
           onBlur={(event) => save.mutate({ rate_stale_days: Number(event.target.value) })}
+        />
+
+        {/* Iteration 5: what a PIN must be, and whether one may sign anybody in on a tablet
+            everybody holds (FR-106). Turning the switch off leaves passwords only. */}
+        <div className="mz-grid-2">
+          <NumberField
+            label={t('settings:pin_min_shared')}
+            hint={t('settings:pin_min_shared_hint')}
+            defaultValue={settings.data.pin_min_length_shared}
+            onBlur={(event) => save.mutate({ pin_min_length_shared: Number(event.target.value) })}
+          />
+          <NumberField
+            label={t('settings:pin_min_personal')}
+            defaultValue={settings.data.pin_min_length_personal}
+            onBlur={(event) => save.mutate({ pin_min_length_personal: Number(event.target.value) })}
+          />
+        </div>
+        <Toggle
+          label={t('settings:allow_pin_switch')}
+          hint={t('settings:allow_pin_switch_hint')}
+          checked={settings.data.allow_pin_switch_on_shared}
+          onChange={(checked) => save.mutate({ allow_pin_switch_on_shared: checked })}
         />
 
         {message ? <p className="mz-muted">{message}</p> : null}

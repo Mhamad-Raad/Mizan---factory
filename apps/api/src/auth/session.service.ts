@@ -149,11 +149,32 @@ export class SessionService {
     );
   }
 
+  /** The session's own PIN attempts (2.8): five and the password is the only way back in. */
+  async pinFailures(sessionId: string): Promise<number> {
+    const { rows } = await this.database.query<{ pin_failures: number }>(
+      'SELECT pin_failures FROM sessions WHERE id = $1',
+      [sessionId],
+    );
+    return rows[0]?.pin_failures ?? 0;
+  }
+
+  /** Returns the count after this failure, so the caller can say how many are left. */
+  async registerPinFailure(sessionId: string): Promise<number> {
+    const { rows } = await this.database.query<{ pin_failures: number }>(
+      'UPDATE sessions SET pin_failures = least(pin_failures + 1, 5) WHERE id = $1 RETURNING pin_failures',
+      [sessionId],
+    );
+    return rows[0]?.pin_failures ?? 0;
+  }
+
   async unlock(session: SessionRow): Promise<void> {
     const now = new Date();
     const idle = session.is_shared_device ? await this.sharedIdleExpiry(now) : session.absolute_expires_at;
     await this.database.query(
-      'UPDATE sessions SET is_locked = false, locked_at = NULL, last_seen_at = $2, idle_expires_at = $3 WHERE id = $1',
+      `UPDATE sessions
+          SET is_locked = false, locked_at = NULL, last_seen_at = $2, idle_expires_at = $3,
+              pin_failures = 0
+        WHERE id = $1`,
       [session.id, now, idle],
     );
   }
@@ -182,7 +203,8 @@ export class SessionService {
               absolute_expires_at, idle_expires_at, last_seen_at, revoked_at
          FROM sessions
         WHERE user_id = $1 AND revoked_at IS NULL AND absolute_expires_at > now()
-        ORDER BY last_seen_at DESC`,
+        ORDER BY last_seen_at DESC
+        LIMIT 20`,
       [userId],
     );
     return rows;

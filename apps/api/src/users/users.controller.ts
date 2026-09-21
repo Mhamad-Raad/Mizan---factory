@@ -161,4 +161,15 @@ export class UsersController {
   ) {
     await this.users.revokeSession(contextOf(request), id, sessionId);
   }
+
+  /**
+   * Take PIN sign-in away from every browser at once (2.9.3). One route rather than one per
+   * ticket, because the question an admin actually has is "make the PIN stop working", and
+   * revoking one of three tablets leaves the other two (D-036).
+   */
+  @Delete('users/:id/device-tickets')
+  @AdminOnly()
+  async revokeDeviceTickets(@Req() request: RequestWithContext, @Param('id') id: string) {
+    return this.users.revokeDeviceTickets(contextOf(request), id);
+  }
 }

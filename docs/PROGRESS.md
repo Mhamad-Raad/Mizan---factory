@@ -611,3 +611,129 @@ I4: where 2.11 contradicted itself about the Payables pin, FR-711 settled it (D-
 it said nothing about how much of a report to send, NFR-03 and NFR-13 did (D-032).
 
 **Next:** I5 — the shared-tablet features and the advanced permission grid.
+
+---
+
+# Iteration 5 — shared tablets & permissions depth
+
+Branch `feat/i5-shared-tablets`, brief `iterations/I5-shared-tablets-permissions.md`.
+
+## I5 · Checkpoint A — done · the schema
+
+- `0012_device_tickets.sql`: the `device_tickets` table of 2.2 — a hashed, peppered 256-bit
+  secret per browser, with its label, its seven-day expiry, its PIN-attempt count and its
+  revocation reason — plus `sessions.pin_failures` for the attempts that belong to an unlock
+  rather than to a browser, and `mizan_prune_expired` extended to sweep lapsed tickets after the
+  same grace period sessions get.
+- `0013_device_ticket_privileges.sql`: SELECT, INSERT and UPDATE for the application role and no
+  DELETE — the sweep runs as the owner, so nothing leaves the record because of something the API
+  did.
+- Everything else I5 needs was already in place from I0: `sessions.auth_method`,
+  `users.pin_hash`/`pin_length`, `is_shared_device`, `device_label`, and the three settings keys.
+
+## I5 · Checkpoint B — done · the API
+
+**123 routes, all declared** (2 new); **271 API tests** (22 new), **504 across the workspace**.
+
+- `POST /auth/login` takes either a username and password or **a device ticket and a PIN**
+  (FR-106): a password sign-in now also issues this browser a seven-day ticket, and a PIN is
+  accepted only against a live ticket for that user, with `switch_from_session` revoking the
+  employee who had the tablet before — both halves in History.
+- `POST /auth/pin` sets or clears one's own PIN behind one's own password; `POST /auth/unlock`
+  takes a PIN or a password on the same session; `GET /users/:id/sessions` now lists the sessions
+  **and** the browsers that may sign that employee in with a PIN; `DELETE
+  /users/:id/device-tickets` takes that away everywhere at once.
+- The rules of 2.8, each with a test: a PIN alone signs nobody in; a ticket is bound to one user,
+  so Sara's ticket with Rebaz's PIN is nothing; six digits on a shared tablet and four on a
+  personal phone; five wrong PINs revoke the ticket (and five wrong unlock PINs demand the
+  password); tickets die with a password reset, with deactivation, and at the admin's word; the
+  admin can switch PIN sign-in off for shared devices entirely; and **every audit row written
+  from a PIN session carries `ticket_pin`** — asserted on a customer created from such a session.
+- Five decisions recorded where the specification was silent or contradicted itself: D-034 to
+  D-038.
+
+**Next:** checkpoint C — the lock screen's user switcher and PIN pad, PIN setup in Settings, the
+Sessions tab, and the Advanced permission grid.
+
+## I5 · Checkpoint C — done (the real-phone review is owed by the client)
+
+The shared-tablet screens, mobile first. Bundle **203.2 kB gzipped** against the 250 kB budget;
+**904 message keys × 3 languages** — 48 of them the permission names the Advanced grid needs,
+because a grid of `orders.record_payment` is a grid nobody can be asked to use.
+
+- **The lock screen** (flow 3.5.8) answers two questions: *still me?* — the PIN pad or the
+  password on the same session, which keeps the drafts — and *somebody else?* — the last three
+  people who signed in on this browser, each offered their PIN when this browser still holds a
+  ticket for them and their password otherwise. A handover applies **that employee's own
+  language** before the first screen paints (FR-1103) and clears the previous drafts. Every
+  refusal is a different sentence: "wrong PIN", "sign in with your password on this device
+  first", "PIN sign-in is off on shared tablets", "set a longer PIN".
+- **`PinPad`** in the component library: large keys in the thumb zone, dots that show how many
+  digits have been typed and never which, and a left-to-right island in a right-to-left page
+  because a keypad is not a sentence (2.10.6 point 5).
+- **Settings → My account** gains the PIN card (set, change, remove — behind the password), and
+  **Settings → System** the three shared-tablet rules an admin owns.
+- **The Sessions tab** (FR-1304) on the employee's page: where they are signed in, with the
+  method of each session, and which browsers may use their PIN, with one button that takes that
+  away everywhere.
+- **The Advanced permission grid** (FR-204), folded away behind a disclosure in the permissions
+  editor: all 48 keys grouped by screen, each named, each saying what comes with it.
+- **9 new screenshots and checks** — the pad in English, Kurdish and Kurdish dark at 1.25, the
+  Sessions tab, the grid — plus the 44 px target check on every key and the overflow check.
+  **62 Playwright checks** in total; **509 tests** across the workspace.
+
+**Next:** checkpoint D — the review with the tablet flows walked through, the demo script of
+4.7, and the Definition of done.
+
+## I5 · Checkpoint D — done
+
+- Review: `docs/REVIEW-I5.md`. **Seven findings**, each fixed with a regression test. Measured
+  against **18,042 sessions and 6,000 device tickets** — thirty employees signing in twice a day
+  on two tablets for five years.
+  - The two that mattered: **a stolen locked tablet was an unlimited password oracle** — the
+    five-in-fifteen lockout of 2.8 lived only on the Login page, so the lock screen's password
+    fallback, the PIN form and change-password all guessed for free; and **a sign-in row did not
+    say how it was signed in**, because `recordAnonymous` never wrote `auth_method` or
+    `session_id`, which made the one row where the question matters most the one row that could
+    not answer it (present since I0, invisible until there were two methods to tell apart).
+  - The lockout deliberately does **not** stop an unlock: a mistyped password must not end an
+    employee's shift on a tablet they are standing in front of, and their own PIN still works.
+  - Data growth and RTL: a tablet accumulated one live ticket per sign-in (the client now says
+    which ticket it replaces, and at most five stay live per employee); the icon-mirroring rule
+    reached inside left-to-right islands, so the pad's backspace arrow pointed away from the
+    digits it deletes in Kurdish.
+- Demo script of 4.7 is **executable** (`scripts/demo-i5.mjs`) and passes end to end, twice —
+  once against an empty deployment and once against one it had already run against: Sara's
+  four-digit PIN refused on a shared tablet and her six-digit one accepted, the 423 while
+  locked, the attempts-left count, the handover that ends her session and starts Rebaz's, the
+  payment his PIN session recorded and what History says about it, the admin revoking the ticket
+  and then switching PIN sign-in off altogether, and the Advanced grid granting one key with
+  old set → new set in History.
+- CI: lint · types · translations (interface **and** API) · contrast · migrations · route
+  declarations · **515 tests** · build · bundle budget · **62 Playwright checks**.
+
+## I5 — Definition of done (section 4.1)
+
+| # | Item | State |
+|---|---|---|
+| 1 | Three languages, glossary terms, build fails on a missing key | ✅ 904 keys × 3, including all 48 permission names the Advanced grid needs |
+| 2 | RTL verified **on a real phone** in ckb, ar and en | ⚠️ automated at 360 px in all three, both themes; the Kurdish pad found a real mirroring defect; **the real-phone check is owed** |
+| 3 | Permissions enforced on every new endpoint | ✅ 123 routes declared (2 new): `POST /auth/pin` is session-only and one's own, `DELETE /users/:id/device-tickets` is admin-only |
+| 4 | Every change recorded in History | ✅ and more of it than before: sign-ins, failed PINs, lockouts and handovers now carry their method and session (finding 3) |
+| 5 | Every amount in both currencies through `DualAmount` | ✅ nothing in this iteration is money |
+| 6 | Both themes, all four text sizes, no overflow, contrast | ✅ 5 new screenshots including the pad in Kurdish dark at 1.25, plus the 44 px check on every key |
+| 7 | Tests for money and stock logic | ✅ none added; 278 API tests (30 new) cover the credential rules instead |
+| 8 | Skeleton, empty, error and offline states | ✅ the Sessions tab through `QueryStates`; the lock screen is a form, and every refusal is its own sentence |
+| 9 | Accessibility basics | ✅ the pad's keys are 44 px+ in every language and size, its dots are labelled "n / m", and the disclosure summary is a full target |
+| 10 | Demo on staging with seeded data | ⚠️ the demo script passes against a live deployment; **staging still needs a host** |
+
+**I5 is complete but for the two items owed since I0:** the real-phone RTL and identity review
+(FR-1311, item 2) and a host for staging (item 10).
+
+**Still open with the client:** Q-A-03, Q-B-02 and Q-B-03 from I1, and **Q-25** (lock timings and
+PIN acceptability), which this iteration built to the specification's defaults — 5 idle minutes
+and 6-digit PINs on shared devices, 30 minutes and 4 digits on personal ones, all of them
+settings the admin can change.
+
+**Next:** I6 — polish and go-live: the remaining Proposed items the client chose, the real-device
+pass, the seeded load test, and the go-live checklist.

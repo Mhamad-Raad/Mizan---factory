@@ -6,12 +6,14 @@ import { Button, Card, MizanMark, PasswordField, TextField } from '@mizan/ui';
 import { ApiError, NetworkError, apiRequest } from '../lib/api.js';
 import { useApp } from '../lib/store.js';
 import type { SessionUser } from '../lib/store.js';
-import { rememberUser } from '../lib/preferences.js';
+import { readRecentUsers, rememberUser } from '../lib/preferences.js';
 import { LanguageChips } from '../components/LanguageChips.js';
 
 interface LoginResponse {
   user: SessionUser;
   permissions: string[];
+  /** The device ticket for this browser, handed over once per password sign-in (FR-106). */
+  device_ticket?: string | null;
 }
 
 /**
@@ -41,6 +43,10 @@ export function LoginPage() {
           password,
           is_shared_device: preferences.sharedDevice,
           device_label: preferences.deviceLabel ?? null,
+          // The ticket this browser already holds for this name, so the server retires it
+          // rather than leaving one live ticket per sign-in (FR-106).
+          replaces_ticket:
+            readRecentUsers().find((entry) => entry.username === identifier.trim().toLowerCase())?.ticket ?? null,
         },
       });
       setSession({ user: response.user, permissions: response.permissions });
@@ -49,6 +55,10 @@ export function LoginPage() {
         displayName: response.user.display_name,
         lastAt: new Date().toISOString(),
         lang: preferences.lang,
+        // The ticket this browser was just handed: what lets this employee's PIN unlock or
+        // sign in here for the next seven days (FR-106).
+        ticket: response.device_ticket ?? null,
+        hasPin: response.user.has_pin,
       });
       navigate(response.user.must_change_password ? '/change-password' : '/');
     } catch (caught) {

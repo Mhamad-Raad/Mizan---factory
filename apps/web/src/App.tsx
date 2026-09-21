@@ -60,6 +60,13 @@ interface MeResponse {
   is_locked: boolean;
 }
 
+/** The three keys of the PIN policy every signed-in user may read (D-038). */
+interface PolicyResponse {
+  pin_min_length_shared: number;
+  pin_min_length_personal: number;
+  allow_pin_switch_on_shared: boolean;
+}
+
 export function App() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -69,6 +76,7 @@ export function App() {
   const setSession = useApp((state) => state.setSession);
   const clearSession = useApp((state) => state.clearSession);
   const setOnline = useApp((state) => state.setOnline);
+  const setPreference = useApp((state) => state.setPreference);
 
   /** The offline indicator of FR-1305; reads fall back to what was already loaded. */
   useEffect(() => {
@@ -99,6 +107,35 @@ export function App() {
   useEffect(() => {
     if (isLocked && location.pathname !== '/lock') navigate('/lock', { replace: true });
   }, [isLocked, location.pathname, navigate]);
+
+  /**
+   * The PIN policy, fetched while the session is *unlocked* and kept in this browser's
+   * preferences, because the lock screen needs it when `GET /settings` would answer 423
+   * (FR-106, D-038).
+   */
+  const policy = useQuery({
+    queryKey: ['settings', 'pin-policy'],
+    queryFn: () => apiRequest<PolicyResponse>('/settings'),
+    enabled: Boolean(me.data) && !me.data?.is_locked,
+    staleTime: 5 * 60_000,
+  });
+
+  useEffect(() => {
+    if (!policy.data) return;
+    const next = {
+      shared: policy.data.pin_min_length_shared,
+      personal: policy.data.pin_min_length_personal,
+      switchOnShared: policy.data.allow_pin_switch_on_shared,
+    };
+    const current = useApp.getState().preferences.pinPolicy;
+    if (
+      current.shared !== next.shared ||
+      current.personal !== next.personal ||
+      current.switchOnShared !== next.switchOnShared
+    ) {
+      setPreference('pinPolicy', next);
+    }
+  }, [policy.data, setPreference]);
 
   if (me.isPending) {
     return (

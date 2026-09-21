@@ -69,14 +69,28 @@ export class AuditService {
    * without a request context (FR-101, FR-901).
    */
   async recordAnonymous(
-    entry: AuditEntry & { actor_user_id?: string | null; request_id: string; ip?: string | null; user_agent?: string | null },
+    entry: AuditEntry & {
+      actor_user_id?: string | null;
+      request_id: string;
+      ip?: string | null;
+      user_agent?: string | null;
+      /**
+       * How the person was authenticated, and which session it produced. There is no request
+       * context on a sign-in — the session is being created — but the method is known, and 2.8
+       * requires it on the row: a sign-in that does not say whether a password or six digits
+       * opened it is the one row where the question matters most (I5).
+       */
+      auth_method?: 'password' | 'ticket_pin' | null;
+      session_id?: string | null;
+    },
     tx?: Db,
   ): Promise<void> {
     const db = tx ?? this.database;
     await db.query(
       `INSERT INTO audit_log
-         (actor_user_id, action, entity_type, entity_id, entity_label, changes, note, related, request_id, ip, user_agent)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+         (actor_user_id, action, entity_type, entity_id, entity_label, changes, note, related,
+          request_id, session_id, auth_method, ip, user_agent)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         entry.actor_user_id ?? null,
         entry.action,
@@ -87,6 +101,8 @@ export class AuditService {
         entry.note ?? null,
         JSON.stringify(entry.related ?? {}),
         entry.request_id,
+        entry.session_id ?? null,
+        entry.auth_method ?? null,
         entry.ip ?? null,
         entry.user_agent ?? null,
       ],
