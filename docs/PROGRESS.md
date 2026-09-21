@@ -472,3 +472,43 @@ nothing until a credit is recorded).
 
 **Next:** I4 — reports and History. It reads what I1 to I3 have written and adds no new writes,
 so it needs nothing from the client to start.
+
+---
+
+# Iteration 4 — reports & history depth
+
+Branch `feat/i4-reports`, brief `iterations/I4-reports-history.md`.
+
+## I4 · Checkpoint A — done · History in full
+
+- `/history` takes the **assigned to** filter of FR-902 — a different question from "done by",
+  read from `related.assigned_user_id` through the GIN index, and the two return different sets
+  over the same order — plus the entity and action filters it already had.
+- An edit storm collapses into one entry per record with the rows behind it (2.4.5), per page
+  rather than across pages (D-028); a record's own History tab stays ungrouped.
+- **6 new API tests**, including the case that makes the two user filters mean different things:
+  Sara serving a customer assigned to Rebaz.
+
+## I4 · Checkpoint B — done · the reports
+
+**121 routes, all declared** (11 new); **238 API tests**, **471 across the workspace**.
+
+- The eight reports of 2.11 — Sales, Purchases, Profit, Stock, Receivables, Payables, Damage,
+  Employee activity — plus the **daily cash-up** (FR-1013), the **dashboard** (FR-1309) and
+  **global search** (FR-1310), which the brief lists as optional and no later iteration claims.
+- Every report reads stored values per currency, groups by Asia/Baghdad month by default, and is
+  pinned to the caller when they lack `reports.view_all` — `done_by` for what somebody did,
+  `assigned_to` for whose customers and suppliers they are — with the pin echoed in the response
+  so the screen can say so.
+- The margin comes from the kernel (`lineMargin`, 12 unit tests with hand-computed figures):
+  one computation in the line's entered currency from the snapshot stored on it, converted at
+  the line's own rate, so the two currencies can never disagree in sign (D-029). Lines with no
+  cost snapshot are counted and named, never counted as profit.
+- The field flags: Profit, Receivables and Payables ask for their flag as a second key, because
+  a report of money with the money removed is not a report; Purchases, Stock, Damage and the
+  dashboard carry their amounts under `cost`, so the quantities and counts survive.
+- Every report's totals are asserted against an independent SQL sum over the same seeded data —
+  a report that agrees with itself proves nothing.
+
+**Next:** checkpoint C — the History page completed, the Reports hub and its nine pages, the
+dashboard and the search screen.

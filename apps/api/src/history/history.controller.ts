@@ -8,6 +8,7 @@ import { HistoryRepository } from './history.repository.js';
 
 const listSchema = z.object({
   done_by: z.string().uuid().optional(),
+  assigned_to: z.string().uuid().optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   entity_type: z.string().max(40).optional(),
@@ -28,7 +29,9 @@ export class HistoryController {
     // Without `history.view_all` the page shows only the user's own actions. The scope is
     // applied here, over the query, never by the interface (spec 2.6.4).
     const scoped = can(context, 'history.view_all') ? query.done_by : context.userId;
-    return this.history.list({ ...query, done_by: scoped });
+    // The page groups an edit storm into one entry (2.4.5); a record's own History tab does
+    // not, because there the whole story is the point.
+    return this.history.list({ ...query, done_by: scoped, group_edits: true });
   }
 
   @Get('me')

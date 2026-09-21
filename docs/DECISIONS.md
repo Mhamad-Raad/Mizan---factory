@@ -301,3 +301,41 @@ status has left `pending` (or `not_returnable`); the correction is a void and a 
 which is what the specification prescribes for exactly this case on orders and purchases
 (2.5.3). The credit itself is reversed on the company ledger, where reversal is the only
 correction. Relied on: FR-803, FR-804, 2.5.3, 2.4.1 rule 3.
+
+## D-028 · 2026-09-21 · I4 · An edit run is grouped within a page, not across pages
+
+Specification 2.4.5 asks the History page to show an (entry, reversal, replacement) storm as one
+"edited" entry. History is keyset-paginated (2.9.1), so a run of edits can straddle a page
+boundary, and there is no way to know that without fetching the next page.
+
+**Choice:** grouping is per page — adjacent `update` rows of the same record by the same actor
+collapse, and a run split by the boundary comes back as two entries, one per page. The
+alternative, re-shaping an entry when more is loaded, would move a row the reader had already
+read; a page that says "3 edits" and then "1 more edit" is honest about what it knows. A
+record's own History tab is never grouped, because there the whole story is the point. Relied
+on: 2.4.5, 2.9.1, FR-902.
+
+## D-029 · 2026-09-21 · I4 · The margin is computed in the kernel, not in SQL
+
+FR-1005 defines the margin as one computation in the line's entered currency, converted at the
+line's stored rate — and the specification asks for a unit test with hand-computed
+expectations. That rule already exists once, in `@mizan/money`.
+
+**Choice:** the Profit report fetches the lines of the period with their stored snapshots and
+sums the kernel's per-line margins, rather than reimplementing the formula in SQL. Two
+implementations of a money rule are two rules, and the one nobody tests is the one that drifts
+(the D-019 argument). The cost is that the report reads the lines rather than an aggregate: it
+is bounded by the range, the default range is a month, and the review measured it. Relied on:
+FR-1005, 2.11, D-019.
+
+## D-030 · 2026-09-21 · I4 · Per-purchase remaining stays on the company's page
+
+FR-1008 says Payables shows "per purchase remaining amounts (FR-712)". FR-712's remaining is
+the oldest-first allocation, which needs a company's whole ledger and all its purchases — 13 ms
+per company at fifteen years (REVIEW-I2).
+
+**Choice:** the Payables report gives each company its balance and the period's movements, and
+the per-purchase breakdown stays one tap away on the company's Accounting tab, where it is
+already computed and already paginated. Running the allocation for forty suppliers to render one
+report page would cost half a second to show figures the reader has to open a company to act on
+anyway. Relied on: FR-1008, FR-712, REVIEW-I2.

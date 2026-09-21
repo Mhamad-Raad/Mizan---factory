@@ -12,6 +12,8 @@ export {
   pricedQuantity,
 } from './line.js';
 export type { LineInput, LineTotals, DocumentTotals } from './line.js';
+export { lineMargin, marginTotals } from './margin.js';
+export type { MarginLine, LineMargin, MarginTotals } from './margin.js';
 export { settleInFull, withinTolerance, toleranceFor } from './tolerance.js';
 export type { SettleInFullInput, SettleInFullResult, Tolerance } from './tolerance.js';
 export {
