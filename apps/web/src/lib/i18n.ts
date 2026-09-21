@@ -17,6 +17,9 @@ import ckbOrders from '@mizan/i18n/locales/ckb-IQ/orders.json';
 import ckbCompanies from '@mizan/i18n/locales/ckb-IQ/companies.json';
 import ckbPurchases from '@mizan/i18n/locales/ckb-IQ/purchases.json';
 import ckbDamages from '@mizan/i18n/locales/ckb-IQ/damages.json';
+import ckbReports from '@mizan/i18n/locales/ckb-IQ/reports.json';
+import ckbDashboard from '@mizan/i18n/locales/ckb-IQ/dashboard.json';
+import ckbSearch from '@mizan/i18n/locales/ckb-IQ/search.json';
 
 import arCommon from '@mizan/i18n/locales/ar-IQ/common.json';
 import arGlossary from '@mizan/i18n/locales/ar-IQ/glossary.json';
@@ -32,6 +35,9 @@ import arOrders from '@mizan/i18n/locales/ar-IQ/orders.json';
 import arCompanies from '@mizan/i18n/locales/ar-IQ/companies.json';
 import arPurchases from '@mizan/i18n/locales/ar-IQ/purchases.json';
 import arDamages from '@mizan/i18n/locales/ar-IQ/damages.json';
+import arReports from '@mizan/i18n/locales/ar-IQ/reports.json';
+import arDashboard from '@mizan/i18n/locales/ar-IQ/dashboard.json';
+import arSearch from '@mizan/i18n/locales/ar-IQ/search.json';
 
 import enCommon from '@mizan/i18n/locales/en/common.json';
 import enGlossary from '@mizan/i18n/locales/en/glossary.json';
@@ -47,6 +53,9 @@ import enOrders from '@mizan/i18n/locales/en/orders.json';
 import enCompanies from '@mizan/i18n/locales/en/companies.json';
 import enPurchases from '@mizan/i18n/locales/en/purchases.json';
 import enDamages from '@mizan/i18n/locales/en/damages.json';
+import enReports from '@mizan/i18n/locales/en/reports.json';
+import enDashboard from '@mizan/i18n/locales/en/dashboard.json';
+import enSearch from '@mizan/i18n/locales/en/search.json';
 
 /**
  * The catalogs are bundled, not fetched: a floor tablet on a bad connection must not be able
@@ -68,6 +77,9 @@ const resources = {
     companies: ckbCompanies,
     purchases: ckbPurchases,
     damages: ckbDamages,
+    reports: ckbReports,
+    dashboard: ckbDashboard,
+    search: ckbSearch,
   },
   'ar-IQ': {
     common: arCommon,
@@ -84,6 +96,9 @@ const resources = {
     companies: arCompanies,
     purchases: arPurchases,
     damages: arDamages,
+    reports: arReports,
+    dashboard: arDashboard,
+    search: arSearch,
   },
   en: {
     common: enCommon,
@@ -100,6 +115,9 @@ const resources = {
     companies: enCompanies,
     purchases: enPurchases,
     damages: enDamages,
+    reports: enReports,
+    dashboard: enDashboard,
+    search: enSearch,
   },
 } as const;
 

@@ -1,0 +1,11 @@
+{
+  "title": "Search",
+  "placeholder": "Material, customer, company or number",
+  "prompt": "Type to search",
+  "empty": "No results for '{{query}}'",
+  "kind.item": "Materials",
+  "kind.customer": "Customers",
+  "kind.company": "Companies",
+  "kind.order": "Orders",
+  "kind.purchase": "Purchases"
+}

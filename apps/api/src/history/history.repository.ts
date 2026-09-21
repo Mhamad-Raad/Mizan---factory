@@ -19,11 +19,19 @@ export interface AuditRow {
 
 export interface HistoryFilters {
   done_by?: string;
+  /**
+   * The employee the *record* is assigned to, which is a different question from who did it
+   * (spec 2.9.4): it reads `related.assigned_user_id`, written by every audit row that belongs
+   * to a customer or a company, and is served by the GIN index on `related`.
+   */
+  assigned_to?: string;
   from?: string;
   to?: string;
   entity_type?: string;
   entity_id?: string;
   action?: string;
+  /** Collapse an edit storm into one entry per record (spec 2.4.5, last row). */
+  group_edits?: boolean;
   /**
    * Keyset cursor, `<occurred_at ISO>|<id>`. Cursor pagination keeps infinite scroll stable
    * while new rows arrive (spec 2.9.1) and, unlike OFFSET, does not get slower page by page.
@@ -42,13 +50,19 @@ export class HistoryRepository {
    * ordered by `occurred_at DESC, id DESC`, which the `audit_log_occurred_idx` index serves
    * directly — no OFFSET, so page 10,000 costs what page 1 costs.
    */
-  async list(filters: HistoryFilters): Promise<{ items: AuditRow[]; next_cursor: string | null }> {
+  async list(filters: HistoryFilters): Promise<{ items: AuditEntry[]; next_cursor: string | null }> {
     const conditions: string[] = [];
     const values: unknown[] = [];
 
     if (filters.done_by) {
       values.push(filters.done_by);
       conditions.push(`a.actor_user_id = $${values.length}`);
+    }
+    // Containment rather than `->>`: `audit_log_related_idx` is a GIN index on the whole
+    // document, so `related @> {...}` is an index scan while a field extraction is a filter.
+    if (filters.assigned_to) {
+      values.push(JSON.stringify({ assigned_user_id: filters.assigned_to }));
+      conditions.push(`a.related @> $${values.length}::jsonb`);
     }
     // Business days are Asia/Baghdad days, whatever the server's time zone (spec 2.9.4).
     //
@@ -103,9 +117,56 @@ export class HistoryRepository {
       values,
     );
 
-    const items = rows.slice(0, limit);
-    const last = items[items.length - 1];
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
     const next = rows.length > limit && last ? `${last.occurred_at.toISOString()}|${last.id}` : null;
-    return { items, next_cursor: next };
+    return { items: filters.group_edits ? groupEdits(page) : page.map(single), next_cursor: next };
   }
+}
+
+/** One entry on the History page: a row, or a run of edits to the same record (spec 2.4.5). */
+export interface AuditEntry extends AuditRow {
+  /** How many audit rows this entry stands for; 1 for everything that is not an edit run. */
+  group_size: number;
+  /** The rows behind it, newest first — the same shape the ledger's groups use. */
+  rows: AuditRow[];
+}
+
+function single(row: AuditRow): AuditEntry {
+  return { ...row, group_size: 1, rows: [row] };
+}
+
+/**
+ * "The same grouping applies to audit rows of edits: one 'edited' entry with the field diff,
+ * expandable to the details" (spec 2.4.5).
+ *
+ * Only *adjacent* update rows of the same record by the same person collapse, and the newest
+ * one leads — so the entry shows the state the record is in now, and expanding it tells the
+ * story of how it got there. Adjacency is what keeps this honest: a payment recorded between
+ * two edits breaks the run, because the reader needs to see it in order.
+ *
+ * A run that straddles a page boundary comes back as two entries, one per page. Keyset
+ * pagination cannot know what is on the next page without fetching it, and an entry that
+ * changes shape when more is loaded would be worse than one that is split (D-028).
+ */
+export function groupEdits(rows: readonly AuditRow[]): AuditEntry[] {
+  const entries: AuditEntry[] = [];
+  for (const row of rows) {
+    const previous = entries[entries.length - 1];
+    const sameRecord =
+      previous &&
+      previous.action === 'update' &&
+      row.action === 'update' &&
+      previous.entity_type === row.entity_type &&
+      previous.entity_id === row.entity_id &&
+      previous.actor_user_id === row.actor_user_id;
+
+    if (sameRecord && previous) {
+      previous.group_size += 1;
+      previous.rows.push(row);
+      continue;
+    }
+    entries.push(single(row));
+  }
+  return entries;
 }

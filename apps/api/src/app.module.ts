@@ -38,6 +38,11 @@ import { PurchasesController } from './purchases/purchases.controller.js';
 import { PurchasesRepository } from './purchases/purchases.repository.js';
 import { PurchasesService } from './purchases/purchases.service.js';
 import { RatesService } from './rates/rates.service.js';
+import { ReportsController } from './reports/reports.controller.js';
+import { ReportsRepository } from './reports/reports.repository.js';
+import { ReportsService } from './reports/reports.service.js';
+import { DashboardController } from './dashboard/dashboard.controller.js';
+import { SearchController } from './search/search.controller.js';
 import { PeriodService } from './settings/period.service.js';
 import { StockService } from './stock/stock.service.js';
 import { SettingsController } from './settings/settings.controller.js';
@@ -64,6 +69,9 @@ import { UsersService } from './users/users.service.js';
     CompaniesController,
     PurchasesController,
     DamagesController,
+    ReportsController,
+    DashboardController,
+    SearchController,
     HealthController,
   ],
   providers: [
@@ -95,6 +103,8 @@ import { UsersService } from './users/users.service.js';
     PurchasesService,
     DamagesRepository,
     DamagesService,
+    ReportsRepository,
+    ReportsService,
     IdempotencyInterceptor,
     // The guard runs on every route: a route without a decorator is refused, not opened.
     { provide: APP_GUARD, useExisting: AuthGuard },

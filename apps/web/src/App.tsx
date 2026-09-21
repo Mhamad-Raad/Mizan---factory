@@ -30,6 +30,10 @@ import { UsersPage } from './pages/UsersPage.js';
 import { NewUserPage } from './pages/NewUserPage.js';
 import { UserDetailPage } from './pages/UserDetailPage.js';
 import { HistoryPage } from './pages/HistoryPage.js';
+import { ReportsPage } from './pages/ReportsPage.js';
+import { ReportPage } from './pages/ReportPage.js';
+import { DashboardPage } from './pages/DashboardPage.js';
+import { SearchPage } from './pages/SearchPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { ChangePasswordPage } from './pages/ChangePasswordPage.js';
 
@@ -153,6 +157,10 @@ export function App() {
       <Route path="/users/new" element={<NewUserPage />} />
       <Route path="/users/:id" element={<UserDetailPage />} />
       <Route path="/history" element={<HistoryPage />} />
+      <Route path="/reports" element={<ReportsPage />} />
+      <Route path="/reports/:name" element={<ReportPage />} />
+      <Route path="/dashboard" element={<DashboardPage />} />
+      <Route path="/search" element={<SearchPage />} />
       <Route path="/settings" element={<SettingsPage />} />
       {/* The home route sends each user to the first page they may open (spec 2.10.1). */}
       <Route path="/" element={<Navigate to={landingFor(user, me.data?.permissions ?? [])} replace />} />

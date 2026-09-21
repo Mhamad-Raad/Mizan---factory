@@ -472,3 +472,133 @@ nothing until a credit is recorded).
 
 **Next:** I4 — reports and History. It reads what I1 to I3 have written and adds no new writes,
 so it needs nothing from the client to start.
+
+---
+
+# Iteration 4 — reports & history depth
+
+Branch `feat/i4-reports`, brief `iterations/I4-reports-history.md`.
+
+## I4 · Checkpoint A — done · History in full
+
+- `/history` takes the **assigned to** filter of FR-902 — a different question from "done by",
+  read from `related.assigned_user_id` through the GIN index, and the two return different sets
+  over the same order — plus the entity and action filters it already had.
+- An edit storm collapses into one entry per record with the rows behind it (2.4.5), per page
+  rather than across pages (D-028); a record's own History tab stays ungrouped.
+- **6 new API tests**, including the case that makes the two user filters mean different things:
+  Sara serving a customer assigned to Rebaz.
+
+## I4 · Checkpoint B — done · the reports
+
+**121 routes, all declared** (11 new); **238 API tests**, **471 across the workspace**.
+
+- The eight reports of 2.11 — Sales, Purchases, Profit, Stock, Receivables, Payables, Damage,
+  Employee activity — plus the **daily cash-up** (FR-1013), the **dashboard** (FR-1309) and
+  **global search** (FR-1310), which the brief lists as optional and no later iteration claims.
+- Every report reads stored values per currency, groups by Asia/Baghdad month by default, and is
+  pinned to the caller when they lack `reports.view_all` — `done_by` for what somebody did,
+  `assigned_to` for whose customers they are — with the pin echoed in the response so the screen
+  can say so. (Payables was pinned here too; the review took that pin off — see checkpoint D and
+  D-031.)
+- The margin comes from the kernel (`lineMargin`, 8 unit tests with hand-computed figures):
+  one computation in the line's entered currency from the snapshot stored on it, converted at
+  the line's own rate, so the two currencies can never disagree in sign (D-029). Lines with no
+  cost snapshot are counted and named, never counted as profit.
+- The field flags: Profit, Receivables and Payables ask for their flag as a second key, because
+  a report of money with the money removed is not a report; Purchases, Stock, Damage and the
+  dashboard carry their amounts under `cost`, so the quantities and counts survive.
+- Every report's totals are asserted against an independent SQL sum over the same seeded data —
+  a report that agrees with itself proves nothing.
+
+**Next:** checkpoint C — the History page completed, the Reports hub and its nine pages, the
+dashboard and the search screen.
+
+## I4 · Checkpoint C — done (the real-phone review is owed by the client)
+
+The reading screens, mobile first. Bundle **196.0 kB gzipped** against the 250 kB budget;
+**806 message keys × 3 languages**, every reference in the interface (970) and in the API (88)
+resolving.
+
+- **History in full** (FR-902): the two user filters side by side under their own labels,
+  because "done by" and "assigned to" are different questions; the date presets resolved from
+  the Baghdad day; the record-type and action filters; an entry that expands into its old → new
+  diff, the note and the reference the support line asks for; an edit storm shown as one line
+  that opens into each edit. `AuditDiff` renders a change set per field type — money through
+  `DualAmount`, permissions as added and removed keys, lines as quantities — in one place, so a
+  new audited field reads correctly without a new component.
+- **The Reports hub** (3.3) with a card and a one-line description per report, and a report the
+  caller's flags do not reach simply absent rather than a locked door.
+- **One report page for all nine**: the range chips and custom range, the grouping chips, the
+  employee filter for a caller who may see everyone, summary tiles in both currencies, and a row
+  per group that expands into its figures. Nine files that differed only in their column lists
+  would have drifted apart the first time a label changed, so what each report shows is one
+  table at the top of the file.
+- **The dashboard** (FR-1309) as tiles per permission, with the stale-rate prompt of FR-1106,
+  each tile a link to the screen that answers it; **global search** (FR-1310) across customers,
+  companies, materials, orders and purchases, normalised across the Arabic and Kurdish letter
+  variants, with the sections the caller may not see absent.
+- **10 new screenshots** in Kurdish, Arabic and English, both themes, plus the 360 px overflow
+  and 44 px target checks on a report page at the largest text size. **53 Playwright checks** in
+  total.
+
+**Next:** checkpoint D — the review with volume in the database, the demo script of 4.6, and the
+Definition of done.
+
+## I4 · Checkpoint D — done
+
+I4 has four checkpoints rather than five: it stores nothing new, so there was no schema
+checkpoint — `audit_log`, the ledgers and the documents already held every figure these reports
+read.
+
+- Review: `docs/REVIEW-I4.md`. **Eight findings**, each fixed with a regression test (the
+  dashboard's plan-shape guard bites at volume rather than at test scale, and the review says
+  so). Measured against **2,000,230 audit rows, 63,001 orders and 132,001 order lines over five
+  years**, on top of I2's and I3's volume.
+  - The two that mattered: **Payables answered "we owe nothing" to an accountant**, because
+    2.11's sentence pins it to `assigned_to` while companies are deliberately unscoped (D-031);
+    and **Receivables took 668.7 ms** because it asked the `order_balances` view a question per
+    customer — the third appearance of the pattern the I1 and I2 reviews found, now with a test
+    that explains the endpoint's own statement and asserts one scan per table (668.7 → 37.4 ms,
+    the Stock report 190.2 → 19.1 ms, the dashboard 62.6 → 34.2 ms).
+  - What a read promises: no report had a bound on its groups (10,000 customers is 2.5 MB to a
+    phone), so every report now sends its largest 200 with `group_count`/`has_more` and totals
+    that still cover the period (D-032); the margin report read every line of the period into
+    memory at once and now folds them in batches (D-033); History had no offline state and now
+    renders through the same `QueryStates` as every other page.
+  - **History at two million rows: 4.1 ms** for the first page against the 300 ms of
+    NFR-03/NFR-13.
+- Demo script of 4.6 is **executable** (`scripts/demo-i4.mjs`) and passes end to end, twice:
+  once against an empty deployment and once against one it had already run against. It walks
+  the four steps of the brief — History filtered by who did it and by whose customer it is, with
+  the two edits as one entry that expands; the same order's own History tab; Sales, the margin
+  against the month price with a flagged fallback line and matching signs, Receivables pinned to
+  a sales employee, Payables, Damage, Employee activity and the daily cash-up; the dashboard for
+  an accountant against a sales employee, and search finding a name and an order number — and
+  ends by checking that the reports agree with the records they read.
+- CI: lint · types · translations (interface **and** API) · contrast · migrations · route
+  declarations · **479 tests** · build · bundle budget · **53 Playwright checks**.
+
+## I4 — Definition of done (section 4.1)
+
+| # | Item | State |
+|---|---|---|
+| 1 | Three languages, glossary terms, build fails on a missing key | ✅ 806 keys × 3 from one table; month and report names localised, the API's error keys covered |
+| 2 | RTL verified **on a real phone** in ckb, ar and en | ⚠️ automated at 360 px in all three, both themes; **the real-phone check is owed** |
+| 3 | Permissions enforced on every new endpoint | ✅ 121 routes declared (11 new); Profit, Receivables and Payables require their field flag as a second key; search and the dashboard filter section by section |
+| 4 | Every change in History with old → new, balances before → after | ✅ nothing here writes; History itself is what this iteration completed, diffs and all |
+| 5 | Every amount in both currencies through `DualAmount`, ≈ for conversions | ✅ every report tile and row; the margin's two sides are one computation, never a conversion of a sum |
+| 6 | Both themes, all four text sizes, no overflow, contrast | ✅ 10 new screenshots, overflow and target checks at 1.25 on a report page |
+| 7 | Tests for money and stock logic | ✅ 8 new kernel tests for the margin with hand-computed figures; 246 API tests (40 new), every report against an independent SQL sum |
+| 8 | Skeleton, empty, error and offline states | ✅ one `QueryStates` on every new page — and History moved onto it, which is what the review found |
+| 9 | Accessibility basics | ✅ labels, focus order, 44 px asserted on the report filters |
+| 10 | Demo on staging with seeded data | ⚠️ the demo script passes against a live deployment; **staging still needs a host** |
+
+**I4 is complete but for the two items that have been owed since I0:** the real-phone RTL and
+identity review (FR-1311, item 2) and a host for staging (item 10).
+
+**Still open with the client:** Q-A-03, Q-B-02 and Q-B-03 from I1. Nothing new was blocked in
+I4: where 2.11 contradicted itself about the Payables pin, FR-711 settled it (D-031), and where
+it said nothing about how much of a report to send, NFR-03 and NFR-13 did (D-032).
+
+**Next:** I5 — the shared-tablet features and the advanced permission grid.

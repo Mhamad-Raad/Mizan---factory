@@ -28,6 +28,9 @@ const DESTINATIONS: Destination[] = [
   // Purchases live behind More: the specification's primary five are Orders, Materials,
   // Customers, Companies and Damaged, and a purchase is reached from Materials or a company.
   { to: '/purchases', labelKey: 'purchases:title', icon: 'purchases', permission: 'purchases.view' },
+  { to: '/reports', labelKey: 'reports:title', icon: 'orders', permission: 'reports.view' },
+  { to: '/dashboard', labelKey: 'dashboard:title', icon: 'materials', permission: 'dashboard.view' },
+  { to: '/search', labelKey: 'search:title', icon: 'search' },
   { to: '/users', labelKey: 'glossary:users', icon: 'users', adminOnly: true },
   { to: '/history', labelKey: 'glossary:history', icon: 'history', permission: 'history.view' },
   { to: '/settings', labelKey: 'glossary:settings', icon: 'settings' },
