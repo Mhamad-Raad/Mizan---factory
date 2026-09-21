@@ -7,6 +7,7 @@ import { AuthController } from './auth/auth.controller.js';
 import { AuthGuard } from './auth/auth.guard.js';
 import { AuthService } from './auth/auth.service.js';
 import { PasswordService } from './auth/password.service.js';
+import { DeviceTicketService } from './auth/device-ticket.service.js';
 import { SessionService } from './auth/session.service.js';
 import { CsrfMiddleware } from './common/csrf.middleware.js';
 import { ErrorFilter } from './common/error.filter.js';
@@ -80,6 +81,7 @@ import { UsersService } from './users/users.service.js';
     AuditService,
     PasswordService,
     SessionService,
+    DeviceTicketService,
     AuthService,
     AuthGuard,
     UsersRepository,

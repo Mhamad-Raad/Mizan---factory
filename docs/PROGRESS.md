@@ -611,3 +611,46 @@ I4: where 2.11 contradicted itself about the Payables pin, FR-711 settled it (D-
 it said nothing about how much of a report to send, NFR-03 and NFR-13 did (D-032).
 
 **Next:** I5 — the shared-tablet features and the advanced permission grid.
+
+---
+
+# Iteration 5 — shared tablets & permissions depth
+
+Branch `feat/i5-shared-tablets`, brief `iterations/I5-shared-tablets-permissions.md`.
+
+## I5 · Checkpoint A — done · the schema
+
+- `0012_device_tickets.sql`: the `device_tickets` table of 2.2 — a hashed, peppered 256-bit
+  secret per browser, with its label, its seven-day expiry, its PIN-attempt count and its
+  revocation reason — plus `sessions.pin_failures` for the attempts that belong to an unlock
+  rather than to a browser, and `mizan_prune_expired` extended to sweep lapsed tickets after the
+  same grace period sessions get.
+- `0013_device_ticket_privileges.sql`: SELECT, INSERT and UPDATE for the application role and no
+  DELETE — the sweep runs as the owner, so nothing leaves the record because of something the API
+  did.
+- Everything else I5 needs was already in place from I0: `sessions.auth_method`,
+  `users.pin_hash`/`pin_length`, `is_shared_device`, `device_label`, and the three settings keys.
+
+## I5 · Checkpoint B — done · the API
+
+**123 routes, all declared** (2 new); **271 API tests** (22 new), **504 across the workspace**.
+
+- `POST /auth/login` takes either a username and password or **a device ticket and a PIN**
+  (FR-106): a password sign-in now also issues this browser a seven-day ticket, and a PIN is
+  accepted only against a live ticket for that user, with `switch_from_session` revoking the
+  employee who had the tablet before — both halves in History.
+- `POST /auth/pin` sets or clears one's own PIN behind one's own password; `POST /auth/unlock`
+  takes a PIN or a password on the same session; `GET /users/:id/sessions` now lists the sessions
+  **and** the browsers that may sign that employee in with a PIN; `DELETE
+  /users/:id/device-tickets` takes that away everywhere at once.
+- The rules of 2.8, each with a test: a PIN alone signs nobody in; a ticket is bound to one user,
+  so Sara's ticket with Rebaz's PIN is nothing; six digits on a shared tablet and four on a
+  personal phone; five wrong PINs revoke the ticket (and five wrong unlock PINs demand the
+  password); tickets die with a password reset, with deactivation, and at the admin's word; the
+  admin can switch PIN sign-in off for shared devices entirely; and **every audit row written
+  from a PIN session carries `ticket_pin`** — asserted on a customer created from such a session.
+- Five decisions recorded where the specification was silent or contradicted itself: D-034 to
+  D-038.
+
+**Next:** checkpoint C — the lock screen's user switcher and PIN pad, PIN setup in Settings, the
+Sessions tab, and the Advanced permission grid.

@@ -385,3 +385,59 @@ per-line figures, so a batch's totals add to the previous ones exactly — asser
 size of seven, where the boundaries fall inside every group. The wall clock for the widest range
 measured 527 ms whole and 579 ms batched: ten per cent for a ceiling on memory that does not
 depend on the question. Relied on: D-029, NFR-03, NFR-13, FR-1005.
+
+## D-034 · 2026-09-21 · I5 · A PIN unlock does not rewrite the session's method
+
+Specification 2.8 says a session records "how it was authenticated" and that every audit row
+carries that method, and separately that unlocking with a PIN **keeps the same session**. Both
+cannot be read as "the method is whatever was last typed".
+
+**Choice:** `sessions.auth_method` records how the session was *established* — password, or PIN
+quick sign-in — and a PIN unlock of a password session leaves it `password`. The unlock itself is
+in History with `unlocked_with: pin`, so nothing is lost, and the question the method answers for
+a disputed payment stays the useful one: was this session opened by somebody typing a password,
+or by somebody typing six digits on a tablet? Relied on: 2.8, FR-106, FR-902.
+
+## D-035 · 2026-09-21 · I5 · PIN failures are counted apart from password failures
+
+Specification 2.8 gives the two credentials different consequences: five failed **passwords** per
+username in fifteen minutes locks the username out for fifteen minutes; five failed **PINs** mean
+"then a password is required". Counting both in `login_attempts` would lock an employee out of
+the Login page because somebody mistyped a PIN on a tablet.
+
+**Choice:** a PIN attempt is counted where it belongs — on the **device ticket** for a quick
+sign-in (five and the ticket is revoked, which *is* the password fallback, since the lock screen
+has nothing else to offer) and on the **session** for an unlock (five and only the password
+unlocks it, cleared when it opens). `login_attempts` keeps its single meaning, and History still
+carries every failed PIN attempt as a `login_failed` row with `auth_method: ticket_pin`. Relied
+on: 2.8, FR-101, FR-106.
+
+## D-036 · 2026-09-21 · I5 · One route revokes PIN sign-in on every device
+
+The brief's API list (2.9.3) has `DELETE /users/:id/device-tickets` — a plural with no id — while
+the demo script says the admin "revokes the ticket".
+
+**Choice:** one route, revoking every live ticket for that employee. The admin's actual question
+is "make their PIN stop working", and revoking one of three tablets leaves two working; the
+response says how many went, and the next password sign-in issues a fresh one, so this is a reset
+rather than a punishment. A per-ticket route can be added the day somebody wants to retire one
+tablet. Relied on: 2.9.3, 2.8, FR-1304.
+
+## D-037 · 2026-09-21 · I5 · The PIN's length is audited under `pin_length`
+
+The audit service has stripped any field literally named `pin` since I0 (`NEVER_LOGGED`), which
+is a guard worth keeping — it makes writing a PIN into History impossible by accident.
+
+**Choice:** setting or clearing a PIN records `pin_length: { old, new }`. The length is exactly
+what an owner needs ("a four-digit PIN on a shared tablet"), the secret still cannot be written,
+and the guard stays in force. Relied on: 2.4.4, 2.13, FR-106.
+
+## D-038 · 2026-09-21 · I5 · The PIN policy is readable by every signed-in user
+
+`pin_min_length_shared`, `pin_min_length_personal` and `allow_pin_switch_on_shared` were seeded
+in I0 and belonged to no screen until now.
+
+**Choice:** they join the employee-visible settings, on the same reasoning as the edit windows
+(FR-1107): the PIN form states the rule before the API refuses it, and a client that is about to
+lock needs to know whether its own lock screen may offer a PIN at all. They are editable by the
+admin from Settings → System. Relied on: FR-1107, FR-106, 2.8.

@@ -30,6 +30,10 @@ const patchSchema = z
       .nullable()
       .optional(),
     rate_stale_days: z.number().int().min(1).max(60).optional(),
+    // Iteration 5: the shared-tablet rules (FR-106, 2.8).
+    pin_min_length_shared: z.number().int().min(4).max(6).optional(),
+    pin_min_length_personal: z.number().int().min(4).max(6).optional(),
+    allow_pin_switch_on_shared: z.boolean().optional(),
   })
   // Unknown keys are refused rather than dropped: an admin who types a setting this
   // iteration does not own must be told, not quietly ignored.

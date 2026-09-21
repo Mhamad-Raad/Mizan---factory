@@ -8,6 +8,7 @@ import type { RequestContext } from '../common/request-context.js';
 import { Database } from '../database/pool.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { PasswordService, checkPasswordRules } from '../auth/password.service.js';
+import { DeviceTicketService } from '../auth/device-ticket.service.js';
 import { SessionService } from '../auth/session.service.js';
 import { UsersRepository } from './users.repository.js';
 import type { UserFilters } from './users.repository.js';
@@ -38,6 +39,7 @@ export class UsersService {
     private readonly users: UsersRepository,
     private readonly passwords: PasswordService,
     private readonly sessions: SessionService,
+    private readonly tickets: DeviceTicketService,
     private readonly audit: AuditService,
     private readonly authGuard: AuthGuard,
   ) {}
@@ -190,7 +192,11 @@ export class UsersService {
       if (!updated) throw new ApiError('VERSION_CONFLICT', { current_version: existing.version });
 
       // Deactivation ends their sessions; the guard also refuses an inactive user immediately.
-      if (!isActive) await this.sessions.revokeAllForUser(id, 'deactivated', tx);
+      if (!isActive) {
+        await this.sessions.revokeAllForUser(id, 'deactivated', tx);
+        // A PIN on a floor tablet must stop working the moment the account does (2.8).
+        await this.tickets.revokeAllForUser(id, 'deactivated', tx);
+      }
 
       await this.audit.record(
         context,
@@ -228,6 +234,8 @@ export class UsersService {
       if (!updated) throw new ApiError('VERSION_CONFLICT', { current_version: existing.version });
 
       await this.sessions.revokeAllForUser(id, 'password_reset', tx);
+      // The old ticket proved a password sign-in that no longer means anything (2.8).
+      await this.tickets.revokeAllForUser(id, 'password_reset', tx);
       await this.audit.record(
         context,
         {
@@ -322,9 +330,18 @@ export class UsersService {
     return { keys: after, preset_key: preset?.key ?? null };
   }
 
+  /**
+   * The admin's Sessions tab (FR-1304): where this employee is signed in, and which browsers
+   * may sign them in with a PIN. Both lists answer the same question — "who can act as this
+   * person right now, and from what" — so they arrive together.
+   */
   async sessionsOf(id: string) {
     await this.requireUser(id);
-    return this.sessions.listForUser(id);
+    const [sessions, tickets] = await Promise.all([
+      this.sessions.listForUser(id),
+      this.tickets.listForUser(id),
+    ]);
+    return { sessions, device_tickets: tickets };
   }
 
   async revokeSession(context: RequestContext, id: string, sessionId: string): Promise<void> {
@@ -337,6 +354,26 @@ export class UsersService {
       entity_label: 'Session revoked by admin',
       related: { user_id: id },
     });
+  }
+
+  /**
+   * Take PIN sign-in away from every browser this employee has proved themselves on (2.8): the
+   * tablet that left the building, the phone that was lost. Their next sign-in anywhere asks
+   * for the password, which issues a fresh ticket — so this is a reset, not a punishment.
+   */
+  async revokeDeviceTickets(context: RequestContext, id: string): Promise<{ revoked: number }> {
+    const user = await this.requireUser(id);
+    const revoked = await this.tickets.revokeAllForUser(id, 'revoked_by_admin');
+    await this.audit.record(context, {
+      action: 'update',
+      entity_type: 'user',
+      entity_id: id,
+      entity_label: `Employee: ${user.display_name}`,
+      changes: { device_tickets: { old: revoked, new: 0 } },
+      note: 'PIN sign-in revoked on every device',
+      related: { user_id: id },
+    });
+    return { revoked };
   }
 
   private async requireUser(id: string): Promise<UserRow> {
