@@ -419,7 +419,7 @@ export function CustomerDetailPage() {
             title={t('glossary:statement')}
             open
             onClose={() => setStatement(false)}
-            text={statementText(statementData.data, formatter)}
+            text={statementText(statementData.data, formatter, t)}
           >
             <div className="mz-receipt">
               <strong>{statementData.data.customer.name}</strong>
@@ -465,14 +465,24 @@ function pathOf(kind: EntryKind): string {
   return kind === 'opening' ? 'opening-balance' : `${kind}s`;
 }
 
+/**
+ * The statement as plain text, for the message a customer actually receives.
+ *
+ * Labelled rather than written as "opening → closing": an arrow in a text message does not
+ * mirror, so in Kurdish and Arabic it pointed the wrong way, and a bare pair of numbers is not
+ * a statement. The labels are the same two the printed sheet above uses.
+ */
 function statementText(
   data: { customer: { name: string; settlement_currency: Currency }; opening_balance: number; closing_balance: number },
   formatter: { money: (minor: number, currency: Currency) => string },
+  t: (key: string) => string,
 ): string {
-  return `${data.customer.name}: ${formatter.money(data.opening_balance, data.customer.settlement_currency)} → ${formatter.money(
-    data.closing_balance,
-    data.customer.settlement_currency,
-  )}`;
+  const currency = data.customer.settlement_currency;
+  return [
+    data.customer.name,
+    `${t('glossary:opening_balance')}: ${formatter.money(data.opening_balance, currency)}`,
+    `${t('glossary:balance')}: ${formatter.money(data.closing_balance, currency)}`,
+  ].join('\n');
 }
 
 /**

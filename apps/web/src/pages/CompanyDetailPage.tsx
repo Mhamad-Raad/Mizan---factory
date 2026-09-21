@@ -8,6 +8,7 @@ import {
   Card,
   Chip,
   DateField,
+  Icon,
   NumberField,
   SegmentedControl,
   TextField,
@@ -1045,8 +1046,11 @@ function SettlementCurrencySheet({
       <div className="mz-stack">
         <div className="mz-row mz-row--between">
           <span className="mz-caption">{t('glossary:settlement_currency')}</span>
-          <span>
-            {t(`glossary:${current.toLowerCase()}`)} → {t(`glossary:${target.toLowerCase()}`)}
+          <span className="mz-row" style={{ gap: 'var(--space-1)' }}>
+            {t(`glossary:${current.toLowerCase()}`)}
+            {/* The registry's arrow, which mirrors in RTL — a `→` character does not. */}
+            <Icon name="next" size={16} />
+            {t(`glossary:${target.toLowerCase()}`)}
           </span>
         </div>
         <div className="mz-row mz-row--between">

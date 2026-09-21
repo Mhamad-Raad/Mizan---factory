@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { Icon } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { DualAmount } from './DualAmount.js';
 import { useFormatter } from '../lib/store.js';
@@ -13,7 +14,17 @@ import { useFormatter } from '../lib/store.js';
  * summaries — and falls back to the value as text for anything else. The fallback is
  * deliberate: a field added by a later iteration must show up as itself rather than break the
  * page, which is the whole point of storing the diff as JSON (2.4.4).
+ *
+ * "Was → now" is drawn with the registry's own arrow rather than a `→` character, because a
+ * character does not mirror: in Kurdish and Arabic the row lays out right to left, so a literal
+ * arrow ended up pointing back at the **old** value (spec 2.10.6 point 2). The two values also
+ * carry their labels for a screen reader, which otherwise heard two bare numbers in a row.
  */
+
+/** The old → new arrow: mirrored in RTL by the registry, and never read aloud on its own. */
+function Became() {
+  return <Icon name="next" size={16} />;
+}
 
 interface MoneyPair {
   iqd?: number;
@@ -82,8 +93,10 @@ export function AuditValue({ value }: { value: unknown }) {
   if (nested && (('before' in nested) || ('after' in nested))) {
     return (
       <span className="mz-row" style={{ gap: 'var(--space-2)' }}>
+        <span className="mz-visually-hidden">{t('history:old_value')}</span>
         <AuditValue value={nested.before} />
-        <span aria-hidden="true">→</span>
+        <Became />
+        <span className="mz-visually-hidden">{t('history:new_value')}</span>
         <AuditValue value={nested.after} />
       </span>
     );
@@ -109,8 +122,10 @@ export function AuditDiff({ changes, note }: { changes: Record<string, unknown>;
             <span className="mz-caption">{label}</span>
             {isPair ? (
               <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                <span className="mz-visually-hidden">{t('history:old_value')}</span>
                 <AuditValue value={pair.old} />
-                <span aria-hidden="true">→</span>
+                <Became />
+                <span className="mz-visually-hidden">{t('history:new_value')}</span>
                 <AuditValue value={pair.new} />
               </span>
             ) : (

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Chip } from '@mizan/ui';
+import { Card } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { AppShell } from '../components/AppShell.js';
 import { DualAmount } from '../components/DualAmount.js';
@@ -14,7 +14,7 @@ interface Tile {
   amount_iqd?: number;
   amount_usd_cents?: number;
   cost?: { amount_iqd: number; amount_usd_cents: number } | null;
-  detail?: string | null;
+  balance?: { amount_iqd: number; amount_usd_cents: number } | null;
 }
 
 /** Where each tile leads, so a number is never a dead end (spec 3.3). */
@@ -74,8 +74,13 @@ export function DashboardPage() {
                   {tile.cost ? (
                     <DualAmount amount_iqd={tile.cost.amount_iqd} amount_usd_cents={tile.cost.amount_usd_cents} />
                   ) : null}
-                  {tile.detail ? (
-                    <Chip>{formatter.money(Number(tile.detail), 'IQD')}</Chip>
+                  {/* A balance is a pair: the dinars owed and the dollars owed, never a sum
+                      of the two (rule 1). */}
+                  {tile.balance ? (
+                    <DualAmount
+                      amount_iqd={tile.balance.amount_iqd}
+                      amount_usd_cents={tile.balance.amount_usd_cents}
+                    />
                   ) : null}
                 </Link>
               </Card>

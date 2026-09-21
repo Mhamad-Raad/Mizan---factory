@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { BottomSheet, TextField } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
+import { useDebouncedValue } from '../lib/debounce.js';
 import { QueryStates } from './states.js';
 
 export interface PickerItem {
@@ -47,11 +48,13 @@ export function PickerSheet({
   // The sheet is mounted only while it is open, so the query starts empty on every visit
   // and there is nothing to reset when it closes.
   const [query, setQuery] = useState('');
+  // One request when the typing stops, not one per letter (NFR-03).
+  const term = useDebouncedValue(query);
 
   const results = useQuery({
-    queryKey: [path, 'picker', query],
+    queryKey: [path, 'picker', term],
     queryFn: () =>
-      apiRequest<{ items: unknown[] }>(`${path}${path.includes('?') ? '&' : '?'}q=${encodeURIComponent(query)}&page_size=25`),
+      apiRequest<{ items: unknown[] }>(`${path}${path.includes('?') ? '&' : '?'}q=${encodeURIComponent(term)}&page_size=25`),
     enabled: open,
   });
 

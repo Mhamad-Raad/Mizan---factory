@@ -141,6 +141,40 @@ test.describe('the reports and History', () => {
     await expect(page.getByText('#1001').first()).toBeVisible();
   });
 
+  test('search asks the server once for a typed word, not once per letter', async ({ page }) => {
+    await withPreferences(page, { lang: 'en', theme: 'light' });
+    await signIn(page, ACCOUNTANT);
+
+    const asked: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/api/v1/search')) asked.push(request.url());
+    });
+
+    await page.goto('/search');
+    await page.locator('input[type="search"]').pressSequentially('kawa', { delay: 40 });
+    await expect(page.getByText('Kawa Trading')).toBeVisible();
+    // Four letters typed: the field holds the request until the typing stops (NFR-03). Two is
+    // the allowance for a run where the delay between keystrokes exceeds the debounce.
+    expect(asked.length, asked.join('\n')).toBeLessThanOrEqual(2);
+  });
+
+  test('the History diff arrow mirrors in Kurdish, so it points at the new value', async ({ page }) => {
+    await withPreferences(page, { lang: 'ckb-IQ', theme: 'light' });
+    await signIn(page, ADMIN);
+
+    // An order: the fixture edits one, so there is a field diff to draw an arrow in.
+    await page.goto('/history?entity_type=order&preset=month');
+    // `first().click()` waits for the list; counting first would race the query.
+    await page.locator('.mz-card button[aria-expanded]').first().click();
+
+    // A literal → character cannot mirror; the registry's arrow declares that it does, and the
+    // stylesheet flips it in RTL (spec 2.10.6 point 2).
+    const arrow = page.locator('.mz-card svg[data-mirror="true"]').first();
+    await expect(arrow).toBeVisible();
+    const flipped = await arrow.evaluate((node) => getComputedStyle(node).transform);
+    expect(flipped).toContain('-1');
+  });
+
   test('a report page is right-to-left in Arabic and does not scroll sideways at 1.25', async ({ page }) => {
     await withPreferences(page, { lang: 'ar-IQ', theme: 'light', fontScale: 1.25 });
     await signIn(page, ACCOUNTANT);

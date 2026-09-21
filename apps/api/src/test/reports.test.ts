@@ -631,6 +631,74 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       expect(employeeKeys).toContain('my_actions_today');
     });
 
+    it('gives the unpaid tile as a pair of currencies, never as their sum', async () => {
+      await seedActivity();
+      // A dollar-settled customer beside the dinar-settled one, which is what makes the
+      // difference visible: the tile used to add each order's remaining **in its own
+      // settlement currency** into one number and label it dinars, so this customer's cents
+      // were counted as dinars (the worst defect of the I1 review, D-022, rule 1).
+      const dollarCustomer = (
+        await as(ctx.http, admin)
+          .post('/api/v1/customers')
+          .send({ name: 'Dollar Trading', settlement_currency: 'USD' })
+          .expect(201)
+      ).body.id;
+      await as(ctx.http, admin)
+        .post('/api/v1/orders')
+        .send({
+          customer_id: dollarCustomer,
+          order_date: today(),
+          payment_type: 'borrowed',
+          lines: [{ item_id: copper, qty_kg: '10.000' }],
+        })
+        .expect(201);
+
+      const dashboard = await as(ctx.http, admin).get('/api/v1/dashboard').expect(200);
+      const tile = dashboard.body.tiles.find((row: { key: string }) => row.key === 'unpaid_orders');
+
+      const owed = await withDatabase(async (client) => {
+        const { rows } = await client.query<{ iqd: string; usd_cents: string }>(
+          `WITH remaining AS (
+             SELECT o.id,
+                    coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd
+                                      ELSE l.amount_usd_cents END), 0) AS settlement_remaining,
+                    coalesce(sum(l.amount_iqd), 0) AS iqd,
+                    coalesce(sum(l.amount_usd_cents), 0) AS usd_cents
+               FROM orders o
+               JOIN customers c ON c.id = o.customer_id
+               LEFT JOIN customer_ledger l ON l.order_id = o.id
+              WHERE o.status = 'active' AND o.deleted_at IS NULL
+              GROUP BY o.id, c.settlement_currency
+           )
+           SELECT coalesce(sum(iqd), 0)::text AS iqd, coalesce(sum(usd_cents), 0)::text AS usd_cents
+             FROM remaining WHERE settlement_remaining > 0`,
+        );
+        return { iqd: Number(rows[0]?.iqd ?? 0), usd_cents: Number(rows[0]?.usd_cents ?? 0) };
+      });
+
+      expect(tile.balance).toEqual({ amount_iqd: owed.iqd, amount_usd_cents: owed.usd_cents });
+      // Kawa's part-paid order, Zagros's and the dollar customer's; the cash one is settled.
+      expect(tile.count).toBe(3);
+      // The two sides are the same money seen twice, so neither is the other's sum.
+      expect(tile.balance.amount_iqd).not.toBe(owed.iqd + owed.usd_cents);
+      expect(tile.balance.amount_usd_cents).toBeGreaterThan(0);
+    });
+
+    it('hides the unpaid tile amount from a user without the customer-balances flag', async () => {
+      await seedActivity();
+      const employee = await seedUser({
+        username: 'hawre',
+        permissions: ['dashboard.view', 'orders.view', 'customers.view_all'],
+      });
+      const session = await signIn(ctx.http, employee);
+
+      const dashboard = await as(ctx.http, session).get('/api/v1/dashboard').expect(200);
+      const tile = dashboard.body.tiles.find((row: { key: string }) => row.key === 'unpaid_orders');
+      // The count survives, the money does not (1.5.4).
+      expect(tile.count).toBeGreaterThan(0);
+      expect(tile.balance).toBeUndefined();
+    });
+
     it('finds a name typed in the other script, and a document by its number', async () => {
       const seeded = await seedActivity();
 
