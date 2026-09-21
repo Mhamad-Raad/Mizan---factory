@@ -9,14 +9,18 @@ export type OrderStatus = 'unpaid' | 'partially_paid' | 'paid' | 'void';
  * The status chips (FR-607, spec 3.2). Each carries an icon as well as a colour, because
  * colour alone is never the signal (spec 2.10.8).
  */
-export function OrderStatusChip({ status }: { status: OrderStatus }) {
+export function OrderStatusChip({ status, settling }: { status: OrderStatus; settling?: boolean }) {
   const { t } = useTranslation();
   const tone = status === 'paid' ? 'success' : status === 'partially_paid' ? 'warning' : status === 'void' ? 'danger' : 'neutral';
   const icon = status === 'paid' ? 'check' : status === 'void' ? 'close' : 'clock';
   return (
-    <Chip tone={tone} icon={icon}>
-      {t(`glossary:${status}`)}
-    </Chip>
+    // `settling` draws the check rather than dropping it in — the moment a balance reaches
+    // zero, and only then (signature moment 2, spec 3.6.2).
+    <span className={settling ? 'mz-chip-settling' : undefined}>
+      <Chip tone={tone} icon={icon}>
+        {t(`glossary:${status}`)}
+      </Chip>
+    </span>
   );
 }
 

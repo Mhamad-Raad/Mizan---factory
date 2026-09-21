@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Avatar, Button, Card, MizanMark, PasswordField, PinPad } from '@mizan/ui';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { clearAllDrafts } from '../lib/drafts.js';
+import { useMotionAllowed, staggerDelay } from '../lib/motion.js';
 import { forgetTicket, readRecentUsers, rememberUser } from '../lib/preferences.js';
 import type { RecentUser } from '../lib/preferences.js';
 import { useApp } from '../lib/store.js';
@@ -56,6 +57,7 @@ export function LockPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const motion = useMotionAllowed();
   const shared = preferences.sharedDevice;
   // The policy this browser last saw, because a locked session cannot ask the server (D-038).
   const pinLength = shared ? preferences.pinPolicy.shared : preferences.pinPolicy.personal;
@@ -203,6 +205,7 @@ export function LockPage() {
             </div>
 
             {showPinPad ? (
+              <div className={motion ? 'mz-pinpad--flip' : undefined}>
               <PinPad
                 value={pin}
                 onChange={(next) => {
@@ -220,6 +223,7 @@ export function LockPage() {
                 backspaceLabel={t('common:back')}
                 disabled={busy}
               />
+              </div>
             ) : (
               <form className="mz-stack" onSubmit={submitPassword} noValidate>
                 <PasswordField
@@ -263,8 +267,12 @@ export function LockPage() {
                 <p className="mz-caption">{t('auth:recent_users')}</p>
                 <ul className="mz-list">
                   {(switching ? [{ username: '', displayName: who.displayName } as RecentUser] : recent).map(
-                    (entry) => (
-                      <li key={entry.username || 'current'}>
+                    (entry, index) => (
+                      <li
+                        key={entry.username || 'current'}
+                        className={motion ? 'mz-switcher__card' : undefined}
+                        style={{ ['--mz-stagger' as string]: staggerDelay(index, recent.length, motion) }}
+                      >
                         <button
                           type="button"
                           className="mz-list__item mz-list__item--interactive"

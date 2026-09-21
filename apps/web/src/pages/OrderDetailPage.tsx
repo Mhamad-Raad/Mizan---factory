@@ -12,6 +12,7 @@ import { PaymentSheet } from '../components/PaymentSheet.js';
 import { ShareDocumentSheet } from '../components/ShareDocumentSheet.js';
 import { QueryStates } from '../components/states.js';
 import { OrderStatusChip, PaymentTypeChip, RateBadge } from '../components/chips.js';
+import { useJustSettled } from '../lib/motion.js';
 import { customerName } from '../lib/customers.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import type { OrderDetail } from './OrderFormPage.js';
@@ -132,6 +133,8 @@ export function OrderDetailPage() {
   });
 
   const data = order.data;
+  // The moment a payment brings this order to zero (signature moment 2, spec 3.6.2).
+  const settled = useJustSettled(data?.remaining ?? 0);
   const excessNeeded =
     payment.error instanceof ApiError && payment.error.fieldError('amount')?.code === 'EXCEEDS_REMAINING';
 
@@ -150,7 +153,7 @@ export function OrderDetailPage() {
                 </div>
               ) : null}
 
-              <Card>
+              <Card className={settled ? 'mz-settled' : undefined}>
                 <div className="mz-row mz-row--between">
                   <div>
                     <h2 className="mz-title">{t('orders:number', { number: formatter.number(data.number) })}</h2>
@@ -164,7 +167,7 @@ export function OrderDetailPage() {
                   </div>
                   <span className="mz-row" style={{ gap: 'var(--space-1)' }}>
                     <PaymentTypeChip type={data.payment_type} />
-                    <OrderStatusChip status={data.status} />
+                    <OrderStatusChip status={data.status} settling={settled} />
                   </span>
                 </div>
 

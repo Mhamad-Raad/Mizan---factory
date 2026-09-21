@@ -95,9 +95,20 @@ export function CustomerDetailPage() {
     enabled: statement,
   });
 
+  /**
+   * Bumped by every write that puts a row in the ledger, so the newest row carries the
+   * highlight when the refreshed list arrives (signature moment 3, spec 3.6.2).
+   */
+  const [landedVersion, setLandedVersion] = useState(0);
+
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['customers'] });
     await queryClient.invalidateQueries({ queryKey: ['orders'] });
+  };
+
+  const invalidateAndLand = async () => {
+    await invalidate();
+    setLandedVersion((version) => version + 1);
   };
 
   const payment = useMutation({
@@ -106,7 +117,7 @@ export function CustomerDetailPage() {
     onSuccess: async () => {
       setPaying(false);
       setToast(t('customers:payment_recorded'));
-      await invalidate();
+      await invalidateAndLand();
     },
   });
 
@@ -120,7 +131,7 @@ export function CustomerDetailPage() {
     onSuccess: async () => {
       setEntrySheet(null);
       setToast(t('customers:entry_recorded'));
-      await invalidate();
+      await invalidateAndLand();
     },
   });
 
@@ -327,6 +338,7 @@ export function CustomerDetailPage() {
                     <LedgerList
                       items={ledger.data?.items ?? []}
                       settlement_currency={ledger.data?.customer.settlement_currency ?? settlement}
+                      landedVersion={landedVersion}
                     />
                   </Card>
                 </QueryStates>

@@ -32,6 +32,14 @@ interface AppState {
   setOnline: (online: boolean) => void;
 }
 
+/** 300 ms of cross-fade on the document while the direction changes (spec 3.6.2). */
+function mirrorLayout(): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  root.setAttribute('data-mirroring', 'true');
+  window.setTimeout(() => root.removeAttribute('data-mirroring'), 320);
+}
+
 function formatterFor(preferences: Preferences): Formatter {
   return createFormatter({ locale: preferences.lang, numerals: preferences.numerals });
 }
@@ -48,7 +56,13 @@ export const useApp = create<AppState>((set, get) => ({
     // Applied to the document first so the change is visible in the same frame.
     applyPreferences(preferences);
     writePreferences(preferences);
-    if (key === 'lang') void i18next.changeLanguage(preferences.lang as Locale);
+    if (key === 'lang') {
+      void i18next.changeLanguage(preferences.lang as Locale);
+      // Signature moment 5 (spec 3.6.2): the layout cross-fades while it mirrors, rather than
+      // snapping. The flag lives on the document so one CSS rule owns the animation, and the
+      // reduced-motion block flattens it like everything else.
+      mirrorLayout();
+    }
     set({ preferences, formatter: formatterFor(preferences) });
   },
 

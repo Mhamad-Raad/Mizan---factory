@@ -878,6 +878,15 @@ const catalog = {
       'الإيقاف يعني أن شاشة القفل تطلب كلمات المرور فقط',
       'داخستن بەو مانایە کە شاشەی داخستن تەنها وشەی نهێنی داوا دەکات',
     ),
+    // Iteration 6 — the glyph verification page of 3.7.1.
+    font_check: T('Font check', 'فحص الخط', 'پشکنینی فۆنت'),
+    font_check_hint: T(
+      'Every Kurdish letter, both numeral systems and both currency marks, at every size',
+      'كل الحروف الكردية، نظامَي الأرقام وعلامتَي العملة، بكل المقاسات',
+      'هەموو پیتەکانی کوردی، دوو سیستەمی ژمارە و دوو نیشانەی دراو، بە هەموو قەبارەکان',
+    ),
+    font_check_joining: T('Joining forms', 'أشكال الوصل', 'شێوەی پێکەوەبەستن'),
+    font_check_numerals: T('Numerals and dates', 'الأرقام والتواريخ', 'ژمارە و بەروارەکان'),
     sessions: T('Sessions', 'الجلسات', 'دانیشتنەکان'),
     sessions_hint: T(
       'Where this employee is signed in, and which devices may use their PIN',

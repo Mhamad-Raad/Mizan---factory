@@ -151,9 +151,13 @@ export function CompanyDetailPage() {
     enabled: sheet === 'assign',
   });
 
+  /** Bumped by every write that puts a row in the ledger (signature moment 3, spec 3.6.2). */
+  const [landedVersion, setLandedVersion] = useState(0);
+
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['companies'] });
     await queryClient.invalidateQueries({ queryKey: ['purchases'] });
+    setLandedVersion((version) => version + 1);
   };
 
   const payment = useMutation({
@@ -409,6 +413,7 @@ export function CompanyDetailPage() {
                         items={ledgerRows}
                         settlement_currency={ledger.data?.company.settlement_currency ?? settlement}
                         namespace="companies"
+                        landedVersion={landedVersion}
                       />
                       {ledger.data?.has_more ? (
                         <div className="mz-stack" style={{ marginBlockStart: 'var(--space-3)' }}>

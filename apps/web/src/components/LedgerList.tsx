@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLandedFirstRow } from '../lib/motion.js';
 import { useTranslation } from 'react-i18next';
 import { Chip } from '@mizan/ui';
 import type { Currency, Rate } from '@mizan/money';
@@ -44,6 +45,12 @@ export interface LedgerListProps {
    * the caller's choice and the component stays one component (spec 1.6, 2.4.2).
    */
   namespace?: 'customers' | 'companies';
+  /**
+   * Increment after a write that adds a row here, and the newest row carries the highlight for
+   * 600 ms (signature moment 3: "the row lands", spec 3.6.2) — so somebody who has just
+   * recorded a payment sees where it went instead of a blank success message.
+   */
+  landedVersion?: number;
 }
 
 /**
@@ -55,10 +62,17 @@ export interface LedgerListProps {
  * The running balance is the one the API computed in posting order, so it always equals the
  * before/after History recorded for that write (2.4.1 rule 5).
  */
-export function LedgerList({ items, settlement_currency, actions, namespace = 'customers' }: LedgerListProps) {
+export function LedgerList({
+  items,
+  settlement_currency,
+  actions,
+  namespace = 'customers',
+  landedVersion = 0,
+}: LedgerListProps) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const landedId = useLandedFirstRow(items[0]?.entry_id ?? null, landedVersion);
 
   return (
     <div>
@@ -70,7 +84,7 @@ export function LedgerList({ items, settlement_currency, actions, namespace = 'c
             key={row.entry_id}
             className={`mz-ledger-row${row.kind === 'undone' ? ' mz-ledger-row--undone' : ''}${
               isMarker ? ' mz-ledger-row--marker' : ''
-            }`}
+            }${row.entry_id === landedId ? ' mz-landed' : ''}`}
           >
             <div>
               <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
