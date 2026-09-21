@@ -1,0 +1,11 @@
+{
+  "title": "اليوم",
+  "tile.sales_today": "مبيعات اليوم",
+  "tile.unpaid_orders": "الطلبات غير المدفوعة",
+  "tile.purchases_today": "مشتريات اليوم",
+  "tile.we_owe_companies": "ما علينا للشركات",
+  "tile.low_stock": "مخزون منخفض",
+  "tile.pending_returns": "بانتظار الإرجاع",
+  "tile.my_actions_today": "أعمالي اليوم",
+  "empty": "لا شيء اليوم بعد — ابدأ بطلب جديد"
+}

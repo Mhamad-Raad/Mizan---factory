@@ -1,0 +1,11 @@
+{
+  "title": "البحث",
+  "placeholder": "مادة أو زبون أو شركة أو رقم",
+  "prompt": "اكتب للبحث",
+  "empty": "لا نتائج لـ ‏«{{query}}»",
+  "kind.item": "المواد",
+  "kind.customer": "الزبائن",
+  "kind.company": "الشركات",
+  "kind.order": "طلبات البيع",
+  "kind.purchase": "المشتريات"
+}

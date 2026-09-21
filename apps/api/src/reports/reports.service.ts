@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal, marginTotals } from '@mizan/money';
-import type { Currency, MarginLine } from '@mizan/money';
+import type { MarginLine } from '@mizan/money';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
 import { PeriodService } from '../settings/period.service.js';
