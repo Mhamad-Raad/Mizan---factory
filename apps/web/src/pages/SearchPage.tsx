@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Card, EmptyState, TextField } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
+import { useDebouncedValue } from '../lib/debounce.js';
 import { AppShell } from '../components/AppShell.js';
 import { QueryStates } from '../components/states.js';
 
@@ -32,7 +33,8 @@ const ORDER: Hit['kind'][] = ['item', 'customer', 'company', 'order', 'purchase'
 export function SearchPage() {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
-  const term = query.trim();
+  // One request when the typing stops, not one per letter (NFR-03).
+  const term = useDebouncedValue(query).trim();
 
   const search = useQuery({
     queryKey: ['search', term],

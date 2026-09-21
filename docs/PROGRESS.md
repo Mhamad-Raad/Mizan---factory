@@ -568,6 +568,13 @@ read.
     renders through the same `QueryStates` as every other page.
   - **History at two million rows: 4.1 ms** for the first page against the 300 ms of
     NFR-03/NFR-13.
+- A second review pass over the **interface** code (the first pass had read it only for its page
+  states and screenshots) found four more, in `docs/REVIEW-I4.md`: the dashboard's unpaid tile
+  **added dinars to cents and labelled the sum dinars** — the I1 review's worst defect in a new
+  place, now a pair under `balance` behind `fields.see_customer_balances`; the `old → new` arrow
+  was a literal character that cannot mirror, so in Kurdish and Arabic it pointed back at the old
+  value; that arrow was the only thing between two values for a screen reader; and **no search
+  field in the system debounced** — every keystroke was a request, in the pickers since I1.
 - Demo script of 4.6 is **executable** (`scripts/demo-i4.mjs`) and passes end to end, twice:
   once against an empty deployment and once against one it had already run against. It walks
   the four steps of the brief — History filtered by who did it and by whose customer it is, with
@@ -577,7 +584,7 @@ read.
   an accountant against a sales employee, and search finding a name and an order number — and
   ends by checking that the reports agree with the records they read.
 - CI: lint · types · translations (interface **and** API) · contrast · migrations · route
-  declarations · **479 tests** · build · bundle budget · **53 Playwright checks**.
+  declarations · **481 tests** · build · bundle budget · **55 Playwright checks**.
 
 ## I4 — Definition of done (section 4.1)
 
@@ -589,9 +596,9 @@ read.
 | 4 | Every change in History with old → new, balances before → after | ✅ nothing here writes; History itself is what this iteration completed, diffs and all |
 | 5 | Every amount in both currencies through `DualAmount`, ≈ for conversions | ✅ every report tile and row; the margin's two sides are one computation, never a conversion of a sum |
 | 6 | Both themes, all four text sizes, no overflow, contrast | ✅ 10 new screenshots, overflow and target checks at 1.25 on a report page |
-| 7 | Tests for money and stock logic | ✅ 8 new kernel tests for the margin with hand-computed figures; 246 API tests (40 new), every report against an independent SQL sum |
+| 7 | Tests for money and stock logic | ✅ 8 new kernel tests for the margin with hand-computed figures; 248 API tests (42 new), every report against an independent SQL sum, and the dashboard's unpaid tile asserted per currency |
 | 8 | Skeleton, empty, error and offline states | ✅ one `QueryStates` on every new page — and History moved onto it, which is what the review found |
-| 9 | Accessibility basics | ✅ labels, focus order, 44 px asserted on the report filters |
+| 9 | Accessibility basics | ✅ labels, focus order, 44 px asserted on the report filters — and History's diff now names its two sides for a screen reader |
 | 10 | Demo on staging with seeded data | ⚠️ the demo script passes against a live deployment; **staging still needs a host** |
 
 **I4 is complete but for the two items that have been owed since I0:** the real-phone RTL and

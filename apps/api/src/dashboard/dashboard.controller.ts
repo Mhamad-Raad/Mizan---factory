@@ -14,9 +14,10 @@ export interface DashboardTile {
   /** Sale prices, which anyone who may see the records may see (FR-602). */
   amount_iqd?: number;
   amount_usd_cents?: number;
-  /** Bought prices and balances, which travel under `cost` so one flag hides them (D-022). */
+  /** Bought prices, which travel under `cost` so one flag hides them (D-022). */
   cost?: { amount_iqd: number; amount_usd_cents: number } | null;
-  detail?: string | null;
+  /** Customer balances: their own key, their own flag, and always a pair (D-022, rule 1). */
+  balance?: { amount_iqd: number; amount_usd_cents: number } | null;
 }
 
 /**
@@ -34,7 +35,7 @@ export interface DashboardTile {
  * phone: asked one after another, the request cost the sum of every tile (I4 review).
  */
 @Controller('dashboard')
-@SensitiveFields({ cost: 'fields.see_bought_price' })
+@SensitiveFields({ cost: 'fields.see_bought_price', balance: 'fields.see_customer_balances' })
 export class DashboardController {
   constructor(
     private readonly database: Database,
@@ -57,7 +58,7 @@ export class DashboardController {
     if (can(context, 'orders.view')) {
       // A sales employee's dashboard is their own work (spec 2.6.4); an owner's is the factory's.
       const scoped = can(context, 'customers.view_all') ? null : context.userId;
-      asking.push(this.sellingTiles(context, today, scoped));
+      asking.push(this.sellingTiles(today, scoped));
     }
     if (can(context, 'purchases.view')) asking.push(this.purchaseTile(today));
     if (can(context, 'companies.view') && can(context, 'fields.see_company_balances')) {
@@ -89,11 +90,7 @@ export class DashboardController {
   }
 
   /** Today's sales and what is still owed — two questions about the same records. */
-  private async sellingTiles(
-    context: ReturnType<typeof contextOf>,
-    today: string,
-    scoped: string | null,
-  ): Promise<DashboardTile[]> {
+  private async sellingTiles(today: string, scoped: string | null): Promise<DashboardTile[]> {
     const [sold, unpaid] = await Promise.all([
       this.database.query<{ count: string; iqd: string; usd_cents: string }>(
         `SELECT count(*)::text AS count,
@@ -107,11 +104,18 @@ export class DashboardController {
       ),
       // One grouped pass over the ledger rather than the `order_balances` view, which groups
       // every order ever placed and cannot be narrowed from outside (I1 and I4 reviews).
-      this.database.query<{ count: string; remaining: string }>(
+      //
+      // "Is this order still owed?" is asked in the customer's **settlement** currency, because
+      // that is the side the debt is agreed in; what is *summed* is each currency on its own,
+      // because dinars and cents are not addable — the worst defect of the I1 review, and it
+      // had come back here as one mixed number labelled dinars on the tile.
+      this.database.query<{ count: string; iqd: string; usd_cents: string }>(
         `WITH remaining AS (
            SELECT o.id,
                   coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd
-                                    ELSE l.amount_usd_cents END), 0) AS remaining
+                                    ELSE l.amount_usd_cents END), 0) AS settlement_remaining,
+                  coalesce(sum(l.amount_iqd), 0) AS remaining_iqd,
+                  coalesce(sum(l.amount_usd_cents), 0) AS remaining_usd_cents
              FROM orders o
              JOIN customers c ON c.id = o.customer_id
              LEFT JOIN customer_ledger l ON l.order_id = o.id
@@ -120,8 +124,10 @@ export class DashboardController {
                    OR c.is_system = true)
             GROUP BY o.id, c.settlement_currency
          )
-         SELECT count(*)::text AS count, coalesce(sum(remaining), 0)::text AS remaining
-           FROM remaining WHERE remaining > 0`,
+         SELECT count(*)::text AS count,
+                coalesce(sum(remaining_iqd), 0)::text AS iqd,
+                coalesce(sum(remaining_usd_cents), 0)::text AS usd_cents
+           FROM remaining WHERE settlement_remaining > 0`,
         [scoped],
       ),
     ]);
@@ -137,9 +143,10 @@ export class DashboardController {
       {
         key: 'unpaid_orders',
         count: Number(unpaid.rows[0]?.count ?? 0),
-        detail: can(context, 'fields.see_customer_balances')
-          ? (unpaid.rows[0]?.remaining ?? '0')
-          : null,
+        balance: {
+          amount_iqd: Number(unpaid.rows[0]?.iqd ?? 0),
+          amount_usd_cents: Number(unpaid.rows[0]?.usd_cents ?? 0),
+        },
       },
     ];
   }

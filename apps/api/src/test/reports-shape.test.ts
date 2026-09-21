@@ -260,7 +260,7 @@ describe('the reports read each growing table once (I4 review)', () => {
     const statements = await statementsOf('/api/v1/dashboard');
     // Matched by a fragment both shapes share, so the test fails on the plan rather than on
     // the needle when it is run against the previous code.
-    const unpaid = statementMatching(statements, /::text AS count, coalesce\(sum\(/);
+    const unpaid = statementMatching(statements, /::text AS count,[\s\S]*coalesce\(sum\(/);
     readsNoAggregateView(unpaid);
     const plan = await planOf(unpaid);
 
