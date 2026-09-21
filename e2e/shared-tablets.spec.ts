@@ -160,7 +160,21 @@ test.describe('shared tablets', () => {
 
     await expect(page.getByRole('heading', { name: 'Sessions' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Devices that may use the PIN' })).toBeVisible();
-    await expect(page).toHaveScreenshot('sessions-en-light.png', { fullPage: true });
+
+    /**
+     * Deliberately not a screenshot.
+     *
+     * This page's height is a function of how many times the suite has signed in as this
+     * employee — every sign-in is a session and a ticket, and the accessibility pass alone
+     * signs in nineteen times. The baseline came out 740 px when the test ran alone and
+     * 5,044 px in a full run, which is a screenshot that fails for reasons that have nothing
+     * to do with the interface (the same lesson as the clock-dependent History baseline in
+     * REVIEW-I4). What the tab must *say* is asserted instead.
+     */
+    const firstSession = page.locator('.mz-card').first();
+    await expect(firstSession).toContainText('Floor tablet 2');
+    await expect(firstSession.getByText('Password').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Revoke PIN sign-in everywhere' })).toBeVisible();
   });
 
   test('the Advanced grid is folded away, opens with every key named, and mirrors', async ({ page }) => {

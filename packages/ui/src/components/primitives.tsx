@@ -235,9 +235,13 @@ export function Tabs<T extends string>({ label, value, tabs, onChange }: TabsPro
   );
 }
 
-export function Card({ children, ...rest }: HTMLAttributes<HTMLDivElement>) {
+export function Card({ children, className, ...rest }: HTMLAttributes<HTMLDivElement>) {
+  // `className` is merged, not spread over: spreading `{...rest}` after a hard-coded class let
+  // a caller passing `className` — or even `className={undefined}` — silently delete
+  // `mz-card`, taking the padding and the border with it. Found by a screenshot diff in I6,
+  // which is the only thing that would have noticed.
   return (
-    <div className="mz-card" {...rest}>
+    <div className={className ? `mz-card ${className}` : 'mz-card'} {...rest}>
       {children}
     </div>
   );
