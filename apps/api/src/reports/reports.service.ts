@@ -59,21 +59,23 @@ export class ReportsService {
 
     return {
       ...meta,
-      groups: groups.map((group) => ({
-        key: group.key,
-        label: group.label,
-        count_orders: group.count_orders,
-        qty_count: group.qty_count,
-        qty_kg: group.qty_kg,
-        total_iqd: Number(group.total_iqd),
-        total_usd_cents: Number(group.total_usd_cents),
-        cash_iqd: Number(group.cash_iqd),
-        cash_usd_cents: Number(group.cash_usd_cents),
-        borrowed_iqd: Number(group.borrowed_iqd),
-        borrowed_usd_cents: Number(group.borrowed_usd_cents),
-        discount_iqd: Number(group.discount_iqd),
-        discount_usd_cents: Number(group.discount_usd_cents),
-      })),
+      ...capped(
+        groups.map((group) => ({
+          key: group.key,
+          label: group.label,
+          count_orders: group.count_orders,
+          qty_count: group.qty_count,
+          qty_kg: group.qty_kg,
+          total_iqd: Number(group.total_iqd),
+          total_usd_cents: Number(group.total_usd_cents),
+          cash_iqd: Number(group.cash_iqd),
+          cash_usd_cents: Number(group.cash_usd_cents),
+          borrowed_iqd: Number(group.borrowed_iqd),
+          borrowed_usd_cents: Number(group.borrowed_usd_cents),
+          discount_iqd: Number(group.discount_iqd),
+          discount_usd_cents: Number(group.discount_usd_cents),
+        })),
+      ),
       totals: {
         count_orders: sum(groups.map((group) => group.count_orders)),
         total_iqd: sum(groups.map((group) => Number(group.total_iqd))),
@@ -99,18 +101,20 @@ export class ReportsService {
 
     return {
       ...meta,
-      groups: groups.map((group) => ({
-        key: group.key,
-        label: group.label,
-        count_purchases: group.count_purchases,
-        qty_count: group.qty_count,
-        qty_kg: group.qty_kg,
-        // The amounts of a purchase are bought prices (FR-1004): one flag hides them all.
-        cost: {
-          total_iqd: Number(group.total_iqd),
-          total_usd_cents: Number(group.total_usd_cents),
-        },
-      })),
+      ...capped(
+        groups.map((group) => ({
+          key: group.key,
+          label: group.label,
+          count_purchases: group.count_purchases,
+          qty_count: group.qty_count,
+          qty_kg: group.qty_kg,
+          // The amounts of a purchase are bought prices (FR-1004): one flag hides them all.
+          cost: {
+            total_iqd: Number(group.total_iqd),
+            total_usd_cents: Number(group.total_usd_cents),
+          },
+        })),
+      ),
       totals: {
         count_purchases: sum(groups.map((group) => group.count_purchases)),
         cost: {
@@ -129,60 +133,107 @@ export class ReportsService {
    * "Margin vs. month price". The margin of every line is computed by the kernel — once, in the
    * line's entered currency, from the cost snapshot stored on it — and the report sums those
    * figures per group. Lines with no cost snapshot are counted and named, never included.
+   *
+   * The lines arrive in batches and are folded as they come, so what a wide period costs this
+   * process is bounded: the totals of a batch add to the totals of the batches before it,
+   * because every figure here is a sum of per-line figures (I4 review, FR-1005).
    */
   async profit(context: RequestContext, request: ReportRequest) {
     const { filters, meta } = this.resolve(context, request, 'done_by');
-    const lines = await this.reports.marginLines(filters);
 
-    const byGroup = new Map<string, { label: string | null; lines: MarginLine[]; revenue_iqd: number; revenue_usd_cents: number }>();
-    for (const line of lines) {
-      const group = byGroup.get(line.group_key) ?? {
-        label: line.group_label,
-        lines: [],
-        revenue_iqd: 0,
-        revenue_usd_cents: 0,
-      };
-      group.lines.push({
-        priced_measure: line.priced_measure,
-        qty_count: line.qty_count,
-        qty_kg: line.qty_kg,
-        unit_price_iqd: Number(line.unit_price_iqd),
-        unit_price_usd_cents: Number(line.unit_price_usd_cents),
-        price_entered_currency: line.price_entered_currency,
-        rate_iqd_per_usd: line.rate_iqd_per_usd,
-        cost_unit_iqd: line.cost_unit_iqd === null ? null : Number(line.cost_unit_iqd),
-        cost_unit_usd_cents: line.cost_unit_usd_cents === null ? null : Number(line.cost_unit_usd_cents),
-        cost_source: line.cost_source,
-      });
-      group.revenue_iqd += Number(line.line_total_iqd);
-      group.revenue_usd_cents += Number(line.line_total_usd_cents);
-      byGroup.set(line.group_key, group);
+    const byGroup = new Map<
+      string,
+      {
+        label: string | null;
+        revenue_iqd: number;
+        revenue_usd_cents: number;
+        margin_iqd: number;
+        margin_usd_cents: number;
+        lines: number;
+        lines_without_cost: number;
+        lines_with_fallback: number;
+      }
+    >();
+
+    for await (const batch of this.reports.marginLineBatches(filters)) {
+      const inBatch = new Map<
+        string,
+        {
+          label: string | null;
+          lines: MarginLine[];
+          revenue_iqd: number;
+          revenue_usd_cents: number;
+        }
+      >();
+      for (const line of batch) {
+        const group = inBatch.get(line.group_key) ?? {
+          label: line.group_label,
+          lines: [],
+          revenue_iqd: 0,
+          revenue_usd_cents: 0,
+        };
+        group.lines.push({
+          priced_measure: line.priced_measure,
+          qty_count: line.qty_count,
+          qty_kg: line.qty_kg,
+          unit_price_iqd: Number(line.unit_price_iqd),
+          unit_price_usd_cents: Number(line.unit_price_usd_cents),
+          price_entered_currency: line.price_entered_currency,
+          rate_iqd_per_usd: line.rate_iqd_per_usd,
+          cost_unit_iqd: line.cost_unit_iqd === null ? null : Number(line.cost_unit_iqd),
+          cost_unit_usd_cents:
+            line.cost_unit_usd_cents === null ? null : Number(line.cost_unit_usd_cents),
+          cost_source: line.cost_source,
+        });
+        group.revenue_iqd += Number(line.line_total_iqd);
+        group.revenue_usd_cents += Number(line.line_total_usd_cents);
+        inBatch.set(line.group_key, group);
+      }
+
+      for (const [key, group] of inBatch) {
+        const totals = marginTotals(group.lines);
+        const running = byGroup.get(key) ?? {
+          label: group.label,
+          revenue_iqd: 0,
+          revenue_usd_cents: 0,
+          margin_iqd: 0,
+          margin_usd_cents: 0,
+          lines: 0,
+          lines_without_cost: 0,
+          lines_with_fallback: 0,
+        };
+        running.revenue_iqd += group.revenue_iqd;
+        running.revenue_usd_cents += group.revenue_usd_cents;
+        running.margin_iqd += totals.margin_iqd;
+        running.margin_usd_cents += totals.margin_usd_cents;
+        running.lines += totals.lines;
+        running.lines_without_cost += totals.lines_without_cost;
+        running.lines_with_fallback += totals.lines_with_fallback;
+        byGroup.set(key, running);
+      }
     }
 
-    const groups = [...byGroup].map(([key, group]) => {
-      const totals = marginTotals(group.lines);
-      return {
-        key,
-        label: group.label,
-        lines: totals.lines,
-        cost: {
-          revenue_iqd: group.revenue_iqd,
-          revenue_usd_cents: group.revenue_usd_cents,
-          margin_iqd: totals.margin_iqd,
-          margin_usd_cents: totals.margin_usd_cents,
-        },
-        lines_without_cost: totals.lines_without_cost,
-        /** Flagged per row, as 2.11 asks: the cost came from an earlier month. */
-        price_fallback: totals.lines_with_fallback > 0,
-        lines_with_fallback: totals.lines_with_fallback,
-      };
-    });
+    const groups = [...byGroup].map(([key, group]) => ({
+      key,
+      label: group.label,
+      lines: group.lines,
+      cost: {
+        revenue_iqd: group.revenue_iqd,
+        revenue_usd_cents: group.revenue_usd_cents,
+        margin_iqd: group.margin_iqd,
+        margin_usd_cents: group.margin_usd_cents,
+      },
+      lines_without_cost: group.lines_without_cost,
+      /** Flagged per row, as 2.11 asks: the cost came from an earlier month. */
+      price_fallback: group.lines_with_fallback > 0,
+      lines_with_fallback: group.lines_with_fallback,
+    }));
 
     return {
       ...meta,
       /** The report is a **list-price** margin and says so on the screen (FR-1005). */
       basis: 'month_price',
-      groups: groups.sort((left, right) => (left.key < right.key ? 1 : -1)),
+      ...capped(sortGroups(groups, filters.group_by ?? 'month', (group) => group.cost.margin_iqd)),
       totals: {
         lines: sum(groups.map((group) => group.lines)),
         lines_without_cost: sum(groups.map((group) => group.lines_without_cost)),
@@ -231,8 +282,14 @@ export class ReportsService {
         cost: {
           // Stock × the bought price of the period's month, both currencies from the stored
           // pair — never one converted from the other (2.11).
-          value_iqd: boughtIqd === null ? null : Math.round(new Decimal(boughtIqd).times(quantity).toNumber()),
-          value_usd_cents: boughtUsd === null ? null : Math.round(new Decimal(boughtUsd).times(quantity).toNumber()),
+          value_iqd:
+            boughtIqd === null
+              ? null
+              : Math.round(new Decimal(boughtIqd).times(quantity).toNumber()),
+          value_usd_cents:
+            boughtUsd === null
+              ? null
+              : Math.round(new Decimal(boughtUsd).times(quantity).toNumber()),
           bought_iqd: boughtIqd,
           bought_usd_cents: boughtUsd,
         },
@@ -243,7 +300,7 @@ export class ReportsService {
       from: filters.from,
       to: filters.to,
       group_by: 'item',
-      groups,
+      ...capped(groups),
       totals: {
         materials: groups.length,
         cost: {
@@ -280,7 +337,7 @@ export class ReportsService {
     return {
       ...meta,
       group_by: 'customer',
-      groups,
+      ...capped(groups),
       totals: {
         customers: groups.length,
         balance: {
@@ -294,7 +351,7 @@ export class ReportsService {
   }
 
   async payables(context: RequestContext, request: ReportRequest) {
-    const { filters, meta } = this.resolve(context, request, 'assigned_to');
+    const { filters, meta } = this.resolve(context, request, null);
     const rows = await this.reports.payables(filters);
 
     const groups = rows.map((row) => ({
@@ -320,7 +377,7 @@ export class ReportsService {
     return {
       ...meta,
       group_by: 'company',
-      groups,
+      ...capped(groups),
       totals: {
         companies: groups.length,
         balance: {
@@ -337,7 +394,10 @@ export class ReportsService {
 
   // ───────────────────────────────── damage (FR-1009) ─────────────────────────────────
 
-  async damage(context: RequestContext, request: Omit<ReportRequest, 'group_by'> & { group_by?: DamageGroupBy }) {
+  async damage(
+    context: RequestContext,
+    request: Omit<ReportRequest, 'group_by'> & { group_by?: DamageGroupBy },
+  ) {
     const { filters, meta } = this.resolve(context, { ...request, group_by: undefined }, 'done_by');
     const rows = await this.reports.damage({ ...filters, group_by: request.group_by ?? 'month' });
 
@@ -359,11 +419,13 @@ export class ReportsService {
     return {
       ...meta,
       group_by: request.group_by ?? 'month',
-      groups,
+      ...capped(groups),
       totals: {
         records: sum(groups.map((group) => group.records)),
         qty_count: sum(groups.map((group) => group.qty_count)),
-        qty_kg: groups.reduce((total, group) => total.plus(group.qty_kg), new Decimal(0)).toFixed(3),
+        qty_kg: groups
+          .reduce((total, group) => total.plus(group.qty_kg), new Decimal(0))
+          .toFixed(3),
         unvalued: sum(groups.map((group) => group.unvalued)),
         cost: {
           est_value_iqd: sum(groups.map((group) => group.cost.est_value_iqd)),
@@ -384,26 +446,28 @@ export class ReportsService {
     return {
       ...meta,
       group_by: 'employee',
-      groups: rows.map((row) => ({
-        key: row.key,
-        label: row.label,
-        orders: Number(row.orders),
-        orders_iqd: Number(row.orders_iqd),
-        orders_usd_cents: Number(row.orders_usd_cents),
-        purchases: Number(row.purchases),
-        payments_in: Number(row.payments_in),
-        payments_in_iqd: Number(row.payments_in_iqd),
-        payments_out: Number(row.payments_out),
-        payments_out_iqd: Number(row.payments_out_iqd),
-        damages: Number(row.damages),
-        adjustments: Number(row.adjustments),
-        voids: Number(row.voids),
-        sign_ins: Number(row.sign_ins),
-        cost: {
-          purchases_iqd: Number(row.purchases_iqd),
-          purchases_usd_cents: Number(row.purchases_usd_cents),
-        },
-      })),
+      ...capped(
+        rows.map((row) => ({
+          key: row.key,
+          label: row.label,
+          orders: Number(row.orders),
+          orders_iqd: Number(row.orders_iqd),
+          orders_usd_cents: Number(row.orders_usd_cents),
+          purchases: Number(row.purchases),
+          payments_in: Number(row.payments_in),
+          payments_in_iqd: Number(row.payments_in_iqd),
+          payments_out: Number(row.payments_out),
+          payments_out_iqd: Number(row.payments_out_iqd),
+          damages: Number(row.damages),
+          adjustments: Number(row.adjustments),
+          voids: Number(row.voids),
+          sign_ins: Number(row.sign_ins),
+          cost: {
+            purchases_iqd: Number(row.purchases_iqd),
+            purchases_usd_cents: Number(row.purchases_usd_cents),
+          },
+        })),
+      ),
     };
   }
 
@@ -427,7 +491,7 @@ export class ReportsService {
     return {
       ...meta,
       group_by: 'employee',
-      groups,
+      ...capped(groups),
       totals: {
         received_iqd: sum(groups.map((group) => group.received_iqd)),
         received_usd_cents: sum(groups.map((group) => group.received_usd_cents)),
@@ -457,16 +521,30 @@ export class ReportsService {
    * The range plus the user filter, pinned to the caller when they may not see everyone's
    * figures (2.11, FR-1002). The pin is echoed so the screen can label the report honestly.
    */
+  /**
+   * The range, the grouping and — for the reports that have a user dimension — the pin of 2.11.
+   *
+   * `pin: null` is not an oversight: **Payables has no pin**. Companies are deliberately
+   * unscoped (FR-711) and their `assigned_user_id` is optional and usually empty, so pinning
+   * that report to "assigned to me" answered *we owe nothing* to the very accountant whose job
+   * it is — an empty state that reads as a fact rather than as a filter (D-031). Section 2.11's
+   * own table lists no pinned filter for Payables; the sentence under it does, and this is the
+   * reading that agrees with FR-711.
+   */
   private resolve(
     context: RequestContext,
     request: ReportRequest,
-    pin: 'done_by' | 'assigned_to',
+    pin: 'done_by' | 'assigned_to' | null,
   ): { filters: ReportFilters; meta: ReportMeta } {
     const filters = this.range(request);
     const maySeeEveryone = can(context, 'reports.view_all');
 
-    if (maySeeEveryone) {
-      const resolved = { ...filters, done_by: request.done_by, assigned_to: request.assigned_to };
+    if (maySeeEveryone || pin === null) {
+      // Without `reports.view_all` there is nobody else's figures to ask for, so an unpinned
+      // report ignores the user filters rather than letting them in by the back door.
+      const resolved = maySeeEveryone
+        ? { ...filters, done_by: request.done_by, assigned_to: request.assigned_to }
+        : filters;
       return {
         filters: resolved,
         meta: { from: filters.from, to: filters.to, group_by: request.group_by ?? 'month' },
@@ -488,4 +566,45 @@ export class ReportsService {
 
 function sum(values: readonly number[]): number {
   return values.reduce((total, value) => total + value, 0);
+}
+
+/**
+ * How many groups a report **sends**. At the volumes of NFR-13 — 10,000 customers, 5,000
+ * materials — "sales by customer for the year" is ten thousand rows, and on the reference
+ * connection of NFR-03 (400 kbps) two megabytes of them take the better part of a minute to
+ * arrive on a phone that can only show a screenful.
+ */
+const MAX_GROUPS = 200;
+
+/**
+ * The groups worth sending, with the truth about how many there were.
+ *
+ * The totals are **not** computed from this list: every report sums all of its groups first and
+ * caps afterwards, so a capped report's totals are still the period's (asserted). The order the
+ * rows arrive in decides what a cap keeps, which is why a report grouped by a dimension is
+ * ordered by its own money, largest first, rather than alphabetically.
+ */
+/**
+ * A date grouping reads newest first, because that is the order a period is read in; a
+ * dimension — material, customer, employee — reads largest first, because that is what the
+ * question "where did the margin come from?" means, and because it is what makes a cap keep
+ * the rows worth keeping.
+ */
+function sortGroups<T extends { key: string }>(
+  groups: readonly T[],
+  groupBy: string,
+  measure: (group: T) => number,
+): T[] {
+  if (groupBy === 'month' || groupBy === 'day') {
+    return [...groups].sort((left, right) => (left.key < right.key ? 1 : -1));
+  }
+  return [...groups].sort((left, right) => measure(right) - measure(left));
+}
+
+function capped<T>(groups: readonly T[]): { groups: T[]; group_count: number; has_more: boolean } {
+  return {
+    groups: groups.slice(0, MAX_GROUPS),
+    group_count: groups.length,
+    has_more: groups.length > MAX_GROUPS,
+  };
 }

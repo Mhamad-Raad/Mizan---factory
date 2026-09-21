@@ -52,6 +52,7 @@
   "balance": "باڵانس",
   "received": "وەرگیراو",
   "unpaid_orders": "{{count}} نەدراو",
+  "capped": "گەورەترین {{shown}} لە {{total}}. ماوە یان کاڵا باریکتر بکە بۆ بینینی ئەوانی تر.",
   "purchased": "کڕدراو",
   "credits": "کەمکردنەوەکان",
   "adjustments": "ڕاستکردنەوەکان",

@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, DateField, EmptyState, ErrorState, Skeleton } from '@mizan/ui';
+import { BottomSheet, Button, Card, Chip, DateField } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { AppShell } from '../components/AppShell.js';
+import { QueryStates } from '../components/states.js';
 import { AuditDiff } from '../components/AuditDiff.js';
 import { FilterChip } from './MaterialsPage.js';
 import { useApp, useFormatter } from '../lib/store.js';
@@ -184,20 +185,8 @@ export function HistoryPage() {
           </select>
         </label>
 
-        {history.isPending ? <Skeleton lines={8} /> : null}
-        {history.isError ? (
-          <ErrorState
-            title={t('common:error_title')}
-            body={t('common:error_body')}
-            action={
-              <Button variant="secondary" onClick={() => void history.refetch()}>
-                {t('common:retry')}
-              </Button>
-            }
-          />
-        ) : null}
-        {history.data && entries.length === 0 ? <EmptyState title={t('history:empty')} icon="history" /> : null}
-
+        {/* The four states through the one component, so the offline wording cannot go missing. */}
+        <QueryStates query={history} isEmpty={entries.length === 0} emptyTitle={t('history:empty')} skeletonLines={8}>
         {entries.map((entry) => (
           <Card key={entry.id}>
             <button
@@ -268,6 +257,7 @@ export function HistoryPage() {
             {t('common:more')}
           </Button>
         ) : null}
+        </QueryStates>
 
         {filters ? (
           <BottomSheet

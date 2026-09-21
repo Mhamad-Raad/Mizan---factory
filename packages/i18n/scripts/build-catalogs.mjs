@@ -1123,6 +1123,11 @@ const catalog = {
     balance: T('Balance', 'الرصيد', 'باڵانس'),
     received: T('Received', 'المستلم', 'وەرگیراو'),
     unpaid_orders: T('{{count}} unpaid', '{{count}} غير مدفوع', '{{count}} نەدراو'),
+    capped: T(
+      'The largest {{shown}} of {{total}}. Narrow the period or the material to see the rest.',
+      'أكبر {{shown}} من {{total}}. ضيّق الفترة أو المادة لرؤية الباقي.',
+      'گەورەترین {{shown}} لە {{total}}. ماوە یان کاڵا باریکتر بکە بۆ بینینی ئەوانی تر.',
+    ),
     purchased: T('Purchased', 'المشترى', 'کڕدراو'),
     credits: T('Credits', 'الإشعارات الدائنة', 'کەمکردنەوەکان'),
     adjustments: T('Adjustments', 'التعديلات', 'ڕاستکردنەوەکان'),

@@ -52,6 +52,7 @@
   "balance": "Balance",
   "received": "Received",
   "unpaid_orders": "{{count}} unpaid",
+  "capped": "The largest {{shown}} of {{total}}. Narrow the period or the material to see the rest.",
   "purchased": "Purchased",
   "credits": "Credits",
   "adjustments": "Adjustments",

@@ -483,6 +483,24 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       });
     });
 
+    it('shows every supplier to an accountant without reports.view_all, because companies are unscoped', async () => {
+      await seedActivity();
+      // An accountant: the balances flag, no `reports.view_all`. Companies are deliberately
+      // unscoped (FR-711) and are not assigned to anybody in practice, so pinning Payables to
+      // "assigned to me" answered "we owe nothing" — an empty state that reads as a fact (D-031).
+      const nazdar = await seedUser({
+        username: 'nazdar',
+        displayName: 'Nazdar',
+        permissions: ['reports.view', 'fields.see_company_balances', 'companies.view'],
+      });
+      const session = await signIn(ctx.http, nazdar);
+
+      const report = await as(ctx.http, session).get(`/api/v1/reports/payables?${range()}`).expect(200);
+      expect(report.body.pinned).toBeUndefined();
+      expect(report.body.groups.map((group: { label: string }) => group.label)).toContain('Al-Noor Steel Co.');
+      expect(report.body.totals.balance.amount_iqd).toBe(245_000);
+    });
+
     it('refuses both reports to a user without the balance flags', async () => {
       const plain = await seedUser({ username: 'shilan', permissions: ['reports.view', 'reports.view_all'] });
       const session = await signIn(ctx.http, plain);

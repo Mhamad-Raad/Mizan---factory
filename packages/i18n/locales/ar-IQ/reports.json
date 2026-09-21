@@ -52,6 +52,7 @@
   "balance": "الرصيد",
   "received": "المستلم",
   "unpaid_orders": "{{count}} غير مدفوع",
+  "capped": "أكبر {{shown}} من {{total}}. ضيّق الفترة أو المادة لرؤية الباقي.",
   "purchased": "المشترى",
   "credits": "الإشعارات الدائنة",
   "adjustments": "التعديلات",

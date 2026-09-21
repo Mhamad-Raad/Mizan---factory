@@ -339,3 +339,49 @@ the per-purchase breakdown stays one tap away on the company's Accounting tab, w
 already computed and already paginated. Running the allocation for forty suppliers to render one
 report page would cost half a second to show figures the reader has to open a company to act on
 anyway. Relied on: FR-1008, FR-712, REVIEW-I2.
+
+## D-031 · 2026-09-21 · I4 · Payables has no pinned user filter
+
+Section 2.11 contradicts itself about Payables: the table's "Needs · pinned filter" column lists
+only `reports.view` and `fields.see_company_balances`, while the sentence under the table says
+"Payables pins `assigned_to`". Companies are deliberately **unscoped** (FR-711: two employees
+with `companies.view` see the same list, asserted since I2), and a company's `assigned_user_id`
+is optional and in practice empty.
+
+**Choice:** Payables is not pinned. Pinning it to `assigned_to` answered *we owe nothing* to an
+accountant without `reports.view_all` — an empty report that reads as a fact about the business
+rather than as a filter, which is the worst kind of wrong answer about money. The reading that
+agrees with FR-711 wins over the sentence. Receivables keeps its `assigned_to` pin, because
+customers *are* assigned (FR-701). A report that is not pinned also ignores the `done_by` and
+`assigned_to` parameters for a caller without `reports.view_all`, so nothing enters by the back
+door. Relied on: 2.11, FR-711, FR-1008, spec 2.6.4.
+
+## D-032 · 2026-09-21 · I4 · A report sends at most 200 groups, and says how many there were
+
+At the volumes of NFR-13 — 10,000 customers, 5,000 materials — "sales by customer for the year"
+is ten thousand groups, and Receivables lists every customer whether they owe anything or not.
+On the reference connection of NFR-03 (400 kbps) two megabytes of them take the better part of a
+minute to reach a phone that can show a screenful. The specification says nothing about a bound,
+because 2.11 describes the figures rather than the transport.
+
+**Choice:** every report sums **all** of its groups and then sends at most 200 of them, with
+`group_count` and `has_more`, and the screen says "the largest 200 of N — narrow the period or
+the material to see the rest". A report grouped by a dimension is ordered by its own money,
+largest first, rather than alphabetically, so the cap keeps the rows the question was about; a
+report grouped by month or day stays chronological. The totals are the period's, never the
+page's — asserted, because a capped report whose totals shrank would be a report that lies.
+Relied on: NFR-03, NFR-13, 2.11, 2.9.2 (bounded responses), REVIEW-I2 finding 2.
+
+## D-033 · 2026-09-21 · I4 · The margin report folds the lines in batches
+
+D-029 keeps the margin in the kernel, which means the Profit report reads order **lines**. Five
+years of the volume fixture is 132,000 lines; the design point of NFR-13 is fourteen times that,
+and a request that reads them all at once makes one report's memory a function of how wide a
+range somebody typed.
+
+**Choice:** the lines arrive in batches of 50,000, keyed on the line's own id, and each batch is
+folded into the running per-group totals as it comes. Every figure in that report is a sum of
+per-line figures, so a batch's totals add to the previous ones exactly — asserted with a batch
+size of seven, where the boundaries fall inside every group. The wall clock for the widest range
+measured 527 ms whole and 579 ms batched: ten per cent for a ceiling on memory that does not
+depend on the question. Relied on: D-029, NFR-03, NFR-13, FR-1005.

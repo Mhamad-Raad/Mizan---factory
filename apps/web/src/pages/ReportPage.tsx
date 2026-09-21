@@ -37,6 +37,9 @@ interface ReportResponse {
   pinned?: { filter: 'done_by' | 'assigned_to'; user_id: string };
   basis?: string;
   groups: ReportGroup[];
+  /** How many groups the period had, and whether the response was capped (I4 review, D-032). */
+  group_count: number;
+  has_more: boolean;
   totals?: Record<string, unknown>;
 }
 
@@ -411,6 +414,13 @@ export function ReportPage({ name }: { name?: ReportName }) {
               );
             })}
           </ul>
+
+          {data?.has_more ? (
+            // Said out loud: a report that quietly stops at two hundred rows lies about the period.
+            <p className="mz-caption">
+              {t('reports:capped', { shown: (data.groups ?? []).length, total: data.group_count })}
+            </p>
+          ) : null}
         </QueryStates>
 
         {filters ? (

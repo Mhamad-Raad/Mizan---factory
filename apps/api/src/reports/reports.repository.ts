@@ -131,11 +131,16 @@ export class ReportsRepository {
       return rows;
     }
 
-    const grouping = this.documentGrouping(groupBy, 'o.order_date', {
-      customer: { key: 'c.id::text', label: 'c.name' },
-      employee: { key: 'o.acting_user_id::text', label: 'u.display_name' },
-      assigned: { key: 'c.assigned_user_id::text', label: 'a.display_name' },
-    });
+    const grouping = this.documentGrouping(
+      groupBy,
+      'o.order_date',
+      {
+        customer: { key: 'c.id::text', label: 'c.name' },
+        employee: { key: 'o.acting_user_id::text', label: 'u.display_name' },
+        assigned: { key: 'c.assigned_user_id::text', label: 'a.display_name' },
+      },
+      'sum(o.total_iqd)',
+    );
 
     const { rows } = await this.database.query<SalesGroup>(
       `SELECT ${grouping.key} AS key, ${grouping.label} AS label,
@@ -230,10 +235,15 @@ export class ReportsRepository {
       return rows;
     }
 
-    const grouping = this.documentGrouping(groupBy, 'p.purchase_date', {
-      company: { key: 'p.company_id::text', label: 'co.name' },
-      employee: { key: 'p.acting_user_id::text', label: 'u.display_name' },
-    });
+    const grouping = this.documentGrouping(
+      groupBy,
+      'p.purchase_date',
+      {
+        company: { key: 'p.company_id::text', label: 'co.name' },
+        employee: { key: 'p.acting_user_id::text', label: 'u.display_name' },
+      },
+      'sum(p.total_iqd)',
+    );
 
     const { rows } = await this.database.query<PurchasesGroup>(
       `SELECT ${grouping.key} AS key, ${grouping.label} AS label,
@@ -255,7 +265,11 @@ export class ReportsRepository {
   /** `paid_to_companies_*` (2.11): payments to companies in the period. */
   async paidToCompanies(filters: ReportFilters): Promise<{ iqd: number; usd_cents: number }> {
     const values: unknown[] = [filters.from, filters.to];
-    const conditions = ["l.entry_type = 'payment'", 'l.entry_date >= $1::date', 'l.entry_date <= $2::date'];
+    const conditions = [
+      "l.entry_type = 'payment'",
+      'l.entry_date >= $1::date',
+      'l.entry_date <= $2::date',
+    ];
     if (filters.done_by) {
       values.push(filters.done_by);
       conditions.push(`l.performed_by_user_id = $${values.length}::uuid`);
@@ -274,10 +288,33 @@ export class ReportsRepository {
 
   /**
    * The order lines of the period with their stored cost snapshots, already carrying the key
-   * they are grouped by. The margin itself is computed by the kernel over these rows, because
-   * there is one definition of it and it lives in `@mizan/money` (FR-1005, 2.11).
+   * they are grouped by, **in batches**. The margin itself is computed by the kernel over these
+   * rows, because there is one definition of it and it lives in `@mizan/money` (FR-1005, 2.11).
+   *
+   * A batch at a time, keyed on the line's own id, because the margin is a per-line rule and a
+   * period is not bounded: five years of the volume fixture is 132,000 lines, and the design
+   * point of NFR-13 is fourteen times that. Reading them all at once made the size of one
+   * request's memory a function of how wide a range somebody typed — the I4 review's finding.
+   * The fold is a sum, so a batch's totals add to the previous batches' exactly (asserted).
    */
-  async marginLines(filters: ReportFilters): Promise<MarginLineRow[]> {
+  async *marginLineBatches(
+    filters: ReportFilters,
+    batchSize = 50_000,
+  ): AsyncGenerator<MarginLineRow[], void, void> {
+    let cursor: string | null = null;
+    for (;;) {
+      const batch = await this.marginLines(filters, { after: cursor, limit: batchSize });
+      if (batch.length === 0) return;
+      yield batch.map((row) => row.line);
+      if (batch.length < batchSize) return;
+      cursor = batch[batch.length - 1]!.id;
+    }
+  }
+
+  private async marginLines(
+    filters: ReportFilters,
+    page: { after: string | null; limit: number },
+  ): Promise<{ id: string; line: MarginLineRow }[]> {
     const groupBy = filters.group_by ?? 'month';
     const values: unknown[] = [filters.from, filters.to];
     const conditions = [
@@ -308,11 +345,20 @@ export class ReportsRepository {
           : groupBy === 'employee'
             ? { key: 'o.acting_user_id::text', label: 'u.display_name' }
             : groupBy === 'day'
-              ? { key: "to_char(o.order_date, 'YYYY-MM-DD')", label: "to_char(o.order_date, 'YYYY-MM-DD')" }
+              ? {
+                  key: "to_char(o.order_date, 'YYYY-MM-DD')",
+                  label: "to_char(o.order_date, 'YYYY-MM-DD')",
+                }
               : { key: "to_char(date_trunc('month', o.order_date), 'YYYY-MM-DD')", label: 'NULL' };
 
-    const { rows } = await this.database.query<MarginLineRow>(
-      `SELECT ${key.key} AS group_key, ${key.label} AS group_label,
+    if (page.after) {
+      values.push(page.after);
+      conditions.push(`ol.id > $${values.length}::uuid`);
+    }
+    values.push(page.limit);
+
+    const { rows } = await this.database.query<MarginLineRow & { id: string }>(
+      `SELECT ol.id::text AS id, ${key.key} AS group_key, ${key.label} AS group_label,
               ol.priced_measure::text AS priced_measure,
               ol.qty_count, ol.qty_kg::text AS qty_kg,
               ol.unit_price_iqd::bigint AS unit_price_iqd,
@@ -330,10 +376,13 @@ export class ReportsRepository {
          JOIN items i ON i.id = ol.item_id
          LEFT JOIN users u ON u.id = o.acting_user_id
         WHERE ${conditions.join(' AND ')}
-        ORDER BY group_key ASC`,
+        -- By the line's id, not by the group: the fold is order-independent, and a key the
+        -- rows are already unique on is the only one a keyset can page on safely.
+        ORDER BY ol.id ASC
+        LIMIT $${values.length}`,
       values,
     );
-    return rows;
+    return rows.map(({ id, ...line }) => ({ id, line }));
   }
 
   // ───────────────────────────────── stock (FR-1006) ─────────────────────────────────
@@ -364,11 +413,25 @@ export class ReportsRepository {
       bought_usd_cents: string | null;
       price_month: string | null;
     }>(
-      `SELECT i.id::text AS key, i.name AS label, i.pricing_unit::text AS pricing_unit,
+      `WITH sold AS (
+         SELECT ol.item_id, max(o.order_date) AS last_sold_on
+           FROM order_lines ol
+           JOIN orders o ON o.id = ol.order_id
+          WHERE ol.deleted_at IS NULL AND o.status = 'active' AND o.deleted_at IS NULL
+          GROUP BY ol.item_id
+       ),
+       bought AS (
+         SELECT s.item_id, min(s.entry_date) AS first_bought_on
+           FROM stock_ledger s
+          WHERE s.movement_type IN ('purchase_in', 'opening')
+            AND NOT EXISTS (SELECT 1 FROM stock_ledger r WHERE r.reverses_entry_id = s.id)
+          GROUP BY s.item_id
+       )
+       SELECT i.id::text AS key, i.name AS label, i.pricing_unit::text AS pricing_unit,
               st.stock_count::text AS stock_count, st.stock_kg::text AS stock_kg,
               st.count_complete, st.kg_complete,
-              to_char(st.first_bought_on, 'YYYY-MM-DD') AS first_bought_on,
-              to_char(st.last_sold_on, 'YYYY-MM-DD') AS last_sold_on,
+              to_char(bought.first_bought_on, 'YYYY-MM-DD') AS first_bought_on,
+              to_char(sold.last_sold_on, 'YYYY-MM-DD') AS last_sold_on,
               coalesce(moved.in_count, 0)::text AS in_count,
               coalesce(moved.in_kg, 0)::text AS in_kg,
               coalesce(moved.out_count, 0)::text AS out_count,
@@ -377,7 +440,9 @@ export class ReportsRepository {
               price.bought_usd_cents::text AS bought_usd_cents,
               to_char(price.month, 'YYYY-MM-DD') AS price_month
          FROM items i
-         LEFT JOIN item_stats st ON st.item_id = i.id
+         LEFT JOIN item_stock st ON st.item_id = i.id
+         LEFT JOIN sold ON sold.item_id = i.id
+         LEFT JOIN bought ON bought.item_id = i.id
          LEFT JOIN LATERAL (
            SELECT sum(CASE WHEN s.qty_count > 0 THEN s.qty_count ELSE 0 END) AS in_count,
                   sum(CASE WHEN s.qty_kg > 0 THEN s.qty_kg ELSE 0 END) AS in_kg,
@@ -405,6 +470,15 @@ export class ReportsRepository {
 
   // ─────────────────────── receivables and payables (FR-1007, FR-1008) ───────────────────────
 
+  /**
+   * Balances per customer as of the end of the range, what came in during it, and how many of
+   * their orders are still owed.
+   *
+   * The unpaid count is computed in **one** grouped pass rather than per customer through the
+   * `order_balances` view: that view groups every order ever placed, and a predicate on one
+   * customer cannot be pushed inside it — the mistake the I1 review measured on the Orders list
+   * and the I4 review measured again here (668 ms at 63,000 orders).
+   */
   async receivables(filters: ReportFilters) {
     const values: unknown[] = [filters.from, filters.to];
     const conditions = ['c.deleted_at IS NULL', 'c.is_system = false'];
@@ -425,7 +499,24 @@ export class ReportsRepository {
       received_usd_cents: string;
       unpaid_orders: string;
     }>(
-      `SELECT c.id::text AS key, c.name AS label,
+      `WITH order_remaining AS (
+         SELECT o.customer_id,
+                o.id,
+                coalesce(sum(CASE WHEN cu.settlement_currency = 'IQD' THEN l.amount_iqd
+                                  ELSE l.amount_usd_cents END), 0) AS remaining
+           FROM orders o
+           JOIN customers cu ON cu.id = o.customer_id
+           LEFT JOIN customer_ledger l ON l.order_id = o.id
+          WHERE o.status = 'active' AND o.deleted_at IS NULL
+          GROUP BY o.customer_id, o.id, cu.settlement_currency
+       ),
+       unpaid AS (
+         SELECT customer_id, count(*)::text AS unpaid_orders
+           FROM order_remaining
+          WHERE remaining > 0
+          GROUP BY customer_id
+       )
+       SELECT c.id::text AS key, c.name AS label,
               c.settlement_currency::text AS settlement_currency,
               u.display_name AS assigned_user_name,
               -- As of the end of the range: a balance is "all time up to that day", not
@@ -442,13 +533,11 @@ export class ReportsRepository {
               coalesce(-sum(CASE WHEN l.entry_type IN ('payment', 'cash_settlement')
                                   AND l.entry_date >= $1::date AND l.entry_date <= $2::date
                                  THEN l.amount_usd_cents ELSE 0 END), 0)::text AS received_usd_cents,
-              (SELECT count(*)::text FROM order_balances b
-                 JOIN orders o ON o.id = b.order_id
-                WHERE o.customer_id = c.id AND b.status <> 'paid' AND o.status = 'active'
-                  AND o.deleted_at IS NULL) AS unpaid_orders
+              coalesce(max(unpaid.unpaid_orders), '0') AS unpaid_orders
          FROM customers c
          LEFT JOIN customer_ledger l ON l.customer_id = c.id
          LEFT JOIN users u ON u.id = c.assigned_user_id
+         LEFT JOIN unpaid ON unpaid.customer_id = c.id
         WHERE ${conditions.join(' AND ')}
         GROUP BY c.id, c.name, c.settlement_currency, u.display_name
         ORDER BY balance DESC`,
@@ -750,6 +839,8 @@ export class ReportsRepository {
     groupBy: GroupBy,
     dateColumn: string,
     dimensions: Partial<Record<GroupBy, { key: string; label: string }>>,
+    /** The money the dimension is ranked by, largest first — see `sortGroups` in the service. */
+    measure = 'sum(1)',
   ): { key: string; label: string; group: string; order: string } {
     const dimension = dimensions[groupBy];
     if (dimension) {
@@ -757,7 +848,9 @@ export class ReportsRepository {
         key: dimension.key,
         label: dimension.label,
         group: `${dimension.key}, ${dimension.label}`,
-        order: `${dimension.label} ASC NULLS LAST`,
+        // Largest first, not alphabetically: a customer list read by name is a directory, and
+        // the response is capped, so the order decides which rows a phone is sent at all.
+        order: `${measure} DESC, ${dimension.label} ASC NULLS LAST`,
       };
     }
     if (groupBy === 'day') {
