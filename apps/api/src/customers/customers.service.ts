@@ -587,6 +587,28 @@ export class CustomersService {
     };
   }
 
+  /**
+   * A credit that names a damage record (FR-506 from damage, FR-806) must name **this**
+   * customer's damage: the record is attributed to one of their orders. Anything else is a
+   * mis-typed id, and the alternative to refusing it is a credit on the wrong account.
+   */
+  private async assertDamageOfCustomer(tx: Db, damageId: string, customerId: string): Promise<void> {
+    const { rows } = await tx.query<{ status: string; attribution: string; customer_id: string | null }>(
+      `SELECT d.status::text AS status, d.attribution::text AS attribution, o.customer_id
+         FROM damages d
+         LEFT JOIN orders o ON o.id = d.order_id
+        WHERE d.id = $1 AND d.deleted_at IS NULL`,
+      [damageId],
+    );
+    const row = rows[0];
+    if (!row || row.attribution !== 'customer_order' || row.customer_id !== customerId) {
+      throw ApiError.validation([
+        { path: 'damage_id', code: 'NOT_FOUND', message_key: 'errors:field.required', params: {} },
+      ]);
+    }
+    if (row.status === 'void') throw new ApiError('DOCUMENT_VOID', { damage_id: damageId });
+  }
+
   private async userNames(entries: readonly LedgerEntry[]): Promise<Map<string, string>> {
     const ids = [...new Set(entries.flatMap((entry) => [entry.performed_by_user_id, entry.created_by]))].filter(
       (id): id is string => Boolean(id),
@@ -795,6 +817,7 @@ export class CustomersService {
     return this.database.transaction(async (tx) => {
       const customer = await this.lockFor(tx, id);
       if (input.order_id) await this.orderFor(tx, input.order_id, customer.id);
+      if (input.damage_id) await this.assertDamageOfCustomer(tx, input.damage_id, customer.id);
 
       // Signs follow the ledger's convention: positive increases what the customer owes.
       const magnitude = Math.abs(input.amount);

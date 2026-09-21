@@ -48,5 +48,9 @@
   "note_required_adjustment": "Say why the balance is being changed (at least three characters)",
   "adjustment_unchanged": "That is the balance already — nothing to change",
   "stock_insufficient": "There is not enough stock of {{item}}: {{available}} left, {{requested}} asked for",
+  "credit_needs_company": "A credit belongs to the company the goods came from; this record names none",
+  "return_not_allowed": "This record is \"{{from}}\" and cannot be marked \"{{action}}\"",
+  "return_to_stock_customer_only": "Only goods a customer brought back can be put into stock again",
+  "already_returned_to_stock": "These goods have already been put back into stock",
   "no_settlement": "This order has no cash settlement to reverse"
 }

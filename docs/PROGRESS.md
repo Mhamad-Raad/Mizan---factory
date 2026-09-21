@@ -359,3 +359,50 @@ identity review (FR-1311, item 2) and a host for staging (item 10).
 
 **Next:** I3 — damaged items and returns. It reuses the company ledger's credit path for
 damage-driven credits, so nothing new is needed from the client to start.
+
+---
+
+# Iteration 3 — damaged items & returns
+
+Branch `feat/i3-damages`, brief `iterations/I3-damaged-items-returns.md`.
+
+## I3 · Checkpoint A — done · the schema and the privileges
+
+- `0010_damages.sql`: the `damages` table with the sequence `damage_number_seq`, the indices
+  the list and its filters need, a covering index for the period totals, the view
+  `damage_totals`, and the two foreign keys that the money links declared in I1 and I2
+  (`customer_ledger.damage_id`, `company_ledger.damage_id`) were waiting for. Three rules live
+  in its constraints rather than in the application: the attribution and its links agree in
+  both directions, the stock effect is `none` exactly when the goods had already been sold, and
+  the return status is `not_returnable` exactly when the goods cannot go back.
+- `0011_damages_privileges.sql`: `damages` is INSERT + SELECT + UPDATE for the application role
+  and has no DELETE — a record is edited or voided, never removed.
+
+## I3 · Checkpoint B — done · the kernel
+
+`@mizan/ledger/damage.ts` holds the four rules the form, the write path, the return sheet and
+the totals all ask: what damage does to stock (A-30), the return-status machine of FR-803, the
+value snapshot from the damage month's bought price (FR-807) and what a return to a supplier is
+worth — the purchase line's price, else the month's, at the company's own rate (A-39). **19 new
+kernel tests**, including the figures of flow 3.5.5 (4 kg × 5,900 د.ع = 23,600 د.ع ≈ 18.02 $).
+
+## I3 · Checkpoint C — done · the API
+
+**110 routes, all declared** (8 new); **205 API tests**, **413 across the workspace**.
+
+- `/damages`: the list with the filters of FR-801 (material, period, attribution, return status,
+  returnable, employee, company, order, purchase, free text) and the period totals of FR-807;
+  create with its stock movement and value snapshot; read with the credit pre-fill and the
+  credits that name it; update with compensating movements; void; `/return` for "Mark returned",
+  "Written off" and the supplier credit; `/return-to-stock`; history.
+- The credits are written through the two existing ledger writers, so a return to a supplier is
+  an ordinary company credit that names the damage record and the purchase, and a customer's
+  returned goods an ordinary customer credit that names the damage record and the order — each
+  validated to belong to the account it is recorded against, which the review of I2 taught.
+- Two rules the specification left open are written down: the attribution links are validated
+  but the material match is left to the pickers (D-026), and a record is frozen once its return
+  has been recorded (D-027).
+
+**Next:** checkpoint D — the Damaged items list with its chips and totals, the Record damage
+form with its attribution tiles and stock-effect sentence, the damage detail with its four
+actions, and the links from the material, order and purchase pages.

@@ -285,6 +285,26 @@ const catalog = {
       'المخزون غير كافٍ من {{item}}: المتبقي {{available}} والمطلوب {{requested}}',
       'کۆگای {{item}} بەس نییە: {{available}} ماوە، {{requested}} داواکراوە',
     ),
+    credit_needs_company: T(
+      'A credit belongs to the company the goods came from; this record names none',
+      'الإشعار الدائن يخص الشركة التي جاءت منها المواد؛ هذا السجل لا يذكر شركة',
+      'کەمکردنەوەی قەرز هی ئەو کۆمپانیایەیە کە کاڵاکە لێی هاتووە؛ ئەم تۆمارە کۆمپانیا ناناسێنێت',
+    ),
+    return_not_allowed: T(
+      'This record is "{{from}}" and cannot be marked "{{action}}"',
+      'هذا السجل «{{from}}» ولا يمكن تسجيله كـ «{{action}}»',
+      'ئەم تۆمارە «{{from}}»ـە و ناتوانرێت وەک «{{action}}» تۆمار بکرێت',
+    ),
+    return_to_stock_customer_only: T(
+      'Only goods a customer brought back can be put into stock again',
+      'المواد التي أعادها الزبون فقط يمكن إرجاعها إلى المخزون',
+      'تەنها ئەو کاڵایانەی کڕیار گەڕاندوونیەتەوە دەکرێت بگەڕێنەوە کۆگا',
+    ),
+    already_returned_to_stock: T(
+      'These goods have already been put back into stock',
+      'هذه المواد أُعيدت إلى المخزون بالفعل',
+      'ئەم کاڵایانە پێشتر گەڕێنراونەتەوە کۆگا',
+    ),
     no_settlement: T(
       'This order has no cash settlement to reverse',
       'لا توجد تسوية نقدية لعكسها في هذا الطلب',

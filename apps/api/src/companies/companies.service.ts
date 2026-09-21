@@ -908,6 +908,7 @@ export class CompaniesService {
     return this.database.transaction(async (tx) => {
       const account = await this.lockFor(tx, id);
       if (input.purchase_id) await this.assertPurchaseOfCompany(tx, input.purchase_id, id);
+      if (input.damage_id) await this.assertDamageOfCompany(tx, input.damage_id, id);
 
       const signed = kind === 'credit' ? -Math.abs(input.amount) : input.amount;
       const money = completePair({
@@ -1183,6 +1184,26 @@ export class CompaniesService {
    * oldest-first allocation is deliberately *not* used here: settling "this purchase in full"
    * means the amount actually tied to it, not a share of somebody's lump sum.
    */
+  /**
+   * A credit that names a damage record (FR-805) must name **this** company's record: the
+   * goods went back to the supplier the record is attributed to, and a credit on anyone else's
+   * account is a mis-typed id rather than an accounting decision.
+   */
+  private async assertDamageOfCompany(tx: Db, damageId: string, companyId: string): Promise<void> {
+    const { rows } = await tx.query<{ status: string; company_id: string | null }>(
+      `SELECT status::text AS status, company_id FROM damages
+        WHERE id = $1 AND deleted_at IS NULL`,
+      [damageId],
+    );
+    const row = rows[0];
+    if (!row || row.company_id !== companyId) {
+      throw ApiError.validation([
+        { path: 'damage_id', code: 'NOT_FOUND', message_key: 'errors:field.required', params: {} },
+      ]);
+    }
+    if (row.status === 'void') throw new ApiError('DOCUMENT_VOID', { damage_id: damageId });
+  }
+
   private async purchaseRemaining(tx: Db, purchaseId: string): Promise<number> {
     const { rows } = await tx.query<{ total: string; linked: string }>(
       'SELECT total::text AS total, linked::text AS linked FROM purchase_linked_totals WHERE purchase_id = $1',

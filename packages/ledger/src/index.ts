@@ -7,3 +7,4 @@ export * from './stock.js';
 export * from './status.js';
 export * from './presentation.js';
 export * from './allocation.js';
+export * from './damage.js';
