@@ -15,6 +15,8 @@ import { SettingsService } from '../settings/settings.service.js';
 
 /** Sign-in throttling of specification 2.8 / FR-101. */
 const MAX_FAILURES = 5;
+/** How many browsers may hold a live PIN ticket for one employee at once (2.2.5). */
+const MAX_LIVE_TICKETS = 5;
 const FAILURE_WINDOW_MINUTES = 15;
 const LOCKOUT_MINUTES = 15;
 
@@ -23,6 +25,8 @@ export interface LoginInput {
   password: string;
   is_shared_device?: boolean;
   device_label?: string | null;
+  /** The ticket this browser already holds, retired as the new one is issued (FR-106). */
+  replaces_ticket?: string | null;
 }
 
 /** What the lock screen sends when an employee taps their name and types their PIN (FR-106). */
@@ -123,7 +127,12 @@ export class AuthService {
         tx,
       );
       // Every password sign-in hands this browser a fresh seven-day ticket, so a PIN can be
-      // used here later — and only here (FR-106, 2.8).
+      // used here later — and only here (FR-106, 2.8). The ticket this browser was holding is
+      // retired in the same breath, so a tablet ends the month with one live ticket per
+      // employee rather than one per shift.
+      if (input.replaces_ticket) {
+        await this.tickets.revokeByTicket(input.replaces_ticket, user.id, 'replaced', tx);
+      }
       const issued = await this.tickets.issue(
         {
           userId: user.id,
@@ -133,6 +142,8 @@ export class AuthService {
         },
         tx,
       );
+      // Five browsers is more than any employee here has; the rest are retired (2.2.5).
+      await this.tickets.retireBeyond(user.id, MAX_LIVE_TICKETS, tx);
       await this.users.markSignedIn(user.id, tx);
       await this.users.recordLoginAttempt(
         { username: identifier.toLowerCase(), userId: user.id, ip: ctx.ip, succeeded: true },

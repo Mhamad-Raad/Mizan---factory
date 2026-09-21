@@ -123,6 +123,42 @@ export class DeviceTicketService {
     await db.query('UPDATE device_tickets SET last_used_at = now(), pin_failures = 0 WHERE id = $1', [id]);
   }
 
+  /**
+   * Retire the ticket a browser is replacing, by the ticket itself — the client knows the
+   * secret, not the row id, and the user it claims must match the one signing in.
+   */
+  async revokeByTicket(ticket: string, userId: string, reason: string, tx?: Db): Promise<boolean> {
+    const db = tx ?? this.database;
+    const result = await db.query(
+      `UPDATE device_tickets SET revoked_at = now(), revoke_reason = $3
+        WHERE ticket_hash = $1 AND user_id = $2 AND revoked_at IS NULL`,
+      [this.hash(ticket), userId, reason],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * Keep the newest few live tickets per employee and retire the rest (2.2.5).
+   *
+   * A browser that signs in without presenting the ticket it holds — private mode, cleared
+   * storage, a second phone — leaves the old row live, and a table of live secrets that only
+   * grows is the wrong shape for a system that runs for years.
+   */
+  async retireBeyond(userId: string, keep: number, tx?: Db): Promise<number> {
+    const db = tx ?? this.database;
+    const result = await db.query(
+      `UPDATE device_tickets SET revoked_at = now(), revoke_reason = 'superseded'
+        WHERE id IN (
+          SELECT id FROM device_tickets
+           WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
+           ORDER BY created_at DESC
+          OFFSET $2
+        )`,
+      [userId, keep],
+    );
+    return result.rowCount ?? 0;
+  }
+
   async revoke(id: string, reason: string, tx?: Db): Promise<boolean> {
     const db = tx ?? this.database;
     const result = await db.query(

@@ -654,3 +654,33 @@ Branch `feat/i5-shared-tablets`, brief `iterations/I5-shared-tablets-permissions
 
 **Next:** checkpoint C — the lock screen's user switcher and PIN pad, PIN setup in Settings, the
 Sessions tab, and the Advanced permission grid.
+
+## I5 · Checkpoint C — done (the real-phone review is owed by the client)
+
+The shared-tablet screens, mobile first. Bundle **203.2 kB gzipped** against the 250 kB budget;
+**904 message keys × 3 languages** — 48 of them the permission names the Advanced grid needs,
+because a grid of `orders.record_payment` is a grid nobody can be asked to use.
+
+- **The lock screen** (flow 3.5.8) answers two questions: *still me?* — the PIN pad or the
+  password on the same session, which keeps the drafts — and *somebody else?* — the last three
+  people who signed in on this browser, each offered their PIN when this browser still holds a
+  ticket for them and their password otherwise. A handover applies **that employee's own
+  language** before the first screen paints (FR-1103) and clears the previous drafts. Every
+  refusal is a different sentence: "wrong PIN", "sign in with your password on this device
+  first", "PIN sign-in is off on shared tablets", "set a longer PIN".
+- **`PinPad`** in the component library: large keys in the thumb zone, dots that show how many
+  digits have been typed and never which, and a left-to-right island in a right-to-left page
+  because a keypad is not a sentence (2.10.6 point 5).
+- **Settings → My account** gains the PIN card (set, change, remove — behind the password), and
+  **Settings → System** the three shared-tablet rules an admin owns.
+- **The Sessions tab** (FR-1304) on the employee's page: where they are signed in, with the
+  method of each session, and which browsers may use their PIN, with one button that takes that
+  away everywhere.
+- **The Advanced permission grid** (FR-204), folded away behind a disclosure in the permissions
+  editor: all 48 keys grouped by screen, each named, each saying what comes with it.
+- **9 new screenshots and checks** — the pad in English, Kurdish and Kurdish dark at 1.25, the
+  Sessions tab, the grid — plus the 44 px target check on every key and the overflow check.
+  **62 Playwright checks** in total; **509 tests** across the workspace.
+
+**Next:** checkpoint D — the review with the tablet flows walked through, the demo script of
+4.7, and the Definition of done.

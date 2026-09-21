@@ -203,7 +203,8 @@ export class SessionService {
               absolute_expires_at, idle_expires_at, last_seen_at, revoked_at
          FROM sessions
         WHERE user_id = $1 AND revoked_at IS NULL AND absolute_expires_at > now()
-        ORDER BY last_seen_at DESC`,
+        ORDER BY last_seen_at DESC
+        LIMIT 20`,
       [userId],
     );
     return rows;

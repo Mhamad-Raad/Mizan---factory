@@ -691,6 +691,18 @@ a.mz-button {
   transform: scaleX(-1);
 }
 
+/*
+ * ...and *not* inside a left-to-right island of a right-to-left page.
+ *
+ * A numeric input and the PIN pad are `dir="ltr"` on purpose — numbers read the same way in
+ * every language (2.10.6 point 5) — but a descendant selector cannot see that, so the pad's
+ * backspace arrow pointed away from the digits it deletes in Kurdish. Same specificity, later
+ * in the file, so this wins exactly where it should.
+ */
+[dir='ltr'] [data-mirror='true'] {
+  transform: none;
+}
+
 /* ── numeric input with its unit at the inline end (spec 2.10.6 point 5) ──────────── */
 
 .mz-number {
@@ -906,4 +918,99 @@ a.mz-button {
 .mz-card-link:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
+}
+
+/* ── the PIN pad of the lock screen (FR-106, spec 3.3) ───────────────────────────── */
+
+/*
+ * Three columns of large keys in the thumb zone. The pad itself is `dir="ltr"` because a
+ * numeric keypad is not a sentence — 1 to 9 read the same way in every language (2.10.6
+ * point 5) — while everything around it follows the document's direction.
+ */
+.mz-pinpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  max-inline-size: 22rem;
+  margin-inline: auto;
+  inline-size: 100%;
+}
+
+.mz-pinpad__key {
+  min-block-size: calc(var(--tap-target) + 0.75rem);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 1.375rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mz-pinpad__key:active {
+  background: var(--color-surface-2);
+}
+
+.mz-pinpad__key:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mz-pinpad__key--quiet {
+  background: none;
+  border-color: transparent;
+}
+
+.mz-pinpad__status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  text-align: center;
+}
+
+.mz-pinpad__dots {
+  display: flex;
+  gap: var(--space-2);
+  min-block-size: var(--space-4);
+  align-items: center;
+}
+
+.mz-pinpad__dot {
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+  border-radius: 50%;
+  border: 1px solid var(--color-border-strong);
+}
+
+.mz-pinpad__dot--on {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+/*
+ * A folded section, for the rare thing that must be reachable and not in the way.
+ *
+ * The Advanced permission grid (FR-204) is the case this exists for: forty-eight toggles that
+ * the three presets make unnecessary nine times out of ten. The summary is a full tap target.
+ */
+.mz-disclosure {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+.mz-disclosure__summary {
+  min-block-size: var(--tap-target);
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mz-disclosure[open] .mz-disclosure__summary {
+  margin-block-end: var(--space-2);
 }

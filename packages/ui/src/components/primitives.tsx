@@ -442,3 +442,105 @@ export function Fab({ label, icon = 'plus', ...rest }: FabProps) {
     </button>
   );
 }
+
+export interface PinPadProps {
+  /** The digits typed so far; the parent owns them, as with every field here. */
+  value: string;
+  onChange: (value: string) => void;
+  onComplete?: (value: string) => void;
+  /** How many digits this device demands — 6 on a shared tablet (FR-106). */
+  length?: number;
+  label: string;
+  hint?: string;
+  error?: string;
+  backspaceLabel: string;
+  disabled?: boolean;
+}
+
+/**
+ * The PIN pad of the lock screen (FR-106, wireframe 3.3).
+ *
+ * A keypad rather than a text field, because the lock screen is used one-handed on a tablet
+ * standing on a bench, often with gloves: the targets are large, the digits are tabular, and
+ * nothing here depends on a software keyboard appearing. The dots show how many digits have
+ * been typed and never what they are.
+ *
+ * The grid is laid out in *logical* order, so it reads 1-2-3 from the start edge in both
+ * directions — a numeric keypad is not mirrored in RTL (spec 2.10.6 point 5: numbers stay
+ * left-to-right), which is why the digits carry `dir="ltr"` while the labels do not.
+ */
+export function PinPad({
+  value,
+  onChange,
+  onComplete,
+  length = 6,
+  label,
+  hint,
+  error,
+  backspaceLabel,
+  disabled,
+}: PinPadProps) {
+  const press = (digit: string): void => {
+    if (disabled || value.length >= length) return;
+    const next = `${value}${digit}`;
+    onChange(next);
+    if (next.length === length) onComplete?.(next);
+  };
+
+  return (
+    <div className="mz-stack" style={{ gap: 'var(--space-3)' }}>
+      <div className="mz-pinpad__status">
+        <p className="mz-caption" id="mz-pinpad-label">
+          {label}
+        </p>
+        <div className="mz-pinpad__dots" role="img" aria-label={`${value.length} / ${length}`} dir="ltr">
+          {Array.from({ length }, (_, index) => (
+            <span
+              key={index}
+              className={index < value.length ? 'mz-pinpad__dot mz-pinpad__dot--on' : 'mz-pinpad__dot'}
+            />
+          ))}
+        </div>
+        {hint ? <p className="mz-caption">{hint}</p> : null}
+        {error ? (
+          <p className="mz-field__error" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="mz-pinpad" role="group" aria-labelledby="mz-pinpad-label" dir="ltr">
+        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+          <button
+            key={digit}
+            type="button"
+            className="mz-pinpad__key"
+            onClick={() => press(digit)}
+            disabled={disabled}
+            data-tabular
+          >
+            {digit}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="mz-pinpad__key mz-pinpad__key--quiet"
+          onClick={() => onChange(value.slice(0, -1))}
+          disabled={disabled || value.length === 0}
+          aria-label={backspaceLabel}
+        >
+          <Icon name="back" />
+        </button>
+        <button
+          type="button"
+          className="mz-pinpad__key"
+          onClick={() => press('0')}
+          disabled={disabled}
+          data-tabular
+        >
+          0
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -16,6 +16,11 @@ const passwordLoginSchema = z.object({
   password: z.string().min(1).max(200),
   is_shared_device: z.boolean().optional(),
   device_label: z.string().max(64).nullish(),
+  /**
+   * The ticket this browser already holds for this user, if any. Sent so the server can retire
+   * it instead of leaving one live ticket per sign-in on the same tablet (FR-106).
+   */
+  replaces_ticket: z.string().max(200).nullish(),
 });
 
 /** The lock screen's quick sign-in: this browser's ticket plus the employee's PIN (FR-106). */

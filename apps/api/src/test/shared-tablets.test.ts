@@ -367,6 +367,53 @@ describe('shared tablets: PIN sign-in and user switching (FR-106)', () => {
     });
   });
 
+  describe('one live ticket per browser', () => {
+    it('retires the ticket a browser says it is replacing', async () => {
+      const rebaz = await seedUser({ username: 'rebaz' });
+      await setPin(rebaz, '123456');
+      const first = await signInWithPassword(rebaz);
+
+      // The client presents what it holds, and the server hands back a fresh one.
+      const second = await request(ctx.http)
+        .post('/api/v1/auth/login')
+        .send({
+          username_or_phone: rebaz.username,
+          password: rebaz.password,
+          is_shared_device: true,
+          device_label: 'Floor tablet 2',
+          replaces_ticket: first.ticket,
+        })
+        .expect(200);
+
+      await pinLogin({ ticket: first.ticket, pin: '123456', is_shared_device: true }).expect(401);
+      await pinLogin({ ticket: second.body.device_ticket, pin: '123456', is_shared_device: true }).expect(200);
+    });
+
+    it('keeps at most five live tickets, however many browsers forget theirs', async () => {
+      const rebaz = await seedUser({ username: 'rebaz' });
+      await setPin(rebaz, '123456');
+
+      // Seven sign-ins that never present a ticket — private windows, a second phone, a
+      // cleared tablet. Without a bound this table grows live secrets forever (2.2.5).
+      const tickets: string[] = [];
+      for (let index = 0; index < 7; index += 1) tickets.push((await signInWithPassword(rebaz)).ticket);
+
+      const live = await withDatabase(async (client) => {
+        const { rows } = await client.query<{ count: string }>(
+          `SELECT count(*)::text AS count FROM device_tickets
+            WHERE user_id = $1 AND revoked_at IS NULL`,
+          [rebaz.id],
+        );
+        return Number(rows[0]?.count ?? 0);
+      });
+      expect(live).toBeLessThanOrEqual(5);
+
+      // The newest still works, and the one retired first does not.
+      await pinLogin({ ticket: tickets.at(-1)!, pin: '123456', is_shared_device: true }).expect(200);
+      await pinLogin({ ticket: tickets[0]!, pin: '123456', is_shared_device: true }).expect(401);
+    });
+  });
+
   // ─────────────────────── the admin's Sessions tab (FR-1304) ───────────────────────
 
   describe('sessions and tickets, from the admin side', () => {
