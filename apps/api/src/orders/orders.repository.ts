@@ -100,6 +100,8 @@ export interface OrderScope {
 }
 
 export interface OrderFilters {
+  /** FR-802: the damage pickers show only the documents that carried the material. */
+  item_id?: string;
   customer_id?: string;
   from?: string;
   to?: string;
@@ -199,6 +201,16 @@ export class OrdersRepository {
     if (filters.customer_id) {
       values.push(filters.customer_id);
       conditions.push(`o.customer_id = $${values.length}::uuid`);
+    }
+    // FR-802: "which order did these come back from?" is asked of the orders that carried the
+    // material, through `order_lines_item_idx` rather than a scan of the lines.
+    if (filters.item_id) {
+      values.push(filters.item_id);
+      conditions.push(
+        `EXISTS (SELECT 1 FROM order_lines ol
+                  WHERE ol.order_id = o.id AND ol.deleted_at IS NULL
+                    AND ol.item_id = $${values.length}::uuid)`,
+      );
     }
     // The bound is converted, never the column: a predicate around `order_date` cannot use
     // `orders_date_idx`, which is the defect the I0 review found in the History filter.

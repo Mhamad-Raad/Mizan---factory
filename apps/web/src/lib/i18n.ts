@@ -16,6 +16,7 @@ import ckbCustomers from '@mizan/i18n/locales/ckb-IQ/customers.json';
 import ckbOrders from '@mizan/i18n/locales/ckb-IQ/orders.json';
 import ckbCompanies from '@mizan/i18n/locales/ckb-IQ/companies.json';
 import ckbPurchases from '@mizan/i18n/locales/ckb-IQ/purchases.json';
+import ckbDamages from '@mizan/i18n/locales/ckb-IQ/damages.json';
 
 import arCommon from '@mizan/i18n/locales/ar-IQ/common.json';
 import arGlossary from '@mizan/i18n/locales/ar-IQ/glossary.json';
@@ -30,6 +31,7 @@ import arCustomers from '@mizan/i18n/locales/ar-IQ/customers.json';
 import arOrders from '@mizan/i18n/locales/ar-IQ/orders.json';
 import arCompanies from '@mizan/i18n/locales/ar-IQ/companies.json';
 import arPurchases from '@mizan/i18n/locales/ar-IQ/purchases.json';
+import arDamages from '@mizan/i18n/locales/ar-IQ/damages.json';
 
 import enCommon from '@mizan/i18n/locales/en/common.json';
 import enGlossary from '@mizan/i18n/locales/en/glossary.json';
@@ -44,6 +46,7 @@ import enCustomers from '@mizan/i18n/locales/en/customers.json';
 import enOrders from '@mizan/i18n/locales/en/orders.json';
 import enCompanies from '@mizan/i18n/locales/en/companies.json';
 import enPurchases from '@mizan/i18n/locales/en/purchases.json';
+import enDamages from '@mizan/i18n/locales/en/damages.json';
 
 /**
  * The catalogs are bundled, not fetched: a floor tablet on a bad connection must not be able
@@ -64,6 +67,7 @@ const resources = {
     orders: ckbOrders,
     companies: ckbCompanies,
     purchases: ckbPurchases,
+    damages: ckbDamages,
   },
   'ar-IQ': {
     common: arCommon,
@@ -79,6 +83,7 @@ const resources = {
     orders: arOrders,
     companies: arCompanies,
     purchases: arPurchases,
+    damages: arDamages,
   },
   en: {
     common: enCommon,
@@ -94,6 +99,7 @@ const resources = {
     orders: enOrders,
     companies: enCompanies,
     purchases: enPurchases,
+    damages: enDamages,
   },
 } as const;
 

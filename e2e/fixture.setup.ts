@@ -28,6 +28,8 @@ export interface Fixture {
   orderId: string;
   companyId: string;
   purchaseId: string;
+  damageId: string;
+  customerDamageId: string;
 }
 
 setup('seed the selling and buying fixture', async () => {
@@ -112,6 +114,10 @@ async function seedFixture(): Promise<void> {
   const companyId = await createCompany(context, session);
   const purchaseId = await createPurchase(context, session, { companyId, copperId, steelId, today });
 
+  // Iteration 3: two damage records — one that came from the supplier and can go back, and one
+  // a customer brought back, which leaves stock alone until somebody decides what to do.
+  const damages = await createDamages(context, session, { companyId, purchaseId, copperId, orderId, today });
+
   process.env.E2E_FIXTURE = JSON.stringify({
     copperId,
     steelId,
@@ -119,6 +125,8 @@ async function seedFixture(): Promise<void> {
     orderId,
     companyId,
     purchaseId,
+    damageId: damages.supplier,
+    customerDamageId: damages.customer,
   } satisfies Fixture);
   await context.dispose();
 }
@@ -153,6 +161,34 @@ async function post(
     throw new Error(`POST ${path} failed: ${response.status()} ${await response.text()}`);
   }
   return (await response.json()) as Record<string, unknown>;
+}
+
+async function createDamages(
+  context: Awaited<ReturnType<typeof request.newContext>>,
+  session: Headers,
+  input: { companyId: string; purchaseId: string; copperId: string; orderId: string; today: string },
+): Promise<{ supplier: string; customer: string }> {
+  const supplier = (await post(context, session, '/damages', {
+    item_id: input.copperId,
+    qty_kg: '4.000',
+    damage_date: input.today,
+    reason: 'arrived with cracked insulation',
+    attribution: 'company',
+    company_id: input.companyId,
+    purchase_id: input.purchaseId,
+    is_returnable: true,
+  })) as { id: string };
+
+  const customer = (await post(context, session, '/damages', {
+    item_id: input.copperId,
+    qty_kg: '2.500',
+    damage_date: input.today,
+    reason: 'came back bent',
+    attribution: 'customer_order',
+    order_id: input.orderId,
+  })) as { id: string };
+
+  return { supplier: supplier.id, customer: customer.id };
 }
 
 async function ensureEmployee(
@@ -199,7 +235,9 @@ async function createPurchase(
     purchase_date: input.today,
     notes: 'delivered by lorry',
     lines: [
-      { item_id: input.copperId, qty_kg: '500.000' },
+      // Priced for this delivery rather than from the month list, so a return credited from
+      // this purchase provably uses the **line's** price and not the price list (A-39).
+      { item_id: input.copperId, qty_kg: '500.000', unit_price: { amount: 5_900, currency: 'IQD' } },
       { item_id: input.steelId, qty_count: 20, qty_kg: '48.000' },
     ],
   })) as { id: string };
@@ -350,8 +388,9 @@ async function resetTestDatabase(): Promise<void> {
     await client.query(
       `TRUNCATE audit_log, login_attempts, idempotency_keys, user_permissions, sessions,
                 customer_ledger, company_ledger, stock_ledger, order_payment_type_changes,
-                order_lines, orders, purchase_lines, purchases, customers, company_rates,
-                companies, item_month_prices, items, global_rates, settings, users
+                order_lines, orders, purchase_lines, purchases, damages, customers,
+                company_rates, companies, item_month_prices, items, global_rates, settings,
+                users
        RESTART IDENTITY CASCADE`,
     );
     // The order and voucher numbers are their own sequences, which TRUNCATE does not touch.
@@ -360,6 +399,7 @@ async function resetTestDatabase(): Promise<void> {
     await client.query(
       `ALTER SEQUENCE order_number_seq RESTART;
        ALTER SEQUENCE purchase_number_seq RESTART;
+       ALTER SEQUENCE damage_number_seq RESTART;
        ALTER SEQUENCE voucher_number_seq RESTART;
        ALTER SEQUENCE customer_ledger_seq RESTART;
        ALTER SEQUENCE company_ledger_seq RESTART;

@@ -105,10 +105,13 @@ export interface DamageValue {
  * not move it. When no month has a bought price the value is unknown, not zero.
  */
 export function damageValue(quantity: DamageQuantity, selection: MonthPriceSelection): DamageValue {
-  if (!selection.row || !selection.value) {
+  const priced = pricedAmount(quantity);
+  // Unknown, not zero, and never an exception: a material re-classified from kilos to pieces
+  // leaves older records carrying the measure that is no longer the priced one, and a record
+  // must still open (I3 review).
+  if (!selection.row || !selection.value || priced === null) {
     return { est_value_iqd: null, est_value_usd_cents: null, est_value_source: 'none', from_month: null };
   }
-  const priced = pricedAmount(quantity);
   return {
     est_value_iqd: roundHalfAwayFromZero(new Decimal(selection.value.amount_iqd).times(priced)),
     est_value_usd_cents: roundHalfAwayFromZero(new Decimal(selection.value.amount_usd_cents).times(priced)),
@@ -172,7 +175,10 @@ export function damageCreditValue(
   price: DamageCreditPrice,
   rate: Rate,
   rateSource: RateSource,
-): LineTotals {
+): LineTotals | null {
+  // Nothing to pre-fill when the record does not carry the measure the price is quoted in;
+  // the sheet then asks for the figure that was agreed (I3 review).
+  if (pricedAmount(quantity) === null) return null;
   return computeLineTotals({
     priced_measure: quantity.priced_measure,
     qty_count: quantity.qty_count ?? null,
@@ -185,18 +191,15 @@ export function damageCreditValue(
   });
 }
 
-/** The quantity that drives the value, exactly as the price list measures it. */
-function pricedAmount(quantity: DamageQuantity): Decimal {
-  if (quantity.priced_measure === 'count') {
-    if (quantity.qty_count === null || quantity.qty_count === undefined) {
-      throw new RangeError('a material priced per piece needs a count to be valued');
-    }
-    return new Decimal(quantity.qty_count);
-  }
-  if (quantity.qty_kg === null || quantity.qty_kg === undefined) {
-    throw new RangeError('a material priced per kg needs a weight to be valued');
-  }
-  return new Decimal(quantity.qty_kg);
+/**
+ * The quantity that drives the value, exactly as the price list measures it — or null when the
+ * record does not carry that measure, which a material re-classified after the fact leaves
+ * behind.
+ */
+function pricedAmount(quantity: DamageQuantity): Decimal | null {
+  const measured = quantity.priced_measure === 'count' ? quantity.qty_count : quantity.qty_kg;
+  if (measured === null || measured === undefined) return null;
+  return new Decimal(measured);
 }
 
 /** Re-exported so a caller needs one import to value a damage from price rows. */

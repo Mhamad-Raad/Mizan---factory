@@ -737,6 +737,46 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     });
   });
 
+  // ─────────────────────────── the I3 review finding ───────────────────────────
+
+  describe('what the review found', () => {
+    it('still opens a record whose material was re-classified after it was written', async () => {
+      // 4 kg of a per-kg material…
+      const created = await recordDamage(warehouse, {
+        attribution: 'company',
+        company_id: alNoor,
+        purchase_id: purchase,
+        is_returnable: true,
+      }).expect(201);
+      expect(created.body.cost.est_value_iqd).toBe(2_800);
+
+      // …and then somebody decides the material is sold by the piece (`PATCH /items/:id`).
+      const material = await as(ctx.http, admin).get(`/api/v1/items/${copper}`).expect(200);
+      await as(ctx.http, admin)
+        .patch(`/api/v1/items/${copper}`)
+        .send({ pricing_unit: 'per_piece', version: material.body.version })
+        .expect(200);
+
+      // The record carries kilos, which are no longer the measure it is priced in. It must
+      // still read — the review found this answering 500 from the kernel throwing.
+      const reread = await as(ctx.http, accountant).get(`/api/v1/damages/${created.body.id}`).expect(200);
+      expect(reread.body.qty_kg).toBe('4.000');
+      expect(reread.body.credit_prefill).toBeNull();
+
+      const list = await as(ctx.http, accountant).get('/api/v1/damages').expect(200);
+      expect(list.body.total).toBe(1);
+
+      // …and an edit that gives the measure the material is now priced in values it again:
+      // 3 pieces × 700 د.ع. Nothing had to be voided to recover from the re-classification.
+      const edited = await as(ctx.http, warehouse)
+        .patch(`/api/v1/damages/${created.body.id}`)
+        .send({ version: reread.body.version, qty_count: 3, qty_kg: null })
+        .expect(200);
+      expect(edited.body.cost).toMatchObject({ est_value_iqd: 2_100, est_value_source: 'month' });
+      expect(edited.body.credit_prefill?.amount_iqd).toBe(17_700);
+    });
+  });
+
   // ─────────────────────────── the list, its filters and totals (FR-807) ───────────────────────────
 
   describe('the list, its filters and its period totals (FR-801, FR-807)', () => {

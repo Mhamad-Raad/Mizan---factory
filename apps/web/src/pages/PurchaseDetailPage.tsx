@@ -7,6 +7,7 @@ import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { AppShell } from '../components/AppShell.js';
 import { DualAmount } from '../components/DualAmount.js';
+import { Can } from '../components/Can.js';
 import { QueryStates } from '../components/states.js';
 import { PriceFromMonth, RateBadge } from '../components/chips.js';
 import { useFormatter, usePermission } from '../lib/store.js';
@@ -184,6 +185,12 @@ export function PurchaseDetailPage() {
                 >
                   {t('purchases:duplicate')}
                 </Link>
+                {/* What arrived damaged in this delivery (FR-802, FR-805). */}
+                <Can permission="damages.view">
+                  <Link to={`/damages?purchase=${id}`} className="mz-button mz-button--ghost">
+                    {t('glossary:damaged_items')}
+                  </Link>
+                </Can>
               </div>
 
               <div className="mz-row" style={{ gap: 'var(--space-2)' }}>

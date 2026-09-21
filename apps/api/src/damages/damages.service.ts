@@ -84,6 +84,9 @@ export interface DamageDto {
   attribution: DamageAttribution;
   order_id: string | null;
   order_number: number | null;
+  /** The customer behind that order, so a credit can be recorded from this page (FR-806). */
+  customer_id: string | null;
+  customer_name: string | null;
   company_id: string | null;
   company_name: string | null;
   purchase_id: string | null;
@@ -788,6 +791,9 @@ export class DamagesService {
       rate,
       source,
     );
+    // A record that no longer carries the priced measure cannot be valued, so there is nothing
+    // to pre-fill and the sheet asks for the agreed figure instead (I3 review).
+    if (!totals) return null;
 
     return {
       amount_iqd: totals.line_total_iqd,
@@ -828,6 +834,8 @@ function toDamageDto(row: DamageListRow): DamageDto {
     attribution: row.attribution,
     order_id: row.order_id,
     order_number: row.order_number === null ? null : Number(row.order_number),
+    customer_id: row.customer_id,
+    customer_name: row.customer_name,
     company_id: row.company_id,
     company_name: row.company_name,
     purchase_id: row.purchase_id,

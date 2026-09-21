@@ -79,6 +79,8 @@ export interface NewPurchaseLine {
 
 export interface PurchaseFilters {
   company_id?: string;
+  /** FR-802: the damage picker shows only the purchases that brought the material in. */
+  item_id?: string;
   /** `stock_only` lists the purchases that name no company (FR-407). */
   company?: 'stock_only';
   from?: string;
@@ -179,6 +181,14 @@ export class PurchasesRepository {
       conditions.push(`p.company_id = $${values.length}::uuid`);
     }
     if (filters.company === 'stock_only') conditions.push('p.company_id IS NULL');
+    if (filters.item_id) {
+      values.push(filters.item_id);
+      conditions.push(
+        `EXISTS (SELECT 1 FROM purchase_lines pl
+                  WHERE pl.purchase_id = p.id AND pl.deleted_at IS NULL
+                    AND pl.item_id = $${values.length}::uuid)`,
+      );
+    }
     // The bound is converted, never the column, so `purchases_date_idx` serves the filter.
     if (filters.from) {
       values.push(filters.from);

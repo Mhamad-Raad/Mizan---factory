@@ -24,6 +24,9 @@ const DESTINATIONS: Destination[] = [
   { to: '/materials', labelKey: 'glossary:materials', icon: 'materials', permission: 'materials.view' },
   { to: '/customers', labelKey: 'customers:title', icon: 'customers', permission: 'customers.view' },
   { to: '/companies', labelKey: 'companies:title', icon: 'companies', permission: 'companies.view' },
+  { to: '/damages', labelKey: 'damages:tab_label', icon: 'warning', permission: 'damages.view' },
+  // Purchases live behind More: the specification's primary five are Orders, Materials,
+  // Customers, Companies and Damaged, and a purchase is reached from Materials or a company.
   { to: '/purchases', labelKey: 'purchases:title', icon: 'purchases', permission: 'purchases.view' },
   { to: '/users', labelKey: 'glossary:users', icon: 'users', adminOnly: true },
   { to: '/history', labelKey: 'glossary:history', icon: 'history', permission: 'history.view' },

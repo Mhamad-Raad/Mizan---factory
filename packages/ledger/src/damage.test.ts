@@ -145,10 +145,11 @@ describe('what a return to a supplier is worth (A-39, FR-805)', () => {
       RATE,
       'company',
     );
-    expect(credit.line_total_iqd).toBe(23_600);
-    expect(credit.line_total_usd_cents).toBe(1_802);
-    expect(credit.rate_iqd_per_usd).toBe(RATE);
-    expect(credit.rate_source).toBe('company');
+    expect(credit).not.toBeNull();
+    expect(credit?.line_total_iqd).toBe(23_600);
+    expect(credit?.line_total_usd_cents).toBe(1_802);
+    expect(credit?.rate_iqd_per_usd).toBe(RATE);
+    expect(credit?.rate_source).toBe('company');
   });
 
   it('falls back to the month price when no purchase is linked, and says so', () => {
@@ -177,7 +178,42 @@ describe('what a return to a supplier is worth (A-39, FR-805)', () => {
       RATE,
       'company',
     );
-    expect(credit.line_total_iqd).toBe(4_250_000);
-    expect(credit.line_total_usd_cents).toBe(324_427);
+    expect(credit?.line_total_iqd).toBe(4_250_000);
+    expect(credit?.line_total_usd_cents).toBe(324_427);
+  });
+});
+
+/**
+ * A material may be re-classified from kilos to pieces years after a record was written
+ * (`PATCH /items/:id` allows it), which leaves that record carrying a measure that is no longer
+ * the priced one. The I3 review found the detail route answering **500** on exactly that shape,
+ * because the kernel threw. Unknown is an answer; an exception is not.
+ */
+describe('a record that no longer carries the priced measure (I3 review)', () => {
+  const kgOnly = { priced_measure: 'count' as const, qty_count: null, qty_kg: '4.000' };
+
+  it('reports the value as unknown instead of throwing', () => {
+    expect(damageValue(kgOnly, selectMonthPrice([priceRow()], 'bought', '2026-09-18'))).toEqual({
+      est_value_iqd: null,
+      est_value_usd_cents: null,
+      est_value_source: 'none',
+      from_month: null,
+    });
+  });
+
+  it('offers nothing to pre-fill a credit with, so the sheet asks for the agreed figure', () => {
+    const price = damageCreditPrice({
+      purchase_line: { unit_price_iqd: 5_900, unit_price_usd_cents: 450, price_entered_currency: 'IQD' },
+      month_price: null,
+    });
+    expect(damageCreditValue(kgOnly, price as NonNullable<typeof price>, RATE, 'company')).toBeNull();
+  });
+
+  it('still values a record that carries the measure it is priced in', () => {
+    const value = damageValue(
+      { priced_measure: 'count', qty_count: 2, qty_kg: '4.000' },
+      selectMonthPrice([priceRow({ bought_iqd: 15_000, bought_usd_cents: 1_145 })], 'bought', '2026-09-18'),
+    );
+    expect(value.est_value_iqd).toBe(30_000);
   });
 });

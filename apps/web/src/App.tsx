@@ -19,6 +19,9 @@ import { NewCompanyPage } from './pages/NewCompanyPage.js';
 import { PurchasesPage } from './pages/PurchasesPage.js';
 import { PurchaseFormPage } from './pages/PurchaseFormPage.js';
 import { PurchaseDetailPage } from './pages/PurchaseDetailPage.js';
+import { DamagesPage } from './pages/DamagesPage.js';
+import { DamageFormPage } from './pages/DamageFormPage.js';
+import { DamageDetailPage } from './pages/DamageDetailPage.js';
 import { OrdersPage } from './pages/OrdersPage.js';
 import { OrderFormPage } from './pages/OrderFormPage.js';
 import { OrderDetailPage } from './pages/OrderDetailPage.js';
@@ -39,8 +42,9 @@ function landingFor(user: SessionUser | null, permissions: string[]): string {
   if (may('orders.view')) return '/orders';
   if (may('materials.view')) return '/materials';
   if (may('customers.view')) return '/customers';
-  if (may('purchases.view')) return '/purchases';
   if (may('companies.view')) return '/companies';
+  if (may('damages.view')) return '/damages';
+  if (may('purchases.view')) return '/purchases';
   if (user?.role === 'admin') return '/users';
   if (may('history.view')) return '/history';
   return '/settings';
@@ -141,6 +145,10 @@ export function App() {
       <Route path="/purchases/new" element={<PurchaseFormPage mode="create" />} />
       <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
       <Route path="/purchases/:id/edit" element={<PurchaseFormPage mode="edit" />} />
+      <Route path="/damages" element={<DamagesPage />} />
+      <Route path="/damages/new" element={<DamageFormPage mode="create" />} />
+      <Route path="/damages/:id" element={<DamageDetailPage />} />
+      <Route path="/damages/:id/edit" element={<DamageFormPage mode="edit" />} />
       <Route path="/users" element={<UsersPage />} />
       <Route path="/users/new" element={<NewUserPage />} />
       <Route path="/users/:id" element={<UserDetailPage />} />
