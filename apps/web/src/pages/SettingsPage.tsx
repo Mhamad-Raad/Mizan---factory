@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, DateField, NumberField, SegmentedControl, TextField, Toggle } from '@mizan/ui';
@@ -456,6 +457,11 @@ function SystemCard() {
     <Card>
       <div className="mz-stack">
         <h2 className="mz-heading">{t('settings:system')}</h2>
+
+        {/* Go-live import (FR-1312, Proposed — not requested): admin-only, like this card. */}
+        <Link to="/import" className="mz-button mz-button--ghost">
+          {t('imports:title')}
+        </Link>
 
         <TextField
           label={t('settings:idle_lock_shared')}

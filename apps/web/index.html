@@ -49,6 +49,18 @@
         if (meta) meta.setAttribute('content', resolved === 'dark' ? '#211A21' : '#5E1F4B');
       })();
     </script>
+    <!-- FR-1313 (Proposed — not requested): the app can be added to the home screen. Two
+         lines and a file; delete them and nothing else changes. Data is never cached. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/service-worker.js').catch(function () {
+            /* An installable shortcut is a convenience; the app works without it. */
+          });
+        });
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

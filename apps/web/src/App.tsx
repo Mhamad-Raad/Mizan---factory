@@ -36,6 +36,7 @@ import { DashboardPage } from './pages/DashboardPage.js';
 import { SearchPage } from './pages/SearchPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { FontCheckPage } from './pages/FontCheckPage.js';
+import { ImportPage } from './pages/ImportPage.js';
 import { ChangePasswordPage } from './pages/ChangePasswordPage.js';
 
 /**
@@ -202,6 +203,8 @@ export function App() {
       <Route path="/settings" element={<SettingsPage />} />
         {/* A test fixture with a URL, deliberately not in the navigation (spec 3.7.1). */}
         <Route path="/font-check" element={<FontCheckPage />} />
+        {/* Go-live import (FR-1312, Proposed — not requested); the API is admin-only. */}
+        <Route path="/import" element={<ImportPage />} />
       {/* The home route sends each user to the first page they may open (spec 2.10.1). */}
       <Route path="/" element={<Navigate to={landingFor(user, me.data?.permissions ?? [])} replace />} />
       <Route
