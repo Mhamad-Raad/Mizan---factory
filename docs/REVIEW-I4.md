@@ -118,6 +118,11 @@ has no signal.
 - **The dashboard is one query per tile the caller may see, asked together** (finding 8), so the
   request costs its slowest tile — the unpaid one. A tile nobody may see is not queried at all,
   which is why a sales employee's dashboard is cheaper than an owner's.
+- **One screenshot leans on the diff tolerance.** `history-en-light.png` contains the fixture's
+  own wall-clock times, which differ on every run, and passes because `maxDiffPixelRatio` is
+  0.02. It is the only baseline with clock-dependent content; a genuinely subtle layout shift on
+  that page could hide behind the same tolerance. Freezing the fixture's clock is the fix and it
+  is not this review's work, so it is written down here instead of quietly regenerated.
 - **Tests.** Two consecutive clean runs of the whole suite (479 tests across 28 files: 246 API,
   the rest kernels and the interface), the 53 Playwright checks at 360 px in three languages and
   two themes, and the demo script of 4.6 twice against a live deployment — once on an empty
@@ -136,6 +141,8 @@ it found four more things — one of them the worst defect in the iteration.
 | 10 | Medium — RTL (rule 5) | The "was → now" arrow in History's field diff, and the settlement-currency change sheet's "IQD → USD", were the literal character `→`. A character does not mirror: in Kurdish and Arabic the row lays out right to left, so the arrow **pointed back at the old value**. The icon registry of 2.10.6 exists for precisely this and both places bypassed it. | The registry's `next` icon, which declares that it mirrors, so one CSS rule flips it in RTL. A Playwright check in Kurdish expands a diff and asserts the arrow's computed transform is mirrored — the kind of thing that cannot be read off the source. |
 | 11 | Low — accessibility | The arrow was `aria-hidden` with nothing else between the two values, so a screen reader read "120.000 100.000" with no idea which was which. The catalog has carried `history:old_value` ("Was") and `history:new_value` ("Now") in all three languages since I0, unused. | Both values carry their label in `.mz-visually-hidden`, so the diff reads as "Was — , Now Copper wire 2 mm" aloud and looks exactly as before. |
 | 12 | Medium — NFR-03 | **No search field in the system debounced.** Every keystroke was a request: the material, customer, company and document pickers since I1, and global search since I4. On the reference connection of NFR-03 (400 kbps, 400 ms round trip) typing a twelve-letter customer name is eleven requests, and the answers arrive in whatever order they come back in. | One `useDebouncedValue` hook (250 ms, chosen to sit under the 400 ms round trip) used by the picker sheet and by global search. A Playwright check types four letters and asserts the server was asked at most twice. |
+
+| 13 | Medium — field-level flags | Found by reviewing the fix for finding 9: the **"we owe suppliers" tile carried its money under `cost`**, so it was stripped by `fields.see_bought_price`. What we owe a supplier is a *balance*, not a bought price — an accountant who may see supplier balances but not per-kilo prices got a tile with a count and no amount, and the flag answering the question was the wrong one. | A third key on the same convention: `owed`, stripped by `fields.see_company_balances` (D-022 is "one key per flag", not "one key"). The test gives an accountant `companies.view` + `fields.see_company_balances` and no bought-price flag, and asserts the amount is there. |
 
 Also fixed while in there: the customer statement's **share text** — the message a customer
 actually receives — was `Name: 100,000 د.ع → 50,000 د.ع`, an arrow in plain text where it

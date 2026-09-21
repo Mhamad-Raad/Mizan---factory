@@ -575,6 +575,8 @@ read.
   was a literal character that cannot mirror, so in Kurdish and Arabic it pointed back at the old
   value; that arrow was the only thing between two values for a screen reader; and **no search
   field in the system debounced** — every keystroke was a request, in the pickers since I1.
+  Reviewing that fix in turn found a thirteenth: the "we owe suppliers" tile hid its money behind
+  `fields.see_bought_price`, which is the wrong flag for a balance — it has its own key now.
 - Demo script of 4.6 is **executable** (`scripts/demo-i4.mjs`) and passes end to end, twice:
   once against an empty deployment and once against one it had already run against. It walks
   the four steps of the brief — History filtered by who did it and by whose customer it is, with
@@ -584,7 +586,7 @@ read.
   an accountant against a sales employee, and search finding a name and an order number — and
   ends by checking that the reports agree with the records they read.
 - CI: lint · types · translations (interface **and** API) · contrast · migrations · route
-  declarations · **481 tests** · build · bundle budget · **55 Playwright checks**.
+  declarations · **482 tests** · build · bundle budget · **55 Playwright checks**.
 
 ## I4 — Definition of done (section 4.1)
 

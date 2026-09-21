@@ -684,6 +684,22 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       expect(tile.balance.amount_usd_cents).toBeGreaterThan(0);
     });
 
+    it('shows what we owe suppliers to an accountant who may not see bought prices', async () => {
+      await seedActivity();
+      // The supplier tile's money is a **balance**, so the bought-price flag is not its gate:
+      // an accountant who may see what we owe but not what we paid per kilo must still see it.
+      const accountant = await seedUser({
+        username: 'shahen',
+        permissions: ['dashboard.view', 'companies.view', 'fields.see_company_balances'],
+      });
+      const session = await signIn(ctx.http, accountant);
+
+      const dashboard = await as(ctx.http, session).get('/api/v1/dashboard').expect(200);
+      const tile = dashboard.body.tiles.find((row: { key: string }) => row.key === 'we_owe_companies');
+      expect(tile.owed).toEqual({ amount_iqd: 245_000, amount_usd_cents: expect.any(Number) });
+      expect(tile.cost).toBeUndefined();
+    });
+
     it('hides the unpaid tile amount from a user without the customer-balances flag', async () => {
       await seedActivity();
       const employee = await seedUser({
