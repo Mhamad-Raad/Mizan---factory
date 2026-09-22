@@ -78,9 +78,9 @@ export function UsersPage() {
                 <Link to={`/users/${user.id}`} className="mz-list__item mz-list__item--interactive">
                   <Avatar name={user.display_name} />
                   <span className="mz-list__body">
-                    <span className="mz-list__title">{user.display_name}</span>
+                    <span className="mz-list__title"><bdi>{user.display_name}</bdi></span>
                     <span className="mz-caption" style={{ display: 'block' }} dir="ltr">
-                      {user.username}
+                      <bdi>{user.username}</bdi>
                     </span>
                     <span className="mz-caption">
                       {user.last_login_at

@@ -143,7 +143,7 @@ export function MaterialDetailPage() {
               <Card>
                 <div className="mz-row mz-row--between">
                   <div>
-                    <h2 className="mz-title">{item.data.name}</h2>
+                    <h2 className="mz-title"><bdi>{item.data.name}</bdi></h2>
                     <span className="mz-caption">
                       {t(`glossary:${item.data.pricing_unit}`)}
                       {item.data.code ? ` · ${item.data.code}` : ''}

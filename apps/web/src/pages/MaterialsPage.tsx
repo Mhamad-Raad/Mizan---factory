@@ -121,7 +121,7 @@ export function MaterialsPage() {
               <li key={item.id}>
                 <Link to={`/materials/${item.id}`} className="mz-list__item mz-list__item--interactive">
                   <span className="mz-list__body">
-                    <span className="mz-list__title">{item.name}</span>
+                    <span className="mz-list__title"><bdi>{item.name}</bdi></span>
                     <span className="mz-caption" style={{ display: 'block' }} data-tabular>
                       {item.stock.priced_complete
                         ? t('materials:in_stock_quantity', {

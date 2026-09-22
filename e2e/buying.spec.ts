@@ -145,12 +145,19 @@ test.describe('the buying screens', () => {
     await page.goto('/companies');
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
     await page.getByRole('link').filter({ hasText: 'Al-Noor' }).first().click();
+    // The profile has to be the screen before the primary button is reached for: since the
+    // routes are split (I6) the list is still painted for a frame after the tap, and its own
+    // primary button is "New company".
+    await expect(page.getByRole('heading', { name: 'Al-Noor Steel Co.' }).first()).toBeVisible();
     await page.locator('.mz-button--primary').first().click();
 
     const iqd = page.locator('input[inputmode="numeric"]').first();
     await iqd.fill('100000');
-    // The live preview of what the account will read after this payment (wireframe 3.4.2).
-    await expect(page.locator('.mz-sheet, .mz-bottom-sheet').first()).toBeVisible();
+    // The live preview of what the account will read after this payment (wireframe 3.4.2):
+    // 3,050,000 owed less the 100,000 being handed over.
+    const sheet = page.locator('.mz-sheet, .mz-bottom-sheet').first();
+    await expect(sheet).toBeVisible();
+    await expect(sheet).toContainText('2,950,000');
     await expect(page).toHaveScreenshot('company-payment-ar-light.png', { fullPage: true });
 
     const overflow = await page.evaluate(

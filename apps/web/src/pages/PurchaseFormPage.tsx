@@ -407,7 +407,7 @@ function PurchaseForm({
       {form.lines.map((line, index) => (
         <div key={line.key} className="mz-line-card">
           <div className="mz-line-card__head">
-            <strong>{line.item_name}</strong>
+            <strong><bdi>{line.item_name}</bdi></strong>
             <span className="mz-row" style={{ gap: 'var(--space-2)' }}>
               <Chip>{t(`glossary:${line.priced_measure === 'kg' ? 'per_kg' : 'per_piece'}`)}</Chip>
               <IconButton
@@ -504,7 +504,7 @@ function PurchaseForm({
                     .filter((user) => user.is_active)
                     .map((user) => (
                       <option key={user.id} value={user.id}>
-                        {user.display_name}
+                        <bdi>{user.display_name}</bdi>
                       </option>
                     ))}
                 </select>

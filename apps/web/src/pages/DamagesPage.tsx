@@ -248,7 +248,7 @@ export function DamagesPage() {
                   {/* Everything in the body, chips included: a trailing chip column squeezed
                       the material's name to one word per line (REVIEW-I1 finding 9). */}
                   <span className="mz-list__body">
-                    <span className="mz-list__title">{damage.item_name}</span>
+                    <span className="mz-list__title"><bdi>{damage.item_name}</bdi></span>
                     <span className="mz-caption" style={{ display: 'block' }} data-tabular>
                       {quantityOf(damage, formatter, t)} · {formatter.date(damage.damage_date)}
                       {damage.acting_user_name ? ` · ${damage.acting_user_name}` : ''}
@@ -311,7 +311,7 @@ export function DamagesPage() {
                     .filter((user) => user.is_active)
                     .map((user) => (
                       <option key={user.id} value={user.id}>
-                        {user.display_name}
+                        <bdi>{user.display_name}</bdi>
                       </option>
                     ))}
                 </select>

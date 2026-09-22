@@ -174,7 +174,7 @@ export function OrdersPage() {
                   <option value="">{t('common:all')}</option>
                   {(directory.data ?? []).map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.display_name}
+                      <bdi>{user.display_name}</bdi>
                     </option>
                   ))}
                 </select>

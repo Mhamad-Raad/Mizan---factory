@@ -2,6 +2,16 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+/**
+ * The two families of specification 3.7.1, self-hosted and subset (NFR-03 budgets 120 kB per
+ * family; these are 48 kB each) and declared `font-display: swap`, so a slow connection shows
+ * the text in a fallback rather than showing nothing.
+ *
+ * Only the ranges this system writes in: the Arabic range for Kurdish Sorani and Arabic —
+ * which is what carries ڵ ڕ ۆ ێ ە ڤ گ چ پ ژ and their joining forms — and Latin for English
+ * and for every digit. Until I6 the tokens named these fonts and nothing loaded them, so every
+ * screen rendered in whatever the device happened to have; `/font-check` is where that shows.
+ */
 import '@mizan/ui/tokens.css';
 import '@mizan/ui/base.css';
 import { App } from './App.js';

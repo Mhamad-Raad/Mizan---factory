@@ -462,7 +462,7 @@ export function ReportPage({ name }: { name?: ReportName }) {
                       .filter((entry) => entry.is_active)
                       .map((entry) => (
                         <option key={entry.id} value={entry.id}>
-                          {entry.display_name}
+                          <bdi>{entry.display_name}</bdi>
                         </option>
                       ))}
                   </select>

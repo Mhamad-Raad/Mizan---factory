@@ -497,3 +497,35 @@ to the number, and the same script fails the build over 500. A budget somebody a
 worth more than a green tick nobody believes; the alternative — dropping the last-sale column or
 the unpaid count — would take information away from the screens to protect a figure in a
 specification. Relied on: NFR-03, NFR-13, 2.12.
+
+## D-042 · 2026-09-22 · I6 · A tap must change the screen: one Suspense boundary per route
+
+Splitting the routes (NFR-03, I6 checkpoint A) put a new gap between a tap and the screen it
+asks for: the chunk has to arrive first. React Router navigates inside a `startTransition`,
+whose whole purpose is to keep the **previous** screen on the glass until the new one is ready —
+sensible on a desktop, wrong on the 400 kbps reference connection of NFR-03, where it means
+roughly half a second in which the thumb that has already tapped a customer is still tapping
+the list underneath, and the second tap lands on whatever that list has in the same place. The
+Playwright check of the company payment sheet found it as a test failure: after tapping a
+company, the primary button under the thumb was still the list's "New company".
+
+**Choice:** the boundary is keyed by route (`key={routeKey(location.pathname)}` in `App.tsx`), so
+a navigation mounts a *new* Suspense boundary, which cannot show stale children — the tap always
+lands on a screen that says "loading". The key is the route, not the record: `/companies/A` →
+`/companies/B` is the same chunk and must not remount, so the id is collapsed out of the key.
+After the first visit the module is in memory, nothing suspends, and no skeleton is seen at all.
+Relied on: NFR-03, 2.10.2, 3.6.1.
+
+## D-043 · 2026-09-22 · I6 · Names carry their own direction
+
+Specification 2.10.6 point 6 asks for user-entered names to be wrapped in `<bdi>`, and until now
+only `DualAmount` did it. The cost was visible on every Arabic screen with a Latin name in it:
+`Al-Noor Steel Co.` rendered as `.Al-Noor Steel Co`, because the trailing full stop is a neutral
+character and took the direction of the paragraph around it rather than of the name.
+
+**Choice:** every place a name, a note, a username or a picker row reaches the page as data
+(34 call sites, plus the header title, the picker and the search results) now renders it inside
+`<bdi>`, which is an isolate *and* `dir="auto"`: the name's own first strong character decides
+its direction, so a Latin name keeps its full stop and an Arabic name is unaffected. CSS could
+not have done this — `unicode-bidi: isolate` isolates, but there is no `direction: auto` — so it
+is markup, and the regenerated Arabic screenshots are the evidence. Relied on: 2.10.6, 3.7.

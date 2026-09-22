@@ -253,7 +253,7 @@ export function OrderDetailPage() {
                     {data.lines.map((line) => (
                       <li key={line.id} className="mz-list__item">
                         <span className="mz-list__body">
-                          <span className="mz-list__title">{line.item_name}</span>
+                          <span className="mz-list__title"><bdi>{line.item_name}</bdi></span>
                           <span className="mz-caption" style={{ display: 'block' }} data-tabular>
                             {line.priced_measure === 'kg'
                               ? `${formatter.number(line.qty_kg ?? '0', 3)} ${t('common:kg_symbol')}`
@@ -421,7 +421,7 @@ export function OrderDetailPage() {
               {receiptData.data.order.lines.map((line) => (
                 <div key={line.id} className="mz-receipt__line">
                   <span>
-                    {line.item_name} ·{' '}
+                    <bdi>{line.item_name}</bdi> ·{' '}
                     {line.priced_measure === 'kg'
                       ? `${formatter.number(line.qty_kg ?? '0', 3)} ${t('common:kg_symbol')}`
                       : formatter.number(line.qty_count ?? 0)}

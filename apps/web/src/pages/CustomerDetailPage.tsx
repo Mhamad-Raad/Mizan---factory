@@ -418,7 +418,7 @@ export function CustomerDetailPage() {
                       className="mz-list__item mz-list__item--interactive"
                       onClick={() => assign.mutate(user.id)}
                     >
-                      {user.display_name}
+                      <bdi>{user.display_name}</bdi>
                     </button>
                   </li>
                 ))}
@@ -434,7 +434,7 @@ export function CustomerDetailPage() {
             text={statementText(statementData.data, formatter, t)}
           >
             <div className="mz-receipt">
-              <strong>{statementData.data.customer.name}</strong>
+              <strong><bdi>{statementData.data.customer.name}</bdi></strong>
               <div className="mz-receipt__line">
                 <span>{t('glossary:opening_balance')}</span>
                 <span data-tabular>

@@ -246,10 +246,10 @@ export function CompanyDetailPage() {
               <Card>
                 <div className="mz-row mz-row--between">
                   <div>
-                    <h2 className="mz-title">{company.data.name}</h2>
+                    <h2 className="mz-title"><bdi>{company.data.name}</bdi></h2>
                     {company.data.contact_name ? (
                       <span className="mz-caption" style={{ display: 'block' }}>
-                        {company.data.contact_name}
+                        <bdi>{company.data.contact_name}</bdi>
                       </span>
                     ) : null}
                     {company.data.phone ? (
@@ -669,7 +669,7 @@ export function CompanyDetailPage() {
                       className="mz-list__item mz-list__item--interactive"
                       onClick={() => assign.mutate(user.id)}
                     >
-                      {user.display_name}
+                      <bdi>{user.display_name}</bdi>
                     </button>
                   </li>
                 ))}
@@ -688,7 +688,7 @@ export function CompanyDetailPage() {
             )}`}
           >
             <div className="mz-receipt">
-              <strong>{statementData.data.company.name}</strong>
+              <strong><bdi>{statementData.data.company.name}</bdi></strong>
               {/* A statement is a document for a period, so it says which one (D-025). */}
               <span className="mz-caption">
                 {t('companies:statement_range', {

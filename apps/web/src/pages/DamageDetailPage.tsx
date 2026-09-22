@@ -132,7 +132,7 @@ export function DamageDetailPage() {
 
               <Card>
                 <h2 className="mz-title">
-                  <Link to={`/materials/${record.item_id}`}>{record.item_name}</Link>
+                  <Link to={`/materials/${record.item_id}`}><bdi>{record.item_name}</bdi></Link>
                 </h2>
                 <span className="mz-caption" style={{ display: 'block' }} data-tabular>
                   {quantityOf(record, formatter, t)} · {formatter.date(record.damage_date)}
@@ -183,7 +183,7 @@ export function DamageDetailPage() {
                 {record.company_id ? (
                   <div className="mz-row mz-row--between">
                     <span className="mz-caption">{t('glossary:company')}</span>
-                    <Link to={`/companies/${record.company_id}`}>{record.company_name}</Link>
+                    <Link to={`/companies/${record.company_id}`}><bdi>{record.company_name}</bdi></Link>
                   </div>
                 ) : null}
                 {record.purchase_id ? (

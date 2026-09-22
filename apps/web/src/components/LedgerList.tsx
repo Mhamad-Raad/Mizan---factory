@@ -106,7 +106,7 @@ export function LedgerList({
                 {formatter.date(row.entry_date)}
                 {row.performed_by_name ? ` · ${row.performed_by_name}` : ''}
               </span>
-              {row.note ? <span className="mz-caption">{row.note}</span> : null}
+              {row.note ? <span className="mz-caption"><bdi>{row.note}</bdi></span> : null}
               {isGroup ? (
                 <button
                   type="button"

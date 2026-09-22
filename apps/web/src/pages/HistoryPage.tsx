@@ -146,7 +146,7 @@ export function HistoryPage() {
                 <option value="">{t('history:everyone')}</option>
                 {employees.map((entry) => (
                   <option key={entry.id} value={entry.id}>
-                    {entry.display_name}
+                    <bdi>{entry.display_name}</bdi>
                   </option>
                 ))}
               </select>
@@ -161,7 +161,7 @@ export function HistoryPage() {
                 <option value="">{t('history:everyone')}</option>
                 {employees.map((entry) => (
                   <option key={entry.id} value={entry.id}>
-                    {entry.display_name}
+                    <bdi>{entry.display_name}</bdi>
                   </option>
                 ))}
               </select>
@@ -202,7 +202,7 @@ export function HistoryPage() {
                   {t(`history:action.${entry.action}`, { defaultValue: entry.action })}
                 </span>
                 <span className="mz-caption" style={{ display: 'block' }}>
-                  {entry.entity_label} · {formatter.timestamp(new Date(entry.occurred_at))}
+                  <bdi>{entry.entity_label}</bdi> · {formatter.timestamp(new Date(entry.occurred_at))}
                   {entry.auth_method === 'ticket_pin' ? ` · ${t('history:signed_in_with_pin')}` : ''}
                 </span>
               </span>
