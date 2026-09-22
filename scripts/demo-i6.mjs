@@ -189,17 +189,33 @@ const catalogs = ['ckb-IQ', 'ar-IQ', 'en'].map((locale) => ({
 // with a key, never a sentence, so the tablet says it in whatever language it is set to. This is
 // the one setting the script changes, so it is read first and put back afterwards.
 const settingsBefore = await call(admin, '/settings');
-await call(admin, '/settings', { method: 'PATCH', body: { allow_negative_stock: false } });
-const tooMuch = await call(sara.session, '/orders', {
-  method: 'POST',
-  body: {
-    customer_id: kawa.body.id,
-    order_date: today,
-    payment_type: 'cash',
-    received_currency: 'IQD',
-    lines: [{ item_id: copper.body.id, qty_kg: '999999.000' }],
-  },
-});
+const relaxed = settingsBefore.body?.allow_negative_stock !== false;
+/**
+ * The one global setting this script touches, and it is put back in a `finally` — a demo that
+ * throws halfway through must not leave a client's deployment selling below stock (or refusing
+ * to) because of a step that never finished. It is only touched at all when it is not already
+ * where the refusal below needs it.
+ */
+let tooMuch;
+try {
+  if (relaxed) {
+    await call(admin, '/settings', { method: 'PATCH', body: { allow_negative_stock: false } });
+  }
+  tooMuch = await call(sara.session, '/orders', {
+    method: 'POST',
+    body: {
+      customer_id: kawa.body.id,
+      order_date: today,
+      payment_type: 'cash',
+      received_currency: 'IQD',
+      lines: [{ item_id: copper.body.id, qty_kg: '999999.000' }],
+    },
+  });
+} finally {
+  if (relaxed) {
+    await call(admin, '/settings', { method: 'PATCH', body: { allow_negative_stock: true } });
+  }
+}
 const problem = tooMuch.body?.error ?? tooMuch.body;
 // The refusal names the field it belongs to and carries a key with its own parameters — the
 // quantity, the material, what is actually in the yard — so the tablet writes the sentence in
@@ -221,11 +237,6 @@ check(
   catalogs.every((catalog) => Object.keys(catalog.errors).length === Object.keys(catalogs[0].errors).length),
   `the three error catalogs are the same size (${Object.keys(catalogs[0].errors).length} keys each)`,
 );
-
-await call(admin, '/settings', {
-  method: 'PATCH',
-  body: { allow_negative_stock: settingsBefore.body?.allow_negative_stock ?? true },
-});
 
 // ───────────── 3. Receivables and Payables against the client's own figures ─────────────
 
