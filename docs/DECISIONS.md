@@ -657,3 +657,34 @@ there or not (the planner ignored it either way). The table's indexes went from 
 248 MB**, and all 21 endpoint budgets still pass. What is kept is the hot set: the balance sum,
 the per-order lookup, the receivables pass, the reversal and voucher keys, and idempotency.
 Relied on: NFR-13, 2.2.6, [[mizan-longevity]].
+
+## D-052 · 2026-09-22 · system-wide review · The import's two ceilings now agree
+
+The CSV import's schema accepts **10,000 rows**; the body parser's default read **100 kB**,
+which is about 1,800 rows of materials or 800 of opening debts. A larger file — the only kind
+this feature exists for — answered **`500 INTERNAL`** with no request id, because a body the
+parser refuses is rejected before any route, guard or filter runs. The client would have met
+that on go-live day, importing their customer list.
+
+**Choice:** one constant, `REQUEST_BODY_LIMIT = '4mb'`, in `request-limits.ts`, applied by
+`main.ts` **and** by the test harness — it had lived in `main.ts` alone, which is exactly why no
+test could see the disagreement. 413 now maps to a named code, `REQUEST_TOO_LARGE`, whose
+message is written in all three languages ("that file is too large — split it"), and
+`imports.test.ts` sends ten thousand rows through the parser so the two ends cannot drift
+again. Relied on: FR-1312, 2.9.2, NFR-13.
+
+## D-053 · 2026-09-22 · system-wide review · The import's preview asks once, not once per row
+
+The preview checked each row against the database as it read it — "is this material known?",
+"is this name taken?" — one sequential round trip per row. At the schema's 10,000 rows that was
+**22.7 seconds** of a 44.7-second import, and the import calls the preview first, so everybody
+paid it twice.
+
+**Choice:** every name the file mentions is resolved in **one** `= ANY` per table before the
+loop (`namesIn`), and the loop consults a map. The lookups are read-only and order-independent,
+so nothing about the checks changes. Preview **22.7 s → 0.1 s**; the 10,000-customer import
+**30.7 s → 9.1 s**. What remains is the write path — 10,000 rows in 10,000 transactions at
+4.7 ms each — and that stays as it is on purpose: one bad row must not lose the file (FR-1312's
+own acceptance criterion). The screen now says a large file takes about a minute, and so does
+the admin guide, because somebody watching a button spin deserves to be told. Relied on:
+FR-1312, NFR-03.

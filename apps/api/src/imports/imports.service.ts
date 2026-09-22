@@ -111,6 +111,19 @@ export class ImportsService {
     const seen = new Set<string>();
     const { required } = this.columnsOf(kind);
 
+    // Every name in the file, resolved before the loop rather than inside it.
+    const identityOf = (row: ImportRow): string | null =>
+      text(row.name) ?? text(row.material) ?? text(row.customer) ?? text(row.company);
+    const identities = rows.map(identityOf).filter((name): name is string => name !== null);
+    const table: 'items' | 'customers' | 'companies' =
+      kind === 'materials' || kind === 'opening_stock'
+        ? 'items'
+        : kind === 'customers' || kind === 'customer_opening_balance'
+          ? 'customers'
+          : 'companies';
+    const known = await this.namesIn(table, identities);
+    const isKnown = (name: string): boolean => known.has(normalizeForSearch(name));
+
     for (const [index, row] of rows.entries()) {
       const at = index + 1;
       const problem = (column: string | null, key: string, params: Record<string, unknown> = {}) =>
@@ -122,7 +135,7 @@ export class ImportsService {
 
       // A name twice in one file is the mistake a merged spreadsheet makes, and the database's
       // own duplicate check will not see it until the second row is already being written.
-      const identity = text(row.name) ?? text(row.material) ?? text(row.customer) ?? text(row.company);
+      const identity = identityOf(row);
       if (identity) {
         const key = normalizeForSearch(identity);
         if (seen.has(key)) problem(null, 'imports:duplicate_in_file', { name: identity });
@@ -135,7 +148,7 @@ export class ImportsService {
           if (unit && unit !== 'per_kg' && unit !== 'per_piece') {
             problem('pricing_unit', 'imports:bad_pricing_unit', { value: unit });
           }
-          if (identity && (await this.nameTaken('items', identity))) {
+          if (identity && isKnown(identity)) {
             problem('name', 'imports:already_exists', { name: identity });
           }
           break;
@@ -146,15 +159,14 @@ export class ImportsService {
           if (currency && currency !== 'IQD' && currency !== 'USD') {
             problem('settlement_currency', 'imports:bad_currency', { value: currency });
           }
-          const table = kind === 'customers' ? 'customers' : 'companies';
-          if (identity && (await this.nameTaken(table, identity))) {
+          if (identity && isKnown(identity)) {
             problem('name', 'imports:already_exists', { name: identity });
           }
           break;
         }
         case 'opening_stock': {
           const material = text(row.material);
-          if (material && !(await this.findByName('items', material))) {
+          if (material && !isKnown(material)) {
             problem('material', 'imports:unknown_material', { name: material });
           }
           if (!text(row.qty_count) && !text(row.qty_kg)) {
@@ -168,9 +180,8 @@ export class ImportsService {
         case 'customer_opening_balance':
         case 'company_opening_balance': {
           const column = kind === 'customer_opening_balance' ? 'customer' : 'company';
-          const table = kind === 'customer_opening_balance' ? 'customers' : 'companies';
           const name = text(row[column]);
-          if (name && !(await this.findByName(table, name))) {
+          if (name && !isKnown(name)) {
             problem(column, 'imports:unknown_counterparty', { name });
           }
           this.checkNumber(row.amount, 'amount', problem);
@@ -298,6 +309,29 @@ export class ImportsService {
   }
 
   /** By normalised name, which is how a human writes the same thing twice (2.10.7). */
+  /**
+   * Every name the file mentions, resolved in **one** query per table.
+   *
+   * The preview used to ask the database about each row as it read it — "is this material
+   * known?", "is this name taken?" — which is one sequential round trip per row. At the
+   * 10,000 rows the import's own schema allows, that was **22.7 seconds of a 44.7 second
+   * import** (system-wide review). The lookups are read-only and order does not matter, so
+   * they are one `= ANY` per table, and the loop consults a map.
+   */
+  private async namesIn(
+    table: 'items' | 'customers' | 'companies',
+    identities: readonly string[],
+  ): Promise<Map<string, string>> {
+    const normalized = [...new Set(identities.map((name) => normalizeForSearch(name)))];
+    if (normalized.length === 0) return new Map();
+    const { rows } = await this.database.query<{ id: string; name_normalized: string }>(
+      `SELECT id::text AS id, name_normalized FROM ${table}
+        WHERE name_normalized = ANY($1::text[]) AND deleted_at IS NULL`,
+      [normalized],
+    );
+    return new Map(rows.map((row) => [row.name_normalized, row.id]));
+  }
+
   private async findByName(table: 'items' | 'customers' | 'companies', name: string): Promise<string | null> {
     const { rows } = await this.database.query<{ id: string }>(
       `SELECT id::text AS id FROM ${table} WHERE name_normalized = $1 AND deleted_at IS NULL LIMIT 1`,

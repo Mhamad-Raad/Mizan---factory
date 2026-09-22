@@ -22,6 +22,8 @@ export const ERROR_CODES = {
   RATE_GUARD: 422,
   IDEMPOTENCY_MISMATCH: 422,
   RATE_LIMITED: 429,
+  /** A request body larger than the API will read — a CSV import of more than 10,000 rows. */
+  REQUEST_TOO_LARGE: 413,
   INTERNAL: 500,
 } as const;
 

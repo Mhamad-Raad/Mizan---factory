@@ -29,5 +29,6 @@
   "bad_currency": "\"{{value}}\" is not IQD or USD",
   "bad_date": "\"{{value}}\" is not a date (YYYY-MM-DD)",
   "not_a_number": "\"{{value}}\" is not a number",
-  "quantity_required": "Give a count or a weight"
+  "quantity_required": "Give a count or a weight",
+  "patience": "A large file takes its time: ten thousand rows is about a minute. Leave this screen open."
 }

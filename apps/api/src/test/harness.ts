@@ -10,6 +10,8 @@ import { ARGON2_OPTIONS } from '../auth/password.service.js';
 import { hash } from '@node-rs/argon2';
 import { expandImplied } from '@mizan/permissions';
 import { normalizeForSearch } from '@mizan/text';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { applyRequestLimits } from '../request-limits.js';
 
 export const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgresql://mizan_app:mizan_app@localhost:5432/mizan_test';
@@ -53,9 +55,14 @@ function trace(what: string): void {
  */
 export async function createTestApp(): Promise<TestApp> {
   trace('app create');
-  const app = await NestFactory.create(AppModule, { logger: process.env.TEST_LOG === '1' ? undefined : false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    logger: process.env.TEST_LOG === '1' ? undefined : false,
+  });
   app.setGlobalPrefix('api/v1');
   app.use(cookieParser());
+  // The same body limit the server runs with, so a request the server would read is a request
+  // the suite can send (system-wide review).
+  applyRequestLimits(app);
   await app.init();
   await app.listen(0, '127.0.0.1');
 

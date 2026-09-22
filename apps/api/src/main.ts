@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { applyRequestLimits } from './request-limits.js';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
@@ -19,10 +21,11 @@ if (pending.length > 0) {
   process.exit(1);
 }
 
-const app = await NestFactory.create(AppModule, {
+const app = await NestFactory.create<NestExpressApplication>(AppModule, {
   bodyParser: true,
   logger: env.NODE_ENV === 'production' ? new StructuredLogger() : undefined,
 });
+applyRequestLimits(app);
 app.setGlobalPrefix('api/v1');
 app.use(cookieParser());
 app.use(

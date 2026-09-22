@@ -41,8 +41,22 @@ export class ErrorFilter implements ExceptionFilter {
 
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
+      /*
+       * 413 is the body parser refusing to read the request, which happens *before* any route
+       * or guard runs. It used to fall through to `INTERNAL`, so an admin importing 2,000
+       * customers — the one moment this system asks somebody to hand it a large file — was
+       * told "something went wrong on our side" (system-wide review, part two).
+       */
       const code: ErrorCode =
-        status === 404 ? 'NOT_FOUND' : status === 403 ? 'PERMISSION_DENIED' : status === 401 ? 'UNAUTHENTICATED' : 'INTERNAL';
+        status === 404
+          ? 'NOT_FOUND'
+          : status === 403
+            ? 'PERMISSION_DENIED'
+            : status === 401
+              ? 'UNAUTHENTICATED'
+              : status === 413
+                ? 'REQUEST_TOO_LARGE'
+                : 'INTERNAL';
       response.status(status).json({
         error: { code, message_key: messageKeyFor(code), params: {}, fields: [], request_id: requestId },
       });

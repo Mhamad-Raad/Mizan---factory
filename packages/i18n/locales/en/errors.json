@@ -52,5 +52,6 @@
   "return_not_allowed": "This record is \"{{from}}\" and cannot be marked \"{{action}}\"",
   "return_to_stock_customer_only": "Only goods a customer brought back can be put into stock again",
   "already_returned_to_stock": "These goods have already been put back into stock",
-  "no_settlement": "This order has no cash settlement to reverse"
+  "no_settlement": "This order has no cash settlement to reverse",
+  "REQUEST_TOO_LARGE": "That file is too large — split it into two smaller ones."
 }

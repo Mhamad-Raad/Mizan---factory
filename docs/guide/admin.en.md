@@ -88,6 +88,10 @@ file on your own device and names the row and column of every problem — a dupl
 material it does not know, a date in the future, a figure that is not a number — before anything
 is written. Then **Import**.
 
+A large file takes its time: ten thousand rows of opening debts is about a minute, because
+each row is written in its own transaction so that one bad row cannot lose the file. Leave the
+screen open.
+
 An import creates exactly what the forms create: the same ledger entries, the same rate, the
 same History rows, all attributed to you. The good rows are imported and the bad ones reported,
 so a corrected file can simply be imported again — a name that already exists is reported, not

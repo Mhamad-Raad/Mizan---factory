@@ -29,5 +29,6 @@
   "bad_currency": "\"{{value}}\" ليست IQD أو USD",
   "bad_date": "\"{{value}}\" ليس تاريخاً (YYYY-MM-DD)",
   "not_a_number": "\"{{value}}\" ليس رقماً",
-  "quantity_required": "أدخل عدداً أو وزناً"
+  "quantity_required": "أدخل عدداً أو وزناً",
+  "patience": "الملف الكبير يستغرق وقتاً: عشرة آلاف سطر نحو دقيقة. لا تغلق الشاشة."
 }

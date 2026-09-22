@@ -221,6 +221,27 @@ describe('CSV import of go-live data (FR-1312)', () => {
       expect(listed.body.total).toBe(2);
     });
 
+    it('reads a file of the ten thousand rows its own schema allows', async () => {
+      /**
+       * The two ends of this promise used to disagree.
+       *
+       * The schema accepts 10,000 rows; the body parser's default was 100 kB, which is about
+       * 1,800 — and a file over that answered **500 INTERNAL**, with no request id, on the one
+       * day this system asks somebody to hand it a large file (system-wide review). The preview
+       * is the cheap half of the path and exercises the parser, so it is what this test sends.
+       */
+      const rows = Array.from({ length: 10_000 }, (_, index) => ({
+        name: `Ceiling material ${index}`,
+        pricing_unit: 'per_kg',
+      }));
+      const response = await preview('materials', rows).expect(201);
+      expect(response.body.rows).toBe(10_000);
+      expect(response.body.ready).toBe(10_000);
+
+      // And one row past the ceiling is a validation error, not an internal one.
+      await preview('materials', [...rows, { name: 'One too many', pricing_unit: 'per_kg' }]).expect(422);
+    }, 30_000);
+
     it('refuses an unknown kind rather than guessing', async () => {
       await as(ctx.http, admin)
         .post('/api/v1/imports/everything')

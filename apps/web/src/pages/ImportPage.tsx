@@ -217,6 +217,10 @@ export function ImportPage() {
                 {error}
               </p>
             ) : null}
+            {/* Ten thousand ledger entries are ten thousand transactions, which is the point:
+                one bad row cannot lose the file. It takes about a minute, and somebody watching
+                a button spin needs to be told that (system-wide review). */}
+            {rows.length > 1000 ? <p className="mz-caption">{t('imports:patience')}</p> : null}
             <Button
               block
               variant="secondary"

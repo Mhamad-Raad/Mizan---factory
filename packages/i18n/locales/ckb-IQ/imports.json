@@ -29,5 +29,6 @@
   "bad_currency": "\"{{value}}\" نە IQD نە USD",
   "bad_date": "\"{{value}}\" بەروار نییە (YYYY-MM-DD)",
   "not_a_number": "\"{{value}}\" ژمارە نییە",
-  "quantity_required": "ژمارە یان کێش بنووسە"
+  "quantity_required": "ژمارە یان کێش بنووسە",
+  "patience": "فایلێکی گەورە خایەنە: ١٠٠٠٠ ڕیز نزیکەی خولەکێک دەخایەنێت. شاشە دامەخە."
 }
