@@ -112,6 +112,18 @@ export interface CompanyWriteResultDto {
  * a company keeps **its own** rate, so every calculated amount here is filled at that rate and
  * not at the global one (2.3.3) — and a rate change never touches a stored entry.
  */
+/**
+ * How many rows one statement may carry (the system-wide review).
+ *
+ * A statement is a document somebody prints or sends on WhatsApp, and five hundred rows is
+ * already forty pages. Without a cap the endpoint returned every row of the account: for a
+ * ten-year account of 20,000 entries that is **15.8 MB of JSON** — five minutes of download on
+ * the 400 kbps reference connection of NFR-03, and more than a 2 GB tablet will render. The
+ * opening and closing balances are sums over the whole range and stay exact when the rows
+ * between them are capped, so a capped statement still reconciles; it simply says so.
+ */
+const STATEMENT_ITEM_CAP = 500;
+
 @Injectable()
 export class CompaniesService {
   constructor(
@@ -1088,6 +1100,9 @@ export class CompaniesService {
     opening_balance: number;
     closing_balance: number;
     items: LedgerGroupDto[];
+    /** Every row in the range, even when only the most recent `STATEMENT_ITEM_CAP` are sent. */
+    item_count: number;
+    has_more: boolean;
   }> {
     const row = await this.requireCompany(id);
     const account = toAccount(row);
@@ -1125,7 +1140,11 @@ export class CompaniesService {
       closing_balance: range.to
         ? balanceAsOf(entries, row.settlement_currency, range.to)
         : balanceOf(entries, row.settlement_currency),
-      items: inRange.map((group) => toGroupDto(group, names)),
+      // The most recent rows, because a statement is read from its end: the older ones are
+      // already in the opening balance, which is exact either way.
+      items: inRange.slice(-STATEMENT_ITEM_CAP).map((group) => toGroupDto(group, names)),
+      item_count: inRange.length,
+      has_more: inRange.length > STATEMENT_ITEM_CAP,
     };
   }
 

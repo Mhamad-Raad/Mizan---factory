@@ -82,6 +82,18 @@ export interface WriteResultDto {
  * computed inside the transaction that writes to it, and the customer row is locked first, so
  * the before/after values History records are the ones that actually happened (spec 2.9.5).
  */
+/**
+ * How many rows one statement may carry (the system-wide review).
+ *
+ * A statement is a document somebody prints or sends on WhatsApp, and five hundred rows is
+ * already forty pages. Without a cap the endpoint returned every row of the account: for a
+ * ten-year account of 20,000 entries that is **15.8 MB of JSON** — five minutes of download on
+ * the 400 kbps reference connection of NFR-03, and more than a 2 GB tablet will render. The
+ * opening and closing balances are sums over the whole range and stay exact when the rows
+ * between them are capped, so a capped statement still reconciles; it simply says so.
+ */
+const STATEMENT_ITEM_CAP = 500;
+
 @Injectable()
 export class CustomersService {
   constructor(
@@ -920,6 +932,9 @@ export class CustomersService {
     opening_balance: number;
     closing_balance: number;
     items: LedgerGroupDto[];
+    /** Every row in the range, even when only the most recent `STATEMENT_ITEM_CAP` are sent. */
+    item_count: number;
+    has_more: boolean;
   }> {
     const row = await this.requireCustomer(context, id);
     if (row.is_system) throw ApiError.notFound();
@@ -960,7 +975,11 @@ export class CustomersService {
       to: range.to ?? null,
       opening_balance: opening,
       closing_balance: closing,
-      items: inRange.map((group) => toGroupDto(group, names)),
+      // The most recent rows, because a statement is read from its end: the older ones are
+      // already in the opening balance, which is exact either way.
+      items: inRange.slice(-STATEMENT_ITEM_CAP).map((group) => toGroupDto(group, names)),
+      item_count: inRange.length,
+      has_more: inRange.length > STATEMENT_ITEM_CAP,
     };
   }
 

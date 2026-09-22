@@ -432,7 +432,7 @@ export function ReportPage({ name }: { name?: ReportName }) {
           >
             <div className="mz-stack">
               <DateField
-                label={t('common:custom_range')}
+                label={t('common:date_from')}
                 value={custom.from || range.from}
                 max={formatter.today()}
                 onChange={(event) => {
@@ -441,7 +441,7 @@ export function ReportPage({ name }: { name?: ReportName }) {
                 }}
               />
               <DateField
-                label={t('common:custom_range')}
+                label={t('common:date_to')}
                 value={custom.to || range.to}
                 max={formatter.today()}
                 onChange={(event) => {

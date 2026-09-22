@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../icons/registry.js';
 import type { IconName } from '../icons/registry.js';
@@ -138,10 +138,29 @@ export interface SegmentedControlProps<T extends string> {
 }
 
 export function SegmentedControl<T extends string>({ label, value, options, onChange }: SegmentedControlProps<T>) {
+  const strip = useRef<HTMLDivElement>(null);
+
+  /**
+   * The chosen option is brought into view when the strip is too narrow to show them all —
+   * otherwise "History" is selected somewhere off the edge of a 360 px screen and the tab
+   * strip looks as though nothing is chosen. Only along the inline axis, so the page does not
+   * jump vertically, and instantly when the reader has asked for less motion (3.6.1).
+   */
+  useEffect(() => {
+    const row = strip.current;
+    if (!row || row.scrollWidth <= row.clientWidth) return;
+    const chosen = row.querySelector('[aria-pressed="true"]');
+    chosen?.scrollIntoView({
+      inline: 'nearest',
+      block: 'nearest',
+      behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    });
+  }, [value, options]);
+
   return (
     <div className="mz-field">
       <span className="mz-field__label">{label}</span>
-      <div className="mz-segmented" role="group" aria-label={label}>
+      <div className="mz-segmented" role="group" aria-label={label} ref={strip}>
         {options.map((option) => (
           <button
             key={option.value}

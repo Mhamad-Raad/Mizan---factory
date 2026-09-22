@@ -67,6 +67,15 @@ const CHECKS: Check[] = [
   { foreground: '--color-danger', background: '--color-surface', minimum: 4.5, what: 'unpaid chip text' },
   { foreground: '--color-danger', background: '--color-danger-soft', minimum: 4.5, what: 'danger chip on its fill' },
   { foreground: '--color-on-header', background: '--color-header', minimum: 4.5, what: 'header text' },
+  /*
+   * The two pairs the system-wide review had to add, because the components hard-coded white
+   * instead of naming a token — so nothing checked them, and in the dark theme they were
+   * 1.71:1 (the label on the button that voids an order) and 2.12:1 (the knob that says
+   * whether a setting is on). A pair that is not in this list is a pair nobody measures.
+   */
+  { foreground: '--color-on-danger', background: '--color-danger', minimum: 4.5, what: 'label on the danger button' },
+  { foreground: '--color-on-primary', background: '--color-primary', minimum: 3, what: 'toggle knob when it is on' },
+  { foreground: '--color-surface', background: '--color-border-strong', minimum: 3, what: 'toggle knob when it is off' },
   { foreground: '--color-border-strong', background: '--color-surface', minimum: 3, what: 'input boundary' },
   { foreground: '--color-focus', background: '--color-surface', minimum: 3, what: 'focus ring' },
 ];

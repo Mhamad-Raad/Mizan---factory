@@ -207,7 +207,7 @@ export function PurchasesPage() {
           >
             <div className="mz-stack">
               <DateField
-                label={t('common:custom_range')}
+                label={t('common:date_from')}
                 value={from}
                 max={formatter.today()}
                 onChange={(event) => {
@@ -216,7 +216,7 @@ export function PurchasesPage() {
                 }}
               />
               <DateField
-                label={t('common:custom_range')}
+                label={t('common:date_to')}
                 value={to}
                 max={formatter.today()}
                 onChange={(event) => {

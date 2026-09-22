@@ -5,6 +5,7 @@ import type { Currency, Measure, RateSource } from '@mizan/money';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import type { OrderLineRow, OrderRow, PaymentType, PriceSource } from './order.types.js';
+import { countFrom } from '../common/count-from.js';
 
 function orderColumns(alias = 'orders'): string {
   return [
@@ -262,14 +263,31 @@ export class OrdersRepository {
       );
     }
 
+    const customer = 'JOIN customers c ON c.id = o.customer_id';
     const from = `
       FROM orders o
-      JOIN customers c ON c.id = o.customer_id
+      ${customer}
       LEFT JOIN users u ON u.id = o.acting_user_id
       LEFT JOIN users v ON v.id = o.voided_by
       ${REMAINING_LATERAL}
       ${RECEIVED_LATERAL}`;
     const where = `WHERE ${conditions.join(' AND ')}`;
+    /**
+     * The count is built from the narrowest `FROM` the filters need.
+     *
+     * The page's two laterals produce columns — what is still owed on the order, and the
+     * currency that was actually handed over — and the count needs neither unless a filter
+     * mentions one, which only the derived-status filter does. Counting 1.16 million orders
+     * *with* them cost **1,783 ms** on every load of the unfiltered list, for a single integer
+     * (the system-wide review). The customer join comes along whenever a condition names the
+     * customer; it cannot change the count either way, because an order's customer is a
+     * non-null reference and customers are soft-deleted.
+     */
+    const forCount = countFrom('FROM orders o', where, [
+      { alias: 'c.', sql: customer },
+      { alias: 'bal.', sql: REMAINING_LATERAL },
+      { alias: 'settle.', sql: RECEIVED_LATERAL },
+    ]);
 
     const countValues = [...values];
     const pageSize = Math.min(filters.page_size ?? 25, 100);
@@ -285,7 +303,7 @@ export class OrdersRepository {
          LIMIT $${values.length - 1} OFFSET $${values.length}`,
         values,
       ),
-      this.database.query<{ total: string }>(`SELECT count(*)::text AS total ${from} ${where}`, countValues),
+      this.database.query<{ total: string }>(`SELECT count(*)::text AS total ${forCount} ${where}`, countValues),
     ]);
 
     return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0) };

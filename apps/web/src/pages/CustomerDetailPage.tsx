@@ -29,6 +29,21 @@ type EntryKind = 'credit' | 'refund' | 'adjustment' | 'opening';
  * on the converted side, then their orders, their ledger with its running balance, and their
  * History. The walk-in customer has no ledger tab at all — its net is always zero (2.4.5).
  */
+/**
+ * A statement covers the last twelve months, not the whole history.
+ *
+ * Asking for everything returned **15.8 MB** for a ten-year account — five minutes of download
+ * on the reference connection of NFR-03 — and a statement is a document somebody prints or
+ * sends, not an archive. Anything older is inside the opening balance, which the server
+ * computes over the whole history, so the arithmetic on the page is still complete.
+ */
+function statementWindow(): { from: string; to: string } {
+  const today = new Date();
+  const from = new Date(today);
+  from.setFullYear(from.getFullYear() - 1);
+  return { from: from.toISOString().slice(0, 10), to: today.toISOString().slice(0, 10) };
+}
+
 export function CustomerDetailPage() {
   const { id = '' } = useParams();
   const { t } = useTranslation();
@@ -91,7 +106,9 @@ export function CustomerDetailPage() {
         opening_balance: number;
         closing_balance: number;
         items: LedgerRow[];
-      }>(`/customers/${id}/statement`),
+        item_count: number;
+        has_more: boolean;
+      }>(`/customers/${id}/statement?from=${statementWindow().from}&to=${statementWindow().to}`),
     enabled: statement,
   });
 
@@ -435,6 +452,15 @@ export function CustomerDetailPage() {
           >
             <div className="mz-receipt">
               <strong><bdi>{statementData.data.customer.name}</bdi></strong>
+              <p className="mz-caption">{t('common:statement_window')}</p>
+              {statementData.data.has_more ? (
+                <p className="mz-caption">
+                  {t('common:statement_capped', {
+                    shown: statementData.data.items.length,
+                    total: statementData.data.item_count,
+                  })}
+                </p>
+              ) : null}
               <div className="mz-receipt__line">
                 <span>{t('glossary:opening_balance')}</span>
                 <span data-tabular>

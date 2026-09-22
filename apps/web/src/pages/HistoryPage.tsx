@@ -268,7 +268,7 @@ export function HistoryPage() {
           >
             <div className="mz-stack">
               <DateField
-                label={t('common:date')}
+                label={t('common:date_from')}
                 value={custom.from}
                 max={formatter.today()}
                 onChange={(event) => {
@@ -277,7 +277,7 @@ export function HistoryPage() {
                 }}
               />
               <DateField
-                label={t('common:date')}
+                label={t('common:date_to')}
                 value={custom.to}
                 max={formatter.today()}
                 onChange={(event) => {

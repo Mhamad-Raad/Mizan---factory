@@ -4,6 +4,7 @@ import type { Currency } from '@mizan/money';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import type { CustomerRow } from './customer.types.js';
+import { countFrom } from '../common/count-from.js';
 
 /** Alias-aware column list, so the same fields serve a plain read and the list query. */
 function customerColumns(alias = 'customers'): string {
@@ -160,16 +161,22 @@ export class CustomersRepository {
 
     // The balance is a sum over the customer's own rows, which `customer_ledger_running_idx`
     // serves as one index scan per customer rather than an aggregate of the whole ledger.
-    const from = `
-      FROM customers c
-      LEFT JOIN users u ON u.id = c.assigned_user_id
+    const assignee = 'LEFT JOIN users u ON u.id = c.assigned_user_id';
+    const balance = `
       LEFT JOIN LATERAL (
         SELECT coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0)
                  AS balance
           FROM customer_ledger l
          WHERE l.customer_id = c.id
       ) bal ON true`;
+    const from = `FROM customers c\n${assignee}${balance}`;
     const where = `WHERE ${conditions.join(' AND ')}`;
+    // Counting thirty thousand customers does not need each one's balance summed — only a
+    // filter on the balance does (`countFrom`, the system-wide review).
+    const forCount = countFrom('FROM customers c', where, [
+      { alias: 'u.', sql: assignee },
+      { alias: 'bal.', sql: balance },
+    ]);
 
     const countValues = [...values];
     const pageSize = Math.min(filters.page_size ?? 25, 100);
@@ -186,7 +193,7 @@ export class CustomersRepository {
          LIMIT $${values.length - 1} OFFSET $${values.length}`,
         values,
       ),
-      this.database.query<{ total: string }>(`SELECT count(*)::text AS total ${from} ${where}`, countValues),
+      this.database.query<{ total: string }>(`SELECT count(*)::text AS total ${forCount} ${where}`, countValues),
     ]);
 
     return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0) };

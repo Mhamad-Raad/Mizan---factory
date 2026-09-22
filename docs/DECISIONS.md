@@ -584,3 +584,76 @@ writes the reversal, an edit that drops a line writes the correction — and it 
 system is built on: a stock question is answered by the stock ledger (rule 2). The Stock report
 came to **350.7 ms** and the materials list to **240.3 ms**; a plan-shape test asserts the report
 never reads `order_lines` again. Relied on: FR-304, 2.2.4, NFR-03, NFR-13.
+
+## D-047 · 2026-09-22 · system-wide review · A count is built from the narrowest FROM
+
+A list endpoint asks two questions of one `WHERE`: which twenty-five rows, and how many
+altogether. The page's joins and laterals exist to produce *columns* — a balance, what is still
+owed, the currency that was handed over — and the count needs none of them unless a filter
+mentions one. Three lists reused the page's `FROM` for the count, so counting ran a per-row
+subquery over the whole table: the unfiltered Orders list spent **1,783 ms** at 1.16 million
+orders, for 25 rows of data and one integer.
+
+**Choice:** `countFrom(base, where, joins)` (`common/count-from.ts`) keeps only the joins whose
+alias the `WHERE` actually mentions, and every join listed is one whose presence cannot change
+the number of rows — a `LEFT JOIN`, a lateral, or an inner join on a non-null reference whose
+parent is only ever soft-deleted. Orders **1,783 → 47 ms**; customers and companies likewise.
+The items list had already done this by hand after the I3 review; now it is one helper with the
+reasoning in one place. Relied on: NFR-03, NFR-13, 2.4.1.
+
+## D-048 · 2026-09-22 · system-wide review · A statement is a document, not an archive
+
+`GET /customers/:id/statement` had no bound and the screen asked for no range, so it returned
+every row of the account: **15.8 MB of JSON** for a ten-year account of 20,000 entries — five
+minutes of download on the 400 kbps reference connection, and more than a 2 GB tablet renders.
+
+**Choice:** the screen asks for the **last twelve months** and says so on the page; the server
+caps the rows at **500** and reports `item_count` and `has_more`, so a capped statement says
+which it is. The opening and closing balances are sums over the whole range and stay exact
+either way, so the arithmetic on the page still reconciles — that is what makes the cap
+honest rather than a truncation. 15.8 MB → 395 kB at the widest range, 76 kB for what the
+screen asks. Relied on: FR-615, NFR-03, D-032.
+
+## D-049 · 2026-09-22 · system-wide review · Two colours that were hard-coded, and now are checked
+
+`.mz-button--danger` and the toggle knob wrote `color: #fff` instead of naming a token, so
+nothing measured them — and in the **dark** theme the danger fill is a light salmon: the label
+on the button that voids an order was **1.71:1**, and the knob that says whether a setting is on
+was **2.12:1** on its track (WCAG asks 4.5:1 and 3:1).
+
+**Choice:** a new `--color-on-danger` per theme, `--color-on-primary` for the knob when it is on,
+and **three new pairs in `scripts/check-contrast.ts`** — the danger label and the knob in both
+states — because a pair that is not in that list is a pair nobody measures. 38 pairs now pass in
+both themes. Relied on: NFR-10, 2.10.7, rule 9.
+
+## D-050 · 2026-09-22 · system-wide review · The tab strip scrolls; the page does not
+
+`SegmentedControl` laid its options out with `flex: 1` and no scroll container, so options wider
+than the phone pushed the **document** sideways: 334 px on the import screen's six kinds, 89 px
+on a company profile's four tabs, at 360 px and the largest text size, in every language. Only
+five screens had ever been checked for horizontal overflow.
+
+**Choice:** the strip is a scroll container (`overflow-x: auto`, snap, no scrollbar) with options
+that keep their whole label, which is what `.mz-tabs` already did; and the chosen option is
+scrolled into view when the strip overflows, instantly under reduced motion, so a selected tab
+is never off the edge. `e2e/responsive.spec.ts` now sweeps **every** route an admin can open, in
+three languages at 1.25× text, and asserts nothing scrolls sideways. Relied on: 2.10.2, 3.6.1,
+NFR-10, Definition of done item 6.
+
+## D-051 · 2026-09-22 · system-wide review · Three indexes nobody reads
+
+Every ledger row written maintains every index on the table, for ever, and the customer ledger
+grows by about a million rows a year at the design point. Measured after a year of seeded
+trading, every demo script, the whole suite and the endpoint budgets: `customer_ledger_order_sum_idx`
+(69 MB) and `customer_ledger_running_idx` (65 MB) had **never been chosen**, and
+`customer_ledger_date_idx` (37 MB) re-plans onto `customer_ledger_receivables_idx`, which leads
+with the same two columns.
+
+**Choice:** all three dropped (migration 0020), each after proving the fallback by dropping it
+inside a transaction and re-planning the queries that could have wanted it — the per-order sum
+falls to `customer_ledger_order_idx`, the dated sum to the receivables index at the same measured
+time, and reading one account in posting order sorts 20,000 rows in 2 ms whether the index is
+there or not (the planner ignored it either way). The table's indexes went from **416 MB to
+248 MB**, and all 21 endpoint budgets still pass. What is kept is the hot set: the balance sum,
+the per-order lookup, the receivables pass, the reversal and voucher keys, and idempotency.
+Relied on: NFR-13, 2.2.6, [[mizan-longevity]].

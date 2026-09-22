@@ -279,7 +279,7 @@ input[type='tel'] {
 
 .mz-button--danger {
   background: var(--color-danger);
-  color: #fff;
+  color: var(--color-on-danger);
 }
 
 .mz-button--block {
@@ -356,21 +356,42 @@ a.mz-button {
 }
 
 .mz-segmented {
-  display: inline-flex;
+  display: flex;
   gap: 2px;
   border-radius: var(--radius-md);
   background: var(--color-surface-2);
   padding: 3px;
   inline-size: 100%;
+
+  /*
+   * The strip scrolls; the page does not.
+   *
+   * With `flex: 1` and no scroll container, options wider than the phone pushed the *document*
+   * sideways — 334 px on the import screen's six kinds, 89 px on a company profile's four tabs
+   * at the largest text size, in every language. A tab strip that scrolls inside itself is the
+   * ordinary phone pattern, and it is what `.mz-tabs` already did (system-wide review).
+   */
+  overflow-x: auto;
+  scroll-snap-type: inline proximity;
+  scrollbar-width: none;
+}
+
+/* The strip is dragged, so its scrollbar is noise on a 360 px screen. */
+.mz-segmented::-webkit-scrollbar {
+  display: none;
 }
 
 .mz-segmented__option {
-  flex: 1;
+  /* Share the width when the labels fit, keep the whole label when they do not. */
+  flex: 1 0 auto;
+  scroll-snap-align: start;
+  white-space: nowrap;
   cursor: pointer;
   border: 0;
   border-radius: calc(var(--radius-md) - 3px);
   background: none;
   padding-block: var(--space-2);
+  padding-inline: var(--space-2);
 
   /* A touch target is never smaller than 44 px, whatever the text size around it (NFR-10). */
   min-block-size: var(--tap-target);
@@ -433,7 +454,9 @@ a.mz-button {
   position: absolute;
   transition: inset-inline-start var(--duration-micro) var(--ease-out);
   border-radius: 50%;
-  background: #fff;
+
+  /* The knob reads against the *off* track, which is a border colour in both themes. */
+  background: var(--color-surface);
   inline-size: 22px;
   block-size: 22px;
   inset-block-start: calc((var(--tap-target) - 22px) / 2);
@@ -442,6 +465,11 @@ a.mz-button {
 
 .mz-toggle__track[aria-checked='true'] .mz-toggle__thumb {
   inset-inline-start: 23px;
+
+  /* On the primary fill the knob needs the primary's own foreground: the dark theme's primary
+     is a light pink, where a white knob was 2.12:1 and the toggle looked empty (WCAG 1.4.11
+     asks 3:1 of a control's parts). */
+  background: var(--color-on-primary);
 }
 
 .mz-toggle__track[aria-checked='mixed'] .mz-toggle__thumb {

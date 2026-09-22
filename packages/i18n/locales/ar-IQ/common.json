@@ -56,5 +56,9 @@
   "rate_used": "بسعر الصرف {{rate}}",
   "manual_rate": "سعر صرف يدوي {{rate}}",
   "draft_found": "لديك عمل غير محفوظ من {{time}}",
-  "draft_restore": "استعادته"
+  "draft_restore": "استعادته",
+  "statement_window": "يغطي هذا الكشف آخر اثني عشر شهراً؛ وما قبلها داخل الرصيد الافتتاحي.",
+  "statement_capped": "تظهر آخر {{shown}} من {{total}} سطر؛ والأرصدة تخص المدة كاملة.",
+  "date_from": "من تاريخ",
+  "date_to": "إلى تاريخ"
 }

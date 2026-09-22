@@ -56,5 +56,9 @@
   "rate_used": "At the rate {{rate}}",
   "manual_rate": "Manual rate {{rate}}",
   "draft_found": "You have unsaved work from {{time}}",
-  "draft_restore": "Restore it"
+  "draft_restore": "Restore it",
+  "statement_window": "This statement covers the last twelve months; anything earlier is inside the opening balance.",
+  "statement_capped": "Showing the most recent {{shown}} of {{total}} rows; the balances are for the whole period.",
+  "date_from": "From date",
+  "date_to": "To date"
 }

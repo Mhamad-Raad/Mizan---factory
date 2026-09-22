@@ -47,6 +47,9 @@
   --color-warning-soft: #fbebd1;
   --color-danger: #b3261e;
   --color-danger-soft: #fce4e2;
+
+  /* What sits on a danger fill — a button label, an icon. Light theme: white on deep red. */
+  --color-on-danger: #fff;
   --color-header: #5e1f4b;
   --color-on-header: #fff;
   --color-brass: #8c6a12;
@@ -113,6 +116,10 @@
   --color-warning-soft: #3a2a10;
   --color-danger: #f58b84;
   --color-danger-soft: #3e1a18;
+
+  /* The dark theme's danger is a *light* salmon, so what sits on it has to be dark: white was
+     1.71:1 on it, which is an invisible label on the one button that voids an order. */
+  --color-on-danger: #3b0f0c;
   --color-header: #211a21;
   --color-on-header: #f4ecf1;
   --color-brass: #e4c260;
