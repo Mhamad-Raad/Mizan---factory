@@ -158,7 +158,7 @@ function DetailsTab({ user }: { user: UserDetail }) {
           onChange={(event) => setDisplayName(event.target.value)}
         />
         <p className="mz-muted" dir="ltr">
-          {user.username}
+          <bdi>{user.username}</bdi>
         </p>
         <p className="mz-caption">
           {t('users:last_sign_in')}:{' '}

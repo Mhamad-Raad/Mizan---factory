@@ -1,0 +1,27 @@
+/*
+ * Vazirmatn, subset to the ranges Kurdish Sorani and Arabic are written in (spec 3.7.1).
+ *
+ * It carries ڵ ڕ ۆ ێ ە ڤ گ چ پ ژ and their initial, medial and final forms — the letters a
+ * fallback font drops or reshapes, which is exactly what `/font-check` exists to catch. 46 kB
+ * against NFR-03's 120 kB per family, and `font-display: swap` so a slow connection shows the
+ * text in a fallback immediately rather than showing nothing.
+ */
+@font-face {
+  font-family: 'Vazirmatn Variable';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/vazirmatn-arabic.woff2') format('woff2-variations');
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+200C-200E, U+FB50-FDFF, U+FE70-FEFF;
+}
+
+/* The Latin range of the same family, so a Kurdish screen's digits and its Latin names are
+   shaped by one font rather than two — and one file rather than two on the wire. */
+@font-face {
+  font-family: 'Vazirmatn Variable';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/vazirmatn-latin.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+20AC, U+2122, U+2212, U+FEFF;
+}

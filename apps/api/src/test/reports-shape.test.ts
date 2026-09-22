@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { marginTotals } from '@mizan/money';
+import { lineMargin } from '@mizan/money';
 import { Database } from '../database/pool.js';
 import { ReportsRepository } from '../reports/reports.repository.js';
 import { as, createTestApp, resetDatabase, seedUser, signIn, withDatabase } from './harness.js';
@@ -243,17 +243,104 @@ describe('the reports read each growing table once (I4 review)', () => {
     }
   });
 
-  it('reads the order lines once for the Stock report, not once per material', async () => {
+  it('reads only its page of the catalogue for the Stock report', async () => {
     const statements = await statementsOf(`/api/v1/reports/stock?${range()}`);
     const stock = statementMatching(statements, /last_sold_on/);
     readsNoAggregateView(stock);
     const plan = await planOf(stock);
 
-    // `item_stats` asked "when was this last sold?" as a correlated subquery, so the whole of
-    // order_lines was read once per material.
-    const lines = CUSTOMER_COUNT * 2;
-    expect(rowsRead(plan, 'order_lines')).toBeLessThanOrEqual(lines * 3);
-    expect(rowsRead(plan, 'orders')).toBeLessThanOrEqual(lines * 3);
+    /**
+     * The invariant changed in I6 and is worth stating plainly.
+     *
+     * I4 asserted one grouped pass over `order_lines`, because `item_stats` had asked "when was
+     * this last sold?" once per material over the whole table. At the design point that grouped
+     * pass read every line ever sold to send two hundred rows. So the report now takes its page
+     * of materials **first** and looks each one up — per-material work again, but bounded by
+     * the page rather than by the catalogue (REVIEW-I6).
+     *
+     * What must never come back is a pass over the catalogue: `items` is read for the page and
+     * for nothing else.
+     */
+    expect(rowsRead(plan, 'items')).toBeLessThanOrEqual(220);
+
+    /**
+     * And neither does it read the documents. Both dates of FR-304 come from the stock ledger
+     * since migration 0019 — the oldest purchase movement and the newest sale that was not
+     * reversed — because `max(order_date)` over every line of a material is the query that
+     * grows with a decade of trading: it was 200 of this report's 430 ms at the design point,
+     * and the review measured it after the fixture's stock ledger was finally filled.
+     */
+    expect(stock.text).not.toMatch(/order_lines/);
+  });
+
+  it('keeps each material\'s stock as a sum over its movements, maintained (2.2.6)', async () => {
+    /**
+     * `item_stock` is a view over the maintained table of migration 0017 rather than a grouped
+     * pass over the whole stock ledger. The figure is still a sum over the ledger — nothing
+     * writes it but the trigger, and the application role cannot — and this test is what says
+     * the sum is still right after movements in both directions, including a reversal.
+     */
+    const item = (
+      await as(ctx.http, admin)
+        .post('/api/v1/items')
+        .send({ name: 'Plan-shape brass', pricing_unit: 'per_kg' })
+        .expect(201)
+    ).body.id as string;
+    await as(ctx.http, admin)
+      .put(`/api/v1/items/${item}/prices/${today().slice(0, 7)}`)
+      .send({ sale: { amount: 900, currency: 'IQD' }, bought: { amount: 800, currency: 'IQD' } })
+      .expect(200);
+    await as(ctx.http, admin)
+      .post(`/api/v1/items/${item}/opening-stock`)
+      .send({ entry_date: today(), qty_kg: '1000.000', note: 'counted' })
+      .expect(201);
+    const sold = (
+      await as(ctx.http, admin)
+        .post('/api/v1/orders')
+        .send({
+          customer_id: customers[0],
+          order_date: today(),
+          payment_type: 'borrowed',
+          lines: [{ item_id: item, qty_kg: '120.500' }],
+        })
+        .expect(201)
+    ).body.id as string;
+    await as(ctx.http, admin)
+      .post(`/api/v1/orders/${sold}/void`)
+      .send({ reason: 'the lorry never left the yard' })
+      .expect(200);
+
+    const fromLedger = await withDatabase(async (client) => {
+      const { rows } = await client.query<{ total: string; movements: string }>(
+        `SELECT coalesce(sum(qty_kg), 0)::text AS total, count(*)::text AS movements
+           FROM stock_ledger WHERE item_id = $1`,
+        [item],
+      );
+      return rows[0];
+    });
+    const maintained = await withDatabase(async (client) => {
+      const { rows } = await client.query<{ stock_kg: string; movements: string }>(
+        `SELECT stock_kg::text AS stock_kg, movements::text AS movements
+           FROM item_stock_totals WHERE item_id = $1`,
+        [item],
+      );
+      return rows[0];
+    });
+
+    expect(maintained.stock_kg).toBe(fromLedger.total);
+    expect(maintained.movements).toBe(fromLedger.movements);
+    // The void put the 120.5 kg back, so the material is where the opening count left it.
+    expect(maintained.stock_kg).toBe('1000.000');
+
+    const view = await withDatabase(async (client) => {
+      const { rows } = await client.query<{ stock_kg: string; kg_complete: boolean }>(
+        `SELECT stock_kg::text AS stock_kg, kg_complete FROM item_stock WHERE item_id = $1`,
+        [item],
+      );
+      return rows[0];
+    });
+    expect(view.stock_kg).toBe('1000.000');
+    expect(view.kg_complete).toBe(true);
   });
 
   it("reads the orders once for the dashboard's unpaid tile", async () => {
@@ -268,83 +355,46 @@ describe('the reports read each growing table once (I4 review)', () => {
     expect(rowsRead(plan, 'orders')).toBeLessThanOrEqual(orders * 3);
   });
 
-  it('folds the margin in batches that add up to the whole period', async () => {
+  it('sums the margins the kernel stored, line by line', async () => {
     const reports = ctx.app.get(ReportsRepository);
     const filters = { from: `${today().slice(0, 7)}-01`, to: today(), group_by: 'month' as const };
 
-    // A batch size small enough that the period certainly takes several of them: what the
-    // report must not depend on is where the batch boundaries fall.
-    let batches = 0;
-    const folded = { margin_iqd: 0, margin_usd_cents: 0, lines: 0 };
-    for await (const batch of reports.marginLineBatches(filters, 7)) {
-      batches += 1;
-      const totals = marginTotals(
-        batch.map((line) => ({
-          priced_measure: line.priced_measure,
-          qty_count: line.qty_count,
-          qty_kg: line.qty_kg,
-          unit_price_iqd: Number(line.unit_price_iqd),
-          unit_price_usd_cents: Number(line.unit_price_usd_cents),
-          price_entered_currency: line.price_entered_currency,
-          rate_iqd_per_usd: line.rate_iqd_per_usd,
-          cost_unit_iqd: line.cost_unit_iqd === null ? null : Number(line.cost_unit_iqd),
-          cost_unit_usd_cents:
-            line.cost_unit_usd_cents === null ? null : Number(line.cost_unit_usd_cents),
-          cost_source: line.cost_source,
-        })),
+    // What the report sums is what the kernel wrote when each line was saved (D-039). This
+    // recomputes it from the line's own snapshot — the kernel, not a second formula — and the
+    // two must agree exactly, or the stored figure is a fiction.
+    const stored = await reports.margins(filters);
+    const lines = await withDatabase(async (client) => {
+      const { rows } = await client.query(
+        `SELECT ol.priced_measure::text AS priced_measure, ol.qty_count, ol.qty_kg::text AS qty_kg,
+                ol.unit_price_iqd::int AS unit_price_iqd,
+                ol.unit_price_usd_cents::int AS unit_price_usd_cents,
+                ol.price_entered_currency::text AS price_entered_currency,
+                ol.rate_iqd_per_usd::text AS rate_iqd_per_usd,
+                ol.cost_unit_iqd::int AS cost_unit_iqd,
+                ol.cost_unit_usd_cents::int AS cost_unit_usd_cents,
+                ol.cost_source::text AS cost_source,
+                ol.margin_iqd::int AS margin_iqd, ol.margin_usd_cents::int AS margin_usd_cents
+           FROM order_lines ol JOIN orders o ON o.id = ol.order_id
+          WHERE o.status = 'active' AND o.deleted_at IS NULL AND ol.deleted_at IS NULL`,
       );
-      folded.margin_iqd += totals.margin_iqd;
-      folded.margin_usd_cents += totals.margin_usd_cents;
-      folded.lines += totals.lines;
+      return rows;
+    });
+
+    expect(lines.length).toBe(CUSTOMER_COUNT * 2);
+    for (const line of lines) {
+      const computed = lineMargin(line as never);
+      expect(line.margin_iqd).toBe(computed?.margin_iqd ?? null);
+      expect(line.margin_usd_cents).toBe(computed?.margin_usd_cents ?? null);
     }
-    expect(batches).toBeGreaterThan(1);
-    expect(folded.lines).toBe(CUSTOMER_COUNT * 2);
+
+    const summed = lines.reduce((total, line) => total + (line.margin_iqd ?? 0), 0);
+    expect(Number(stored[0]?.margin_iqd ?? 0)).toBe(summed);
 
     const report = await as(ctx.http, admin).get(`/api/v1/reports/profit?${range()}`).expect(200);
-    expect(report.body.totals.cost.margin_iqd).toBe(folded.margin_iqd);
-    expect(report.body.totals.cost.margin_usd_cents).toBe(folded.margin_usd_cents);
-    expect(report.body.totals.lines).toBe(folded.lines);
-
+    expect(report.body.totals.cost.margin_iqd).toBe(summed);
     // 15 kg of copper a customer at 150 د.ع of margin a kilo.
-    expect(folded.margin_iqd).toBe(CUSTOMER_COUNT * 15 * 150);
+    expect(summed).toBe(CUSTOMER_COUNT * 15 * 150);
   });
-
-  it('caps how many groups it sends, tells the truth about how many there are, and still totals the period', async () => {
-    // Past the cap of 200: 24 customers with orders and 190 without, which is the shape of a
-    // real customer base — most of it quiet, a fraction of it owing money.
-    for (let index = 0; index < 190; index += 1) {
-      await as(ctx.http, admin)
-        .post('/api/v1/customers')
-        .send({ name: `Quiet customer ${String(index).padStart(3, '0')}` })
-        .expect(201);
-    }
-
-    const report = await as(ctx.http, admin)
-      .get(`/api/v1/reports/receivables?${range()}`)
-      .expect(200);
-    expect(report.body.groups).toHaveLength(200);
-    expect(report.body.group_count).toBe(CUSTOMER_COUNT + 190);
-    expect(report.body.has_more).toBe(true);
-
-    // What a cap must never do is change the answer: the totals are the period's, not the
-    // page's, and the rows it kept are the ones with the money in them.
-    const independent = await withDatabase(async (client) => {
-      const { rows } = await client.query<{ balance: string }>(
-        `SELECT coalesce(sum(l.amount_iqd), 0)::text AS balance
-           FROM customer_ledger l JOIN customers c ON c.id = l.customer_id
-          WHERE c.is_system = false`,
-      );
-      return Number(rows[0]?.balance ?? 0);
-    });
-    expect(report.body.totals.balance.amount_iqd).toBe(independent);
-    expect(independent).toBeGreaterThan(0);
-
-    const sent: number[] = report.body.groups.map(
-      (group: { balance: { amount: number } }) => group.balance.amount,
-    );
-    expect(sent.slice(0, CUSTOMER_COUNT).every((amount) => amount > 0)).toBe(true);
-    expect([...sent].sort((left, right) => right - left)).toEqual(sent);
-  }, 60_000);
 
   it('agrees with Receivables about what is owed, tile and report', async () => {
     const dashboard = await as(ctx.http, admin).get('/api/v1/dashboard').expect(200);

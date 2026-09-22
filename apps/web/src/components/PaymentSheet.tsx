@@ -128,10 +128,16 @@ export function PaymentSheet({
       <div className="mz-stack">
         <div className="mz-row mz-row--between">
           <span>{remainingLabel ?? t('orders:remaining')}</span>
+          {/*
+            * The counterpart is converted at this account's rate rather than left at zero:
+            * a remainder of 3,050,000 IQD is not "$0.00", and rule 7 asks for both currencies
+            * with ≈ on the figure that was derived rather than stored.
+            */}
           <DualAmount
-            amount_iqd={settlement_currency === 'IQD' ? remaining : 0}
-            amount_usd_cents={settlement_currency === 'USD' ? remaining : 0}
+            amount_iqd={settlement_currency === 'IQD' ? remaining : convert(remaining, 'USD', rate)}
+            amount_usd_cents={settlement_currency === 'USD' ? remaining : convert(remaining, 'IQD', rate)}
             primary={settlement_currency}
+            kind="derived"
           />
         </div>
 
@@ -223,8 +229,8 @@ export function PaymentSheet({
         <div className="mz-row mz-row--between">
           <span className="mz-caption">{t('customers:after_payment')}</span>
           <DualAmount
-            amount_iqd={settlement_currency === 'IQD' ? afterPayment : 0}
-            amount_usd_cents={settlement_currency === 'USD' ? afterPayment : 0}
+            amount_iqd={settlement_currency === 'IQD' ? afterPayment : convert(afterPayment, 'USD', rate)}
+            amount_usd_cents={settlement_currency === 'USD' ? afterPayment : convert(afterPayment, 'IQD', rate)}
             primary={settlement_currency}
             kind="derived"
           />

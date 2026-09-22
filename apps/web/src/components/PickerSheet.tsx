@@ -82,8 +82,8 @@ export function PickerSheet({
                   onClick={() => onPick(pinned.id, pinned.row)}
                 >
                   <span className="mz-list__body">
-                    <span className="mz-list__title">{pinned.title}</span>
-                    {pinned.subtitle ? <span className="mz-caption">{pinned.subtitle}</span> : null}
+                    <span className="mz-list__title"><bdi>{pinned.title}</bdi></span>
+                    {pinned.subtitle ? <span className="mz-caption"><bdi>{pinned.subtitle}</bdi></span> : null}
                   </span>
                   {pinned.detail}
                 </button>
@@ -100,8 +100,8 @@ export function PickerSheet({
                     onClick={() => onPick(item.id, row as never)}
                   >
                     <span className="mz-list__body">
-                      <span className="mz-list__title">{item.title}</span>
-                      {item.subtitle ? <span className="mz-caption">{item.subtitle}</span> : null}
+                      <span className="mz-list__title"><bdi>{item.title}</bdi></span>
+                      {item.subtitle ? <span className="mz-caption"><bdi>{item.subtitle}</bdi></span> : null}
                     </span>
                     {item.detail}
                   </button>

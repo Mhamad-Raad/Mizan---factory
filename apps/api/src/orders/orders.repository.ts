@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { normalizeForSearch } from '@mizan/text';
+import { lineMargin } from '@mizan/money';
 import type { Currency, Measure, RateSource } from '@mizan/money';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
@@ -45,7 +46,9 @@ const LINE_COLUMNS = `l.id, l.order_id, l.line_no, l.item_id, l.qty_count, l.qty
                       l.line_total_usd_cents::text AS line_total_usd_cents,
                       l.cost_unit_iqd::text AS cost_unit_iqd,
                       l.cost_unit_usd_cents::text AS cost_unit_usd_cents,
-                      l.cost_month_price_id, l.cost_source::text AS cost_source, l.note`;
+                      l.cost_month_price_id, l.cost_source::text AS cost_source,
+                      l.margin_iqd::text AS margin_iqd,
+                      l.margin_usd_cents::text AS margin_usd_cents, l.note`;
 
 /**
  * What is still owed on one order, read per row rather than from the `order_balances` view.
@@ -342,14 +345,28 @@ export class OrdersRepository {
   async insertLines(orderId: string, lines: readonly NewOrderLine[], createdBy: string, tx: Db): Promise<OrderLineRow[]> {
     const inserted: OrderLineRow[] = [];
     for (const line of lines) {
+      const margin = lineMargin({
+        priced_measure: line.priced_measure,
+        qty_count: line.qty_count,
+        qty_kg: line.qty_kg,
+        unit_price_iqd: line.unit_price_iqd,
+        unit_price_usd_cents: line.unit_price_usd_cents,
+        price_entered_currency: line.price_entered_currency,
+        rate_iqd_per_usd: line.rate_iqd_per_usd,
+        cost_unit_iqd: line.cost_unit_iqd,
+        cost_unit_usd_cents: line.cost_unit_usd_cents,
+        cost_source: line.cost_source,
+      });
       const { rows } = await tx.query<OrderLineRow>(
         `INSERT INTO order_lines
            (order_id, line_no, item_id, qty_count, qty_kg, priced_measure, unit_price_iqd,
             unit_price_usd_cents, price_entered_currency, price_source, month_price_id,
             rate_iqd_per_usd, rate_source, line_total_iqd, line_total_usd_cents,
-            cost_unit_iqd, cost_unit_usd_cents, cost_month_price_id, cost_source, note, created_by)
+            cost_unit_iqd, cost_unit_usd_cents, cost_month_price_id, cost_source,
+            margin_iqd, margin_usd_cents, note, created_by)
          VALUES ($1, $2, $3, $4, $5::numeric, $6::measure, $7, $8, $9::currency, $10::price_source, $11,
-                 $12::numeric, $13::rate_source, $14, $15, $16, $17, $18, $19::cost_source, $20, $21)
+                 $12::numeric, $13::rate_source, $14, $15, $16, $17, $18, $19::cost_source,
+                 $20, $21, $22, $23)
          RETURNING ${LINE_COLUMNS.replace(/l\./g, 'order_lines.')}`,
         [
           orderId,
@@ -371,6 +388,11 @@ export class OrdersRepository {
           line.cost_unit_usd_cents,
           line.cost_month_price_id,
           line.cost_source,
+          // The margin is computed **here**, by the kernel, once — and stored like the cost
+          // snapshot beside it, so the report can sum integers instead of re-deriving a
+          // million lines (D-039, REVIEW-I6).
+          margin?.margin_iqd ?? null,
+          margin?.margin_usd_cents ?? null,
           line.note,
           createdBy,
         ],

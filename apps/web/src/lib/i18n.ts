@@ -20,6 +20,7 @@ import ckbDamages from '@mizan/i18n/locales/ckb-IQ/damages.json';
 import ckbReports from '@mizan/i18n/locales/ckb-IQ/reports.json';
 import ckbDashboard from '@mizan/i18n/locales/ckb-IQ/dashboard.json';
 import ckbSearch from '@mizan/i18n/locales/ckb-IQ/search.json';
+import ckbImports from '@mizan/i18n/locales/ckb-IQ/imports.json';
 
 import arCommon from '@mizan/i18n/locales/ar-IQ/common.json';
 import arGlossary from '@mizan/i18n/locales/ar-IQ/glossary.json';
@@ -38,6 +39,7 @@ import arDamages from '@mizan/i18n/locales/ar-IQ/damages.json';
 import arReports from '@mizan/i18n/locales/ar-IQ/reports.json';
 import arDashboard from '@mizan/i18n/locales/ar-IQ/dashboard.json';
 import arSearch from '@mizan/i18n/locales/ar-IQ/search.json';
+import arImports from '@mizan/i18n/locales/ar-IQ/imports.json';
 
 import enCommon from '@mizan/i18n/locales/en/common.json';
 import enGlossary from '@mizan/i18n/locales/en/glossary.json';
@@ -56,6 +58,7 @@ import enDamages from '@mizan/i18n/locales/en/damages.json';
 import enReports from '@mizan/i18n/locales/en/reports.json';
 import enDashboard from '@mizan/i18n/locales/en/dashboard.json';
 import enSearch from '@mizan/i18n/locales/en/search.json';
+import enImports from '@mizan/i18n/locales/en/imports.json';
 
 /**
  * The catalogs are bundled, not fetched: a floor tablet on a bad connection must not be able
@@ -80,6 +83,7 @@ const resources = {
     reports: ckbReports,
     dashboard: ckbDashboard,
     search: ckbSearch,
+    imports: ckbImports,
   },
   'ar-IQ': {
     common: arCommon,
@@ -99,6 +103,7 @@ const resources = {
     reports: arReports,
     dashboard: arDashboard,
     search: arSearch,
+    imports: arImports,
   },
   en: {
     common: enCommon,
@@ -118,6 +123,7 @@ const resources = {
     reports: enReports,
     dashboard: enDashboard,
     search: enSearch,
+    imports: enImports,
   },
 } as const;
 

@@ -323,7 +323,7 @@ function DamageForm({
             <div>
               <span className="mz-field__label">{t('damages:pick_company')}</span>
               <Button variant="secondary" block onClick={() => setPicking('company')}>
-                {form.company_name ?? t('damages:pick_company')}
+                <bdi>{form.company_name ?? t('damages:pick_company')}</bdi>
               </Button>
             </div>
             {form.company_id ? (
@@ -380,7 +380,7 @@ function DamageForm({
                     .filter((user) => user.is_active)
                     .map((user) => (
                       <option key={user.id} value={user.id}>
-                        {user.display_name}
+                        <bdi>{user.display_name}</bdi>
                       </option>
                     ))}
                 </select>

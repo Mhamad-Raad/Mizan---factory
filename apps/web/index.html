@@ -47,7 +47,43 @@
 
         var meta = document.querySelector('meta[name="theme-color"]');
         if (meta) meta.setAttribute('content', resolved === 'dark' ? '#211A21' : '#5E1F4B');
+
+        /*
+         * The font of the *active* language, preloaded and linked here (spec 3.7.1).
+         *
+         * Loading both families cost 1.2 s of first paint on the reference profile of NFR-03 —
+         * 400 kbps, where a 48 kB file nobody's language needs is a fifth of the budget. A
+         * Kurdish or Arabic device takes Vazirmatn (which also carries the Latin digits), an
+         * English one takes Inter, and switching language in Settings loads the other one then.
+         */
+        var family = lang === 'en' ? 'latin' : 'arabic';
+        var face = lang === 'en' ? 'inter-latin' : 'vazirmatn-arabic';
+        var preload = document.createElement('link');
+        preload.rel = 'preload';
+        preload.as = 'font';
+        preload.type = 'font/woff2';
+        preload.crossOrigin = 'anonymous';
+        preload.href = '/fonts/' + face + '.woff2';
+        document.head.appendChild(preload);
+
+        var sheet = document.createElement('link');
+        sheet.rel = 'stylesheet';
+        sheet.href = '/fonts/' + family + '.css';
+        sheet.setAttribute('data-mizan-fonts', family);
+        document.head.appendChild(sheet);
       })();
+    </script>
+    <!-- FR-1313 (Proposed — not requested): the app can be added to the home screen. Two
+         lines and a file; delete them and nothing else changes. Data is never cached. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/service-worker.js').catch(function () {
+            /* An installable shortcut is a convenience; the app works without it. */
+          });
+        });
+      }
     </script>
   </head>
   <body>

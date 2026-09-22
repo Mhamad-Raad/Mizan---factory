@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { shot } from './shot.js';
 
 /**
  * The key screens of Iteration 0, in both directions and both themes. Every case sets the
@@ -40,7 +41,7 @@ test.describe('login screen', () => {
       await withPreferences(page, testCase);
       await page.goto('/login');
       await expect(page.getByRole('button', { name: /.+/ }).first()).toBeVisible();
-      await expect(page).toHaveScreenshot(`login-${testCase.name}.png`, { fullPage: true });
+      await shot(page, `login-${testCase.name}.png`);
     });
   }
 

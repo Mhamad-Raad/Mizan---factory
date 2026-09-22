@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { ADMIN, SALES } from './accounts.js';
+import { shot } from './shot.js';
 
 /**
  * The shared-tablet screens of Iteration 5 on a 360 px phone (FR-106, FR-204, FR-1304): the
@@ -72,7 +73,7 @@ test.describe('shared tablets', () => {
     await page.goto('/orders');
     await page.getByRole('button', { name: /Lock the screen/i }).click();
     await expect(page.locator('.mz-pinpad')).toBeVisible();
-    await expect(page).toHaveScreenshot('lock-pinpad-en-light.png', { fullPage: true });
+    await shot(page, 'lock-pinpad-en-light.png');
 
     // Four taps and the session is back — the same session, so drafts survive (2.8).
     for (const digit of '4321') await page.locator('.mz-pinpad__key', { hasText: digit }).click();
@@ -127,7 +128,7 @@ test.describe('shared tablets', () => {
     // island, so the RTL mirroring rule must not reach inside it.
     const backspace = page.locator('.mz-pinpad__key--quiet svg');
     await expect(backspace).toHaveCSS('transform', 'none');
-    await expect(page).toHaveScreenshot('lock-pinpad-ckb-light.png', { fullPage: true });
+    await shot(page, 'lock-pinpad-ckb-light.png');
   });
 
   test('every key on the pad is a real target, and nothing scrolls sideways at 1.25', async ({ page }) => {
@@ -147,7 +148,7 @@ test.describe('shared tablets', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
-    await expect(page).toHaveScreenshot('lock-pinpad-ckb-dark-125.png', { fullPage: true });
+    await shot(page, 'lock-pinpad-ckb-dark-125.png');
   });
 
   test("the admin sees an employee's sessions and the devices that may use their PIN", async ({ page }) => {
@@ -160,7 +161,21 @@ test.describe('shared tablets', () => {
 
     await expect(page.getByRole('heading', { name: 'Sessions' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Devices that may use the PIN' })).toBeVisible();
-    await expect(page).toHaveScreenshot('sessions-en-light.png', { fullPage: true });
+
+    /**
+     * Deliberately not a screenshot.
+     *
+     * This page's height is a function of how many times the suite has signed in as this
+     * employee — every sign-in is a session and a ticket, and the accessibility pass alone
+     * signs in nineteen times. The baseline came out 740 px when the test ran alone and
+     * 5,044 px in a full run, which is a screenshot that fails for reasons that have nothing
+     * to do with the interface (the same lesson as the clock-dependent History baseline in
+     * REVIEW-I4). What the tab must *say* is asserted instead.
+     */
+    const firstSession = page.locator('.mz-card').first();
+    await expect(firstSession).toContainText('Floor tablet 2');
+    await expect(firstSession.getByText('Password').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Revoke PIN sign-in everywhere' })).toBeVisible();
   });
 
   test('the Advanced grid is folded away, opens with every key named, and mirrors', async ({ page }) => {
@@ -181,6 +196,6 @@ test.describe('shared tablets', () => {
     await grid.locator('summary').click();
     // Named in Kurdish, never as raw keys — a grid of `orders.record_payment` is unusable.
     await expect(grid.getByText('تۆمارکردنی پارەدان')).toBeVisible();
-    await expect(page).toHaveScreenshot('permissions-advanced-ckb-light.png', { fullPage: true });
+    await shot(page, 'permissions-advanced-ckb-light.png');
   });
 });

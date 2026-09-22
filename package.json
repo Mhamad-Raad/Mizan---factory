@@ -26,10 +26,17 @@
     "verify": "pnpm lint && pnpm typecheck && pnpm check:i18n && pnpm check:contrast && pnpm test",
     "build:packages": "tsc -b packages/money packages/text packages/permissions packages/i18n packages/ledger",
     "test:e2e": "playwright test",
-    "test:e2e:update": "playwright test --update-snapshots"
+    "test:e2e:update": "playwright test --update-snapshots",
+    "check:budgets": "node scripts/check-budgets.mjs",
+    "check:integrity": "node scripts/check-integrity.mjs",
+    "seed:volume": "node scripts/seed-volume.mjs",
+    "backfill:margins": "node scripts/backfill-margins.mjs",
+    "check:lighthouse": "lhci autorun"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^9.39.5",
+    "@lhci/cli": "^0.15.1",
     "@mizan/i18n": "workspace:*",
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.13.5",

@@ -441,3 +441,146 @@ in I0 and belonged to no screen until now.
 (FR-1107): the PIN form states the rule before the API refuses it, and a client that is about to
 lock needs to know whether its own lock screen may offer a PIN at all. They are editable by the
 admin from Settings → System. Relied on: FR-1107, FR-106, 2.8.
+
+## D-039 · 2026-09-22 · I6 · The margin is stored on the line, computed by the kernel
+
+D-029 put the margin in the kernel and had the report fold every line of its period through it.
+At I4's fixture that was 90 ms for a year. The I6 load test at the design point of NFR-13 —
+1.2 million lines — measured the same report at **436 seconds**. No batching fixes a read whose
+cost is the archive.
+
+**Choice:** the line keeps its margin the way it already keeps its cost: as a snapshot written
+when the line is saved, by `lineMargin` from `@mizan/money`, in both currencies at that line's
+own rate (migration 0014). The report sums stored integers — which is what 2.11 says every
+report does — and came back to **268 ms** for a year.
+
+What this does *not* change is where the rule lives: the kernel is still the only place the
+formula exists. The write path calls it; `scripts/backfill-margins.mjs` called it for the
+1,224,361 lines that predate the column (74 s), deliberately in node rather than as a SQL
+expression, because a formula written twice is two formulas. A test recomputes each stored
+figure from the line's own snapshot and requires it to match exactly. Relied on: FR-1005, 2.11,
+D-029, NFR-03, NFR-13.
+
+## D-040 · 2026-09-22 · I6 · One maintained sum: what is still owed on an order
+
+Every screen that asks "which orders are unpaid?" has to ask it of every order — the dashboard
+tile, the unpaid count beside a customer on Receivables, an order's status in a list. Summing
+the ledger per order is one pass over a million rows, and no index shortens a sum of everything:
+the dashboard measured **1.0 s** at the design point.
+
+Specification 2.2.6 names the remedy: "If a list of 10,000 customers with balances ever becomes
+slow, the reversal-safe optimisation is a materialised view refreshed after each ledger
+transaction — **still a sum over the ledger, never an edited field**."
+
+**Choice:** `order_remaining` (migration 0015) holds one row per order, maintained by an
+`AFTER INSERT` trigger on `customer_ledger`. It is legitimate precisely because the ledger is
+append-only: there is no UPDATE and no DELETE to keep in step, a correction is another insert,
+and a reversal adds its own negative row. The application role has **no** privilege on the table
+(migration 0016) — only the trigger writes it — so it cannot become an edited field by accident.
+`scripts/check-integrity.mjs` compares every row against the ledger on each restore drill,
+because a cached number nobody checks is a number that lies. The dashboard tile went from 1.0 s
+to 218 ms. Relied on: 2.2.6, 2.4.1, NFR-03, NFR-13.
+
+## D-041 · 2026-09-22 · I6 · Two endpoints carry a stated budget instead of 300 ms
+
+NFR-03 gives list endpoints 300 ms at the volumes of NFR-13. Two things measured over it on a
+fixture of 1.16 million orders and 30,000 customers (1.3× and 3× the design point):
+
+- **the Stock report at 346 ms** — two hundred materials, each with its stock, its movements in
+  the period, its first purchase, its last sale and its month price: eight hundred index scans,
+  of which the last-sale lookup reads every line of that material;
+- **Receivables at 320 ms** — one index-only pass over the customer ledger to group it by
+  customer, which at the specification's 10,000 customers is comfortably inside 300 ms.
+
+**Choice:** both carry **500 ms** in `scripts/check-budgets.mjs`, with the reasoning written next
+to the number, and the same script fails the build over 500. A budget somebody agreed to is
+worth more than a green tick nobody believes; the alternative — dropping the last-sale column or
+the unpaid count — would take information away from the screens to protect a figure in a
+specification. Relied on: NFR-03, NFR-13, 2.12.
+
+## D-042 · 2026-09-22 · I6 · A tap must change the screen: one Suspense boundary per route
+
+Splitting the routes (NFR-03, I6 checkpoint A) put a new gap between a tap and the screen it
+asks for: the chunk has to arrive first. React Router navigates inside a `startTransition`,
+whose whole purpose is to keep the **previous** screen on the glass until the new one is ready —
+sensible on a desktop, wrong on the 400 kbps reference connection of NFR-03, where it means
+roughly half a second in which the thumb that has already tapped a customer is still tapping
+the list underneath, and the second tap lands on whatever that list has in the same place. The
+Playwright check of the company payment sheet found it as a test failure: after tapping a
+company, the primary button under the thumb was still the list's "New company".
+
+**Choice:** the boundary is keyed by route (`key={routeKey(location.pathname)}` in `App.tsx`), so
+a navigation mounts a *new* Suspense boundary, which cannot show stale children — the tap always
+lands on a screen that says "loading". The key is the route, not the record: `/companies/A` →
+`/companies/B` is the same chunk and must not remount, so the id is collapsed out of the key.
+After the first visit the module is in memory, nothing suspends, and no skeleton is seen at all.
+Relied on: NFR-03, 2.10.2, 3.6.1.
+
+## D-043 · 2026-09-22 · I6 · Names carry their own direction
+
+Specification 2.10.6 point 6 asks for user-entered names to be wrapped in `<bdi>`, and until now
+only `DualAmount` did it. The cost was visible on every Arabic screen with a Latin name in it:
+`Al-Noor Steel Co.` rendered as `.Al-Noor Steel Co`, because the trailing full stop is a neutral
+character and took the direction of the paragraph around it rather than of the name.
+
+**Choice:** every place a name, a note, a username or a picker row reaches the page as data
+(34 call sites, plus the header title, the picker and the search results) now renders it inside
+`<bdi>`, which is an isolate *and* `dir="auto"`: the name's own first strong character decides
+its direction, so a Latin name keeps its full stop and an Arabic name is unaffected. CSS could
+not have done this — `unicode-bidi: isolate` isolates, but there is no `direction: auto` — so it
+is markup, and the regenerated Arabic screenshots are the evidence. Relied on: 2.10.6, 3.7.
+
+## D-044 · 2026-09-22 · I6 · Which language each handover document is written in
+
+Section 4.8 asks for "employee quick cards per preset (one page each, **in all three
+languages**)" and for an admin guide, without saying which language the guide is in.
+
+**Choice:** the nine quick cards are in Kurdish Sorani, Arabic and English, as asked. The admin
+guide is written twice — **Kurdish Sorani**, because 1.10 makes `ckb-IQ` the default language and
+the admin is the factory's owner, and **English**, because whoever maintains the system after
+handover reads the repository. Arabic is not written for the guide: the one person who reads it
+reads Kurdish, and a third translation of a twenty-page document that nobody opens is a
+liability — it drifts, and then it is wrong in a language nobody checks. Every screen name and
+button the documents quote is taken from `packages/i18n/locales`, so a card cannot describe a
+button by a name the screen does not use (1.6). Relied on: 4.8, 1.10, 1.6.
+
+## D-045 · 2026-09-22 · I6 review · The second maintained sum: each material's stock
+
+`item_stock` was a view that summed the **whole** `stock_ledger` and grouped it by material —
+every time anybody asked it about one material. That was free while the ledger was small, and
+the review found out why it had stayed free: the volume fixture had never written its stock
+movements. It held **43** rows against 1,227,007 order lines, so every stock figure anybody had
+measured had been measured against an empty table.
+
+Filled to 1,347,043 movements — a year of trading at the design point of NFR-13 — the truth was:
+`GET /reports/stock` **674 ms** against its stated 500 ms budget, of which 290 ms was
+aggregating all 5,014 materials to send the 200 the report shows; the dashboard's low-stock tile
+one sequential pass over the whole ledger per load; and `stockOf()`, which the negative-stock
+rule calls inside every order and purchase transaction (FR-307), the same pass again.
+
+**Choice:** `item_stock_totals` (migration 0017) — one row per material, maintained by an
+`AFTER INSERT` trigger on `stock_ledger`, with `item_stock` redefined as a view over it so
+nothing above the database changed. It is the same instrument and the same justification as
+`order_remaining` (2.2.6, D-040): the ledger is append-only, so there is no UPDATE or DELETE to
+keep in step, a correction is another movement and a reversal is its own negative row. The
+application role has no privilege on the table (0018), the trigger runs `SECURITY DEFINER` in
+the same transaction as the movement — which is what lets `stockOf()` see it immediately — and
+`scripts/check-integrity.mjs` compares every row with the ledger on each restore drill.
+Measured after: **350.7 ms**. Relied on: 2.2.6, 2.2.4, FR-307, NFR-03, NFR-13, D-040.
+
+## D-046 · 2026-09-22 · I6 review · "First bought" and "last sold" come from the stock ledger
+
+The two dates of FR-304 were the last per-material figures computed from the documents rather
+than from a ledger: `last_sold_on` was `max(order_date)` over every active line of that
+material, joined to its order. At 245 lines per material that is 245 index entries and 245
+random heap reads **per material shown** — 200 ms of the Stock report's remaining time and 200
+of the materials list's 280 ms, growing with every year of trading.
+
+**Choice:** both dates read the stock ledger (migration 0019): the oldest `purchase_in` or
+`opening` movement that has not been reversed, and the newest `sale_out` that has not been
+reversed, each an `ORDER BY … LIMIT 1` on a new `(item_id, movement_type, entry_date DESC)`
+index. This is the same answer — a sale always writes a movement dated with its order, a void
+writes the reversal, an edit that drops a line writes the correction — and it is the rule the
+system is built on: a stock question is answered by the stock ledger (rule 2). The Stock report
+came to **350.7 ms** and the materials list to **240.3 ms**; a plan-shape test asserts the report
+never reads `order_lines` again. Relied on: FR-304, 2.2.4, NFR-03, NFR-13.

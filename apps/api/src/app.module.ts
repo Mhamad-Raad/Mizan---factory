@@ -7,6 +7,8 @@ import { AuthController } from './auth/auth.controller.js';
 import { AuthGuard } from './auth/auth.guard.js';
 import { AuthService } from './auth/auth.service.js';
 import { PasswordService } from './auth/password.service.js';
+import { ImportsController } from './imports/imports.controller.js';
+import { ImportsService } from './imports/imports.service.js';
 import { DeviceTicketService } from './auth/device-ticket.service.js';
 import { SessionService } from './auth/session.service.js';
 import { CsrfMiddleware } from './common/csrf.middleware.js';
@@ -73,6 +75,7 @@ import { UsersService } from './users/users.service.js';
     ReportsController,
     DashboardController,
     SearchController,
+    ImportsController,
     HealthController,
   ],
   providers: [
@@ -107,6 +110,7 @@ import { UsersService } from './users/users.service.js';
     DamagesService,
     ReportsRepository,
     ReportsService,
+    ImportsService,
     IdempotencyInterceptor,
     // The guard runs on every route: a route without a decorator is refused, not opened.
     { provide: APP_GUARD, useExisting: AuthGuard },

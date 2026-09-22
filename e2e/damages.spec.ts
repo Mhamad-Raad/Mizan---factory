@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { ACCOUNTANT, WAREHOUSE } from './accounts.js';
+import { shot } from './shot.js';
 
 /**
  * The damage screens of Iteration 3 on a 360 px phone (spec 3.3, 3.4.3, Definition of done
@@ -54,7 +55,7 @@ test.describe('the damage screens', () => {
 
       await page.goto('/damages');
       await expect(page.getByRole('link').filter({ hasText: 'Copper' }).first()).toBeVisible();
-      await expect(page).toHaveScreenshot(`damages-${testCase.name}.png`, { fullPage: true });
+      await shot(page, `damages-${testCase.name}.png`);
     });
   }
 
@@ -89,7 +90,7 @@ test.describe('the damage screens', () => {
     await page.getByRole('button', { name: 'Customer order' }).click();
     await expect(page.locator('.mz-sticky-footer')).toContainText('No stock change');
 
-    await expect(page).toHaveScreenshot('new-damage-en-light.png', { fullPage: true });
+    await shot(page, 'new-damage-en-light.png');
   });
 
   test('the attribution tiles are four large targets in Kurdish too', async ({ page }) => {
@@ -103,7 +104,7 @@ test.describe('the damage screens', () => {
       const box = await tile.boundingBox();
       expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
     }
-    await expect(page).toHaveScreenshot('new-damage-ckb-light.png', { fullPage: true });
+    await shot(page, 'new-damage-ckb-light.png');
   });
 
   test('a supplier record offers the return and its credit, pre-filled from the purchase', async ({ page }) => {
@@ -115,14 +116,14 @@ test.describe('the damage screens', () => {
     await page.getByRole('link').filter({ hasText: '4.000' }).first().click();
     await expect(page.getByText('Returnable — pending')).toBeVisible();
     await expect(page.getByText('Al-Noor Steel Co.')).toBeVisible();
-    await expect(page).toHaveScreenshot('damage-detail-en-light.png', { fullPage: true });
+    await shot(page, 'damage-detail-en-light.png');
 
     await page.getByRole('button', { name: 'Mark returned' }).click();
     // 4 kg × 5,900 د.ع on the purchase line, at the company's own rate (A-39, flow 3.5.5).
     await expect(page.getByText('From the purchase line')).toBeVisible();
     const amount = page.locator('input[inputmode="numeric"]').first();
     await expect(amount).toHaveValue('23600');
-    await expect(page).toHaveScreenshot('damage-return-en-light.png', { fullPage: true });
+    await shot(page, 'damage-return-en-light.png');
   });
 
   test("a customer's record says the balance has not moved, and offers the two ways out", async ({ page }) => {
@@ -143,7 +144,7 @@ test.describe('the damage screens', () => {
 
     await page.goto('/damages');
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-    await expect(page).toHaveScreenshot('damages-ar-light.png', { fullPage: true });
+    await shot(page, 'damages-ar-light.png');
   });
 
   test('the record form does not scroll horizontally at 360 px and the largest text size', async ({ page }) => {

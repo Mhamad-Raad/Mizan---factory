@@ -78,8 +78,11 @@
 
   /* Font scale, driven by the Settings stepper through one variable (spec 2.10.9). */
   --font-scale: 1;
-  --font-arabic: 'Vazirmatn', 'Noto Sans Arabic', 'Segoe UI', tahoma, sans-serif;
-  --font-latin: 'Inter', system-ui, sans-serif;
+
+  /* The self-hosted variable families of 3.7.1 (loaded in main.tsx), then the fallbacks a
+     device might already have. "Variable" is the family name @fontsource declares. */
+  --font-arabic: 'Vazirmatn Variable', 'Vazirmatn', 'Noto Sans Arabic', 'Segoe UI', tahoma, sans-serif;
+  --font-latin: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
 
   /* Reading direction as a number, so animations and gestures mirror (spec 2.10.6). */
   --dir: 1;

@@ -189,8 +189,7 @@ export class ItemsRepository {
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
-    const from = `
-      FROM items i
+    const stockLateral = `
       LEFT JOIN LATERAL (
         SELECT coalesce(sum(CASE WHEN i.pricing_unit = 'per_piece' THEN s.qty_count ELSE s.qty_kg END), 0) AS priced,
                coalesce(sum(s.qty_count), 0) AS stock_count,
@@ -200,6 +199,14 @@ export class ItemsRepository {
           FROM stock_ledger s
          WHERE s.item_id = i.id
       ) st ON true`;
+    const from = `FROM items i${stockLateral}`;
+    /**
+     * The count is built from the narrowest `FROM` the filters actually need (the I3 review's
+     * lesson, at the design point): summing the stock of **every** material to count them cost
+     * 4.8 seconds at 5,000 materials and 1.2 million movements, for a figure that only depends
+     * on the stock when somebody filters by it.
+     */
+    const countFrom = filters.stock ? from : 'FROM items i';
 
     const countValues = [...values];
     values.push(month);
@@ -208,9 +215,28 @@ export class ItemsRepository {
     const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
     values.push(pageSize, offset);
 
+    /**
+     * The page is chosen **before** the per-material lookups run.
+     *
+     * Ordering by name with the lookups in the same `FROM` forced the planner to compute every
+     * material's stock, its first purchase, its last sale and its two month prices — 5,000
+     * materials' worth — and then throw away all but 25: 7.8 seconds at the design point of
+     * NFR-13. Choosing the 25 ids first and hanging the lookups off those turns the same screen
+     * into twenty-five index scans (I6 load test).
+     */
+    const page = `
+      WITH page AS (
+        SELECT i.id, i.name
+          FROM items i${filters.stock ? stockLateral : ''}
+         ${where}
+         ORDER BY i.name ASC
+         LIMIT $${values.length - 1} OFFSET $${values.length}
+      )`;
+
     const [list, count] = await Promise.all([
       this.database.query<ItemListRow>(
-        `SELECT ${itemColumns('i')},
+        `${page}
+         SELECT ${itemColumns('i')},
                 st.stock_count::text AS stock_count, st.stock_kg::text AS stock_kg,
                 st.count_complete, st.kg_complete,
                 stats.first_bought_on, stats.last_sold_on,
@@ -222,26 +248,37 @@ export class ItemsRepository {
                 bought.bought_usd_cents::text AS bought_usd_cents,
                 bought.bought_entered_currency::text AS bought_entered_currency,
                 bought.bought_rate::text AS bought_rate
-         ${from}
+         FROM page
+         JOIN items i ON i.id = page.id
+         ${stockLateral}
+         -- The two dates of FR-304, each one index entry of the stock ledger: the oldest
+         -- purchase or opening movement, and the newest sale that was not reversed. Reading
+         -- them from the documents instead — max(order_date) over every line of the material
+         -- — cost this list 200 of its 280 ms at the design point (migration 0019).
          LEFT JOIN LATERAL (
-           SELECT to_char(min(s.entry_date), 'YYYY-MM-DD') AS first_bought_on,
-                  (SELECT to_char(max(o.order_date), 'YYYY-MM-DD')
-                     FROM order_lines ol JOIN orders o ON o.id = ol.order_id
-                    WHERE ol.item_id = i.id AND ol.deleted_at IS NULL
-                      AND o.status = 'active' AND o.deleted_at IS NULL) AS last_sold_on
-             FROM stock_ledger s
-            WHERE s.item_id = i.id
-              AND s.movement_type IN ('purchase_in', 'opening')
-              AND NOT EXISTS (SELECT 1 FROM stock_ledger r WHERE r.reverses_entry_id = s.id)
+           SELECT (SELECT to_char(s.entry_date, 'YYYY-MM-DD')
+                     FROM stock_ledger s
+                    WHERE s.item_id = i.id
+                      AND s.movement_type IN ('purchase_in', 'opening')
+                      AND NOT EXISTS (SELECT 1 FROM stock_ledger r WHERE r.reverses_entry_id = s.id)
+                    ORDER BY s.entry_date ASC
+                    LIMIT 1) AS first_bought_on,
+                  (SELECT to_char(s.entry_date, 'YYYY-MM-DD')
+                     FROM stock_ledger s
+                    WHERE s.item_id = i.id AND s.movement_type = 'sale_out'
+                      AND NOT EXISTS (SELECT 1 FROM stock_ledger r WHERE r.reverses_entry_id = s.id)
+                    ORDER BY s.entry_date DESC
+                    LIMIT 1) AS last_sold_on
          ) stats ON true
          ${monthPriceLateral('sale', monthParam)}
          ${monthPriceLateral('bought', monthParam)}
-         ${where}
-         ORDER BY i.name ASC
-         LIMIT $${values.length - 1} OFFSET $${values.length}`,
+         ORDER BY i.name ASC`,
         values,
       ),
-      this.database.query<{ total: string }>(`SELECT count(*)::text AS total ${from} ${where}`, countValues),
+      this.database.query<{ total: string }>(
+        `SELECT count(*)::text AS total ${countFrom} ${where}`,
+        countValues,
+      ),
     ]);
 
     return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0) };

@@ -79,8 +79,8 @@ export function SearchPage() {
                           className="mz-list__item mz-list__item--interactive"
                         >
                           <span className="mz-list__body">
-                            <span className="mz-list__title">{hit.title}</span>
-                            {hit.subtitle ? <span className="mz-caption">{hit.subtitle}</span> : null}
+                            <span className="mz-list__title"><bdi>{hit.title}</bdi></span>
+                            {hit.subtitle ? <span className="mz-caption"><bdi>{hit.subtitle}</bdi></span> : null}
                           </span>
                         </Link>
                       </li>

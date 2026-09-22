@@ -737,3 +737,124 @@ settings the admin can change.
 
 **Next:** I6 — polish and go-live: the remaining Proposed items the client chose, the real-device
 pass, the seeded load test, and the go-live checklist.
+
+## I6 · Checkpoint A — done · the animation rules and the five signature moments
+
+- `lib/motion.ts` is the whole budget of 3.6.1 in one place: motion is refused when the reader
+  asks for less of it, when the device reports two cores or fewer, or when data-saving is on —
+  re-asked per call, because a tablet can be put into reduced-motion mode mid-shift.
+- The five signature moments of 3.6.2: the total that **ticks** as a line is added (an
+  interpolated value, not sliding digit strips — tabular figures make the cheap version
+  indistinguishable), the **balance that settles** exactly (a sweep only on the transition to
+  zero, never on opening a card that was already paid), the **row that lands** at the top of a
+  list after a write, the **stock that falls** on a damage record, and the **cross-fade while
+  the layout mirrors** when the language changes mid-task.
+- Every animation flattens to 80 ms or less under `prefers-reduced-motion`, asserted in
+  Playwright rather than promised in CSS.
+
+## I6 · Checkpoint B — done · performance at the design point of NFR-13
+
+- `scripts/seed-volume.mjs` builds a year of trading (1.16 M orders, 1.23 M lines, 425 k
+  purchases, 30 k customers, 5 k materials, 4 M audit rows, 4.25 GB); `scripts/load/mizan-load.js`
+  is the k6 script; `scripts/check-budgets.mjs` measures 21 endpoints against NFR-03 and exits
+  non-zero over budget; `scripts/check-integrity.mjs` is the restore drill's own check and runs
+  in CI.
+- Five shapes of query were rewritten after measuring: the margin fold (D-039, a snapshot per
+  line rather than a recomputation over a million lines), the maintained per-order remaining
+  (D-040, the one instrument 2.2.6 sanctions), Receivables' inner join, the Stock report's
+  page-before-lookups, and the two report budgets that are **stated at 500 ms** with the reason
+  written beside the number (D-041).
+- Route-level code splitting (29 screens, NFR-03 asks for it by name) took the initial JavaScript
+  to **156.8 kB gzipped** of 250; `check-budget.mjs` now measures the initial graph rather than
+  every chunk. Lighthouse runs in CI on the 400 kbps / 400 ms / 4× profile with the measured
+  thresholds and the arithmetic in `docs/LIGHTHOUSE.md`.
+- The typography of 3.7 was **specified and never wired**: Vazirmatn and Inter are now
+  self-hosted, subset to the ranges these languages use (37 / 21 / 30 kB), and only the active
+  language's family is linked. `/font-check` is the glyph page of 3.7.1 for the real-phone
+  sign-off.
+
+## I6 · Checkpoint C — done (the real-phone review is owed by the client)
+
+- **89 Playwright checks** at 360 px in Kurdish, Arabic and English, both themes, and at 1.25×
+  text; axe reports no violations on the key screens in all three languages; the bottom sheet is
+  a real modal (`inert` on the page behind it, not just `aria-modal`).
+- Every screenshot now goes through `shot()`, which waits for a **settled** screen — five
+  baselines had been photographs of the loading skeleton (I6 review, finding 5).
+- Names, notes and usernames render inside `<bdi>`, so a Latin name keeps its punctuation in an
+  RTL sentence (finding 7, D-043) — 2.10.6 point 6, unimplemented until now outside `DualAmount`.
+
+## I6 · Checkpoint D — done · go-live, the Proposed items, and the documents
+
+**126 routes, all declared** (3 new, all `@AdminOnly`); **537 tests** across the workspace.
+
+- **CSV import (FR-1312, Proposed):** six kinds — materials, customers, companies, opening stock,
+  customer and company opening debts. The browser parses the file on the admin's own device
+  (quoted commas, a byte-order mark, Windows line endings) and sends rows; the preview names the
+  row and column of every problem before anything is written; the import writes through the same
+  services the forms use, so an imported opening debt is an ordinary ledger entry with an
+  ordinary History row.
+- **The installable shortcut (FR-1313, Proposed):** a manifest, two icons and a service worker
+  that caches the application shell and **not one byte of data** — every `/api/` request goes to
+  the network, because A-12 says there is no offline editing in v1. Removable by deleting three
+  files and two lines.
+- **Documentation:** the admin guide in Kurdish Sorani and English, nine employee quick cards
+  (three presets × three languages), the go-live checklist and secrets rotation in the runbook,
+  and `docs/guide/README.md` as the index. Every control they name is quoted from the message
+  catalogs (D-044).
+- **The restore drill of NFR-08** is logged in `ops/runbook/restore-drills.md`: a 4.25 GB
+  production-shaped database dumped in 40 s, restored in 47 s, and checked in 30 s — every
+  balance, stock figure and maintained sum equal to its ledger, both sequences past their data.
+
+## I6 · Checkpoint E — done · the review, and the demo of 4.8
+
+- `docs/REVIEW-I6.md`: **ten findings**, all fixed here, each with a test that fails against the
+  previous code. The first is about the evidence itself — the volume fixture had written **43**
+  stock movements instead of 1.35 million, so every stock figure measured in this iteration had
+  been measured against an empty table. Filling it exposed findings 2 and 3 (the Stock report at
+  674 ms, and two dates computed from the documents), which are fixed by the second maintained
+  sum (D-045) and by reading both dates from the stock ledger (D-046).
+- The most serious defect was in this iteration's own performance work: a screen whose chunk
+  never arrived **took the whole application down**, and `React.lazy` remembered the failure for
+  the life of the page. The chunk is now asked for twice and a boundary catches the second
+  failure with the offline sentence, a reload and a way out.
+- `scripts/demo-i6.mjs` is the demo script of 4.8, executable, and it passes twice in a row: the
+  order and the receipt on the tablet, a dollar payment with "settle in full" that lands the
+  balance on exactly zero in both currencies, a refusal that arrives as a field-level key in
+  three languages, the go-live import previewed and written, Receivables and Payables agreeing
+  with the opening figures that were typed, every reported balance equal to its own ledger, and
+  the drill log and documents that are handed over.
+
+## I6 — Definition of done (section 4.1)
+
+| # | Item | State |
+|---|---|---|
+| 1 | Three languages, glossary terms, build fails on a missing key | ✅ 939 keys × 3 across 18 namespaces; the import's own vocabulary included |
+| 2 | RTL verified **on a real phone** in ckb, ar and en | ⚠️ automated at 360 px in all three, both themes, at 1.25×; the fonts of 3.7 are now real and `/font-check` exists for the sign-off; **the real-phone check is owed by the client** |
+| 3 | Permissions enforced on every new endpoint | ✅ 126 routes declared; the three import routes are `@AdminOnly`, like every other bulk power |
+| 4 | Every change recorded in History | ✅ including every imported row, attributed to the admin who ran the import |
+| 5 | Every amount in both currencies through `DualAmount` | ✅ and one place that was not honest about it is fixed: the payment sheet's remainder said "≈ $0.00" (review finding 6) |
+| 6 | Both themes, all four text sizes, no overflow, contrast | ✅ 89 Playwright checks; five baselines that were photographs of a skeleton were found and regenerated |
+| 7 | Tests for money and stock logic | ✅ 537 tests; the new ones cover the maintained stock sum against its ledger, the import's ledger entries and rates, and the chunk retry |
+| 8 | Skeleton, empty, error and offline states | ✅ and the missing one is added: a screen whose code cannot be fetched now has an error state instead of a white page (finding 4) |
+| 9 | Accessibility basics | ✅ axe clean in three languages, Lighthouse accessibility 1.00, the sheet is a real modal |
+| 10 | Demo on staging with seeded data | ⚠️ the demo script of 4.8 passes twice against a live deployment; **staging still needs a host** |
+
+**I6 is complete but for what only the client can do.** The code is finished: every item of 4.8
+that does not need the client's hands, their devices or their data is built, measured and
+tested. What is owed, and by whom:
+
+| Owed by the client | Why it cannot be done here |
+|---|---|
+| A staging host (and the production host) | Nobody here has a server or a domain to put it on; the runbook's first deployment is written and rehearsed against a local compose stack |
+| RTL and identity sign-off on their own phones (FR-1311, NFR-14) | A screenshot on this laptop is not Kurdish type on their tablet in daylight |
+| Glossary and translation sign-off (FR-1204, Q-26) | The words are theirs; 939 keys × 3 are ready to read, per language, with the screenshots |
+| Opening stock, opening debts, the first month's prices | Their figures, from their paper — the screens, the import and the reconciliation reports are all ready for them |
+| The optional-extras ticklist and the support channel | Their choice and their agreement |
+| A 30-minute training session per role, recorded | Their people, their room |
+
+**Still open with the client:** Q-A-03, Q-B-02, Q-B-03 (I1), Q-25 (lock timings and PIN
+acceptability) and Q-26 (the glossary review) — every one of them built to the specification's
+defaults and recorded in `docs/QUESTIONS.md` with the default that was taken.
+
+**Next:** nothing in `iterations/`. I0 → I6 are built, reviewed and merged. What remains is the
+go-live checklist in `ops/runbook/README.md`, run with the client on their own hardware.

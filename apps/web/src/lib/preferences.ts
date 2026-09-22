@@ -104,8 +104,26 @@ export function resolveTheme(theme: Theme): 'light' | 'dark' {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
+/**
+ * The font stylesheet for a language, added the first time that language is chosen.
+ *
+ * The pre-paint script in `index.html` links the family the stored language needs; this is the
+ * other half — somebody switching from Kurdish to English mid-shift gets Inter now rather than
+ * on their next reload (spec 3.7.1).
+ */
+function ensureFontsFor(lang: Locale): void {
+  const family = lang === 'en' ? 'latin' : 'arabic';
+  if (document.querySelector(`link[data-mizan-fonts="${family}"]`)) return;
+  const sheet = document.createElement('link');
+  sheet.rel = 'stylesheet';
+  sheet.href = `/fonts/${family}.css`;
+  sheet.setAttribute('data-mizan-fonts', family);
+  document.head.appendChild(sheet);
+}
+
 /** Applies preferences to the document — the same attributes the pre-paint script sets. */
 export function applyPreferences(preferences: Preferences): void {
+  ensureFontsFor(preferences.lang);
   const root = document.documentElement;
   const direction = preferences.lang === 'en' ? 'ltr' : 'rtl';
   root.setAttribute('lang', preferences.lang.split('-')[0] as string);

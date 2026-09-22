@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Currency, Measure } from '@mizan/money';
+import type { Currency } from '@mizan/money';
 import { Database } from '../database/pool.js';
 
 /**
@@ -59,22 +59,6 @@ export interface PurchasesGroup extends GroupKey {
   qty_kg: string | null;
 }
 
-export interface MarginLineRow {
-  group_key: string;
-  group_label: string | null;
-  priced_measure: Measure;
-  qty_count: number | null;
-  qty_kg: string | null;
-  unit_price_iqd: number;
-  unit_price_usd_cents: number;
-  price_entered_currency: Currency;
-  rate_iqd_per_usd: string;
-  cost_unit_iqd: number | null;
-  cost_unit_usd_cents: number | null;
-  cost_source: 'month' | 'fallback' | 'none';
-  line_total_iqd: number;
-  line_total_usd_cents: number;
-}
 
 @Injectable()
 export class ReportsRepository {
@@ -287,34 +271,15 @@ export class ReportsRepository {
   // ───────────────────────────────── profit (FR-1005) ─────────────────────────────────
 
   /**
-   * The order lines of the period with their stored cost snapshots, already carrying the key
-   * they are grouped by, **in batches**. The margin itself is computed by the kernel over these
-   * rows, because there is one definition of it and it lives in `@mizan/money` (FR-1005, 2.11).
+   * The margin of the period, grouped, as **one pass of stored integers** (FR-1005, D-039).
    *
-   * A batch at a time, keyed on the line's own id, because the margin is a per-line rule and a
-   * period is not bounded: five years of the volume fixture is 132,000 lines, and the design
-   * point of NFR-13 is fourteen times that. Reading them all at once made the size of one
-   * request's memory a function of how wide a range somebody typed — the I4 review's finding.
-   * The fold is a sum, so a batch's totals add to the previous batches' exactly (asserted).
+   * Until I6 this read every line of the period and folded them through the kernel: correct,
+   * and 436 seconds for a year at the design point of NFR-13. The kernel still owns the rule —
+   * it computes each line's margin when the line is saved, in both currencies, at that line's
+   * own rate (migration 0014) — and the report does what 2.11 says a report does: sums stored
+   * values. Lines with no cost snapshot have no margin and are counted, never summed.
    */
-  async *marginLineBatches(
-    filters: ReportFilters,
-    batchSize = 50_000,
-  ): AsyncGenerator<MarginLineRow[], void, void> {
-    let cursor: string | null = null;
-    for (;;) {
-      const batch = await this.marginLines(filters, { after: cursor, limit: batchSize });
-      if (batch.length === 0) return;
-      yield batch.map((row) => row.line);
-      if (batch.length < batchSize) return;
-      cursor = batch[batch.length - 1]!.id;
-    }
-  }
-
-  private async marginLines(
-    filters: ReportFilters,
-    page: { after: string | null; limit: number },
-  ): Promise<{ id: string; line: MarginLineRow }[]> {
+  async margins(filters: ReportFilters) {
     const groupBy = filters.group_by ?? 'month';
     const values: unknown[] = [filters.from, filters.to];
     const conditions = [
@@ -339,61 +304,73 @@ export class ReportsRepository {
 
     const key =
       groupBy === 'item'
-        ? { key: 'i.id::text', label: 'i.name' }
+        ? { key: 'i.id::text', label: 'i.name', group: 'i.id, i.name' }
         : groupBy === 'customer'
-          ? { key: 'c.id::text', label: 'c.name' }
+          ? { key: 'c.id::text', label: 'c.name', group: 'c.id, c.name' }
           : groupBy === 'employee'
-            ? { key: 'o.acting_user_id::text', label: 'u.display_name' }
+            ? { key: 'o.acting_user_id::text', label: 'u.display_name', group: 'o.acting_user_id, u.display_name' }
             : groupBy === 'day'
               ? {
                   key: "to_char(o.order_date, 'YYYY-MM-DD')",
-                  label: "to_char(o.order_date, 'YYYY-MM-DD')",
+                  label: 'NULL',
+                  group: 'o.order_date',
                 }
-              : { key: "to_char(date_trunc('month', o.order_date), 'YYYY-MM-DD')", label: 'NULL' };
+              : {
+                  key: "to_char(date_trunc('month', o.order_date), 'YYYY-MM-DD')",
+                  label: 'NULL',
+                  group: "date_trunc('month', o.order_date)",
+                };
 
-    if (page.after) {
-      values.push(page.after);
-      conditions.push(`ol.id > $${values.length}::uuid`);
-    }
-    values.push(page.limit);
+    // Only the joins the chosen grouping needs: grouping by month must not drag in the
+    // material and the employee (the I3 review's lesson about aggregates and their joins).
+    const joins = [
+      groupBy === 'item' ? 'JOIN items i ON i.id = ol.item_id' : '',
+      groupBy === 'customer' || filters.assigned_to ? 'JOIN customers c ON c.id = o.customer_id' : '',
+      groupBy === 'employee' ? 'LEFT JOIN users u ON u.id = o.acting_user_id' : '',
+    ]
+      .filter(Boolean)
+      .join('\n         ');
 
-    const { rows } = await this.database.query<MarginLineRow & { id: string }>(
-      `SELECT ol.id::text AS id, ${key.key} AS group_key, ${key.label} AS group_label,
-              ol.priced_measure::text AS priced_measure,
-              ol.qty_count, ol.qty_kg::text AS qty_kg,
-              ol.unit_price_iqd::bigint AS unit_price_iqd,
-              ol.unit_price_usd_cents::bigint AS unit_price_usd_cents,
-              ol.price_entered_currency::text AS price_entered_currency,
-              ol.rate_iqd_per_usd::text AS rate_iqd_per_usd,
-              ol.cost_unit_iqd::bigint AS cost_unit_iqd,
-              ol.cost_unit_usd_cents::bigint AS cost_unit_usd_cents,
-              ol.cost_source::text AS cost_source,
-              ol.line_total_iqd::bigint AS line_total_iqd,
-              ol.line_total_usd_cents::bigint AS line_total_usd_cents
+    const { rows } = await this.database.query<{
+      group_key: string;
+      group_label: string | null;
+      lines: number;
+      margin_iqd: string;
+      margin_usd_cents: string;
+      revenue_iqd: string;
+      revenue_usd_cents: string;
+      lines_without_cost: number;
+      lines_with_fallback: number;
+    }>(
+      `SELECT ${key.key} AS group_key, ${key.label} AS group_label,
+              count(*)::int AS lines,
+              coalesce(sum(ol.margin_iqd), 0)::text AS margin_iqd,
+              coalesce(sum(ol.margin_usd_cents), 0)::text AS margin_usd_cents,
+              coalesce(sum(ol.line_total_iqd), 0)::text AS revenue_iqd,
+              coalesce(sum(ol.line_total_usd_cents), 0)::text AS revenue_usd_cents,
+              count(*) FILTER (WHERE ol.margin_iqd IS NULL)::int AS lines_without_cost,
+              count(*) FILTER (WHERE ol.cost_source = 'fallback')::int AS lines_with_fallback
          FROM order_lines ol
          JOIN orders o ON o.id = ol.order_id
-         JOIN customers c ON c.id = o.customer_id
-         JOIN items i ON i.id = ol.item_id
-         LEFT JOIN users u ON u.id = o.acting_user_id
+         ${joins}
         WHERE ${conditions.join(' AND ')}
-        -- By the line's id, not by the group: the fold is order-independent, and a key the
-        -- rows are already unique on is the only one a keyset can page on safely.
-        ORDER BY ol.id ASC
-        LIMIT $${values.length}`,
+        GROUP BY ${key.group}`,
       values,
     );
-    return rows.map(({ id, ...line }) => ({ id, line }));
+    return rows;
   }
 
   // ───────────────────────────────── stock (FR-1006) ─────────────────────────────────
 
-  async stock(filters: ReportFilters) {
+  async stock(filters: ReportFilters, limit: number) {
     const values: unknown[] = [filters.from, filters.to];
     const conditions = ['i.deleted_at IS NULL'];
     if (filters.item_id) {
       values.push(filters.item_id);
       conditions.push(`i.id = $${values.length}::uuid`);
     }
+    values.push(limit);
+    const limitParam = values.length;
 
     const { rows } = await this.database.query<{
       key: string;
@@ -413,19 +390,15 @@ export class ReportsRepository {
       bought_usd_cents: string | null;
       price_month: string | null;
     }>(
-      `WITH sold AS (
-         SELECT ol.item_id, max(o.order_date) AS last_sold_on
-           FROM order_lines ol
-           JOIN orders o ON o.id = ol.order_id
-          WHERE ol.deleted_at IS NULL AND o.status = 'active' AND o.deleted_at IS NULL
-          GROUP BY ol.item_id
-       ),
-       bought AS (
-         SELECT s.item_id, min(s.entry_date) AS first_bought_on
-           FROM stock_ledger s
-          WHERE s.movement_type IN ('purchase_in', 'opening')
-            AND NOT EXISTS (SELECT 1 FROM stock_ledger r WHERE r.reverses_entry_id = s.id)
-          GROUP BY s.item_id
+      // The page of materials is chosen first and everything else hangs off those rows: the
+       // report sends two hundred groups (D-032), and computing five thousand materials' stock,
+       // movements and prices to send two hundred cost 307 ms at the design point (REVIEW-I6).
+      `WITH page AS (
+         SELECT i.id, i.name
+           FROM items i
+          WHERE ${conditions.join(' AND ')}
+          ORDER BY i.name ASC
+          LIMIT $${limitParam}
        )
        SELECT i.id::text AS key, i.name AS label, i.pricing_unit::text AS pricing_unit,
               st.stock_count::text AS stock_count, st.stock_kg::text AS stock_kg,
@@ -439,10 +412,30 @@ export class ReportsRepository {
               price.bought_iqd::text AS bought_iqd,
               price.bought_usd_cents::text AS bought_usd_cents,
               to_char(price.month, 'YYYY-MM-DD') AS price_month
-         FROM items i
+         FROM page
+         JOIN items i ON i.id = page.id
          LEFT JOIN item_stock st ON st.item_id = i.id
-         LEFT JOIN sold ON sold.item_id = i.id
-         LEFT JOIN bought ON bought.item_id = i.id
+         -- Both dates come from the stock ledger, newest (or oldest) movement of that kind
+         -- first, so each is one index entry rather than an aggregate over a material's whole
+         -- trading history: max(order_date) over 245 lines and their orders, per material of
+         -- the page, was 200 of this report's 430 ms at the design point (migration 0019).
+         LEFT JOIN LATERAL (
+           SELECT s.entry_date AS last_sold_on
+             FROM stock_ledger s
+            WHERE s.item_id = i.id AND s.movement_type = 'sale_out'
+              AND NOT EXISTS (SELECT 1 FROM stock_ledger r WHERE r.reverses_entry_id = s.id)
+            ORDER BY s.entry_date DESC
+            LIMIT 1
+         ) sold ON true
+         LEFT JOIN LATERAL (
+           SELECT s.entry_date AS first_bought_on
+             FROM stock_ledger s
+            WHERE s.item_id = i.id
+              AND s.movement_type IN ('purchase_in', 'opening')
+              AND NOT EXISTS (SELECT 1 FROM stock_ledger r WHERE r.reverses_entry_id = s.id)
+            ORDER BY s.entry_date ASC
+            LIMIT 1
+         ) bought ON true
          LEFT JOIN LATERAL (
            SELECT sum(CASE WHEN s.qty_count > 0 THEN s.qty_count ELSE 0 END) AS in_count,
                   sum(CASE WHEN s.qty_kg > 0 THEN s.qty_kg ELSE 0 END) AS in_kg,
@@ -461,7 +454,6 @@ export class ReportsRepository {
             ORDER BY p.month DESC
             LIMIT 1
          ) price ON true
-        WHERE ${conditions.join(' AND ')}
         ORDER BY i.name ASC`,
       values,
     );
@@ -472,20 +464,23 @@ export class ReportsRepository {
 
   /**
    * Balances per customer as of the end of the range, what came in during it, and how many of
-   * their orders are still owed.
+   * their orders are still owed — **page first, then fill** (FR-1007).
    *
-   * The unpaid count is computed in **one** grouped pass rather than per customer through the
-   * `order_balances` view: that view groups every order ever placed, and a predicate on one
-   * customer cannot be pushed inside it — the mistake the I1 review measured on the Orders list
-   * and the I4 review measured again here (668 ms at 63,000 orders).
+   * Two passes, deliberately. The first groups the customer ledger by customer, which the
+   * covering index of migration 0014 answers without touching the heap, and takes the page the
+   * screen will show (the cap of D-032) together with the grand totals over every customer. The
+   * second asks "how many of *these* customers' orders are still owed", once per row of the
+   * page. Counting unpaid orders for all of them meant grouping every order ever placed: 2.3
+   * seconds at the design point of NFR-13, for two hundred rows (REVIEW-I6).
    */
-  async receivables(filters: ReportFilters) {
+  async receivables(filters: ReportFilters, limit: number) {
     const values: unknown[] = [filters.from, filters.to];
     const conditions = ['c.deleted_at IS NULL', 'c.is_system = false'];
     if (filters.assigned_to) {
       values.push(filters.assigned_to);
       conditions.push(`c.assigned_user_id = $${values.length}::uuid`);
     }
+    values.push(limit);
 
     const { rows } = await this.database.query<{
       key: string;
@@ -498,49 +493,76 @@ export class ReportsRepository {
       received_iqd: string;
       received_usd_cents: string;
       unpaid_orders: string;
+      group_count: string;
+      total_balance_iqd: string;
+      total_balance_usd_cents: string;
+      total_received_iqd: string;
+      total_received_usd_cents: string;
     }>(
-      `WITH order_remaining AS (
-         SELECT o.customer_id,
-                o.id,
-                coalesce(sum(CASE WHEN cu.settlement_currency = 'IQD' THEN l.amount_iqd
-                                  ELSE l.amount_usd_cents END), 0) AS remaining
-           FROM orders o
-           JOIN customers cu ON cu.id = o.customer_id
-           LEFT JOIN customer_ledger l ON l.order_id = o.id
-          WHERE o.status = 'active' AND o.deleted_at IS NULL
-          GROUP BY o.customer_id, o.id, cu.settlement_currency
+      `WITH per_customer AS (
+         SELECT c.id, c.name, c.settlement_currency, c.assigned_user_id,
+                -- As of the end of the range: a balance is "all time up to that day", not
+                -- "in the period", which is what makes it a balance (2.11).
+                coalesce(sum(CASE WHEN l.entry_date <= $2::date
+                                  THEN (CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd
+                                             ELSE l.amount_usd_cents END) ELSE 0 END), 0) AS balance,
+                coalesce(sum(CASE WHEN l.entry_date <= $2::date THEN l.amount_iqd ELSE 0 END), 0) AS balance_iqd,
+                coalesce(sum(CASE WHEN l.entry_date <= $2::date THEN l.amount_usd_cents ELSE 0 END), 0)
+                  AS balance_usd_cents,
+                coalesce(-sum(CASE WHEN l.entry_type IN ('payment', 'cash_settlement')
+                                    AND l.entry_date >= $1::date AND l.entry_date <= $2::date
+                                   THEN l.amount_iqd ELSE 0 END), 0) AS received_iqd,
+                coalesce(-sum(CASE WHEN l.entry_type IN ('payment', 'cash_settlement')
+                                    AND l.entry_date >= $1::date AND l.entry_date <= $2::date
+                                   THEN l.amount_usd_cents ELSE 0 END), 0) AS received_usd_cents
+           FROM customers c
+           -- An inner join on purpose: a customer with no ledger row has a zero balance and
+           -- nothing received, so they can never be among the two hundred rows this report
+           -- sends (ordered by what is owed) and they contribute nothing to its totals. At
+           -- 30,000 customers that is the difference between grouping everybody and grouping
+           -- the ones with money against their name (REVIEW-I6).
+           JOIN customer_ledger l ON l.customer_id = c.id
+          WHERE ${conditions.join(' AND ')}
+          GROUP BY c.id, c.name, c.settlement_currency, c.assigned_user_id
        ),
-       unpaid AS (
-         SELECT customer_id, count(*)::text AS unpaid_orders
-           FROM order_remaining
-          WHERE remaining > 0
-          GROUP BY customer_id
+       page AS (
+         SELECT *,
+                count(*) OVER () AS group_count,
+                sum(balance_iqd) OVER () AS total_balance_iqd,
+                sum(balance_usd_cents) OVER () AS total_balance_usd_cents,
+                sum(received_iqd) OVER () AS total_received_iqd,
+                sum(received_usd_cents) OVER () AS total_received_usd_cents
+           FROM per_customer
+          ORDER BY balance DESC
+          LIMIT $${values.length}
        )
-       SELECT c.id::text AS key, c.name AS label,
-              c.settlement_currency::text AS settlement_currency,
+       SELECT p.id::text AS key, p.name AS label,
+              p.settlement_currency::text AS settlement_currency,
               u.display_name AS assigned_user_name,
-              -- As of the end of the range: a balance is "all time up to that day", not
-              -- "in the period", which is what makes it a balance (2.11).
-              coalesce(sum(CASE WHEN l.entry_date <= $2::date
-                                THEN (CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd
-                                           ELSE l.amount_usd_cents END) ELSE 0 END), 0)::text AS balance,
-              coalesce(sum(CASE WHEN l.entry_date <= $2::date THEN l.amount_iqd ELSE 0 END), 0)::text AS balance_iqd,
-              coalesce(sum(CASE WHEN l.entry_date <= $2::date THEN l.amount_usd_cents ELSE 0 END), 0)::text
-                AS balance_usd_cents,
-              coalesce(-sum(CASE WHEN l.entry_type IN ('payment', 'cash_settlement')
-                                  AND l.entry_date >= $1::date AND l.entry_date <= $2::date
-                                 THEN l.amount_iqd ELSE 0 END), 0)::text AS received_iqd,
-              coalesce(-sum(CASE WHEN l.entry_type IN ('payment', 'cash_settlement')
-                                  AND l.entry_date >= $1::date AND l.entry_date <= $2::date
-                                 THEN l.amount_usd_cents ELSE 0 END), 0)::text AS received_usd_cents,
-              coalesce(max(unpaid.unpaid_orders), '0') AS unpaid_orders
-         FROM customers c
-         LEFT JOIN customer_ledger l ON l.customer_id = c.id
-         LEFT JOIN users u ON u.id = c.assigned_user_id
-         LEFT JOIN unpaid ON unpaid.customer_id = c.id
-        WHERE ${conditions.join(' AND ')}
-        GROUP BY c.id, c.name, c.settlement_currency, u.display_name
-        ORDER BY balance DESC`,
+              p.balance::text AS balance,
+              p.balance_iqd::text AS balance_iqd,
+              p.balance_usd_cents::text AS balance_usd_cents,
+              p.received_iqd::text AS received_iqd,
+              p.received_usd_cents::text AS received_usd_cents,
+              p.group_count::text AS group_count,
+              p.total_balance_iqd::text AS total_balance_iqd,
+              p.total_balance_usd_cents::text AS total_balance_usd_cents,
+              p.total_received_iqd::text AS total_received_iqd,
+              p.total_received_usd_cents::text AS total_received_usd_cents,
+              coalesce(unpaid.n, 0)::text AS unpaid_orders
+         FROM page p
+         LEFT JOIN users u ON u.id = p.assigned_user_id
+         -- Only for the rows that are actually sent, and from the maintained per-order sum of
+         -- migration 0015: one index scan of that customer's orders, no pass over the ledger.
+         LEFT JOIN LATERAL (
+           SELECT count(*) AS n
+             FROM orders o
+             JOIN order_remaining r ON r.order_id = o.id
+            WHERE o.customer_id = p.id AND o.status = 'active' AND o.deleted_at IS NULL
+              AND (CASE WHEN p.settlement_currency = 'IQD' THEN r.remaining_iqd
+                        ELSE r.remaining_usd_cents END) > 0
+         ) unpaid ON true
+        ORDER BY p.balance DESC`,
       values,
     );
     return rows;

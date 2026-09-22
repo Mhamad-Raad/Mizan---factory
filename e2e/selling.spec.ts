@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { ADMIN, SALES } from './accounts.js';
+import { shot } from './shot.js';
 
 /**
  * The selling screens of Iteration 1 on a 360 px phone (spec 3.3, Definition of done items 2
@@ -57,15 +58,15 @@ test.describe('the selling screens', () => {
 
       await page.goto('/orders');
       await expect(page.getByRole('link', { name: /#/ }).first()).toBeVisible();
-      await expect(page).toHaveScreenshot(`orders-${testCase.name}.png`, { fullPage: true });
+      await shot(page, `orders-${testCase.name}.png`);
 
       await page.goto('/materials');
       await expect(page.getByRole('link').filter({ hasText: 'Copper' }).first()).toBeVisible();
-      await expect(page).toHaveScreenshot(`materials-${testCase.name}.png`, { fullPage: true });
+      await shot(page, `materials-${testCase.name}.png`);
 
       await page.goto('/customers');
       await expect(page.getByRole('link').filter({ hasText: 'Kawa' }).first()).toBeVisible();
-      await expect(page).toHaveScreenshot(`customers-${testCase.name}.png`, { fullPage: true });
+      await shot(page, `customers-${testCase.name}.png`);
     });
   }
 
@@ -82,7 +83,7 @@ test.describe('the selling screens', () => {
     await expect(amounts).toContainText('د.ع');
     await expect(amounts).toContainText('$');
 
-    await expect(page).toHaveScreenshot('order-detail-ckb-light.png', { fullPage: true });
+    await shot(page, 'order-detail-ckb-light.png');
   });
 
   test('the customer profile shows the balance and the ledger with its running balance', async ({ page }) => {
@@ -91,11 +92,15 @@ test.describe('the selling screens', () => {
 
     await page.goto('/customers');
     await page.getByRole('link').filter({ hasText: 'Kawa' }).first().click();
-    await expect(page.getByText('Kawa Trading')).toBeVisible();
+    await expect(page).toHaveURL(/\/customers\/[0-9a-f-]{36}$/);
+    // The list shows the name and the balance too, so the destination is identified by its own
+    // URL and by the tab strip only the profile has.
+    await expect(page.locator('.mz-segmented')).toBeVisible();
+    await expect(page.getByText('Kawa Trading').first()).toBeVisible();
 
     // The ledger tab is the third segment (Overview · Orders · Ledger · History).
     await page.getByRole('button', { name: /.+/ }).nth(0).waitFor();
-    await expect(page).toHaveScreenshot('customer-profile-ckb-light.png', { fullPage: true });
+    await shot(page, 'customer-profile-ckb-light.png');
   });
 
   test('the material detail leads with the stock in its own measure', async ({ page }) => {
@@ -104,10 +109,14 @@ test.describe('the selling screens', () => {
 
     await page.goto('/materials');
     await page.getByRole('link').filter({ hasText: 'Copper' }).first().click();
+    // The list shows the name and the stock too, so the destination has to be identified by
+    // something only it has: its own URL and its tabs.
+    await expect(page).toHaveURL(/\/materials\/[0-9a-f-]{36}$/);
+    await expect(page.locator('.mz-tabs')).toBeVisible();
     await expect(page.getByText('Copper wire 2 mm').first()).toBeVisible();
     // 6,000 counted at go-live, 12.5 sold, 500 bought from Al-Noor, 4 damaged on arrival.
     await expect(page.getByText('6,483.500', { exact: false }).first()).toBeVisible();
-    await expect(page).toHaveScreenshot('material-detail-ckb-light.png', { fullPage: true });
+    await shot(page, 'material-detail-ckb-light.png');
   });
 
   test('the order form takes a customer, a line and its price on one phone screen', async ({ page }) => {
@@ -129,7 +138,7 @@ test.describe('the selling screens', () => {
     await kg.fill('12.5');
     await expect(page.locator('.mz-sticky-footer')).toContainText('10,625');
 
-    await expect(page).toHaveScreenshot('new-order-ckb-light.png', { fullPage: true });
+    await shot(page, 'new-order-ckb-light.png');
   });
 
   test('the settings System card carries the global rate and the selling rules', async ({ page }) => {
@@ -138,7 +147,7 @@ test.describe('the selling screens', () => {
 
     await page.goto('/settings');
     await expect(page.getByText('1,310', { exact: false }).first()).toBeVisible();
-    await expect(page).toHaveScreenshot('settings-system-ckb-light.png', { fullPage: true });
+    await shot(page, 'settings-system-ckb-light.png');
   });
 
   test('every selling screen is right-to-left in Arabic and left-to-right in English', async ({ page }) => {
@@ -147,7 +156,7 @@ test.describe('the selling screens', () => {
     await page.goto('/orders');
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
     await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
-    await expect(page).toHaveScreenshot('orders-ar-light.png', { fullPage: true });
+    await shot(page, 'orders-ar-light.png');
 
     await withPreferences(page, { lang: 'en', theme: 'light' });
     await page.goto('/orders');

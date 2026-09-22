@@ -93,7 +93,7 @@ export function CompaniesPage() {
               <li key={company.id}>
                 <Link to={`/companies/${company.id}`} className="mz-list__item mz-list__item--interactive">
                   <span className="mz-list__body">
-                    <span className="mz-list__title">{company.name}</span>
+                    <span className="mz-list__title"><bdi>{company.name}</bdi></span>
                     {company.phone ? (
                       <span className="mz-caption" style={{ display: 'block' }} dir="ltr">
                         {company.phone}

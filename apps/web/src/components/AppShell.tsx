@@ -66,7 +66,10 @@ export function AppShell({ title, children }: { title: string; children: React.R
     <div className="mz-app">
       <header className="mz-header">
         <MizanMark size={26} />
-        <h1 className="mz-header__title">{title}</h1>
+        <h1 className="mz-header__title">
+          {/* A name may be Latin inside an RTL header, so it carries its own direction (2.10.6). */}
+          <bdi>{title}</bdi>
+        </h1>
         <IconButton icon="lock" label={t('auth:lock_now')} onClick={() => void lock()} />
       </header>
 

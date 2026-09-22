@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Decimal, marginTotals } from '@mizan/money';
-import type { MarginLine } from '@mizan/money';
+import { Decimal } from '@mizan/money';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
 import { PeriodService } from '../settings/period.service.js';
@@ -130,16 +129,21 @@ export class ReportsService {
   // ───────────────────────────────── profit (FR-1005) ─────────────────────────────────
 
   /**
-   * "Margin vs. month price". The margin of every line is computed by the kernel — once, in the
-   * line's entered currency, from the cost snapshot stored on it — and the report sums those
-   * figures per group. Lines with no cost snapshot are counted and named, never included.
+   * "Margin vs. month price" (FR-1005, 2.11).
    *
-   * The lines arrive in batches and are folded as they come, so what a wide period costs this
-   * process is bounded: the totals of a batch add to the totals of the batches before it,
-   * because every figure here is a sum of per-line figures (I4 review, FR-1005).
+   * The margin of a line is computed **once, by the kernel, when the line is saved** — in the
+   * line's entered currency, from the cost snapshot stored on it, converted at that line's own
+   * rate — and stored beside that snapshot (D-039). This report sums those stored integers,
+   * which is what 2.11 says every report does.
+   *
+   * Until I6 it folded the lines through the kernel on every request instead. That kept the
+   * rule in one place, which was right, and cost **436 seconds** for a year at the design point
+   * of NFR-13, which was not. The rule is still in one place; it simply runs at save time.
+   * Lines with no cost snapshot have no margin: they are counted and named, never summed.
    */
   async profit(context: RequestContext, request: ReportRequest) {
     const { filters, meta } = this.resolve(context, request, 'done_by');
+    const rows = await this.reports.margins(filters);
 
     const byGroup = new Map<
       string,
@@ -155,62 +159,17 @@ export class ReportsService {
       }
     >();
 
-    for await (const batch of this.reports.marginLineBatches(filters)) {
-      const inBatch = new Map<
-        string,
-        {
-          label: string | null;
-          lines: MarginLine[];
-          revenue_iqd: number;
-          revenue_usd_cents: number;
-        }
-      >();
-      for (const line of batch) {
-        const group = inBatch.get(line.group_key) ?? {
-          label: line.group_label,
-          lines: [],
-          revenue_iqd: 0,
-          revenue_usd_cents: 0,
-        };
-        group.lines.push({
-          priced_measure: line.priced_measure,
-          qty_count: line.qty_count,
-          qty_kg: line.qty_kg,
-          unit_price_iqd: Number(line.unit_price_iqd),
-          unit_price_usd_cents: Number(line.unit_price_usd_cents),
-          price_entered_currency: line.price_entered_currency,
-          rate_iqd_per_usd: line.rate_iqd_per_usd,
-          cost_unit_iqd: line.cost_unit_iqd === null ? null : Number(line.cost_unit_iqd),
-          cost_unit_usd_cents:
-            line.cost_unit_usd_cents === null ? null : Number(line.cost_unit_usd_cents),
-          cost_source: line.cost_source,
-        });
-        group.revenue_iqd += Number(line.line_total_iqd);
-        group.revenue_usd_cents += Number(line.line_total_usd_cents);
-        inBatch.set(line.group_key, group);
-      }
-
-      for (const [key, group] of inBatch) {
-        const totals = marginTotals(group.lines);
-        const running = byGroup.get(key) ?? {
-          label: group.label,
-          revenue_iqd: 0,
-          revenue_usd_cents: 0,
-          margin_iqd: 0,
-          margin_usd_cents: 0,
-          lines: 0,
-          lines_without_cost: 0,
-          lines_with_fallback: 0,
-        };
-        running.revenue_iqd += group.revenue_iqd;
-        running.revenue_usd_cents += group.revenue_usd_cents;
-        running.margin_iqd += totals.margin_iqd;
-        running.margin_usd_cents += totals.margin_usd_cents;
-        running.lines += totals.lines;
-        running.lines_without_cost += totals.lines_without_cost;
-        running.lines_with_fallback += totals.lines_with_fallback;
-        byGroup.set(key, running);
-      }
+    for (const row of rows) {
+      byGroup.set(row.group_key, {
+        label: row.group_label,
+        revenue_iqd: Number(row.revenue_iqd),
+        revenue_usd_cents: Number(row.revenue_usd_cents),
+        margin_iqd: Number(row.margin_iqd),
+        margin_usd_cents: Number(row.margin_usd_cents),
+        lines: row.lines,
+        lines_without_cost: row.lines_without_cost,
+        lines_with_fallback: row.lines_with_fallback,
+      });
     }
 
     const groups = [...byGroup].map(([key, group]) => ({
@@ -253,7 +212,7 @@ export class ReportsService {
   async stock(context: RequestContext, request: ReportRequest) {
     // The stock report has no user filter at all (2.11), so nothing is pinned.
     const filters = this.range(request);
-    const rows = await this.reports.stock(filters);
+    const rows = await this.reports.stock(filters, MAX_GROUPS);
     const month = `${filters.to.slice(0, 7)}-01`;
 
     const groups = rows.map((row) => {
@@ -314,9 +273,14 @@ export class ReportsService {
 
   // ─────────────────────── receivables and payables (FR-1007, FR-1008) ───────────────────────
 
+  /**
+   * Receivables (FR-1007). The page and the totals come back from one query — the cap of D-032
+   * is applied *in the database*, because grouping every customer's ledger only to throw away
+   * all but two hundred rows is what cost 2.3 seconds at the design point (REVIEW-I6).
+   */
   async receivables(context: RequestContext, request: ReportRequest) {
     const { filters, meta } = this.resolve(context, request, 'assigned_to');
-    const rows = await this.reports.receivables(filters);
+    const rows = await this.reports.receivables(filters, MAX_GROUPS);
 
     const groups = rows.map((row) => ({
       key: row.key,
@@ -334,17 +298,22 @@ export class ReportsService {
       },
     }));
 
+    // The totals are the period's, over every customer — the window functions computed them
+    // before the page was taken, so a capped report still tells the truth (D-032).
+    const first = rows[0];
     return {
       ...meta,
       group_by: 'customer',
-      ...capped(groups),
+      groups,
+      group_count: Number(first?.group_count ?? 0),
+      has_more: Number(first?.group_count ?? 0) > groups.length,
       totals: {
-        customers: groups.length,
+        customers: Number(first?.group_count ?? 0),
         balance: {
-          amount_iqd: sum(groups.map((group) => group.balance.amount_iqd)),
-          amount_usd_cents: sum(groups.map((group) => group.balance.amount_usd_cents)),
-          received_iqd: sum(groups.map((group) => group.balance.received_iqd)),
-          received_usd_cents: sum(groups.map((group) => group.balance.received_usd_cents)),
+          amount_iqd: Number(first?.total_balance_iqd ?? 0),
+          amount_usd_cents: Number(first?.total_balance_usd_cents ?? 0),
+          received_iqd: Number(first?.total_received_iqd ?? 0),
+          received_usd_cents: Number(first?.total_received_usd_cents ?? 0),
         },
       },
     };

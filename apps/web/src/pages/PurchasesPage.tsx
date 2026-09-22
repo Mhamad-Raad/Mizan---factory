@@ -236,7 +236,7 @@ export function PurchasesPage() {
                     .filter((user) => user.is_active)
                     .map((user) => (
                       <option key={user.id} value={user.id}>
-                        {user.display_name}
+                        <bdi>{user.display_name}</bdi>
                       </option>
                     ))}
                 </select>

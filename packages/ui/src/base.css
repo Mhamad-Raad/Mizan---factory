@@ -1014,3 +1014,160 @@ a.mz-button {
 .mz-disclosure[open] .mz-disclosure__summary {
   margin-block-end: var(--space-2);
 }
+
+/*
+ * The signature moments of specification 3.6.2, and the animation rules of 3.6.1 they obey.
+ *
+ * Every rule here animates `transform` and `opacity` only, so nothing runs on the layout
+ * thread while a form is being typed into; the reduced-motion block near the top of this file
+ * already flattens all of it to short fades. Horizontal motion is multiplied by `--dir`, so a
+ * sheet arrives from the end edge in Kurdish and Arabic without a second rule.
+ */
+
+/* 1 · the total ticks — the pulse that says a line landed in it. */
+.mz-totals--pulse {
+  animation: mz-total-pulse var(--duration-page) var(--ease-out);
+}
+
+@keyframes mz-total-pulse {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.02);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* 2 · balance settles — the one place the brass accent moves, once, when a balance hits zero. */
+.mz-settled {
+  position: relative;
+  overflow: hidden;
+}
+
+.mz-settled::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: -40%;
+  inline-size: 40%;
+  background: linear-gradient(90deg, transparent, var(--color-brass), transparent);
+  opacity: 0.35;
+  animation: mz-brass-sweep 700ms var(--ease-out) 1;
+  pointer-events: none;
+}
+
+@keyframes mz-brass-sweep {
+  from {
+    transform: translateX(calc(var(--dir) * 0%));
+  }
+
+  to {
+    transform: translateX(calc(var(--dir) * 350%));
+  }
+}
+
+/* The check that is drawn rather than dropped in, on the chip that flips to Paid. */
+.mz-chip-settling svg path,
+.mz-check-draw {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: mz-check-draw 250ms var(--ease-out) forwards;
+}
+
+@keyframes mz-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* 3 · the row lands — where the work went, for 600 ms after a save. */
+.mz-landed {
+  animation: mz-landed 600ms var(--ease-out) 1;
+}
+
+@keyframes mz-landed {
+  from {
+    background: var(--color-primary-soft);
+  }
+
+  to {
+    background: transparent;
+  }
+}
+
+/* List rows enter with a short slide in the reading direction, staggered by the caller. */
+.mz-list__item--enter {
+  animation: mz-row-enter var(--duration-micro) var(--ease-out) both;
+  animation-delay: var(--mz-stagger, 0ms);
+}
+
+@keyframes mz-row-enter {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--dir) * 8px));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 4 · handover — the recent-user cards arrive from the end edge and flip to the pad. */
+.mz-switcher__card {
+  animation: mz-switcher-in var(--duration-page) var(--ease-out) both;
+  animation-delay: var(--mz-stagger, 0ms);
+}
+
+@keyframes mz-switcher-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--dir) * 32px));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.mz-pinpad--flip {
+  animation: mz-pinpad-flip var(--duration-page) var(--ease-out) both;
+  transform-origin: center;
+}
+
+@keyframes mz-pinpad-flip {
+  from {
+    opacity: 0;
+    transform: perspective(600px) rotateY(calc(var(--dir) * -12deg));
+  }
+
+  to {
+    opacity: 1;
+    transform: perspective(600px) rotateY(0);
+  }
+}
+
+/* 5 · language mirror — the layout cross-fades while it changes direction. */
+html[data-mirroring='true'] body {
+  animation: mz-mirror var(--duration-page) var(--ease-out) 1;
+}
+
+@keyframes mz-mirror {
+  0% {
+    opacity: 1;
+  }
+
+  40% {
+    opacity: 0.2;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}

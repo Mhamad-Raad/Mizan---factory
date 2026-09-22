@@ -71,10 +71,28 @@ jobs:
       - name: Unit and API integration tests
         run: pnpm test
 
+      # NFR-08: the checks a restored database must satisfy. Run here against the test
+      # database, so a change that breaks a ledger invariant fails before a restore drill does.
+      - name: Ledger and schema integrity
+        run: pnpm check:integrity
+        env:
+          DATABASE_MIGRATE_URL: postgresql://mizan_migrate:mizan_migrate@localhost:5432/mizan_test
+
       - name: Build
         run: pnpm build
-      - name: Bundle budget (app shell ≤ 250 kB gzipped)
+      - name: Bundle budget (initial JavaScript ≤ 250 kB gzipped, NFR-03)
         run: pnpm --filter @mizan/web check:budget
+
+      # NFR-03 on the reference device: 400 kbps, 400 ms round trip, CPU throttled 4×. The
+      # thresholds are the measured ones, with the reasoning in docs/LIGHTHOUSE.md.
+      - name: Lighthouse on the reference profile
+        run: pnpm exec lhci autorun
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse
+          path: .lighthouseci/
+          retention-days: 7
 
       # Visual and RTL regression on the key screens, in both directions and both themes.
       - name: Install the browser for the screenshot tests

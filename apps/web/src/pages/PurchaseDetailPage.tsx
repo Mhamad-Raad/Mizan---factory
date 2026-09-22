@@ -113,7 +113,7 @@ export function PurchaseDetailPage() {
                   <div>
                     <h2 className="mz-title">
                       {data.company_id ? (
-                        <Link to={`/companies/${data.company_id}`}>{data.company_name}</Link>
+                        <Link to={`/companies/${data.company_id}`}><bdi>{data.company_name}</bdi></Link>
                       ) : (
                         t('purchases:stock_only_badge')
                       )}
@@ -209,7 +209,7 @@ export function PurchaseDetailPage() {
                       <li key={line.id} className="mz-list__item">
                         <span className="mz-list__body">
                           <span className="mz-list__title">
-                            <Link to={`/materials/${line.item_id}`}>{line.item_name}</Link>
+                            <Link to={`/materials/${line.item_id}`}><bdi>{line.item_name}</bdi></Link>
                           </span>
                           <span className="mz-caption" style={{ display: 'block' }}>
                             {line.priced_measure === 'kg'
@@ -232,7 +232,7 @@ export function PurchaseDetailPage() {
                               ) : null}
                             </span>
                           ) : null}
-                          {line.note ? <span className="mz-caption">{line.note}</span> : null}
+                          {line.note ? <span className="mz-caption"><bdi>{line.note}</bdi></span> : null}
                         </span>
                         {line.cost ? (
                           <span className="mz-list__end">
