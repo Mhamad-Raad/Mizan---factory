@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { ACCOUNTANT, ADMIN, SALES } from './accounts.js';
+import { shot } from './shot.js';
 
 /**
  * The reports, History and the two Proposed screens of Iteration 4 on a 360 px phone (spec 3.3,
@@ -54,7 +55,7 @@ test.describe('the reports and History', () => {
 
       await page.goto('/reports');
       await expect(page.getByRole('link').first()).toBeVisible();
-      await expect(page).toHaveScreenshot(`reports-hub-${testCase.name}.png`, { fullPage: true });
+      await shot(page, `reports-hub-${testCase.name}.png`);
     });
   }
 
@@ -69,7 +70,7 @@ test.describe('the reports and History', () => {
     const amounts = page.locator('.mz-dual').first();
     await expect(amounts).toContainText('IQD');
     await expect(amounts).toContainText('$');
-    await expect(page).toHaveScreenshot('report-sales-en-light.png', { fullPage: true });
+    await shot(page, 'report-sales-en-light.png');
 
     await page.getByRole('button', { name: 'Material' }).click();
     await expect(page.getByText('Copper wire 2 mm')).toBeVisible();
@@ -83,7 +84,7 @@ test.describe('the reports and History', () => {
     await expect(
       page.getByText('Margin against the month price list', { exact: false }),
     ).toBeVisible();
-    await expect(page).toHaveScreenshot('report-profit-en-light.png', { fullPage: true });
+    await shot(page, 'report-profit-en-light.png');
   });
 
   test('a report is pinned to a sales employee and says so', async ({ page }) => {
@@ -100,7 +101,7 @@ test.describe('the reports and History', () => {
 
     await page.goto('/reports/payables');
     await expect(page.getByText('Al-Noor Steel Co.')).toBeVisible();
-    await expect(page).toHaveScreenshot('report-payables-ckb-light.png', { fullPage: true });
+    await shot(page, 'report-payables-ckb-light.png');
   });
 
   test('History offers both user filters and expands a diff into old → new', async ({ page }) => {
@@ -116,7 +117,7 @@ test.describe('the reports and History', () => {
     await entry.click();
     // The expanded entry shows its diff and the reference the support line asks for.
     await expect(page.getByText('Reference', { exact: false }).first()).toBeVisible();
-    await expect(page).toHaveScreenshot('history-en-light.png', { fullPage: true });
+    await shot(page, 'history-en-light.png');
   });
 
   test('the dashboard gives an owner today in tiles', async ({ page }) => {
@@ -125,7 +126,7 @@ test.describe('the reports and History', () => {
 
     await page.goto('/dashboard');
     await expect(page.locator('.mz-tiles')).toBeVisible();
-    await expect(page).toHaveScreenshot('dashboard-ckb-light.png', { fullPage: true });
+    await shot(page, 'dashboard-ckb-light.png');
   });
 
   test('search finds a customer by name and an order by its number', async ({ page }) => {
@@ -135,7 +136,7 @@ test.describe('the reports and History', () => {
     await page.goto('/search');
     await page.locator('input[type="search"]').fill('kawa');
     await expect(page.getByText('Kawa Trading')).toBeVisible();
-    await expect(page).toHaveScreenshot('search-en-light.png', { fullPage: true });
+    await shot(page, 'search-en-light.png');
 
     await page.locator('input[type="search"]').fill('1001');
     await expect(page.getByText('#1001').first()).toBeVisible();
@@ -182,7 +183,7 @@ test.describe('the reports and History', () => {
     await page.goto('/reports/stock');
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
     await expect(page.getByText('Copper wire 2 mm')).toBeVisible();
-    await expect(page).toHaveScreenshot('report-stock-ar-light.png', { fullPage: true });
+    await shot(page, 'report-stock-ar-light.png');
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { ADMIN, SALES } from './accounts.js';
+import { shot } from './shot.js';
 
 /**
  * The shared-tablet screens of Iteration 5 on a 360 px phone (FR-106, FR-204, FR-1304): the
@@ -72,7 +73,7 @@ test.describe('shared tablets', () => {
     await page.goto('/orders');
     await page.getByRole('button', { name: /Lock the screen/i }).click();
     await expect(page.locator('.mz-pinpad')).toBeVisible();
-    await expect(page).toHaveScreenshot('lock-pinpad-en-light.png', { fullPage: true });
+    await shot(page, 'lock-pinpad-en-light.png');
 
     // Four taps and the session is back — the same session, so drafts survive (2.8).
     for (const digit of '4321') await page.locator('.mz-pinpad__key', { hasText: digit }).click();
@@ -127,7 +128,7 @@ test.describe('shared tablets', () => {
     // island, so the RTL mirroring rule must not reach inside it.
     const backspace = page.locator('.mz-pinpad__key--quiet svg');
     await expect(backspace).toHaveCSS('transform', 'none');
-    await expect(page).toHaveScreenshot('lock-pinpad-ckb-light.png', { fullPage: true });
+    await shot(page, 'lock-pinpad-ckb-light.png');
   });
 
   test('every key on the pad is a real target, and nothing scrolls sideways at 1.25', async ({ page }) => {
@@ -147,7 +148,7 @@ test.describe('shared tablets', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
-    await expect(page).toHaveScreenshot('lock-pinpad-ckb-dark-125.png', { fullPage: true });
+    await shot(page, 'lock-pinpad-ckb-dark-125.png');
   });
 
   test("the admin sees an employee's sessions and the devices that may use their PIN", async ({ page }) => {
@@ -195,6 +196,6 @@ test.describe('shared tablets', () => {
     await grid.locator('summary').click();
     // Named in Kurdish, never as raw keys — a grid of `orders.record_payment` is unusable.
     await expect(grid.getByText('تۆمارکردنی پارەدان')).toBeVisible();
-    await expect(page).toHaveScreenshot('permissions-advanced-ckb-light.png', { fullPage: true });
+    await shot(page, 'permissions-advanced-ckb-light.png');
   });
 });

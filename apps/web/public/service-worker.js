@@ -45,8 +45,13 @@ self.addEventListener('fetch', (event) => {
       (async () => {
         try {
           const response = await fetch(request);
-          const cache = await caches.open(SHELL);
-          cache.put('/', response.clone());
+          // Only a good answer becomes the offline shell: caching a 502 from a restarting
+          // container would hand that page to everybody who opens the icon on a tablet with no
+          // signal, and it would stay there until the next time they had signal.
+          if (response.ok) {
+            const cache = await caches.open(SHELL);
+            await cache.put('/', response.clone());
+          }
           return response;
         } catch {
           const cached = await caches.match('/');
@@ -66,9 +71,29 @@ self.addEventListener('fetch', (event) => {
       const response = await fetch(request);
       if (response.ok && response.type === 'basic') {
         const cache = await caches.open(SHELL);
-        cache.put(request, response.clone());
+        await cache.put(request, response.clone());
+        await trim(cache);
       }
       return response;
     })(),
   );
 });
+
+/**
+ * The shell, bounded.
+ *
+ * Built file names carry a content hash, so every deployment writes new entries and the old
+ * ones are never asked for again — and this file does not change between deployments, so
+ * `activate` (which is where a cache is usually cleaned) may not run for years. On a system
+ * that is meant to be installed once and used for a decade, an unbounded cache on a cheap
+ * tablet is a slow leak, so the cache keeps the most recent entries and drops the rest. The
+ * Cache API returns keys in insertion order, which is the only ordering needed here.
+ */
+async function trim(cache, keep = 120) {
+  const keys = await cache.keys();
+  if (keys.length <= keep) return;
+  // Everything but the shell document: that one entry is what makes the icon on the home
+  // screen open something when there is no connection, and it is never worth evicting.
+  const evictable = keys.filter((key) => new URL(key.url).pathname !== '/');
+  await Promise.all(evictable.slice(0, keys.length - keep).map((key) => cache.delete(key)));
+}

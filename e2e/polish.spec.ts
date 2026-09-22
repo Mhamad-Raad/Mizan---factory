@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { ACCOUNTANT, SALES } from './accounts.js';
+import { shot } from './shot.js';
 
 /**
  * The polish of Iteration 6 (spec 3.6, 3.7): the glyph verification page in all three
@@ -61,7 +62,7 @@ test.describe('polish and typography', () => {
       await expect(page.getByText('ڵ ڕ ۆ ێ ە ڤ گ چ پ ژ ئ').first()).toBeVisible();
       // Four sizes on one page, so the whole scale is one screenshot (3.7.3).
       await expect(page.getByText('Extra large · 20 px')).toBeVisible();
-      await expect(page).toHaveScreenshot(`font-check-${testCase.name}.png`, { fullPage: true });
+      await shot(page, `font-check-${testCase.name}.png`);
     });
   }
 
@@ -124,5 +125,44 @@ test.describe('polish and typography', () => {
     // the font rules key on (spec 3.7.1).
     await expect(page.locator('html')).toHaveAttribute('lang', 'ckb');
     await expect(page.locator('html')).toHaveAttribute('data-locale', 'ckb-IQ');
+  });
+});
+
+/**
+ * The service worker is blocked for this one check. It caches a chunk as it is fetched, which
+ * is exactly what makes a deploy survivable for a screen somebody has already opened — and it
+ * also means a request served from its cache never reaches Playwright's interception, so the
+ * failure below could not be staged with it running.
+ */
+test.describe('a screen whose chunk does not arrive', () => {
+  test.use({ serviceWorkers: 'block' });
+
+  test('says so, and keeps the rest of the application', async ({ page }) => {
+    await withPreferences(page, { lang: 'en', theme: 'light' });
+    await signIn(page, ACCOUNTANT);
+    await page.goto('/orders');
+
+    // The failure this reproduces is ordinary: the tablet lost signal, or the server was
+    // deployed while this tab stayed open and the content-hashed file is no longer there. Both
+    // asks fail, because the chunk is asked for twice (`src/lib/chunk.ts`).
+    const chunkOfCompanies = (url: URL) => /CompaniesPage|companies-/i.test(url.pathname);
+    await page.route(chunkOfCompanies, (route) => route.abort('failed'));
+    await page.getByRole('link', { name: 'Companies' }).first().click();
+
+    // Not a white screen: the error state, the reload that fixes it, and the tab bar still there.
+    await expect(page.getByText("Couldn't load this")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'Reload' })).toBeVisible();
+    // The navigation bar lives inside the screen that failed, so the error state carries the
+    // way out itself.
+    const back = page.getByRole('button', { name: 'Back' });
+    await expect(back).toBeVisible();
+
+    // And leaving works without a reload: the failure stayed on the screen that failed, and the
+    // boundary clears itself when the route changes.
+    await page.unroute(chunkOfCompanies);
+    await back.click();
+    await expect(page.locator('nav.mz-tabbar')).toBeVisible();
+    await page.getByRole('link', { name: 'Materials' }).first().click();
+    await expect(page.getByRole('heading', { name: 'Materials' }).first()).toBeVisible();
   });
 });
