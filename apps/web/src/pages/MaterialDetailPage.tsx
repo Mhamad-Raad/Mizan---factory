@@ -245,7 +245,7 @@ export function MaterialDetailPage() {
                   {item.data.notes ? (
                     <Card>
                       <h3 className="mz-heading">{t('glossary:notes')}</h3>
-                      <p>{item.data.notes}</p>
+                      <p><bdi>{item.data.notes}</bdi></p>
                     </Card>
                   ) : null}
 

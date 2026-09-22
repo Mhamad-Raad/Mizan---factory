@@ -529,3 +529,17 @@ character and took the direction of the paragraph around it rather than of the n
 its direction, so a Latin name keeps its full stop and an Arabic name is unaffected. CSS could
 not have done this — `unicode-bidi: isolate` isolates, but there is no `direction: auto` — so it
 is markup, and the regenerated Arabic screenshots are the evidence. Relied on: 2.10.6, 3.7.
+
+## D-044 · 2026-09-22 · I6 · Which language each handover document is written in
+
+Section 4.8 asks for "employee quick cards per preset (one page each, **in all three
+languages**)" and for an admin guide, without saying which language the guide is in.
+
+**Choice:** the nine quick cards are in Kurdish Sorani, Arabic and English, as asked. The admin
+guide is written twice — **Kurdish Sorani**, because 1.10 makes `ckb-IQ` the default language and
+the admin is the factory's owner, and **English**, because whoever maintains the system after
+handover reads the repository. Arabic is not written for the guide: the one person who reads it
+reads Kurdish, and a third translation of a twenty-page document that nobody opens is a
+liability — it drifts, and then it is wrong in a language nobody checks. Every screen name and
+button the documents quote is taken from `packages/i18n/locales`, so a card cannot describe a
+button by a name the screen does not use (1.6). Relied on: 4.8, 1.10, 1.6.

@@ -45,6 +45,67 @@ un-applying it: write a new forward migration. The runner refuses to re-apply a 
 contents changed after it was applied, which is what stops a quiet divergence between
 environments.
 
+## Go-live
+
+The day the paper stops. Nothing here is code — it is the order in which a factory starts
+trusting a system, and every line has somebody's name against it before the next one begins.
+
+**A week before**
+
+- [ ] Production host built and the domain pointed at it; `/api/v1/health` green from outside.
+- [ ] Every secret in `.env` freshly generated on this host — `SESSION_PEPPER`,
+      `POSTGRES_PASSWORD`, `BACKUP_ENCRYPTION_KEY` — and the development values never reused.
+      The backup key is also written down somewhere that survives the host (an encrypted copy
+      is useless with a key that only exists on the machine that was lost).
+- [ ] First admin seeded, signed in once, password changed, and the seed value removed from
+      `.env`.
+- [ ] Nightly backup has run at least twice and the dead-man's switch has fired once on purpose.
+- [ ] **Restore drill executed on a production-shaped copy and logged** in `restore-drills.md`
+      with the integrity checks (`pnpm check:integrity`), not only "the file opened" (NFR-08).
+- [ ] Monitoring wired to the operations channel: uptime, the backup heartbeat, disk at 80 %.
+- [ ] Lighthouse and the load test run against staging on the reference profile
+      (`docs/LIGHTHOUSE.md`, `scripts/load/mizan-load.js`).
+
+**The day itself, in this order**
+
+1. **The rate.** The global rate set for today (Settings → System), and every supplier's own
+   rate confirmed on their profile. Nothing that follows can be typed without them.
+2. **Materials and prices.** Every material that will be sold or bought exists, with its
+   pricing unit, and has a **bought and sale price for the current month** (FR-306). The Stock
+   report is the checklist.
+3. **Opening stock.** One entry per material, counted on the floor, with the counter's name in
+   the note (FR-308). Large lists go through the CSV import, which writes the same movements.
+4. **Opening debts.** Customer balances (FR-504) and company balances (FR-708), each in that
+   account's settlement currency, each with a note naming the paper it came from.
+5. **Reconcile before anybody sells.** Receivables against the client's own list of customer
+   debts; Payables against the supplier debts; the Stock report against the count sheets. The
+   three have to agree with the client's figures, and the reconciliation lives in the notes on
+   the entries — not in a spreadsheet beside the system.
+6. **Employees.** One account each, a preset, the extras agreed with the client, and the
+   employee's own first sign-in done in front of somebody who can help.
+7. **The devices.** Each shared tablet marked "Shared device" and named; each employee's PIN set
+   by the employee on the device they will use; the PIN policy (length, idle lock) agreed.
+8. **The period lock** set to the day before go-live if the client keeps one, so nothing can be
+   dated into the paper era.
+9. **Hand over** the admin guide and the quick cards (`docs/guide/`), and agree the support
+   channel and what counts as urgent.
+
+**The first week**
+
+- Read History daily for a week — it is the cheapest way to see a habit forming wrongly.
+- Expect corrections, and make them as reversals with notes. A correction in the first week that
+  is done properly teaches the habit for the next ten years.
+- Keep the first month's Receivables and Payables printouts. They are what a later question
+  about an opening figure is answered with.
+
+## Secrets rotation
+
+Rotating `SESSION_PEPPER` invalidates every session and every PIN device ticket — everybody
+signs in again with a password. That is the intended cost, and it is the remedy if a session
+store is ever suspected. `POSTGRES_PASSWORD` rotates with a `docker compose up -d db api`;
+`BACKUP_ENCRYPTION_KEY` must **never** be rotated without keeping the old key for as long as the
+copies it encrypted are still in retention, which is thirteen months.
+
 ## Backups
 
 Nightly at 03:00 Asia/Baghdad the `backup` container dumps, **verifies the dump is readable**,
