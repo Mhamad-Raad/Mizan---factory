@@ -262,6 +262,85 @@ describe('the reports read each growing table once (I4 review)', () => {
      * for nothing else.
      */
     expect(rowsRead(plan, 'items')).toBeLessThanOrEqual(220);
+
+    /**
+     * And neither does it read the documents. Both dates of FR-304 come from the stock ledger
+     * since migration 0019 — the oldest purchase movement and the newest sale that was not
+     * reversed — because `max(order_date)` over every line of a material is the query that
+     * grows with a decade of trading: it was 200 of this report's 430 ms at the design point,
+     * and the review measured it after the fixture's stock ledger was finally filled.
+     */
+    expect(stock.text).not.toMatch(/order_lines/);
+  });
+
+  it('keeps each material\'s stock as a sum over its movements, maintained (2.2.6)', async () => {
+    /**
+     * `item_stock` is a view over the maintained table of migration 0017 rather than a grouped
+     * pass over the whole stock ledger. The figure is still a sum over the ledger — nothing
+     * writes it but the trigger, and the application role cannot — and this test is what says
+     * the sum is still right after movements in both directions, including a reversal.
+     */
+    const item = (
+      await as(ctx.http, admin)
+        .post('/api/v1/items')
+        .send({ name: 'Plan-shape brass', pricing_unit: 'per_kg' })
+        .expect(201)
+    ).body.id as string;
+    await as(ctx.http, admin)
+      .put(`/api/v1/items/${item}/prices/${today().slice(0, 7)}`)
+      .send({ sale: { amount: 900, currency: 'IQD' }, bought: { amount: 800, currency: 'IQD' } })
+      .expect(200);
+    await as(ctx.http, admin)
+      .post(`/api/v1/items/${item}/opening-stock`)
+      .send({ entry_date: today(), qty_kg: '1000.000', note: 'counted' })
+      .expect(201);
+    const sold = (
+      await as(ctx.http, admin)
+        .post('/api/v1/orders')
+        .send({
+          customer_id: customers[0],
+          order_date: today(),
+          payment_type: 'borrowed',
+          lines: [{ item_id: item, qty_kg: '120.500' }],
+        })
+        .expect(201)
+    ).body.id as string;
+    await as(ctx.http, admin)
+      .post(`/api/v1/orders/${sold}/void`)
+      .send({ reason: 'the lorry never left the yard' })
+      .expect(200);
+
+    const fromLedger = await withDatabase(async (client) => {
+      const { rows } = await client.query<{ total: string; movements: string }>(
+        `SELECT coalesce(sum(qty_kg), 0)::text AS total, count(*)::text AS movements
+           FROM stock_ledger WHERE item_id = $1`,
+        [item],
+      );
+      return rows[0];
+    });
+    const maintained = await withDatabase(async (client) => {
+      const { rows } = await client.query<{ stock_kg: string; movements: string }>(
+        `SELECT stock_kg::text AS stock_kg, movements::text AS movements
+           FROM item_stock_totals WHERE item_id = $1`,
+        [item],
+      );
+      return rows[0];
+    });
+
+    expect(maintained.stock_kg).toBe(fromLedger.total);
+    expect(maintained.movements).toBe(fromLedger.movements);
+    // The void put the 120.5 kg back, so the material is where the opening count left it.
+    expect(maintained.stock_kg).toBe('1000.000');
+
+    const view = await withDatabase(async (client) => {
+      const { rows } = await client.query<{ stock_kg: string; kg_complete: boolean }>(
+        `SELECT stock_kg::text AS stock_kg, kg_complete FROM item_stock WHERE item_id = $1`,
+        [item],
+      );
+      return rows[0];
+    });
+    expect(view.stock_kg).toBe('1000.000');
+    expect(view.kg_complete).toBe(true);
   });
 
   it("reads the orders once for the dashboard's unpaid tile", async () => {

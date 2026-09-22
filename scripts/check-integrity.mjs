@@ -117,8 +117,9 @@ const { rows: stockDrift } = await client.query(
 check(stockDrift[0].n === 0, `every material's stock equals its movements (${stockDrift[0].n} disagree)`);
 
 /**
- * The one maintained figure in the system (migration 0015). A cached number nobody checks is a
- * number that lies, so the restore drill checks it: every row must equal the ledger it sums.
+ * The two maintained figures in the system (migrations 0015 and 0017). A cached number nobody
+ * checks is a number that lies, so the restore drill checks both: every row must equal the
+ * ledger it sums.
  */
 const { rows: remainingDrift } = await client.query(
   `SELECT count(*)::int AS n FROM (
@@ -137,6 +138,34 @@ const { rows: remainingDrift } = await client.query(
 check(
   remainingDrift[0].n === 0,
   `the maintained per-order remaining equals the ledger (${remainingDrift[0].n} disagree)`,
+);
+
+/**
+ * The second maintained sum (0017): each material's stock against its own movements. Same
+ * reasoning as the one above — a cached number nobody checks is a number that lies — and the
+ * same remedy: compare it with the ledger on every drill, and fail the drill if it drifts.
+ */
+const { rows: maintainedStock } = await client.query(
+  `SELECT count(*)::int AS n
+     FROM (
+       SELECT s.item_id,
+              coalesce(sum(s.qty_count), 0) AS counted,
+              coalesce(sum(s.qty_kg), 0) AS weighed,
+              count(*) AS movements,
+              max(t.stock_count) AS kept_count,
+              max(t.stock_kg) AS kept_kg,
+              max(t.movements) AS kept_movements
+         FROM stock_ledger s
+         LEFT JOIN item_stock_totals t ON t.item_id = s.item_id
+        GROUP BY s.item_id
+     ) sums
+    WHERE coalesce(kept_count, 0) <> counted
+       OR coalesce(kept_kg, 0) <> weighed
+       OR coalesce(kept_movements, 0) <> movements`,
+);
+check(
+  maintainedStock[0].n === 0,
+  `the maintained stock per material equals the stock ledger (${maintainedStock[0].n} disagree)`,
 );
 
 // ── 4 · money is coherent, per row ───────────────────────────────────────────────────

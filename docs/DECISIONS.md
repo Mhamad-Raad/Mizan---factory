@@ -543,3 +543,44 @@ reads Kurdish, and a third translation of a twenty-page document that nobody ope
 liability — it drifts, and then it is wrong in a language nobody checks. Every screen name and
 button the documents quote is taken from `packages/i18n/locales`, so a card cannot describe a
 button by a name the screen does not use (1.6). Relied on: 4.8, 1.10, 1.6.
+
+## D-045 · 2026-09-22 · I6 review · The second maintained sum: each material's stock
+
+`item_stock` was a view that summed the **whole** `stock_ledger` and grouped it by material —
+every time anybody asked it about one material. That was free while the ledger was small, and
+the review found out why it had stayed free: the volume fixture had never written its stock
+movements. It held **43** rows against 1,227,007 order lines, so every stock figure anybody had
+measured had been measured against an empty table.
+
+Filled to 1,347,043 movements — a year of trading at the design point of NFR-13 — the truth was:
+`GET /reports/stock` **674 ms** against its stated 500 ms budget, of which 290 ms was
+aggregating all 5,014 materials to send the 200 the report shows; the dashboard's low-stock tile
+one sequential pass over the whole ledger per load; and `stockOf()`, which the negative-stock
+rule calls inside every order and purchase transaction (FR-307), the same pass again.
+
+**Choice:** `item_stock_totals` (migration 0017) — one row per material, maintained by an
+`AFTER INSERT` trigger on `stock_ledger`, with `item_stock` redefined as a view over it so
+nothing above the database changed. It is the same instrument and the same justification as
+`order_remaining` (2.2.6, D-040): the ledger is append-only, so there is no UPDATE or DELETE to
+keep in step, a correction is another movement and a reversal is its own negative row. The
+application role has no privilege on the table (0018), the trigger runs `SECURITY DEFINER` in
+the same transaction as the movement — which is what lets `stockOf()` see it immediately — and
+`scripts/check-integrity.mjs` compares every row with the ledger on each restore drill.
+Measured after: **350.7 ms**. Relied on: 2.2.6, 2.2.4, FR-307, NFR-03, NFR-13, D-040.
+
+## D-046 · 2026-09-22 · I6 review · "First bought" and "last sold" come from the stock ledger
+
+The two dates of FR-304 were the last per-material figures computed from the documents rather
+than from a ledger: `last_sold_on` was `max(order_date)` over every active line of that
+material, joined to its order. At 245 lines per material that is 245 index entries and 245
+random heap reads **per material shown** — 200 ms of the Stock report's remaining time and 200
+of the materials list's 280 ms, growing with every year of trading.
+
+**Choice:** both dates read the stock ledger (migration 0019): the oldest `purchase_in` or
+`opening` movement that has not been reversed, and the newest `sale_out` that has not been
+reversed, each an `ORDER BY … LIMIT 1` on a new `(item_id, movement_type, entry_date DESC)`
+index. This is the same answer — a sale always writes a movement dated with its order, a void
+writes the reversal, an edit that drops a line writes the correction — and it is the rule the
+system is built on: a stock question is answered by the stock ledger (rule 2). The Stock report
+came to **350.7 ms** and the materials list to **240.3 ms**; a plan-shape test asserts the report
+never reads `order_lines` again. Relied on: FR-304, 2.2.4, NFR-03, NFR-13.

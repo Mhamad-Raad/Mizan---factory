@@ -415,21 +415,26 @@ export class ReportsRepository {
          FROM page
          JOIN items i ON i.id = page.id
          LEFT JOIN item_stock st ON st.item_id = i.id
-         -- One index scan per material of the page, rather than a grouped pass over every line
-         -- and movement ever recorded: the page is two hundred rows (REVIEW-I6).
+         -- Both dates come from the stock ledger, newest (or oldest) movement of that kind
+         -- first, so each is one index entry rather than an aggregate over a material's whole
+         -- trading history: max(order_date) over 245 lines and their orders, per material of
+         -- the page, was 200 of this report's 430 ms at the design point (migration 0019).
          LEFT JOIN LATERAL (
-           SELECT max(o.order_date) AS last_sold_on
-             FROM order_lines ol
-             JOIN orders o ON o.id = ol.order_id
-            WHERE ol.item_id = i.id AND ol.deleted_at IS NULL
-              AND o.status = 'active' AND o.deleted_at IS NULL
+           SELECT s.entry_date AS last_sold_on
+             FROM stock_ledger s
+            WHERE s.item_id = i.id AND s.movement_type = 'sale_out'
+              AND NOT EXISTS (SELECT 1 FROM stock_ledger r WHERE r.reverses_entry_id = s.id)
+            ORDER BY s.entry_date DESC
+            LIMIT 1
          ) sold ON true
          LEFT JOIN LATERAL (
-           SELECT min(s.entry_date) AS first_bought_on
+           SELECT s.entry_date AS first_bought_on
              FROM stock_ledger s
             WHERE s.item_id = i.id
               AND s.movement_type IN ('purchase_in', 'opening')
               AND NOT EXISTS (SELECT 1 FROM stock_ledger r WHERE r.reverses_entry_id = s.id)
+            ORDER BY s.entry_date ASC
+            LIMIT 1
          ) bought ON true
          LEFT JOIN LATERAL (
            SELECT sum(CASE WHEN s.qty_count > 0 THEN s.qty_count ELSE 0 END) AS in_count,

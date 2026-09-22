@@ -283,8 +283,28 @@ for (let year = 0; year < YEARS; year += 1) {
   );
 }
 
+/**
+ * The stock ledger, which the I6 review found empty.
+ *
+ * This step used to be one silent statement at the end of a long script, and a fixture that had
+ * been reported as "seeded" held **43** stock movements against 1.2 million order lines — so
+ * every stock measurement taken on it (the materials list, the Stock report, the dashboard's
+ * low-stock tile) had been measured against a table that was not there. It now writes both
+ * sides of a movement, counts what it wrote, and says so; and it is idempotent, so a fixture
+ * seeded before this can be topped up by running it again.
+ */
 say('stock movements, so the stock view is not a fiction');
-await client.query(
+const purchasedIn = await client.query(
+  `INSERT INTO stock_ledger
+     (item_id, movement_type, entry_date, qty_count, qty_kg, ref_type, ref_id, created_by, note)
+   SELECT l.item_id, 'purchase_in', p.purchase_date, l.qty_count, l.qty_kg,
+          'purchase_line', l.id, $1, 'volume fixture'
+     FROM purchase_lines l JOIN purchases p ON p.id = l.purchase_id
+    WHERE p.created_by = $1
+      AND NOT EXISTS (SELECT 1 FROM stock_ledger s WHERE s.ref_type = 'purchase_line' AND s.ref_id = l.id)`,
+  [actor],
+);
+const soldOut = await client.query(
   `INSERT INTO stock_ledger
      (item_id, movement_type, entry_date, qty_count, qty_kg, ref_type, ref_id, created_by, note)
    SELECT l.item_id, 'sale_out', o.order_date,
@@ -296,6 +316,18 @@ await client.query(
       AND NOT EXISTS (SELECT 1 FROM stock_ledger s WHERE s.ref_type = 'order_line' AND s.ref_id = l.id)`,
   [actor],
 );
+say(
+  `${purchasedIn.rowCount.toLocaleString('en')} movements in, ${soldOut.rowCount.toLocaleString('en')} out`,
+);
+if (purchasedIn.rowCount + soldOut.rowCount === 0) {
+  const { rows: already } = await client.query('SELECT count(*)::int AS n FROM stock_ledger');
+  if (already[0].n < 1000) {
+    console.error(
+      `\nThe stock ledger holds only ${already[0].n} rows. Nothing that reads stock has been measured at volume — fix this before trusting a stock figure from this fixture.`,
+    );
+    process.exitCode = 1;
+  }
+}
 
 say('analyze');
 await client.query('ANALYZE');

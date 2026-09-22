@@ -251,16 +251,24 @@ export class ItemsRepository {
          FROM page
          JOIN items i ON i.id = page.id
          ${stockLateral}
+         -- The two dates of FR-304, each one index entry of the stock ledger: the oldest
+         -- purchase or opening movement, and the newest sale that was not reversed. Reading
+         -- them from the documents instead — max(order_date) over every line of the material
+         -- — cost this list 200 of its 280 ms at the design point (migration 0019).
          LEFT JOIN LATERAL (
-           SELECT to_char(min(s.entry_date), 'YYYY-MM-DD') AS first_bought_on,
-                  (SELECT to_char(max(o.order_date), 'YYYY-MM-DD')
-                     FROM order_lines ol JOIN orders o ON o.id = ol.order_id
-                    WHERE ol.item_id = i.id AND ol.deleted_at IS NULL
-                      AND o.status = 'active' AND o.deleted_at IS NULL) AS last_sold_on
-             FROM stock_ledger s
-            WHERE s.item_id = i.id
-              AND s.movement_type IN ('purchase_in', 'opening')
-              AND NOT EXISTS (SELECT 1 FROM stock_ledger r WHERE r.reverses_entry_id = s.id)
+           SELECT (SELECT to_char(s.entry_date, 'YYYY-MM-DD')
+                     FROM stock_ledger s
+                    WHERE s.item_id = i.id
+                      AND s.movement_type IN ('purchase_in', 'opening')
+                      AND NOT EXISTS (SELECT 1 FROM stock_ledger r WHERE r.reverses_entry_id = s.id)
+                    ORDER BY s.entry_date ASC
+                    LIMIT 1) AS first_bought_on,
+                  (SELECT to_char(s.entry_date, 'YYYY-MM-DD')
+                     FROM stock_ledger s
+                    WHERE s.item_id = i.id AND s.movement_type = 'sale_out'
+                      AND NOT EXISTS (SELECT 1 FROM stock_ledger r WHERE r.reverses_entry_id = s.id)
+                    ORDER BY s.entry_date DESC
+                    LIMIT 1) AS last_sold_on
          ) stats ON true
          ${monthPriceLateral('sale', monthParam)}
          ${monthPriceLateral('bought', monthParam)}
