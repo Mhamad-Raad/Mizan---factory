@@ -26,6 +26,9 @@ export type IconName =
   | 'refresh'
   | 'trash'
   | 'logout'
+  | 'sun'
+  | 'moon'
+  | 'language'
   | 'shield'
   | 'orders'
   | 'materials'
@@ -63,6 +66,9 @@ const PATHS: Record<IconName, string> = {
   refresh: 'M23 4v6h-6M1 20v-6h6M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15',
   trash: 'M3 6h18M8 6V4h8v2m1 0v14H7V6',
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14 5-5-5-5m5 5H9',
+  sun: 'M12 3v2m0 14v2M5.6 5.6l1.4 1.4m10 10 1.4 1.4M3 12h2m14 0h2M5.6 18.4 7 17m10-10 1.4-1.4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
+  moon: 'M20 14.5A8.5 8.5 0 0 1 9.5 4a7 7 0 1 0 10.5 10.5Z',
+  language: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 0c2.5 2.3 3.8 5.4 3.8 9s-1.3 6.7-3.8 9m0-18c-2.5 2.3-3.8 5.4-3.8 9s1.3 6.7 3.8 9M3.5 9h17m-17 6h17',
   shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z',
   orders: 'M8 3h8a2 2 0 0 1 2 2v16l-6-3-6 3V5a2 2 0 0 1 2-2Zm0 5h8m-8 4h5',
   materials: 'M3 8.5 12 4l9 4.5-9 4.5-9-4.5Zm0 6L12 19l9-4.5',

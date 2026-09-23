@@ -69,5 +69,9 @@
   "nav_admin": "بەڕێوەبردن",
   "signed_in_as": "چووەتە ژوورەوە وەک",
   "collapse_sidebar": "لاتەنیشت بنوقێنە",
-  "expand_sidebar": "لاتەنیشت بکەرەوە"
+  "expand_sidebar": "لاتەنیشت بکەرەوە",
+  "use_dark": "ڕووکاری تاریک",
+  "use_light": "ڕووکاری ڕووناک",
+  "language_menu": "زمان",
+  "account_menu": "هەژمار"
 }

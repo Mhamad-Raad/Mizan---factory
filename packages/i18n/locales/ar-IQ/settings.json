@@ -81,5 +81,10 @@
   "implied_by": "يأتي مع {{key}}",
   "session_active": "نشطة",
   "session_personal": "جهاز شخصي",
-  "session_device": "جهاز"
+  "session_device": "جهاز",
+  "theme_light_hint": "للمكتب وضوء النهار",
+  "theme_dark_hint": "للمساء والإضاءة الخفيفة",
+  "theme_auto_hint": "كما يفعل الجهاز",
+  "appearance": "المظهر واللغة",
+  "language_hint": "يغيّر كل الشاشات — ولكل جهاز اختياره"
 }

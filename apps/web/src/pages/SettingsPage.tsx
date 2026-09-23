@@ -3,8 +3,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, DateField, NumberField, SegmentedControl, TextField, Toggle } from '@mizan/ui';
-import { LANGUAGE_NAMES, LOCALES } from '@mizan/i18n';
-import type { Locale } from '@mizan/i18n';
+import { LANGUAGE_NAMES, LOCALES, directionOf } from '@mizan/i18n';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
@@ -39,23 +38,70 @@ export function SettingsPage() {
               </p>
             ) : null}
 
-            <SegmentedControl
-              label={t('settings:language')}
-              value={preferences.lang}
-              onChange={(value: Locale) => setPreference('lang', value)}
-              options={LOCALES.map((locale) => ({ value: locale, label: LANGUAGE_NAMES[locale] }))}
-            />
+            {/*
+              * Language and theme as choices you can see rather than words in a strip.
+              *
+              * A language is named in its own script and says which way its screens read; a
+              * theme shows what it looks like — a swatch of the surface, the text and the
+              * primary colour it would give you — because "Dark" is a word and the choice is a
+              * picture. Both are still one tap, and both are per device (FR-1103).
+              */}
+            <fieldset className="mz-choice-group">
+              <legend className="mz-field__label">{t('settings:language')}</legend>
+              <p className="mz-field__hint">{t('settings:language_hint')}</p>
+              <div className="mz-choices">
+                {LOCALES.map((locale) => (
+                  <label key={locale} className="mz-choice" lang={locale}>
+                    <input
+                      type="radio"
+                      name="mizan-language"
+                      className="mz-choice__input"
+                      checked={preferences.lang === locale}
+                      onChange={() => setPreference('lang', locale)}
+                    />
+                    <span className="mz-choice__body">
+                      <span className="mz-choice__title">{LANGUAGE_NAMES[locale]}</span>
+                      <span className="mz-choice__hint" dir="ltr">
+                        {directionOf(locale) === 'rtl' ? 'RTL' : 'LTR'}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
 
-            <SegmentedControl
-              label={t('settings:theme')}
-              value={preferences.theme}
-              onChange={(value: Theme) => setPreference('theme', value)}
-              options={[
-                { value: 'light', label: t('settings:theme_light') },
-                { value: 'dark', label: t('settings:theme_dark') },
-                { value: 'auto', label: t('settings:theme_auto') },
-              ]}
-            />
+            <fieldset className="mz-choice-group">
+              <legend className="mz-field__label">{t('settings:theme')}</legend>
+              <div className="mz-choices">
+                {(
+                  [
+                    { value: 'light', label: t('settings:theme_light'), hint: t('settings:theme_light_hint') },
+                    { value: 'dark', label: t('settings:theme_dark'), hint: t('settings:theme_dark_hint') },
+                    { value: 'auto', label: t('settings:theme_auto'), hint: t('settings:theme_auto_hint') },
+                  ] as { value: Theme; label: string; hint: string }[]
+                ).map((option) => (
+                  <label key={option.value} className="mz-choice">
+                    <input
+                      type="radio"
+                      name="mizan-theme"
+                      className="mz-choice__input"
+                      checked={preferences.theme === option.value}
+                      onChange={() => setPreference('theme', option.value)}
+                    />
+                    <span className="mz-choice__body">
+                      {/* What it looks like, not only what it is called. */}
+                      <span className={`mz-swatch mz-swatch--${option.value}`} aria-hidden="true">
+                        <span className="mz-swatch__bar" />
+                        <span className="mz-swatch__line" />
+                        <span className="mz-swatch__line mz-swatch__line--short" />
+                      </span>
+                      <span className="mz-choice__title">{option.label}</span>
+                      <span className="mz-choice__hint">{option.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
 
             <SegmentedControl
               label={t('settings:font_size')}

@@ -119,6 +119,12 @@ input[type='tel'] {
   font-size: 1.0625rem;
   font-weight: 600;
   text-align: center;
+
+  /* The bar's controls sit at the reading end; the title takes what is left of the line. */
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mz-login-band {
@@ -2080,4 +2086,228 @@ html[data-mirroring='true'] body {
 
 .mz-entry__body {
   padding-block-start: var(--space-2);
+}
+
+/* ─────────────────────────── a small menu ───────────────────────────
+ *
+ * Hung off the button that opens it, at the reading end of the bar. Logical properties, so in
+ * Kurdish and Arabic it opens towards the other edge without a second rule.
+ */
+.mz-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.mz-menu__list {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-1);
+  min-inline-size: 11rem;
+  inset-block-start: calc(100% + var(--space-1));
+  box-shadow: var(--shadow-sheet);
+}
+
+.mz-menu__list--end {
+  inset-inline-end: 0;
+}
+
+.mz-menu__list--start {
+  inset-inline-start: 0;
+}
+
+.mz-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: none;
+  padding-inline: var(--space-2);
+  padding-block: var(--space-2);
+  min-block-size: var(--tap-target);
+  color: var(--color-text);
+  font: inherit;
+  text-align: start;
+}
+
+.mz-menu__item:hover {
+  background: var(--color-surface-2);
+}
+
+.mz-menu__item[aria-current='true'] {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* Keeps the labels in one column whether or not a row carries the tick. */
+.mz-menu__gap {
+  inline-size: 16px;
+}
+
+.mz-header .mz-icon-button,
+.mz-header .mz-menu .mz-icon-button {
+  color: var(--color-on-header);
+}
+
+@media (width >= 64rem) {
+  /* The sidebar carries the account at this width, so the bar does not repeat it. */
+  .mz-header__account {
+    display: none;
+  }
+}
+
+/* ─────────────────────── a choice you can see ───────────────────────
+ *
+ * For the handful of settings where the words are not the point: a language named in its own
+ * script, a theme shown as what it looks like. A radio inside a card, so the whole card is the
+ * target and the keyboard gets arrow keys between the options for nothing.
+ */
+.mz-choice-group {
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.mz-choices {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  margin-block-start: var(--space-2);
+}
+
+.mz-choice {
+  display: flex;
+  position: relative;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  min-block-size: var(--tap-target);
+}
+
+.mz-choice:hover {
+  background: var(--color-surface-2);
+}
+
+/* The radio is the accessible control; the card is what the eye and the thumb use. */
+.mz-choice__input {
+  accent-color: var(--color-primary);
+  margin: 0;
+  inline-size: 18px;
+  block-size: 18px;
+  flex: none;
+  margin-block-start: 2px;
+}
+
+.mz-choice:has(.mz-choice__input:checked) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-on-primary-soft);
+}
+
+.mz-choice:has(.mz-choice__input:focus-visible) {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.mz-choice__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.mz-choice__title {
+  font-weight: 600;
+}
+
+.mz-choice__hint {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.mz-choice:has(.mz-choice__input:checked) .mz-choice__hint {
+  color: inherit;
+  opacity: 0.8;
+}
+
+/* ── the theme swatch: a header bar, a line of text, a shorter one ── */
+.mz-swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  inline-size: 3.5rem;
+  margin-block-end: var(--space-1);
+  overflow: hidden;
+}
+
+.mz-swatch__bar {
+  border-radius: 2px;
+  block-size: 8px;
+}
+
+.mz-swatch__line {
+  border-radius: 2px;
+  block-size: 4px;
+}
+
+.mz-swatch__line--short {
+  inline-size: 60%;
+}
+
+/* Each swatch shows its own theme's colours, whatever theme the page is in. */
+.mz-swatch--light {
+  background: #fdf8f4;
+}
+
+.mz-swatch--light .mz-swatch__bar {
+  background: #5e1f4b;
+}
+
+.mz-swatch--light .mz-swatch__line {
+  background: #d9cec6;
+}
+
+.mz-swatch--dark {
+  background: #211a21;
+}
+
+.mz-swatch--dark .mz-swatch__bar {
+  background: #e79acf;
+}
+
+.mz-swatch--dark .mz-swatch__line {
+  background: #4a3f4a;
+}
+
+/*
+ * Follow the device: half of each, split down the middle.
+ *
+ * A gradient takes a physical direction — there is no `to inline-end` — and it does not matter
+ * here: which half is which side carries no meaning, the swatch is decorative and
+ * `aria-hidden`, and the label underneath says what it is.
+ */
+.mz-swatch--auto {
+  background: linear-gradient(to right, #fdf8f4 50%, #211a21 50%);
+}
+
+.mz-swatch--auto .mz-swatch__bar {
+  background: linear-gradient(to right, #5e1f4b 50%, #e79acf 50%);
+}
+
+.mz-swatch--auto .mz-swatch__line {
+  background: linear-gradient(to right, #d9cec6 50%, #4a3f4a 50%);
 }

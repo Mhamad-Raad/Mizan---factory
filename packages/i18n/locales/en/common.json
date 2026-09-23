@@ -69,5 +69,9 @@
   "nav_admin": "Administration",
   "signed_in_as": "Signed in as",
   "collapse_sidebar": "Collapse the sidebar",
-  "expand_sidebar": "Expand the sidebar"
+  "expand_sidebar": "Expand the sidebar",
+  "use_dark": "Dark theme",
+  "use_light": "Light theme",
+  "language_menu": "Language",
+  "account_menu": "Account"
 }

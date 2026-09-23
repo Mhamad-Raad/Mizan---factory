@@ -426,6 +426,92 @@ export function BottomSheet({ title, open, onClose, closeLabel, children }: Bott
   );
 }
 
+export interface MenuItem {
+  label: string;
+  /** The current choice, marked for the eye and for a screen reader. */
+  current?: boolean;
+  /** For a language row: the item's own language, so it is read in the right voice. */
+  lang?: string;
+  onSelect: () => void;
+}
+
+/**
+ * A small menu hung off a button — the language switch and the account menu in the app bar.
+ *
+ * Deliberately plain: a button that owns `aria-expanded`, a list of `role="menuitem"` buttons,
+ * and the two ways anybody expects to dismiss it (Escape, or a click anywhere else). No
+ * library, no portal, no focus trap: a menu of three rows is not a dialog, and the rows are
+ * ordinary buttons, so the keyboard already works.
+ */
+export function Menu({
+  label,
+  icon,
+  items,
+  align = 'end',
+}: {
+  label: string;
+  icon: IconName;
+  items: readonly MenuItem[];
+  align?: 'start' | 'end';
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: MouseEvent | KeyboardEvent): void => {
+      if (event instanceof KeyboardEvent) {
+        if (event.key === 'Escape') setOpen(false);
+        return;
+      }
+      if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', dismiss);
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('keydown', dismiss);
+    };
+  }, [open]);
+
+  return (
+    <div className="mz-menu" ref={root}>
+      <button
+        type="button"
+        className="mz-icon-button"
+        aria-label={label}
+        title={label}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Icon name={icon} size={22} />
+      </button>
+      {open ? (
+        <div className={`mz-menu__list mz-menu__list--${align}`} role="menu" aria-label={label}>
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              lang={item.lang}
+              className="mz-menu__item"
+              aria-current={item.current ? 'true' : undefined}
+              onClick={() => {
+                setOpen(false);
+                item.onSelect();
+              }}
+            >
+              {item.current ? <Icon name="check" size={16} /> : <span className="mz-menu__gap" />}
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export interface ToastProps {
   message: string;
   actionLabel?: string;

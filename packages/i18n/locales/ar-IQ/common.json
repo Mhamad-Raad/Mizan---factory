@@ -69,5 +69,9 @@
   "nav_admin": "الإدارة",
   "signed_in_as": "مسجَّل الدخول كـ",
   "collapse_sidebar": "تصغير الشريط الجانبي",
-  "expand_sidebar": "توسيع الشريط الجانبي"
+  "expand_sidebar": "توسيع الشريط الجانبي",
+  "use_dark": "الوضع الداكن",
+  "use_light": "الوضع الفاتح",
+  "language_menu": "اللغة",
+  "account_menu": "الحساب"
 }

@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BottomSheet, Icon, IconButton, MizanMark } from '@mizan/ui';
+import { BottomSheet, Icon, IconButton, Menu, MizanMark } from '@mizan/ui';
+import { LANGUAGE_NAMES, LOCALES } from '@mizan/i18n';
+import { resolveTheme } from '../lib/preferences.js';
 import type { IconName } from '@mizan/ui';
 import { useApp } from '../lib/store.js';
 import { apiRequest } from '../lib/api.js';
@@ -74,6 +76,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const clearSession = useApp((state) => state.clearSession);
   /** The lock screen is for a device other people pick up; a desk does not need it. */
   const isSharedDevice = useApp((state) => state.preferences.sharedDevice);
+  const preferences = useApp((state) => state.preferences);
+  /** What the theme resolves to *now*, so the button offers the other one (3.7.4). */
+  const resolvedTheme = resolveTheme(preferences.theme);
   const [moreOpen, setMoreOpen] = useState(false);
   const title = useApp((state) => state.pageTitle);
   const collapsed = useApp((state) => state.preferences.sidebarCollapsed);
@@ -107,6 +112,42 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {/* A name may be Latin inside an RTL header, so it carries its own direction (2.10.6). */}
           <bdi>{title}</bdi>
         </h1>
+
+        {/*
+          * The bar's own controls, at the reading end.
+          *
+          * Language and light-or-dark belong here because they are changed *while* working —
+          * an employee hands a tablet to somebody who reads Arabic, or the sun comes through
+          * the window — and walking to Settings for either is a detour. Settings still owns
+          * the full choice: the text size, the numerals, the shared-device flag.
+          */}
+        <Menu
+          label={t('common:language_menu')}
+          icon="language"
+          items={LOCALES.map((locale) => ({
+            label: LANGUAGE_NAMES[locale],
+            lang: locale,
+            current: locale === preferences.lang,
+            onSelect: () => setPreference('lang', locale),
+          }))}
+        />
+        <IconButton
+          icon={resolvedTheme === 'dark' ? 'sun' : 'moon'}
+          label={resolvedTheme === 'dark' ? t('common:use_light') : t('common:use_dark')}
+          onClick={() => setPreference('theme', resolvedTheme === 'dark' ? 'light' : 'dark')}
+        />
+        {/* The sidebar carries the account on a desktop; on a phone this is where it lives. */}
+        <span className="mz-header__account">
+          <Menu
+            label={t('common:account_menu')}
+            icon="user"
+            items={[
+              { label: t('glossary:settings'), onSelect: () => navigate('/settings') },
+              ...(isSharedDevice ? [{ label: t('auth:lock_now'), onSelect: () => void lock() }] : []),
+              { label: t('auth:sign_out'), onSelect: () => void signOut() },
+            ]}
+          />
+        </span>
         {/*
           * The padlock is for a tablet somebody else will pick up, so it is shown on a device
           * marked shared and nowhere else. On a desk it was the only way out of the

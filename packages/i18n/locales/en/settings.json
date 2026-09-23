@@ -81,5 +81,10 @@
   "implied_by": "Comes with {{key}}",
   "session_active": "Active",
   "session_personal": "Personal device",
-  "session_device": "Device"
+  "session_device": "Device",
+  "theme_light_hint": "For an office and daylight",
+  "theme_dark_hint": "For the evening and low light",
+  "theme_auto_hint": "Whatever the device does",
+  "appearance": "Appearance and language",
+  "language_hint": "Changes every screen — each device keeps its own choice"
 }

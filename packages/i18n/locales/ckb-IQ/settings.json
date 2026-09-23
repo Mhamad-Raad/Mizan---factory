@@ -81,5 +81,10 @@
   "implied_by": "لەگەڵ {{key}} دێت",
   "session_active": "چالاک",
   "session_personal": "ئامێری کەسی",
-  "session_device": "ئامێر"
+  "session_device": "ئامێر",
+  "theme_light_hint": "بۆ ژوور و ڕووناکی ڕۆژ",
+  "theme_dark_hint": "بۆ شەو و ڕووناکی کەم",
+  "theme_auto_hint": "وەک ئامێر خۆی",
+  "appearance": "دیتن و زمان",
+  "language_hint": "هەموو شاشەکان دەگۆڕێت — هەر ئامێرێک هەڵبژاردنی خۆی هەیە"
 }
