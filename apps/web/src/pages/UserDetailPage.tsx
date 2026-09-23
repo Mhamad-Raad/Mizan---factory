@@ -2,21 +2,11 @@ import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  EXTRAS,
-  PAGES,
-  PERMISSIONS,
-  PRESETS,
-  applyExtra,
-  applyPreset,
-  diffSets,
-  extraState,
-  isCustomisedBeyondExtras,
-  setKey,
-} from '@mizan/permissions';
-import type { ExtraKey, PresetKey } from '@mizan/permissions';
-import { Button, Card, Chip, ErrorState, SegmentedControl, Skeleton, Tabs, TextField, Toggle } from '@mizan/ui';
+import { PRESETS, diffSets } from '@mizan/permissions';
+import type { PresetKey } from '@mizan/permissions';
+import { Button, Card, Chip, ErrorState, Skeleton, Tabs, TextField } from '@mizan/ui';
 import { ApiError, apiRequest } from '../lib/api.js';
+import { PermissionEditor } from '../components/PermissionEditor.js';
 import { AppShell } from '../components/AppShell.js';
 import { QueryStates } from '../components/states.js';
 import { useFormatter } from '../lib/store.js';
@@ -225,8 +215,6 @@ function PermissionsTab({ user }: { user: UserDetail }) {
    * a stale set after a refetch, which on a permissions screen is the wrong kind of wrong.
    */
   const [draft, setDraft] = useState<{ keys: string[]; preset: PresetKey | 'none' } | null>(null);
-  const [notes, setNotes] = useState<string[]>([]);
-  const [blocked, setBlocked] = useState<string | null>(null);
 
   const keys = draft?.keys ?? permissions.data?.keys ?? null;
   const preset = draft?.preset ?? permissions.data?.preset_key ?? 'none';
@@ -239,7 +227,6 @@ function PermissionsTab({ user }: { user: UserDetail }) {
       }),
     onSuccess: async () => {
       setDraft(null);
-      setNotes([]);
       await queryClient.invalidateQueries({ queryKey: ['user-permissions', user.id] });
     },
   });
@@ -261,84 +248,13 @@ function PermissionsTab({ user }: { user: UserDetail }) {
 
   if (permissions.isPending || !keys) return <Skeleton lines={8} />;
 
-  const customised = isCustomisedBeyondExtras(keys, preset === 'none' ? null : preset);
-
   return (
     <Card>
       <div className="mz-stack">
-        <SegmentedControl
-          label={t('glossary:preset')}
-          value={preset}
-          onChange={(next) => {
-            const applied = next === 'none' ? { keys: new Set(keys) } : applyPreset(keys, next);
-            setDraft({ keys: [...applied.keys], preset: next });
-            setNotes([]);
-          }}
-          options={[
-            { value: 'sales', label: t('permissions:preset.sales') },
-            { value: 'warehouse', label: t('permissions:preset.warehouse') },
-            { value: 'accountant', label: t('permissions:preset.accountant') },
-            { value: 'none', label: t('permissions:preset.none') },
-          ]}
+        <PermissionEditor
+          value={{ keys, preset }}
+          onChange={(next) => setDraft({ keys: next.keys, preset: next.preset })}
         />
-
-        <h3 className="mz-heading">{t('permissions:extras')}</h3>
-        {EXTRAS.map((extra) => {
-          const state = extraState(keys, extra.key as ExtraKey);
-          return (
-            <Toggle
-              key={extra.key}
-              label={t(`permissions:extra.${extra.key}`)}
-              hint={state === 'partly' ? t('permissions:state_partly') : undefined}
-              checked={state === 'on' ? true : state === 'partly' ? 'mixed' : false}
-              onChange={(next) => {
-                const result = applyExtra(keys, extra.key as ExtraKey, next);
-                if (result.blockedBy) {
-                  setBlocked(t('permissions:blocked_by', { keys: result.blockedBy.join(', ') }));
-                  return;
-                }
-                setBlocked(null);
-                setDraft({ keys: [...result.keys], preset });
-                setNotes([
-                  ...(result.alsoGranted.length > 0
-                    ? [t('permissions:also_granted', { keys: result.alsoGranted.join(', ') })]
-                    : []),
-                  ...(result.alsoRevoked.length > 0
-                    ? [t('permissions:also_revoked', { keys: result.alsoRevoked.join(', ') })]
-                    : []),
-                ]);
-              }}
-            />
-          );
-        })}
-
-        {blocked ? (
-          <p className="mz-field__error" role="alert">
-            {blocked}
-          </p>
-        ) : null}
-        {notes.map((note) => (
-          <p key={note} className="mz-field__hint">
-            {note}
-          </p>
-        ))}
-
-        {customised ? <Chip tone="warning" icon="warning">{t('permissions:customised_in_advanced')}</Chip> : null}
-
-        {/* The full grid, folded away (FR-204, wireframe 3.4.4): the simple editor covers the
-            three roles this factory has, and the grid is for the rare one it does not. */}
-        <details className="mz-disclosure">
-          <summary className="mz-disclosure__summary">{t('settings:advanced_permissions')}</summary>
-          <p className="mz-caption">{t('settings:advanced_permissions_hint')}</p>
-          <PermissionGrid
-            keys={keys}
-            onChange={(next, note) => {
-              setBlocked(null);
-              setDraft({ keys: next, preset });
-              setNotes(note ? [note] : []);
-            }}
-          />
-        </details>
 
         <div className="mz-row mz-row--between">
           <span className="mz-muted">{t('permissions:n_changes', { count: changeCount })}</span>
@@ -358,61 +274,6 @@ function PermissionsTab({ user }: { user: UserDetail }) {
         </p>
       </div>
     </Card>
-  );
-}
-
-/**
- * Every key, grouped by the screen it belongs to (FR-204, wireframe 3.4.4).
- *
- * Turning a key on turns on what it implies, and the row says so — an admin who grants "record
- * a payment" should see that "see customer balances" came with it rather than discover it
- * later. Turning one off takes away the keys that cannot stand without it, for the same reason.
- */
-function PermissionGrid({
-  keys,
-  onChange,
-}: {
-  keys: readonly string[];
-  onChange: (keys: string[], note: string | null) => void;
-}) {
-  const { t } = useTranslation();
-  const granted = useMemo(() => new Set(keys), [keys]);
-
-  return (
-    <div className="mz-stack">
-      {PAGES.map((page) => (
-        <div key={page} className="mz-stack" style={{ gap: 'var(--space-2)' }}>
-          <h4 className="mz-caption">{t(`permissions:page.${page}`, { defaultValue: page })}</h4>
-          {PERMISSIONS.filter((definition) => definition.page === page).map((definition) => {
-            const on = granted.has(definition.key);
-            return (
-              <Toggle
-                key={definition.key}
-                label={t(`permissions:${definition.labelKey}`, { defaultValue: definition.key })}
-                hint={
-                  definition.implies.length > 0
-                    ? t('settings:implied_by', { key: definition.implies.join(', ') })
-                    : undefined
-                }
-                checked={on}
-                onChange={(next) => {
-                  const result = setKey(keys, definition.key, next);
-                  const alsoGranted =
-                    result.alsoGranted.length > 0
-                      ? t('permissions:also_granted', { keys: result.alsoGranted.join(', ') })
-                      : null;
-                  const alsoRevoked =
-                    result.alsoRevoked.length > 0
-                      ? t('permissions:also_revoked', { keys: result.alsoRevoked.join(', ') })
-                      : null;
-                  onChange([...result.keys], alsoGranted ?? alsoRevoked);
-                }}
-              />
-            );
-          })}
-        </div>
-      ))}
-    </div>
   );
 }
 

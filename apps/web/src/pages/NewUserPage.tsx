@@ -3,11 +3,13 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
+import { applyPreset } from '@mizan/permissions';
 import { Button, Card, SegmentedControl, TextField } from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { AppShell } from '../components/AppShell.js';
+import { PermissionEditor } from '../components/PermissionEditor.js';
+import type { PermissionSelection } from '../components/PermissionEditor.js';
 
-type PresetKey = 'sales' | 'warehouse' | 'accountant' | 'none';
 
 export function NewUserPage() {
   const { t } = useTranslation();
@@ -18,7 +20,18 @@ export function NewUserPage() {
   const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'employee' | 'admin'>('employee');
-  const [preset, setPreset] = useState<PresetKey>('sales');
+  /**
+   * What the new employee may do, chosen here rather than on a second visit.
+   *
+   * The screen used to offer a preset and nothing else, so an employee who needed anything
+   * other than the three presets had to be created and then opened and edited — and the admin
+   * could not see, while creating them, what they were about to be able to do. It is the same
+   * editor the Permissions tab uses, so the two screens cannot drift apart.
+   */
+  const [permissions, setPermissions] = useState<PermissionSelection>(() => ({
+    keys: [...applyPreset([], 'sales').keys],
+    preset: 'sales',
+  }));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
@@ -38,7 +51,8 @@ export function NewUserPage() {
           username,
           phone: phone || null,
           role,
-          preset_key: preset === 'none' ? null : preset,
+          preset_key: permissions.preset === 'none' ? null : permissions.preset,
+          keys: role === 'employee' ? permissions.keys : undefined,
         },
       });
       await queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -118,18 +132,11 @@ export function NewUserPage() {
             ]}
           />
           {role === 'employee' ? (
-            <SegmentedControl
-              label={t('glossary:preset')}
-              value={preset}
-              onChange={setPreset}
-              options={[
-                { value: 'sales', label: t('permissions:preset.sales') },
-                { value: 'warehouse', label: t('permissions:preset.warehouse') },
-                { value: 'accountant', label: t('permissions:preset.accountant') },
-                { value: 'none', label: t('permissions:preset.none') },
-              ]}
-            />
-          ) : null}
+            <PermissionEditor value={permissions} onChange={setPermissions} />
+          ) : (
+            // An admin holds every key, so there is nothing to choose (FR-105).
+            <p className="mz-caption">{t('permissions:simple_mode')}</p>
+          )}
 
           <Button type="submit" block loading={busy} disabled={!displayName || !username}>
             {t('users:create')}

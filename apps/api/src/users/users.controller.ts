@@ -15,6 +15,8 @@ const createSchema = z.object({
   phone: z.string().max(32).nullish(),
   role: z.enum(['admin', 'employee']),
   preset_key: z.enum(presetKeys).nullish(),
+  /** The exact per-action set, chosen on the create screen rather than on a second visit. */
+  keys: z.array(z.string()).max(200).optional(),
 });
 
 const updateSchema = z.object({

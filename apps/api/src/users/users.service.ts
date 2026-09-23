@@ -21,6 +21,15 @@ export interface CreateUserInput {
   phone?: string | null;
   role: UserRole;
   preset_key?: PresetKey | null;
+  /**
+   * The exact set this employee starts with, per action per feature.
+   *
+   * Without it a new employee could only be given one of the three presets and had to be
+   * opened and edited to be given anything else — so the screen that decides what somebody may
+   * do was not the screen that created them. Absent means "whatever the preset says", which is
+   * what every existing caller means (FR-105, FR-204).
+   */
+  keys?: string[];
   password?: string;
 }
 
@@ -79,6 +88,41 @@ export class UsersService {
     }
 
     const preset = input.preset_key ? PRESETS[input.preset_key] : null;
+
+    /**
+     * An admin holds every key implicitly, so a set chosen for one is a contradiction rather
+     * than a generosity — the same refusal `setPermissions` gives.
+     */
+    if (input.keys && input.role === 'admin' && input.keys.length > 0) {
+      throw ApiError.validation([
+        { path: 'keys', code: 'ADMIN_HOLDS_ALL', message_key: 'errors:field.required', params: {} },
+      ]);
+    }
+    if (input.keys) {
+      try {
+        assertKnownKeys(input.keys);
+      } catch (error) {
+        throw ApiError.validation([
+          {
+            path: 'keys',
+            code: 'UNKNOWN_KEY',
+            message_key: 'errors:field.required',
+            params: { reason: (error as Error).message },
+          },
+        ]);
+      }
+    }
+    // The chosen set, closed under what each key implies; a preset with no explicit set is
+    // exactly the old behaviour.
+    const granted =
+      input.role === 'admin'
+        ? []
+        : input.keys
+          ? [...expandImplied(input.keys)].sort()
+          : preset
+            ? [...expandImplied(preset.keys)].sort()
+            : [];
+
     const passwordHash = await this.passwords.hash(temporary);
 
     const created = await this.database.transaction(async (tx) => {
@@ -96,9 +140,10 @@ export class UsersService {
         tx,
       );
 
-      // A preset is a starting point, stored as an ordinary set of keys (FR-105).
-      if (preset) {
-        await this.users.replacePermissions(user.id, [...expandImplied(preset.keys)], context.userId, tx);
+      // A preset is a starting point, stored as an ordinary set of keys (FR-105) — and so is
+      // the set the admin chose on the create screen.
+      if (granted.length > 0) {
+        await this.users.replacePermissions(user.id, granted, context.userId, tx);
       }
 
       await this.audit.record(
@@ -113,6 +158,9 @@ export class UsersService {
             display_name: { old: null, new: user.display_name },
             role: { old: null, new: user.role },
             preset_key: { old: null, new: user.preset_key },
+            // What they may do, in the row that created them: History should not need a second
+            // entry to answer "what was this employee given on their first day?" (rule 3).
+            permissions: { old: [], new: granted },
           },
           related: { user_id: user.id },
         },

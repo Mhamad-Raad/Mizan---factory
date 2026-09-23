@@ -287,4 +287,78 @@ describe('users and permissions (FR-102 to FR-108, FR-201 to FR-206)', () => {
       });
     });
   });
+
+  describe('what an employee may do is decided where they are created (FR-105, FR-204)', () => {
+    it('stores the exact per-action set the create screen sent, closed under what it implies', async () => {
+      const created = await as(ctx.http, adminSession)
+        .post('/api/v1/users')
+        .send({
+          display_name: 'Karwan',
+          username: 'karwan',
+          role: 'employee',
+          preset_key: null,
+          // One key that implies another: recording a payment cannot stand without seeing the
+          // order it pays for.
+          keys: ['orders.record_payment', 'materials.view'],
+        })
+        .expect(201);
+
+      const permissions = await as(ctx.http, adminSession)
+        .get(`/api/v1/users/${created.body.user.id}/permissions`)
+        .expect(200);
+      expect(permissions.body.keys).toContain('orders.record_payment');
+      expect(permissions.body.keys).toContain('materials.view');
+      // The implied key came with it, exactly as the edit screen would have added it.
+      expect(permissions.body.keys).toContain('orders.view');
+
+      // And it is live on their very first request, not after a second save.
+      const session = await signIn(ctx.http, {
+        id: created.body.user.id,
+        username: 'karwan',
+        password: created.body.temporary_password,
+        displayName: 'Karwan',
+      });
+      await as(ctx.http, session).get('/api/v1/orders').expect(200);
+      await as(ctx.http, session).get('/api/v1/companies').expect(403);
+    });
+
+    it('records on the row that created them what they were given', async () => {
+      const created = await as(ctx.http, adminSession)
+        .post('/api/v1/users')
+        .send({
+          display_name: 'Shirin',
+          username: 'shirin',
+          role: 'employee',
+          preset_key: 'sales',
+          keys: ['materials.view'],
+        })
+        .expect(201);
+
+      const rows = await auditRows({ action: 'create', entityId: created.body.user.id });
+      expect(rows[0]?.changes?.permissions?.new).toEqual(['materials.view']);
+    });
+
+    it('refuses a key that is not in the catalog, and any key at all for an admin', async () => {
+      await as(ctx.http, adminSession)
+        .post('/api/v1/users')
+        .send({ display_name: 'Nobody', username: 'nobody', role: 'employee', keys: ['orders.invent'] })
+        .expect(422);
+      await as(ctx.http, adminSession)
+        .post('/api/v1/users')
+        .send({ display_name: 'Boss', username: 'boss', role: 'admin', keys: ['orders.view'] })
+        .expect(422);
+    });
+
+    it('still means "whatever the preset says" when no set is sent', async () => {
+      const created = await as(ctx.http, adminSession)
+        .post('/api/v1/users')
+        .send({ display_name: 'Hana', username: 'hana', role: 'employee', preset_key: 'warehouse' })
+        .expect(201);
+      const permissions = await as(ctx.http, adminSession)
+        .get(`/api/v1/users/${created.body.user.id}/permissions`)
+        .expect(200);
+      expect(permissions.body.keys).toContain('purchases.create');
+      expect(permissions.body.keys).not.toContain('orders.create');
+    });
+  });
 });
