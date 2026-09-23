@@ -20,5 +20,8 @@
   "empty": "لا يوجد موظفون بعد — أضف واحداً",
   "cannot_change_own_role": "لا يمكنك تغيير دورك",
   "cannot_deactivate_self": "لا يمكنك تعطيل حسابك",
-  "sessions_ended": "تم إنهاء جلساته"
+  "sessions_ended": "تم إنهاء جلساته",
+  "must_change_password": "عليه تغيير كلمة المرور",
+  "pin_set": "رمز PIN مضبوط",
+  "employee_count": "{{count}} موظف"
 }

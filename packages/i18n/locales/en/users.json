@@ -20,5 +20,8 @@
   "empty": "No employees yet — add one",
   "cannot_change_own_role": "You cannot change your own role",
   "cannot_deactivate_self": "You cannot deactivate your own account",
-  "sessions_ended": "Their sessions were ended"
+  "sessions_ended": "Their sessions were ended",
+  "must_change_password": "Must change password",
+  "pin_set": "PIN set",
+  "employee_count": "{{count}} employees"
 }

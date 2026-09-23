@@ -1605,3 +1605,53 @@ html[data-mirroring='true'] body {
     margin-block-end: var(--space-3);
   }
 }
+
+/* ─────────────── a cell with two lines: a name over what identifies it ───────────────
+ *
+ * A table row is one line per record, but the first column often carries two facts that belong
+ * together — a name and the username beneath it, a material and its code. This keeps them one
+ * cell rather than two columns that repeat the same subject.
+ */
+.mz-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.mz-cell__body {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.mz-cell__body > .mz-caption {
+  display: block;
+}
+
+/* A search box takes the width of a search box, not of the toolbar it sits in. */
+.mz-toolbar__search {
+  inline-size: 100%;
+}
+
+@media (width >= 64rem) {
+  .mz-toolbar__search {
+    inline-size: 20rem;
+  }
+
+  /* The label above a toolbar control is noise beside its own placeholder. */
+  .mz-toolbar__search .mz-field__label {
+    position: absolute;
+    clip-path: inset(50%);
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  /* A toggle in a toolbar is a control, not a row of a form. */
+  .mz-toolbar__filters .mz-toggle {
+    flex: none;
+    gap: var(--space-2);
+    inline-size: auto;
+  }
+}
