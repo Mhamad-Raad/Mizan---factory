@@ -1,35 +1,30 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  EXTRAS,
-  PAGES,
-  PERMISSIONS,
-  applyExtra,
-  applyPreset,
-  extraState,
-  isCustomisedBeyondExtras,
-  setKey,
-} from '@mizan/permissions';
-import type { ExtraKey, PresetKey } from '@mizan/permissions';
-import { Chip, SegmentedControl, Toggle } from '@mizan/ui';
+import { PAGES, PERMISSIONS, PRESETS, applyPreset, setKey } from '@mizan/permissions';
+import type { PresetKey } from '@mizan/permissions';
+import { Button, Checkbox } from '@mizan/ui';
 
 export interface PermissionSelection {
   keys: string[];
+  /** Which preset was applied, for the label on the employee's row; the keys are the truth. */
   preset: PresetKey | 'none';
 }
 
+const PRESET_KEYS: PresetKey[] = ['sales', 'warehouse', 'accountant'];
+
 /**
- * The permission editor — **one** editor, used where an employee is created and where they are
- * edited afterwards (FR-204, wireframe 3.4.4).
+ * What an employee may do, per action per feature (FR-204, wireframe 3.4.4).
  *
- * It lived inside the employee's Permissions tab, so a new employee could only be given a
- * preset and had to be opened again to be told what they may actually do. The set is per action
- * per feature either way (48 keys), so the same three layers belong on both screens: a **preset**
- * as a starting point (1.5.3), the six **everyday extras** that cover what an admin changes
- * weekly, and the **Advanced grid** of every key for the rare role the presets do not fit.
+ * **Nothing is selected to begin with.** A preset is a *shortcut*, not a state: pressing
+ * "Sales" ticks the boxes that preset holds and leaves them editable, and an employee who
+ * needs something else is given it by ticking a box rather than by being pushed into the
+ * nearest role. Pressing nothing and ticking nothing is a valid answer too — an account that
+ * can sign in and see nothing yet.
  *
- * Controlled on purpose: the caller owns the set, because on one screen it is a draft against a
- * saved set and on the other it is part of a form that has not created anybody yet.
+ * The keys are grouped by the screen they govern, because that is how the admin thinks about
+ * them ("what can they do on Orders?"), and a group is a few checkboxes rather than a column
+ * of switches — forty-eight settings, each taking the width of the form, was a page nobody
+ * could take in.
  */
 export function PermissionEditor({
   value,
@@ -41,149 +36,108 @@ export function PermissionEditor({
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
-  /** Transient feedback: what a change dragged along with it, and what it refused to do. */
-  const [notes, setNotes] = useState<string[]>([]);
-  const [blocked, setBlocked] = useState<string | null>(null);
-  const { keys, preset } = value;
-  const customised = isCustomisedBeyondExtras(keys, preset === 'none' ? null : preset);
+  /** What the last change dragged along with it, and what it refused to take away. */
+  const [note, setNote] = useState<string | null>(null);
+  const granted = useMemo(() => new Set(value.keys), [value.keys]);
 
-  return (
-    <div className="mz-stack">
-      <SegmentedControl
-        label={t('glossary:preset')}
-        value={preset}
-        onChange={(next) => {
-          const applied = next === 'none' ? { keys: new Set(keys) } : applyPreset(keys, next);
-          onChange({ keys: [...applied.keys], preset: next });
-          setNotes([]);
-          setBlocked(null);
-        }}
-        options={[
-          { value: 'sales', label: t('permissions:preset.sales') },
-          { value: 'warehouse', label: t('permissions:preset.warehouse') },
-          { value: 'accountant', label: t('permissions:preset.accountant') },
-          { value: 'none', label: t('permissions:preset.none') },
-        ]}
-      />
-
-      <h3 className="mz-heading">{t('permissions:extras')}</h3>
-      {EXTRAS.map((extra) => {
-        const state = extraState(keys, extra.key as ExtraKey);
-        return (
-          <Toggle
-            key={extra.key}
-            label={t(`permissions:extra.${extra.key}`)}
-            hint={state === 'partly' ? t('permissions:state_partly') : undefined}
-            checked={state === 'on' ? true : state === 'partly' ? 'mixed' : false}
-            disabled={disabled}
-            onChange={(next) => {
-              const result = applyExtra(keys, extra.key as ExtraKey, next);
-              if (result.blockedBy) {
-                setBlocked(t('permissions:blocked_by', { keys: result.blockedBy.join(', ') }));
-                return;
-              }
-              setBlocked(null);
-              onChange({ keys: [...result.keys], preset });
-              setNotes([
-                ...(result.alsoGranted.length > 0
-                  ? [t('permissions:also_granted', { keys: result.alsoGranted.join(', ') })]
-                  : []),
-                ...(result.alsoRevoked.length > 0
-                  ? [t('permissions:also_revoked', { keys: result.alsoRevoked.join(', ') })]
-                  : []),
-              ]);
-            }}
-          />
-        );
-      })}
-
-      {blocked ? (
-        <p className="mz-field__error" role="alert">
-          {blocked}
-        </p>
-      ) : null}
-      {notes.map((note) => (
-        <p key={note} className="mz-field__hint">
-          {note}
-        </p>
-      ))}
-
-      {customised ? (
-        <Chip tone="warning" icon="warning">
-          {t('permissions:customised_in_advanced')}
-        </Chip>
-      ) : null}
-
-      {/* The full grid, folded away: the simple editor covers the three roles this factory has,
-          and the grid is for the rare one it does not. */}
-      <details className="mz-disclosure">
-        <summary className="mz-disclosure__summary">{t('settings:advanced_permissions')}</summary>
-        <p className="mz-caption">{t('settings:advanced_permissions_hint')}</p>
-        <PermissionGrid
-          keys={keys}
-          disabled={disabled}
-          onChange={(next, note) => {
-            setBlocked(null);
-            onChange({ keys: next, preset });
-            setNotes(note ? [note] : []);
-          }}
-        />
-      </details>
-    </div>
+  /**
+   * A key's own name, for the places that used to print the identifier.
+   *
+   * "Comes with fields.see_bought_price" is a sentence for a developer; the admin reading this
+   * screen should be told "Comes with: See bought prices" — the same words as the checkbox two
+   * groups over (1.6).
+   */
+  const names = useMemo(
+    () => new Map(PERMISSIONS.map((definition) => [definition.key, definition.labelKey])),
+    [],
   );
-}
+  const nameOf = (key: string): string =>
+    t(`permissions:${names.get(key) ?? ''}`, { defaultValue: key });
 
-/**
- * Every key, grouped by the screen it belongs to (FR-204, wireframe 3.4.4).
- *
- * Turning a key on turns on what it implies, and the row says so — an admin who grants "record
- * a payment" should see that "see customer balances" came with it rather than discover it
- * later. Turning one off takes away the keys that cannot stand without it, for the same reason.
- */
-function PermissionGrid({
-  keys,
-  disabled,
-  onChange,
-}: {
-  keys: readonly string[];
-  disabled?: boolean;
-  onChange: (keys: string[], note: string | null) => void;
-}) {
-  const { t } = useTranslation();
-  const granted = useMemo(() => new Set(keys), [keys]);
+  const apply = (preset: PresetKey): void => {
+    const applied = applyPreset([], preset);
+    onChange({ keys: [...applied.keys], preset });
+    setNote(t('permissions:preset_applied', { preset: t(`permissions:preset.${preset}`) }));
+  };
+
+  const clear = (): void => {
+    onChange({ keys: [], preset: 'none' });
+    setNote(null);
+  };
 
   return (
     <div className="mz-stack">
-      {PAGES.map((page) => (
-        <div key={page} className="mz-stack" style={{ gap: 'var(--space-2)' }}>
-          <h4 className="mz-caption">{t(`permissions:page.${page}`, { defaultValue: page })}</h4>
-          {PERMISSIONS.filter((definition) => definition.page === page).map((definition) => (
-            <Toggle
-              key={definition.key}
-              label={t(`permissions:${definition.labelKey}`, { defaultValue: definition.key })}
-              hint={
-                definition.implies.length > 0
-                  ? t('settings:implied_by', { key: definition.implies.join(', ') })
-                  : undefined
-              }
-              checked={granted.has(definition.key)}
-              disabled={disabled}
-              onChange={(next) => {
-                const result = setKey(keys, definition.key, next);
-                const alsoGranted =
-                  result.alsoGranted.length > 0
-                    ? t('permissions:also_granted', { keys: result.alsoGranted.join(', ') })
-                    : null;
-                const alsoRevoked =
-                  result.alsoRevoked.length > 0
-                    ? t('permissions:also_revoked', { keys: result.alsoRevoked.join(', ') })
-                    : null;
-                onChange([...result.keys], alsoGranted ?? alsoRevoked);
-              }}
-            />
+      <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
+        <p className="mz-field__label">{t('permissions:start_from')}</p>
+        <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          {PRESET_KEYS.map((preset) => (
+            <Button key={preset} variant="secondary" disabled={disabled} onClick={() => apply(preset)}>
+              {t(`permissions:preset.${preset}`)}
+            </Button>
           ))}
+          <Button variant="ghost" disabled={disabled || value.keys.length === 0} onClick={clear}>
+            {t('permissions:clear_all')}
+          </Button>
         </div>
-      ))}
+        <p className="mz-field__hint">{t('permissions:presets_are_a_start')}</p>
+      </div>
+
+      {note ? <p className="mz-field__hint">{note}</p> : null}
+
+      <div className="mz-check-groups">
+        {PAGES.map((page) => {
+          const keys = PERMISSIONS.filter((definition) => definition.page === page);
+          if (keys.length === 0) return null;
+          const on = keys.filter((definition) => granted.has(definition.key)).length;
+          return (
+            <fieldset key={page} className="mz-check-group">
+              <legend className="mz-check-group__legend">
+                {t(`permissions:page.${page}`, { defaultValue: page })}
+                <span className="mz-caption">{on > 0 ? ` · ${on}/${keys.length}` : ''}</span>
+              </legend>
+              {keys.map((definition) => (
+                <Checkbox
+                  key={definition.key}
+                  label={t(`permissions:${definition.labelKey}`, { defaultValue: definition.key })}
+                  hint={
+                    definition.implies.length > 0
+                      ? t('permissions:comes_with', {
+                          keys: definition.implies.map((implied) => nameOf(implied)).join(', '),
+                        })
+                      : undefined
+                  }
+                  checked={granted.has(definition.key)}
+                  disabled={disabled}
+                  onChange={(next) => {
+                    // Turning a key on turns on what it implies, and the note says so: an admin
+                    // granting "record a payment" should see that "see balances" came with it.
+                    const result = setKey(value.keys, definition.key, next);
+                    onChange({ keys: [...result.keys], preset: value.preset });
+                    setNote(
+                      result.alsoGranted.length > 0
+                        ? t('permissions:also_granted', {
+                            keys: result.alsoGranted.map((key) => nameOf(key)).join(', '),
+                          })
+                        : result.alsoRevoked.length > 0
+                          ? t('permissions:also_revoked', {
+                              keys: result.alsoRevoked.map((key) => nameOf(key)).join(', '),
+                            })
+                          : null,
+                    );
+                  }}
+                />
+              ))}
+            </fieldset>
+          );
+        })}
+      </div>
+
+      <p className="mz-caption">
+        {t('permissions:n_selected', { count: value.keys.length, total: PERMISSIONS.length })}
+        {value.preset !== 'none' && PRESETS[value.preset]
+          ? ` · ${t('permissions:started_from', { preset: t(`permissions:preset.${value.preset}`) })}`
+          : ''}
+      </p>
     </div>
   );
 }

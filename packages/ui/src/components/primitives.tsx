@@ -210,6 +210,47 @@ export function Toggle({ label, hint, checked, disabled, onChange }: ToggleProps
   );
 }
 
+export interface CheckboxProps {
+  label: string;
+  hint?: string;
+  checked: boolean;
+  /** A group that is partly granted, as a permission extra can be (FR-204). */
+  indeterminate?: boolean;
+  disabled?: boolean;
+  onChange: (next: boolean) => void;
+}
+
+/**
+ * A checkbox, for the many small choices a switch is too heavy for.
+ *
+ * `Toggle` is a row: a label at one end, a switch at the other, the width of the form. That is
+ * right for a setting somebody changes once — "allow selling below stock" — and wrong for
+ * forty-eight permissions, where the label belongs *beside* the box and a dozen of them belong
+ * on a screen at once. The target is still 44 px tall (NFR-10): the label is part of it, so a
+ * thumb has the whole row even though the box is small.
+ */
+export function Checkbox({ label, hint, checked, indeterminate, disabled, onChange }: CheckboxProps) {
+  return (
+    <label className={`mz-check${disabled ? ' mz-check--disabled' : ''}`}>
+      <input
+        type="checkbox"
+        className="mz-check__box"
+        checked={checked}
+        disabled={disabled}
+        ref={(node) => {
+          // `indeterminate` is a property, never an attribute: there is no way to set it in JSX.
+          if (node) node.indeterminate = indeterminate === true && !checked;
+        }}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="mz-check__body">
+        <span>{label}</span>
+        {hint ? <span className="mz-field__hint">{hint}</span> : null}
+      </span>
+    </label>
+  );
+}
+
 export type ChipTone = 'neutral' | 'success' | 'warning' | 'danger' | 'primary';
 
 export interface ChipProps {

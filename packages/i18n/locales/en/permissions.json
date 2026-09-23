@@ -82,5 +82,13 @@
   "page.reports": "Reports",
   "page.settings": "Settings",
   "page.dashboard": "Dashboard",
-  "page.fields": "Fields"
+  "page.fields": "Fields",
+  "start_from": "Start from a preset (optional)",
+  "presets_are_a_start": "A preset only ticks boxes — change them afterwards, or start from none at all.",
+  "preset_applied": "{{preset}} boxes ticked",
+  "clear_all": "Clear all",
+  "n_selected": "{{count}} of {{total}} permissions selected",
+  "started_from": "Started from {{preset}}",
+  "admin_holds_all": "An admin holds every permission, so there is nothing to choose.",
+  "comes_with": "Comes with: {{keys}}"
 }

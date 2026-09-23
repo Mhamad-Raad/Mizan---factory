@@ -1655,3 +1655,127 @@ html[data-mirroring='true'] body {
     inline-size: auto;
   }
 }
+
+/* ─────────────────────────────── checkboxes ───────────────────────────────
+ *
+ * The label is inside the target, so the whole row is 44 px of tappable even though the box is
+ * 20 px (NFR-10). Used where a switch would be too heavy and too wide: the permission grid,
+ * where a dozen choices belong on the screen at once rather than one per row.
+ */
+.mz-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-2);
+  min-block-size: var(--tap-target);
+}
+
+.mz-check:hover {
+  background: var(--color-surface-2);
+}
+
+.mz-check--disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mz-check__box {
+  flex: none;
+  accent-color: var(--color-primary);
+  margin: 0;
+  inline-size: 20px;
+  block-size: 20px;
+
+  /* The box sits on the first line of its label, whatever the text size. */
+  margin-block-start: 2px;
+}
+
+.mz-check__box:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.mz-check__body {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+/* ─────────────── a form that is not one field per row ───────────────
+ *
+ * A name, a username and a phone number are short; giving each the width of the screen makes a
+ * five-field form scroll on a monitor. Two columns from 48rem, one on a phone, and a field can
+ * opt out with `mz-form-grid__wide` when it genuinely needs the width (a note, an address).
+ */
+.mz-form-grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: 1fr;
+}
+
+@media (width >= 48rem) {
+  .mz-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mz-form-grid__wide {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ─────────────── permissions, grouped by the screen they govern ───────────────
+ *
+ * Forty-eight settings as full-width switches was a page nobody could take in. Grouped by
+ * screen, as checkboxes, the whole set is a few cards an admin can read at once — and on a
+ * phone the groups stack and each row is still a 44 px target.
+ */
+.mz-check-groups {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: 1fr;
+}
+
+@media (width >= 48rem) {
+  .mz-check-groups {
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  }
+}
+
+.mz-check-group {
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  min-inline-size: 0;
+}
+
+.mz-check-group__legend {
+  padding-inline: var(--space-2);
+  color: var(--color-text);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+/* A form's action belongs at the end of the form on a desktop, not pinned over it.
+ *
+ * A bar fixed to the bottom of the glass is right on a phone, where the thumb is there and the
+ * form is taller than the screen. On a monitor it floats over the content and hides the last
+ * rows of whatever is being filled in — so here it goes back into the flow. */
+@media (width >= 64rem) {
+  .mz-sticky-footer {
+    position: static;
+    border-block-start: 0;
+    background: none;
+    padding-inline: 0;
+    box-shadow: none;
+  }
+
+  .mz-sticky-footer .mz-button--block {
+    inline-size: auto;
+    min-inline-size: 14rem;
+  }
+}

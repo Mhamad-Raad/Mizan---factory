@@ -3,8 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { applyPreset } from '@mizan/permissions';
-import { Button, Card, SegmentedControl, TextField } from '@mizan/ui';
+import { Button, Card, SegmentedControl, StickyFooter, TextField } from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { PermissionEditor } from '../components/PermissionEditor.js';
@@ -21,17 +20,12 @@ export function NewUserPage() {
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'employee' | 'admin'>('employee');
   /**
-   * What the new employee may do, chosen here rather than on a second visit.
-   *
-   * The screen used to offer a preset and nothing else, so an employee who needed anything
-   * other than the three presets had to be created and then opened and edited — and the admin
-   * could not see, while creating them, what they were about to be able to do. It is the same
-   * editor the Permissions tab uses, so the two screens cannot drift apart.
+   * What the new employee may do, chosen here rather than on a second visit — and **nothing is
+   * chosen to begin with**. A preset only ticks boxes when the admin asks it to, so an account
+   * is never created with permissions nobody decided on, and "none of them yet" is a valid
+   * answer. It is the same editor the Permissions tab uses, so the two cannot drift apart.
    */
-  const [permissions, setPermissions] = useState<PermissionSelection>(() => ({
-    keys: [...applyPreset([], 'sales').keys],
-    preset: 'sales',
-  }));
+  const [permissions, setPermissions] = useState<PermissionSelection>({ keys: [], preset: 'none' });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
@@ -97,54 +91,70 @@ export function NewUserPage() {
 
   return (
     <>
-      <Card>
-        <form className="mz-stack" onSubmit={submit} noValidate>
-          <TextField
-            label={t('users:display_name')}
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-            error={fieldErrors.display_name}
-            required
-          />
-          <TextField
-            label={t('users:username')}
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            error={fieldErrors.username}
-            autoCapitalize="none"
-            autoCorrect="off"
-            dir="ltr"
-            required
-          />
-          <TextField
-            label={t('users:phone')}
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
-            error={fieldErrors.phone}
-            type="tel"
-            inputMode="tel"
-          />
-          <SegmentedControl
-            label={t('users:role')}
-            value={role}
-            onChange={setRole}
-            options={[
-              { value: 'employee', label: t('glossary:employee') },
-              { value: 'admin', label: t('glossary:admin') },
-            ]}
-          />
-          {role === 'employee' ? (
-            <PermissionEditor value={permissions} onChange={setPermissions} />
-          ) : (
-            // An admin holds every key, so there is nothing to choose (FR-105).
-            <p className="mz-caption">{t('permissions:simple_mode')}</p>
-          )}
+      <form className="mz-stack" onSubmit={submit} noValidate>
+        <Card>
+          <div className="mz-stack">
+            <h2 className="mz-heading">{t('users:new_user')}</h2>
+            {/* Three short fields and a choice: two columns on anything but a phone. */}
+            <div className="mz-form-grid">
+              <TextField
+                label={t('users:display_name')}
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                error={fieldErrors.display_name}
+                required
+              />
+              <TextField
+                label={t('users:username')}
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                error={fieldErrors.username}
+                autoCapitalize="none"
+                autoCorrect="off"
+                dir="ltr"
+                required
+              />
+              <TextField
+                label={t('users:phone')}
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                error={fieldErrors.phone}
+                type="tel"
+                inputMode="tel"
+              />
+              <SegmentedControl
+                label={t('users:role')}
+                value={role}
+                onChange={setRole}
+                options={[
+                  { value: 'employee', label: t('glossary:employee') },
+                  { value: 'admin', label: t('glossary:admin') },
+                ]}
+              />
+            </div>
+          </div>
+        </Card>
 
+        {role === 'employee' ? (
+          <Card>
+            <div className="mz-stack">
+              <h2 className="mz-heading">{t('glossary:permissions')}</h2>
+              <PermissionEditor value={permissions} onChange={setPermissions} />
+            </div>
+          </Card>
+        ) : (
+          <Card>
+            {/* An admin holds every key, so there is nothing to choose (FR-105). */}
+            <p className="mz-muted">{t('permissions:admin_holds_all')}</p>
+          </Card>
+        )}
+
+        <StickyFooter>
           <Button type="submit" block loading={busy} disabled={!displayName || !username}>
             {t('users:create')}
           </Button>
-        </form>
-      </Card>
+        </StickyFooter>
+      </form>
     </>
   );
 }
