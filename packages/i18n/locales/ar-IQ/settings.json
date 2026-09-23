@@ -78,5 +78,8 @@
   "pin_devices_revoked": "تم إلغاء الدخول بالرمز السري",
   "advanced_permissions": "متقدم",
   "advanced_permissions_hint": "كل الصلاحيات، للدور النادر الذي لا تناسبه القوالب",
-  "implied_by": "يأتي مع {{key}}"
+  "implied_by": "يأتي مع {{key}}",
+  "session_active": "نشطة",
+  "session_personal": "جهاز شخصي",
+  "session_device": "جهاز"
 }

@@ -4,7 +4,18 @@ import { useTranslation } from 'react-i18next';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { diffSets } from '@mizan/permissions';
 import type { PresetKey } from '@mizan/permissions';
-import { Button, Card, Chip, ErrorState, SegmentedControl, Skeleton, StickyFooter, Tabs, TextField } from '@mizan/ui';
+import {
+  Button,
+  Card,
+  Chip,
+  ErrorState,
+  Icon,
+  SegmentedControl,
+  Skeleton,
+  StickyFooter,
+  Tabs,
+  TextField,
+} from '@mizan/ui';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { PermissionEditor } from '../components/PermissionEditor.js';
 import type { PermissionSelection } from '../components/PermissionEditor.js';
@@ -276,17 +287,6 @@ function DetailsTab({ user }: { user: UserDetail }) {
       ) : null}
       {notice ? <p className="mz-muted">{notice}</p> : null}
 
-      <StickyFooter>
-        <Button
-          block
-          loading={save.isPending}
-          disabled={!detailsChanged && !permissionsChanged}
-          onClick={() => save.mutate()}
-        >
-          {t('common:save')}
-        </Button>
-      </StickyFooter>
-
       <Card>
         <div className="mz-stack">
           <h2 className="mz-heading">{t('users:account')}</h2>
@@ -317,6 +317,16 @@ function DetailsTab({ user }: { user: UserDetail }) {
           ) : null}
         </div>
       </Card>
+      <StickyFooter>
+        <Button
+          block
+          loading={save.isPending}
+          disabled={!detailsChanged && !permissionsChanged}
+          onClick={() => save.mutate()}
+        >
+          {t('common:save')}
+        </Button>
+      </StickyFooter>
     </div>
   );
 }
@@ -392,24 +402,31 @@ function SessionsTab({ userId }: { userId: string }) {
           {(sessions.data?.sessions ?? []).length === 0 ? (
             <p className="mz-muted">{t('history:empty')}</p>
           ) : (
-            <div className="mz-mini-cards">
+            <div className="mz-devices">
               {(sessions.data?.sessions ?? []).map((session) => (
-                <article key={session.id} className="mz-mini-card">
-                  <h3 className="mz-mini-card__title">
-                    <bdi>{session.device_label ?? t('settings:session_unlabelled')}</bdi>
-                  </h3>
-                  <div className="mz-row" style={{ gap: 'var(--space-1)', flexWrap: 'wrap' }}>
-                    {session.is_shared_device ? <Chip>{t('settings:session_shared')}</Chip> : null}
-                    {session.is_locked ? <Chip icon="lock">{t('settings:session_locked')}</Chip> : null}
-                    <Chip tone={session.auth_method === 'ticket_pin' ? 'warning' : 'neutral'}>
-                      {session.auth_method === 'ticket_pin' ? t('auth:pin') : t('auth:password')}
-                    </Chip>
+                <article key={session.id} className="mz-device">
+                  <span className="mz-device__badge" aria-hidden="true">
+                    <Icon name={session.is_shared_device ? 'users' : 'user'} size={20} />
+                  </span>
+                  <div className="mz-device__body">
+                    <h3 className="mz-device__title">
+                      <bdi>{session.device_label ?? t('settings:session_unlabelled')}</bdi>
+                    </h3>
+                    <p className="mz-device__facts">
+                      <span>
+                        {session.is_shared_device ? t('settings:session_shared') : t('settings:session_personal')}
+                      </span>
+                      <span>{session.auth_method === 'ticket_pin' ? t('auth:pin') : t('auth:password')}</span>
+                      <span>
+                        {t('settings:session_last_seen', {
+                          when: formatter.timestamp(new Date(session.last_seen_at)),
+                        })}
+                      </span>
+                    </p>
                   </div>
-                  <p className="mz-caption">
-                    {t('settings:session_last_seen', {
-                      when: formatter.timestamp(new Date(session.last_seen_at)),
-                    })}
-                  </p>
+                  <Chip tone={session.is_locked ? 'warning' : 'success'} icon={session.is_locked ? 'lock' : 'check'}>
+                    {session.is_locked ? t('settings:session_locked') : t('settings:session_active')}
+                  </Chip>
                   <Button
                     variant="ghost"
                     loading={revokeSession.isPending}
@@ -427,31 +444,40 @@ function SessionsTab({ userId }: { userId: string }) {
           <h2 className="mz-heading">{t('settings:pin_devices')}</h2>
           {live.length === 0 ? <p className="mz-muted">{t('settings:pin_devices_empty')}</p> : null}
           {(sessions.data?.device_tickets ?? []).length > 0 ? (
-            <div className="mz-mini-cards">
+            <div className="mz-devices">
               {(sessions.data?.device_tickets ?? []).map((ticket) => (
-                <article key={ticket.id} className="mz-mini-card">
-                  <h3 className="mz-mini-card__title">
-                    <bdi>{ticket.device_label ?? t('settings:session_unlabelled')}</bdi>
-                  </h3>
-                  <div className="mz-row" style={{ gap: 'var(--space-1)', flexWrap: 'wrap' }}>
-                    {ticket.is_shared_device ? <Chip>{t('settings:session_shared')}</Chip> : null}
-                    {ticket.revoked_at ? (
-                      <Chip tone="warning">{t('settings:pin_device_revoked')}</Chip>
-                    ) : (
-                      <Chip tone="success">
-                        {t('settings:pin_device_expires', {
-                          date: formatter.date(ticket.expires_at.slice(0, 10)),
-                        })}
-                      </Chip>
-                    )}
-                  </div>
-                  {ticket.last_used_at ? (
-                    <p className="mz-caption">
-                      {t('settings:session_last_seen', {
-                        when: formatter.timestamp(new Date(ticket.last_used_at)),
-                      })}
+                <article key={ticket.id} className="mz-device">
+                  <span className="mz-device__badge" aria-hidden="true">
+                    <Icon name="lock" size={20} />
+                  </span>
+                  <div className="mz-device__body">
+                    <h3 className="mz-device__title">
+                      <bdi>{ticket.device_label ?? t('settings:session_unlabelled')}</bdi>
+                    </h3>
+                    <p className="mz-device__facts">
+                      <span>
+                        {ticket.is_shared_device ? t('settings:session_shared') : t('settings:session_personal')}
+                      </span>
+                      {ticket.last_used_at ? (
+                        <span>
+                          {t('settings:session_last_seen', {
+                            when: formatter.timestamp(new Date(ticket.last_used_at)),
+                          })}
+                        </span>
+                      ) : null}
                     </p>
-                  ) : null}
+                  </div>
+                  {ticket.revoked_at ? (
+                    <Chip tone="danger" icon="close">
+                      {t('settings:pin_device_revoked')}
+                    </Chip>
+                  ) : (
+                    <Chip tone="success" icon="check">
+                      {t('settings:pin_device_expires', {
+                        date: formatter.date(ticket.expires_at.slice(0, 10)),
+                      })}
+                    </Chip>
+                  )}
                 </article>
               ))}
             </div>

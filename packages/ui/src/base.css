@@ -1908,40 +1908,75 @@ html[data-mirroring='true'] body {
   line-height: 20px;
 }
 
-/* ─────────────────────────── small cards ───────────────────────────
+/* ─────────────────────────── device panels ───────────────────────────
  *
- * For a handful of things that are each a few facts — a session on a device, a browser that may
- * use a PIN. Side by side they can be compared; as a column of full-width rows they were a
- * list to scroll.
+ * A session is a device somebody is holding, and the first attempt made it a 265 px box that
+ * floated at the start of an empty row with a link where its action should be — small and, in
+ * the client's word, ugly. A panel instead: the device's kind as a badge, its name and the
+ * three facts about it on one line, its state as a chip, and the action at the end. `auto-fit`
+ * lets one panel fill the row and two sit side by side, so a single session looks deliberate
+ * rather than stranded; on a phone the parts stack.
  */
-.mz-mini-cards {
+.mz-devices {
   display: grid;
   gap: var(--space-3);
   grid-template-columns: 1fr;
 }
 
-@media (width >= 40rem) {
-  .mz-mini-cards {
-    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+@media (width >= 48rem) {
+  .mz-devices {
+    grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr));
   }
 }
 
-.mz-mini-card {
+.mz-device {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
-  padding: var(--space-3);
+  padding: var(--space-4);
+}
+
+.mz-device__badge {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  color: var(--color-on-primary-soft);
+  inline-size: 40px;
+  block-size: 40px;
+}
+
+.mz-device__body {
+  flex: 1;
   min-inline-size: 0;
 }
 
-.mz-mini-card__title {
+.mz-device__title {
   margin: 0;
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 600;
   overflow-wrap: anywhere;
+}
+
+/* The facts read as one line, separated rather than stacked: kind · how · when. */
+.mz-device__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 2px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.mz-device__facts > span + span::before {
+  content: '·';
+  margin-inline-end: var(--space-2);
 }
 
 /* ─────────────── a table row is clickable, all of it ───────────────

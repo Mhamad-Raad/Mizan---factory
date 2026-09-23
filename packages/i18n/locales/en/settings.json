@@ -78,5 +78,8 @@
   "pin_devices_revoked": "PIN sign-in revoked",
   "advanced_permissions": "Advanced",
   "advanced_permissions_hint": "Every key, for the rare role the presets do not fit",
-  "implied_by": "Comes with {{key}}"
+  "implied_by": "Comes with {{key}}",
+  "session_active": "Active",
+  "session_personal": "Personal device",
+  "session_device": "Device"
 }

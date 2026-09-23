@@ -78,5 +78,8 @@
   "pin_devices_revoked": "چوونەژوورەوە بە ژمارەی نهێنی هەڵوەشێنرا",
   "advanced_permissions": "پێشکەوتوو",
   "advanced_permissions_hint": "هەموو مۆڵەتەکان، بۆ ئەو ڕۆڵی دەگمەن کە قاڵبەکان بۆی نەگونجاون",
-  "implied_by": "لەگەڵ {{key}} دێت"
+  "implied_by": "لەگەڵ {{key}} دێت",
+  "session_active": "چالاک",
+  "session_personal": "ئامێری کەسی",
+  "session_device": "ئامێر"
 }
