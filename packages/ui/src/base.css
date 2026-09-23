@@ -1804,7 +1804,16 @@ html[data-mirroring='true'] body {
   border-block-end: 1px solid var(--color-border);
   padding-block: var(--space-2);
   padding-inline: var(--space-3);
-  vertical-align: middle;
+
+  /*
+   * Top, not middle.
+   *
+   * A row is as tall as its longest cell — Companies carries six feature-specific permissions
+   * over three lines — and middle-aligned cells pushed that row's See/Add/Edit/Void boxes 48 px
+   * below the boxes beside them. Every box now sits on the row's first line, so a column of
+   * them reads as a column.
+   */
+  vertical-align: top;
   text-align: start;
 }
 
