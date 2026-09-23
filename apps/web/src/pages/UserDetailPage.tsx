@@ -19,8 +19,8 @@ import {
 import { ApiError, apiRequest } from '../lib/api.js';
 import { PermissionEditor } from '../components/PermissionEditor.js';
 import type { PermissionSelection } from '../components/PermissionEditor.js';
-import { DataList } from '../components/DataList.js';
 import { AuditDiff } from '../components/AuditDiff.js';
+import { useIsWide } from '../lib/wide.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { QueryStates } from '../components/states.js';
 import { useApp, useFormatter } from '../lib/store.js';
@@ -509,6 +509,7 @@ function SessionsTab({ userId }: { userId: string }) {
 function ActivityTab({ userId }: { userId: string }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
+  const wide = useIsWide();
 
   const activity = useInfiniteQuery({
     queryKey: ['user-activity', userId],
@@ -522,64 +523,85 @@ function ActivityTab({ userId }: { userId: string }) {
   });
 
   const rows = activity.data?.pages.flatMap((page) => page.items) ?? [];
+  const action = (row: AuditRow) => t(`history:action.${row.action}`, { defaultValue: row.action });
+  const kind = (row: AuditRow) => t(`history:entity.${row.entity_type}`, { defaultValue: row.entity_type });
+  const hasDetail = (row: AuditRow) => Boolean(row.changes && Object.keys(row.changes).length > 0) || Boolean(row.note);
 
   return (
     <QueryStates query={activity} isEmpty={rows.length === 0} emptyTitle={t('history:empty')} skeletonLines={8}>
       <div className="mz-stack">
-        <DataList
-          rows={rows}
-          rowKey={(row) => row.id}
-          href={() => `/history`}
-          columns={[
-            {
-              header: t('common:date'),
-              cell: (row) => formatter.timestamp(new Date(row.occurred_at)),
-            },
-            {
-              header: t('history:action_column'),
-              cell: (row) => (
-                <Chip tone={toneOfAction(row.action)}>
-                  {t(`history:action.${row.action}`, { defaultValue: row.action })}
-                </Chip>
-              ),
-            },
-            {
-              header: t('users:record'),
-              cell: (row) => (
-                <span className="mz-cell__body">
-                  <bdi>{row.entity_label}</bdi>
-                  <span className="mz-caption">
-                    {t(`history:entity.${row.entity_type}`, { defaultValue: row.entity_type })}
-                  </span>
-                </span>
-              ),
-            },
-            {
-              header: t('users:what_changed'),
-              cell: (row) =>
-                row.changes && Object.keys(row.changes).length > 0 ? (
-                  <AuditDiff changes={row.changes} note={row.note} />
-                ) : row.note ? (
-                  <span className="mz-caption">{row.note}</span>
-                ) : (
-                  <span className="mz-muted">—</span>
-                ),
-            },
-          ]}
-          card={(row) => (
-            <span className="mz-list__body">
-              <span className="mz-list__title">
-                {t(`history:action.${row.action}`, { defaultValue: row.action })} · <bdi>{row.entity_label}</bdi>
-              </span>
-              <span className="mz-caption" style={{ display: 'block' }}>
-                {formatter.timestamp(new Date(row.occurred_at))}
-              </span>
-              {row.changes && Object.keys(row.changes).length > 0 ? (
-                <AuditDiff changes={row.changes} note={row.note} />
-              ) : null}
-            </span>
-          )}
-        />
+        {wide ? (
+          /* An activity row leads nowhere — it is a record of something that happened, not a
+             link to a screen — so this is a plain table rather than `DataList`. */
+          <div className="mz-table-wrap">
+            <table className="mz-table">
+              <thead>
+                <tr>
+                  <th scope="col">{t('common:date')}</th>
+                  <th scope="col">{t('history:action_column')}</th>
+                  <th scope="col">{t('users:record')}</th>
+                  <th scope="col">{t('users:what_changed')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <td>{formatter.timestamp(new Date(row.occurred_at))}</td>
+                    <td>
+                      <Chip tone={toneOfAction(row.action)}>{action(row)}</Chip>
+                    </td>
+                    <td>
+                      <span className="mz-cell__body">
+                        <bdi>{row.entity_label}</bdi>
+                        <span className="mz-caption">{kind(row)}</span>
+                      </span>
+                    </td>
+                    <td>
+                      {row.changes && Object.keys(row.changes).length > 0 ? (
+                        <AuditDiff changes={row.changes} note={row.note} />
+                      ) : row.note ? (
+                        <span className="mz-caption">{row.note}</span>
+                      ) : (
+                        <span className="mz-muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          /*
+           * On a tablet and below: what happened, when, to which record — and the detail behind
+           * a disclosure. Pouring every diff into every row made twenty-five sign-ins into a
+           * wall of "Device ticket / Shared device / No", which is the client's "horrible".
+           */
+          <div className="mz-entries">
+            {rows.map((row) => (
+              <article key={row.id} className="mz-entry">
+                <div className="mz-entry__head">
+                  <Chip tone={toneOfAction(row.action)}>{action(row)}</Chip>
+                  <span className="mz-entry__when">{formatter.timestamp(new Date(row.occurred_at))}</span>
+                </div>
+                <p className="mz-entry__record">
+                  <bdi>{row.entity_label}</bdi> <span className="mz-entry__kind">· {kind(row)}</span>
+                </p>
+                {hasDetail(row) ? (
+                  <details className="mz-entry__details">
+                    <summary className="mz-entry__summary">{t('users:what_changed')}</summary>
+                    <div className="mz-entry__body">
+                      {row.changes && Object.keys(row.changes).length > 0 ? (
+                        <AuditDiff changes={row.changes} note={row.note} />
+                      ) : (
+                        <p className="mz-caption">{row.note}</p>
+                      )}
+                    </div>
+                  </details>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        )}
 
         {activity.hasNextPage ? (
           <div className="mz-row">

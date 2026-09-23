@@ -130,7 +130,12 @@ export function AuditDiff({ changes, note }: { changes: Record<string, unknown>;
         const label = t(`history:field.${field}`, { defaultValue: field });
 
         return (
-          <div key={field} className="mz-row mz-row--between" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          /*
+           * Label above value on a narrow screen, label and value at either end of the line on
+           * a wide one. Pushing them apart at 360 px left a hand's width of nothing between
+           * "Device name" and its value, which is what made a phone's History unreadable.
+           */
+          <div key={field} className="mz-diff__row">
             <span className="mz-caption">{label}</span>
             {isPair ? (
               <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>

@@ -2005,3 +2005,79 @@ html[data-mirroring='true'] body {
   position: relative;
   z-index: 1;
 }
+
+/* One field of an audit diff: stacked on a phone, label and value at either end on a desktop. */
+.mz-diff__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+@media (width >= 48rem) {
+  .mz-diff__row {
+    flex-flow: row wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+}
+
+/* ─────────────────── an activity entry on a narrow screen ───────────────────
+ *
+ * A table of four columns is not a 360 px layout, and the first attempt — every row's whole
+ * diff poured into a card — was worse: four fields of a sign-in, values ragged against the
+ * right edge, twenty-five times over. An entry is now what happened and when, the record it
+ * happened to, and a disclosure for the detail, so the tab can be scanned and read.
+ */
+.mz-entries {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mz-entry {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  padding: var(--space-3);
+}
+
+.mz-entry__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.mz-entry__when {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.mz-entry__record {
+  margin: var(--space-2) 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.mz-entry__kind {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.mz-entry__details {
+  margin-block-start: var(--space-2);
+}
+
+.mz-entry__summary {
+  cursor: pointer;
+  padding-block: var(--space-2);
+  color: var(--color-primary);
+  font-size: 0.875rem;
+  min-block-size: var(--tap-target);
+}
+
+.mz-entry__body {
+  padding-block-start: var(--space-2);
+}
