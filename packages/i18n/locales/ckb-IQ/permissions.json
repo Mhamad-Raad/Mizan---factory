@@ -90,5 +90,12 @@
   "n_selected": "{{count}} لە {{total}} دەسەڵات هەڵبژێردراوە",
   "started_from": "دەستپێک: {{preset}}",
   "admin_holds_all": "بەڕێوەبەر هەموو دەسەڵاتێکی هەیە، بۆیە شتێک بۆ هەڵبژاردن نییە.",
-  "comes_with": "لەگەڵ ئەمانە دێت: {{keys}}"
+  "comes_with": "لەگەڵ ئەمانە دێت: {{keys}}",
+  "col_feature": "بەش",
+  "col_view": "بینین",
+  "col_create": "زیادکردن",
+  "col_edit": "دەستکاری",
+  "col_void": "هەڵوەشاندنەوە",
+  "col_also": "دەسەڵاتی تایبەت",
+  "fields_row": "چی دەبینێت"
 }

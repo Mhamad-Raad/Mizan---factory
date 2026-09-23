@@ -90,5 +90,12 @@
   "n_selected": "{{count}} of {{total}} permissions selected",
   "started_from": "Started from {{preset}}",
   "admin_holds_all": "An admin holds every permission, so there is nothing to choose.",
-  "comes_with": "Comes with: {{keys}}"
+  "comes_with": "Comes with: {{keys}}",
+  "col_feature": "Feature",
+  "col_view": "See",
+  "col_create": "Add",
+  "col_edit": "Edit",
+  "col_void": "Void",
+  "col_also": "Specific to this feature",
+  "fields_row": "What they can see"
 }

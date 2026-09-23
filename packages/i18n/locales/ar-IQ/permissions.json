@@ -90,5 +90,12 @@
   "n_selected": "{{count}} من {{total}} صلاحية مختارة",
   "started_from": "البداية: {{preset}}",
   "admin_holds_all": "مدير النظام يملك كل الصلاحيات، فلا شيء للاختيار.",
-  "comes_with": "يأتي مع: {{keys}}"
+  "comes_with": "يأتي مع: {{keys}}",
+  "col_feature": "القسم",
+  "col_view": "عرض",
+  "col_create": "إضافة",
+  "col_edit": "تعديل",
+  "col_void": "إبطال",
+  "col_also": "صلاحيات خاصة",
+  "fields_row": "ما يمكنه رؤيته"
 }

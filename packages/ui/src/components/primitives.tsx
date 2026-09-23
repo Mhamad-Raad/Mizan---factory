@@ -217,6 +217,13 @@ export interface CheckboxProps {
   /** A group that is partly granted, as a permission extra can be (FR-204). */
   indeterminate?: boolean;
   disabled?: boolean;
+  /**
+   * The label still names the box for a screen reader, but the eye reads it from the column
+   * heading instead — a permission matrix would otherwise repeat "See orders" in every cell.
+   */
+  labelHidden?: boolean;
+  /** Shown on hover and read after the label: what this choice drags in with it. */
+  title?: string;
   onChange: (next: boolean) => void;
 }
 
@@ -229,24 +236,39 @@ export interface CheckboxProps {
  * on a screen at once. The target is still 44 px tall (NFR-10): the label is part of it, so a
  * thumb has the whole row even though the box is small.
  */
-export function Checkbox({ label, hint, checked, indeterminate, disabled, onChange }: CheckboxProps) {
+export function Checkbox({
+  label,
+  hint,
+  checked,
+  indeterminate,
+  disabled,
+  labelHidden,
+  title,
+  onChange,
+}: CheckboxProps) {
   return (
-    <label className={`mz-check${disabled ? ' mz-check--disabled' : ''}`}>
+    <label
+      className={`mz-check${disabled ? ' mz-check--disabled' : ''}${labelHidden ? ' mz-check--bare' : ''}`}
+      title={title}
+    >
       <input
         type="checkbox"
         className="mz-check__box"
         checked={checked}
         disabled={disabled}
+        aria-label={labelHidden ? label : undefined}
         ref={(node) => {
           // `indeterminate` is a property, never an attribute: there is no way to set it in JSX.
           if (node) node.indeterminate = indeterminate === true && !checked;
         }}
         onChange={(event) => onChange(event.target.checked)}
       />
-      <span className="mz-check__body">
-        <span>{label}</span>
-        {hint ? <span className="mz-field__hint">{hint}</span> : null}
-      </span>
+      {labelHidden ? null : (
+        <span className="mz-check__body">
+          <span>{label}</span>
+          {hint ? <span className="mz-field__hint">{hint}</span> : null}
+        </span>
+      )}
     </label>
   );
 }
