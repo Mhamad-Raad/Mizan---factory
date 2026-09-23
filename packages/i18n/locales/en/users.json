@@ -23,5 +23,10 @@
   "sessions_ended": "Their sessions were ended",
   "must_change_password": "Must change password",
   "pin_set": "PIN set",
-  "employee_count": "{{count}} employees"
+  "employee_count": "{{count}} employees",
+  "account": "Account",
+  "saved": "Saved",
+  "what_changed": "What changed",
+  "no_details": "No details",
+  "record": "Record"
 }

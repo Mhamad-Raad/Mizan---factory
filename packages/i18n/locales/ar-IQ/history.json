@@ -93,5 +93,11 @@
   "field.return_status": "حالة الإرجاع",
   "field.notes": "ملاحظات",
   "entity.session": "جلسة",
-  "entity.settings": "الإعدادات"
+  "entity.settings": "الإعدادات",
+  "action_column": "نوع الإجراء",
+  "field.device_label": "اسم الجهاز",
+  "field.device_ticket_id": "تذكرة الجهاز",
+  "field.session_id": "الجلسة",
+  "field.locked_until": "مقفل حتى",
+  "field.reason": "السبب"
 }

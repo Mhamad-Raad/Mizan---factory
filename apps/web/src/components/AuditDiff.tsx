@@ -68,6 +68,18 @@ export function AuditValue({ value }: { value: unknown }) {
   if (typeof value === 'string') {
     // A business date formats as one; everything else is the text as recorded.
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return <span>{formatter.date(value)}</span>;
+    /*
+     * An identifier is a reference, not a reading: thirty-six characters of UUID took over the
+     * column on the employee's Activity tab. The first eight are enough to tell two apart, and
+     * the whole thing is on the element for whoever needs to quote it.
+     */
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+      return (
+        <span title={value} data-tabular dir="ltr">
+          {value.slice(0, 8)}…
+        </span>
+      );
+    }
     return <span>{value}</span>;
   }
 

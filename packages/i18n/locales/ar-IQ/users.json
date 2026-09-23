@@ -23,5 +23,10 @@
   "sessions_ended": "تم إنهاء جلساته",
   "must_change_password": "عليه تغيير كلمة المرور",
   "pin_set": "رمز PIN مضبوط",
-  "employee_count": "{{count}} موظف"
+  "employee_count": "{{count}} موظف",
+  "account": "الحساب",
+  "saved": "تم الحفظ",
+  "what_changed": "ما تغيّر",
+  "no_details": "لا توجد تفاصيل",
+  "record": "السجل"
 }

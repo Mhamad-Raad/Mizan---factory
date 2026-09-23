@@ -93,5 +93,11 @@
   "field.return_status": "دۆخی گەڕاندنەوە",
   "field.notes": "تێبینییەکان",
   "entity.session": "دانیشتن",
-  "entity.settings": "ڕێکخستنەکان"
+  "entity.settings": "ڕێکخستنەکان",
+  "action_column": "جۆری کردار",
+  "field.device_label": "ناوی ئامێر",
+  "field.device_ticket_id": "بەڵگەنامەی ئامێر",
+  "field.session_id": "دانیشتن",
+  "field.locked_until": "داخراوە هەتا",
+  "field.reason": "هۆکار"
 }

@@ -93,5 +93,11 @@
   "field.return_status": "Return status",
   "field.notes": "Notes",
   "entity.session": "Session",
-  "entity.settings": "Settings"
+  "entity.settings": "Settings",
+  "action_column": "Action",
+  "field.device_label": "Device name",
+  "field.device_ticket_id": "Device ticket",
+  "field.session_id": "Session",
+  "field.locked_until": "Locked until",
+  "field.reason": "Reason"
 }

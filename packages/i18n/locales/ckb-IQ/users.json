@@ -23,5 +23,10 @@
   "sessions_ended": "دانیشتنەکانی کۆتایی پێهات",
   "must_change_password": "دەبێت وشەی نهێنی بگۆڕێت",
   "pin_set": "ژمارەی نهێنی دانراوە",
-  "employee_count": "{{count}} کارمەند"
+  "employee_count": "{{count}} کارمەند",
+  "account": "هەژمار",
+  "saved": "پاشەکەوتکرا",
+  "what_changed": "چی گۆڕا",
+  "no_details": "وردەکاری نییە",
+  "record": "تۆمار"
 }
