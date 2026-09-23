@@ -76,7 +76,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isSharedDevice = useApp((state) => state.preferences.sharedDevice);
   const [moreOpen, setMoreOpen] = useState(false);
   const title = useApp((state) => state.pageTitle);
-  const collapsed = useApp((state) => state.preferences.sidebarCollapsed ?? false);
+  const collapsed = useApp((state) => state.preferences.sidebarCollapsed);
   const setPreference = useApp((state) => state.setPreference);
 
   const permitted = DESTINATIONS.filter((destination) => {

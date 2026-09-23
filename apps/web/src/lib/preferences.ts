@@ -20,7 +20,7 @@ export interface Preferences {
   sharedDevice: boolean;
   deviceLabel?: string;
   /** A desktop's sidebar, folded to its icons. Per device, like every other preference here. */
-  sidebarCollapsed?: boolean;
+  sidebarCollapsed: boolean;
   /**
    * The PIN policy, kept here because the **lock screen needs it while the session is locked**,
    * when `GET /settings` answers 423 (FR-106, D-038). It is refreshed on every settings read,
@@ -36,6 +36,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   fontScale: 1,
   numerals: 'latn',
   sharedDevice: false,
+  sidebarCollapsed: false,
   pinPolicy: { shared: 6, personal: 4, switchOnShared: true },
 };
 
