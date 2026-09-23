@@ -372,10 +372,25 @@ check(
   ownOnly.body?.groups?.every((group) => group.label.startsWith('Kawa')),
   `${ownOnly.body?.groups?.length} of them: ${ownOnly.body?.groups?.map((group) => group.label).join(', ')}`,
 );
+/**
+ * The claim worth making is about **scope**, not about presence.
+ *
+ * Receivables reports who owes something, so a customer who owes nothing is absent from
+ * everybody's copy — including the accountant's — and asserting that Sara's customer *appears*
+ * there makes the check depend on whether the demo's own earlier steps happened to leave that
+ * account in debt. What must always hold is the other half: whatever Rebaz can see, none of it
+ * is Sara's.
+ */
+const sarasCustomers = (receivables.body?.groups ?? []).filter(
+  (group) => group.assigned_user_name === 'Sara Kareem',
+);
 check(
-  !ownOnly.body?.groups?.some((group) => group.key === zagros.body.id) &&
-    receivables.body?.groups?.some((group) => group.key === zagros.body.id),
-  "Sara's customer is in the accountant's report and absent from Rebaz's — the same query, pinned",
+  !ownOnly.body?.groups?.some((group) => group.key === zagros.body.id),
+  "Sara's customer is absent from Rebaz's report — the same query, pinned to him",
+);
+check(
+  sarasCustomers.every((group) => !(ownOnly.body?.groups ?? []).some((own) => own.key === group.key)),
+  `and so is every other account of hers (${sarasCustomers.length} in the accountant's copy)`,
 );
 
 const payables = await call(nazdar.session, `/reports/payables?${range}`);
@@ -468,13 +483,20 @@ const salesFromList = await call(
   nazdar.session,
   `/orders?from=${monthStart}&to=${today}&page_size=100`,
 );
-const listTotal = (salesFromList.body?.items ?? []).reduce(
-  (total, row) => total + row.total_iqd,
-  0,
-);
+/**
+ * Like for like: a **voided** order stays in the list, marked void, because the paper copy is
+ * already in somebody's drawer (FR-610) — and it is not a sale, so the report leaves it out.
+ * Summing every row of the list therefore only equals the report on a database where nothing
+ * has ever been voided, which is no real database. Reading the screen, a person adds up the
+ * rows that are not struck through; so does this check.
+ */
+const listRows = (salesFromList.body?.items ?? []).filter((row) => row.doc_status !== 'void');
+const listTotal = listRows.reduce((total, row) => total + row.total_iqd, 0);
+const voided = (salesFromList.body?.items ?? []).length - listRows.length;
 check(
   listTotal === sales.body?.totals?.total_iqd,
-  `and the Sales report (${sales.body?.totals?.total_iqd} د.ع) equals the Orders list for the same filters`,
+  `and the Sales report (${sales.body?.totals?.total_iqd} د.ع) equals the ${listRows.length} live rows of the Orders list` +
+    (voided > 0 ? `, with ${voided} voided row(s) in neither` : ''),
 );
 
 console.log(
