@@ -1866,3 +1866,22 @@ html[data-mirroring='true'] body {
   justify-content: center;
   padding-inline: var(--space-1);
 }
+
+/* "This feature has no such action", occupying exactly what a checkbox occupies: the same
+ * 20 px line with the same 2 px above it, so a column of boxes and dashes is one column. */
+.mz-check--absent {
+  justify-content: center;
+  cursor: default;
+}
+
+.mz-check--absent:hover {
+  background: none;
+}
+
+.mz-check__absent {
+  display: block;
+  margin-block-start: 2px;
+  color: var(--color-text-muted);
+  block-size: 20px;
+  line-height: 20px;
+}

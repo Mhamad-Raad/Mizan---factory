@@ -16,6 +16,22 @@ const PRESET_KEYS: PresetKey[] = ['sales', 'warehouse', 'accountant'];
 /** The four actions nearly every feature has, and therefore the matrix's columns. */
 const COMMON: readonly string[] = ['view', 'create', 'edit', 'void'];
 
+/**
+ * Where an action does not exist, said in the same space a checkbox would occupy.
+ *
+ * A bare em dash is text and sat a few pixels above the boxes beside it; this gives it a
+ * checkbox's own metrics — the same 20 px line, the same 2 px above it — so a column of boxes
+ * and dashes reads as one column. It is `aria-hidden` because "not applicable" is what an
+ * absent control already says to a screen reader.
+ */
+function Absent() {
+  return (
+    <span className="mz-check mz-check--absent" aria-hidden="true">
+      <span className="mz-check__absent">—</span>
+    </span>
+  );
+}
+
 /** `orders.record_payment` → `record_payment`. */
 const actionOf = (key: string): string => key.split('.').slice(1).join('.');
 
@@ -158,9 +174,7 @@ export function PermissionEditor({
                           />
                         ) : (
                           // Not every feature has every action: there is no "void a customer".
-                          <span className="mz-muted" aria-hidden="true">
-                            —
-                          </span>
+                          <Absent />
                         )}
                       </td>
                     );
@@ -168,9 +182,7 @@ export function PermissionEditor({
                   <td>
                     <div className="mz-matrix__also">
                       {also.length === 0 ? (
-                        <span className="mz-muted" aria-hidden="true">
-                          —
-                        </span>
+                        <Absent />
                       ) : (
                         also.map((definition) => (
                           <Checkbox
