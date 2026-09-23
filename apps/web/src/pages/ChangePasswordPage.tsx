@@ -40,11 +40,11 @@ export function ChangePasswordPage() {
   };
 
   return (
-    <div className="mz-app">
+    <div className="mz-app mz-app--doorway">
       <header className="mz-header">
         <h1 className="mz-header__title">{t('auth:must_change_password_title')}</h1>
       </header>
-      <main className="mz-main">
+      <main className="mz-main mz-main--narrow">
         <Card>
           <form className="mz-stack" onSubmit={submit} noValidate>
             <p className="mz-muted">{t('auth:must_change_password_body')}</p>

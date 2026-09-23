@@ -60,5 +60,12 @@
   "statement_window": "This statement covers the last twelve months; anything earlier is inside the opening balance.",
   "statement_capped": "Showing the most recent {{shown}} of {{total}} rows; the balances are for the whole period.",
   "date_from": "From date",
-  "date_to": "To date"
+  "date_to": "To date",
+  "status": "Status",
+  "number_column": "Number",
+  "nav_daily": "Daily work",
+  "nav_records": "Records",
+  "nav_insight": "Insight",
+  "nav_admin": "Administration",
+  "signed_in_as": "Signed in as"
 }

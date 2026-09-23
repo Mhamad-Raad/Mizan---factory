@@ -1199,3 +1199,334 @@ html[data-mirroring='true'] body {
     opacity: 1;
   }
 }
+
+/* ─────────────────────────── the desktop shell (spec 2.10.2) ───────────────────────────
+ *
+ * Mizan is designed for a 360 px phone held one-handed, and that is where its rules come
+ * from — but the office reviews it on a laptop, where a bottom tab bar and a column of cards
+ * read as a phone app someone stretched. From 64rem up the same markup becomes a back-office
+ * layout: the tab bar is a sidebar carrying **every** destination (no "More" to hunt through),
+ * the header is a bar over the content rather than a phone's centred title, and the content
+ * keeps a readable measure instead of running the width of a monitor.
+ *
+ * Everything below is additive and keyed on width alone, so the phone layout — which is what
+ * the screenshot suite and the 360 px checks assert — is untouched.
+ */
+
+/* A phone's bar carries four tabs and More; the brand and the rest belong to the sidebar. */
+.mz-sidebar__brand,
+.mz-tabbar__item--secondary {
+  display: none;
+}
+
+@media (width >= 64rem) {
+  .mz-app--shell {
+    display: grid;
+    grid-template: 'nav header' auto 'nav offline' auto 'nav main' 1fr / 17rem 1fr;
+  }
+
+  .mz-header {
+    grid-area: header;
+    padding-inline: var(--space-6);
+    min-block-size: 64px;
+  }
+
+  /* A centred title is a phone convention; a bar reads from the start edge. */
+  .mz-header__title {
+    flex: 1;
+    font-size: 1.25rem;
+    text-align: start;
+  }
+
+  /* The mark lives in the sidebar at this width, so the header does not repeat it. */
+  .mz-header > svg:first-child {
+    display: none;
+  }
+
+  .mz-offline {
+    grid-area: offline;
+  }
+
+  .mz-main {
+    grid-area: main;
+
+    /* No tab bar to clear at the bottom of the screen any more. */
+    padding-block: var(--space-6);
+    padding-inline: var(--space-6);
+    max-inline-size: 1100px;
+    margin-inline: 0;
+  }
+
+  .mz-tabbar {
+    grid-area: nav;
+    flex-direction: column;
+    position: sticky;
+    justify-content: flex-start;
+    gap: var(--space-1);
+    border-block-start: 0;
+    border-inline-end: 1px solid var(--color-border);
+    background: var(--color-surface-2);
+    padding: var(--space-3);
+    block-size: 100dvh;
+    inset-block-start: 0;
+    inset-inline: auto;
+    overflow-y: auto;
+  }
+
+  .mz-tabbar__item {
+    flex: none;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    border-radius: var(--radius-md);
+    padding-inline: var(--space-3);
+    padding-block: var(--space-3);
+    min-block-size: var(--tap-target);
+    font-size: 0.9375rem;
+    text-align: start;
+  }
+
+  /* The same signal the phone bar uses, which react-router sets on every NavLink. */
+  .mz-tabbar__item[aria-current='page'] {
+    background: var(--color-primary-soft);
+    color: var(--color-on-primary-soft);
+  }
+
+  /* Everything is in the sidebar, so there is nothing left to put behind "More". */
+  .mz-tabbar__item--secondary {
+    display: flex;
+  }
+
+  .mz-tabbar__more {
+    display: none;
+  }
+
+  .mz-sidebar__brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-inline: var(--space-3);
+    padding-block: var(--space-3) var(--space-4);
+    color: var(--color-primary);
+    font-size: 1.125rem;
+    font-weight: 700;
+  }
+}
+
+/* ───────────────────────── the doorway screens (sign in, unlock) ─────────────────────────
+ *
+ * A sign-in form is one column whatever the screen: at 1,100 px the same card became a field
+ * the width of a monitor with a label lost at each end. These three screens — sign in, change
+ * password, unlock — keep a form's measure and sit in the middle of the glass.
+ */
+.mz-main--narrow {
+  inline-size: 100%;
+  max-inline-size: 26rem;
+  margin-inline: auto;
+}
+
+@media (width >= 64rem) {
+  .mz-app--doorway {
+    place-content: center;
+    min-block-size: 100dvh;
+  }
+
+  .mz-main--narrow {
+    padding-block: var(--space-6);
+  }
+
+  /* The band is the brand on these screens, so it may breathe. */
+  .mz-app--doorway .mz-login-band {
+    padding-block: var(--space-6);
+  }
+}
+
+/* ───────────────────────────── tables (desktop only) ─────────────────────────────
+ *
+ * A table is how an office reads twenty rows: headings that say what the column is, figures
+ * aligned so they can be compared down the column, and a row height that fits more than four
+ * rows on the glass. On a phone the same data is a card — `DataList` renders one or the other
+ * rather than styling one to look like the other, so neither layout is a compromise.
+ */
+.mz-table-wrap {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  overflow-x: auto;
+}
+
+.mz-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.mz-table th {
+  position: sticky;
+  z-index: 1;
+  border-block-end: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: start;
+  inset-block-start: 0;
+  white-space: nowrap;
+}
+
+.mz-table td {
+  border-block-end: 1px solid var(--color-border);
+  padding: var(--space-3);
+  vertical-align: middle;
+}
+
+.mz-table tbody tr:last-child td {
+  border-block-end: 0;
+}
+
+.mz-table tbody tr:hover {
+  background: var(--color-surface-2);
+}
+
+/* Figures are compared down a column, so they align to its end and share one set of digits. */
+.mz-table [data-numeric='true'] {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.mz-table__link {
+  color: var(--color-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.mz-table__link:hover {
+  text-decoration: underline;
+}
+
+/* Below 80rem the columns that merely inform give way to the ones that decide. */
+@media (width < 80rem) {
+  .mz-table__secondary {
+    display: none;
+  }
+}
+
+/* ───────────────────────────── a list screen's toolbar ─────────────────────────────
+ *
+ * On a phone the filters wrap and the primary action is a full-width button under them, where
+ * a thumb reaches it. On a desktop they share one line — filters at the start, the action at
+ * the end — because a button the width of the content area is a phone button on a monitor.
+ */
+.mz-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.mz-toolbar__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+@media (width >= 64rem) {
+  .mz-toolbar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .mz-toolbar__filters {
+    flex: 1;
+  }
+
+  /* An action in the toolbar takes the width of its label, not of the screen. */
+  .mz-toolbar .mz-button--block {
+    inline-size: auto;
+  }
+
+  /* So does a filter: sharing the width is a phone's segmented strip, not a toolbar. */
+  .mz-toolbar__filters .mz-segmented__option {
+    flex: none;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-surface);
+    padding-inline: var(--space-4);
+  }
+
+  .mz-toolbar__filters .mz-segmented__option[aria-pressed='true'] {
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+    color: var(--color-on-primary-soft);
+  }
+}
+
+/* ─────────────────── the sidebar's groups, labels and footer ───────────────────
+ *
+ * Twelve destinations in one column is a list to read; in four labelled groups — the day's
+ * work, the records, what the office looks back on, and administration — it is a place to
+ * navigate. The footer says who is signed in and carries the two ways out, which until now
+ * existed only on the lock screen: a desktop had no way to sign out at all.
+ */
+.mz-sidebar__group,
+.mz-sidebar__footer,
+.mz-sidebar__label,
+.mz-sidebar__user,
+.mz-tabbar__item--sidebar {
+  display: none;
+}
+
+@media (width >= 64rem) {
+  .mz-sidebar__group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-block-end: var(--space-4);
+  }
+
+  .mz-sidebar__label {
+    display: block;
+    margin: 0;
+    padding-inline: var(--space-3);
+    padding-block-end: var(--space-1);
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* Kurdish and Arabic have no capitals, so the tracking and the transform are Latin-only. */
+  :lang(ckb) .mz-sidebar__label,
+  :lang(ar) .mz-sidebar__label {
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .mz-tabbar__item--sidebar {
+    display: flex;
+  }
+
+  /* The bar's four tabs and More belong to the phone. */
+  .mz-tabbar__item--tab {
+    display: none;
+  }
+
+  .mz-sidebar__footer {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-block-start: auto;
+    border-block-start: 1px solid var(--color-border);
+    padding-block-start: var(--space-3);
+  }
+
+  .mz-sidebar__user {
+    display: block;
+    margin: 0;
+    padding-inline: var(--space-3);
+    padding-block-end: var(--space-2);
+    font-weight: 600;
+  }
+}

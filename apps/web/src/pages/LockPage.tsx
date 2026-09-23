@@ -188,12 +188,12 @@ export function LockPage() {
   const who = switching ?? { displayName: user?.display_name ?? '?', username: user?.username ?? '' };
 
   return (
-    <div className="mz-app">
+    <div className="mz-app mz-app--doorway">
       <header className="mz-login-band">
         <MizanMark size={64} title={t('common:app_name')} />
         <p className="mz-login-band__name">{t('common:app_name')}</p>
       </header>
-      <main className="mz-main">
+      <main className="mz-main mz-main--narrow">
         <Card>
           <div className="mz-stack">
             <div className="mz-row">

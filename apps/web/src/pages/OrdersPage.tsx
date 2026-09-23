@@ -13,6 +13,7 @@ import { OrderStatusChip, PaymentTypeChip } from '../components/chips.js';
 import { FilterChip } from './MaterialsPage.js';
 import { customerName } from '../lib/customers.js';
 import { useFormatter } from '../lib/store.js';
+import { DataList } from '../components/DataList.js';
 
 export interface OrderRow {
   id: string;
@@ -82,7 +83,8 @@ export function OrdersPage() {
   return (
     <AppShell title={t('orders:title')}>
       <div className="mz-stack">
-        <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        <div className="mz-toolbar">
+        <div className="mz-toolbar__filters">
           <FilterChip active={chip === 'today'} onClick={() => setChip('today')}>
             {t('common:today')}
           </FilterChip>
@@ -105,6 +107,7 @@ export function OrdersPage() {
             {t('orders:new_order')}
           </Link>
         </Can>
+        </div>
 
         <QueryStates
           query={orders}
@@ -118,32 +121,62 @@ export function OrdersPage() {
             </Can>
           }
         >
-          <ul className="mz-list">
-            {rows.map((order) => (
-              <li key={order.id}>
-                <Link to={`/orders/${order.id}`} className="mz-list__item mz-list__item--interactive">
-                  <span className="mz-list__body">
-                    <span className="mz-list__title">
-                      {t('orders:number', { number: formatter.number(order.number) })}
-                    </span>
-                    <span className="mz-caption" style={{ display: 'block' }}>
-                      {customerName({ name: order.customer_name, is_system: order.customer_is_system }, t)} ·{' '}
-                      {formatter.date(order.order_date)}
-                    </span>
-                    <DualAmount
-                      amount_iqd={order.total_iqd}
-                      amount_usd_cents={order.total_usd_cents}
-                      primary={order.settlement_currency}
-                    />
+          <DataList
+            rows={rows}
+            rowKey={(order) => order.id}
+            href={(order) => `/orders/${order.id}`}
+            columns={[
+              {
+                header: t('common:number_column'),
+                cell: (order) => t('orders:number', { number: formatter.number(order.number) }),
+              },
+              {
+                header: t('glossary:customer'),
+                cell: (order) =>
+                  customerName({ name: order.customer_name, is_system: order.customer_is_system }, t),
+              },
+              { header: t('glossary:date_sold'), cell: (order) => formatter.date(order.order_date) },
+              {
+                header: t('glossary:total'),
+                numeric: true,
+                cell: (order) => (
+                  <DualAmount
+                    amount_iqd={order.total_iqd}
+                    amount_usd_cents={order.total_usd_cents}
+                    primary={order.settlement_currency}
+                  />
+                ),
+              },
+              {
+                header: t('glossary:payment_type'),
+                secondary: true,
+                cell: (order) => <PaymentTypeChip type={order.payment_type} />,
+              },
+              { header: t('common:status'), cell: (order) => <OrderStatusChip status={order.status} /> },
+            ]}
+            card={(order) => (
+              <>
+                <span className="mz-list__body">
+                  <span className="mz-list__title">
+                    {t('orders:number', { number: formatter.number(order.number) })}
                   </span>
-                  <span className="mz-row" style={{ gap: 'var(--space-1)' }}>
-                    <PaymentTypeChip type={order.payment_type} />
-                    <OrderStatusChip status={order.status} />
+                  <span className="mz-caption" style={{ display: 'block' }}>
+                    {customerName({ name: order.customer_name, is_system: order.customer_is_system }, t)} ·{' '}
+                    {formatter.date(order.order_date)}
                   </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+                  <DualAmount
+                    amount_iqd={order.total_iqd}
+                    amount_usd_cents={order.total_usd_cents}
+                    primary={order.settlement_currency}
+                  />
+                </span>
+                <span className="mz-row" style={{ gap: 'var(--space-1)' }}>
+                  <PaymentTypeChip type={order.payment_type} />
+                  <OrderStatusChip status={order.status} />
+                </span>
+              </>
+            )}
+          />
         </QueryStates>
 
         {filters ? (

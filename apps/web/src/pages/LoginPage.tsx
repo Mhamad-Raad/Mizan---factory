@@ -78,14 +78,14 @@ export function LoginPage() {
   };
 
   return (
-    <div className="mz-app">
+    <div className="mz-app mz-app--doorway">
       {/* A plum band with the mark above the form, so a shared tablet's screen says which
           application this is before a word is read (spec 3.2.5, FR-1311). */}
       <header className="mz-login-band">
         <MizanMark size={64} title={t('common:app_name')} />
         <p className="mz-login-band__name">{t('common:app_name')}</p>
       </header>
-      <main className="mz-main">
+      <main className="mz-main mz-main--narrow">
         <Card>
           <form className="mz-stack" onSubmit={submit} noValidate>
             <h2 className="mz-title">{t('auth:sign_in')}</h2>
