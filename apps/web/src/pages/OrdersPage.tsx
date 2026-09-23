@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { BottomSheet, Button, TextField } from '@mizan/ui';
 import type { Currency, Rate, RateSource } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
@@ -80,8 +80,10 @@ export function OrdersPage() {
 
   const rows = orders.data?.items ?? [];
 
+  usePageTitle(t('orders:title'));
+
   return (
-    <AppShell title={t('orders:title')}>
+    <>
       <div className="mz-stack">
         <div className="mz-toolbar">
         <div className="mz-toolbar__filters">
@@ -222,7 +224,7 @@ export function OrdersPage() {
           </BottomSheet>
         ) : null}
       </div>
-    </AppShell>
+    </>
   );
 }
 

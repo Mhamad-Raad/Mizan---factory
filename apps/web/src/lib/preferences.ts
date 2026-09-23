@@ -19,6 +19,8 @@ export interface Preferences {
   numerals: Numerals;
   sharedDevice: boolean;
   deviceLabel?: string;
+  /** A desktop's sidebar, folded to its icons. Per device, like every other preference here. */
+  sidebarCollapsed?: boolean;
   /**
    * The PIN policy, kept here because the **lock screen needs it while the session is locked**,
    * when `GET /settings` answers 423 (FR-106, D-038). It is refreshed on every settings read,
@@ -70,6 +72,7 @@ export function readPreferences(): Preferences {
         : DEFAULT_PREFERENCES.numerals,
       sharedDevice: parsed.sharedDevice === true,
       deviceLabel: typeof parsed.deviceLabel === 'string' ? parsed.deviceLabel : undefined,
+      sidebarCollapsed: parsed.sidebarCollapsed === true,
       pinPolicy: readPinPolicy(parsed.pinPolicy),
     };
   } catch {

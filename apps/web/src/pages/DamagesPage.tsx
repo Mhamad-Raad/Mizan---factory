@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, TextField } from '@mizan/ui';
 import type { Currency, Measure } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
@@ -162,8 +162,10 @@ export function DamagesPage() {
   const rows = damages.data?.items ?? [];
   const totals = damages.data?.totals;
 
+  usePageTitle(t('damages:title'));
+
   return (
-    <AppShell title={t('damages:title')}>
+    <>
       <div className="mz-stack">
         <TextField
           label={t('common:search')}
@@ -323,7 +325,7 @@ export function DamagesPage() {
           </BottomSheet>
         ) : null}
       </div>
-    </AppShell>
+    </>
   );
 }
 

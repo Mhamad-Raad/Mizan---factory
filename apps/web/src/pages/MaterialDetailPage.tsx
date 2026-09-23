@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField, NumberField, Tabs, TextField, Toast } from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { MonthPriceEditor } from '../components/MonthPriceEditor.js';
@@ -134,8 +134,10 @@ export function MaterialDetailPage() {
   const currentRate = rate.data?.current?.rate_iqd_per_usd ?? '1310.0000';
   const thisMonth = `${formatter.today().slice(0, 7)}-01`;
 
+  usePageTitle(item.data?.name ?? t('materials:title'));
+
   return (
-    <AppShell title={item.data?.name ?? t('materials:title')}>
+    <>
       <div className="mz-stack">
         <QueryStates query={item}>
           {item.data ? (
@@ -433,7 +435,7 @@ export function MaterialDetailPage() {
           {t('common:back')}
         </Button>
       </div>
-    </AppShell>
+    </>
   );
 }
 

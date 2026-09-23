@@ -67,5 +67,7 @@
   "nav_records": "Records",
   "nav_insight": "Insight",
   "nav_admin": "Administration",
-  "signed_in_as": "Signed in as"
+  "signed_in_as": "Signed in as",
+  "collapse_sidebar": "Collapse the sidebar",
+  "expand_sidebar": "Expand the sidebar"
 }

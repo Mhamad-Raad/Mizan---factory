@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useMutation } from '@tanstack/react-query';
 import { Button, Card, Chip, SegmentedControl } from '@mizan/ui';
 import { ApiError, apiRequest } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 
 type ImportKind =
   | 'materials'
@@ -163,8 +163,10 @@ export function ImportPage() {
     URL.revokeObjectURL(url);
   };
 
+  usePageTitle(t('imports:title'));
+
   return (
-    <AppShell title={t('imports:title')}>
+    <>
       <div className="mz-stack">
         <Card>
           <div className="mz-stack">
@@ -281,6 +283,6 @@ export function ImportPage() {
           </Card>
         ) : null}
       </div>
-    </AppShell>
+    </>
   );
 }

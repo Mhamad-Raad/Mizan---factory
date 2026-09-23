@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { QueryStates } from '../components/states.js';
 import { AuditDiff } from '../components/AuditDiff.js';
 import { FilterChip } from './MaterialsPage.js';
@@ -111,8 +111,10 @@ export function HistoryPage() {
   const entries = history.data?.pages.flatMap((page) => page.items) ?? [];
   const employees = (directory.data ?? []).filter((entry) => entry.is_active);
 
+  usePageTitle(t('history:title'));
+
   return (
-    <AppShell title={t('history:title')}>
+    <>
       <div className="mz-stack">
         <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }} role="group" aria-label={t('common:date')}>
           {(['today', 'yesterday', 'week', 'month', 'all'] as DatePreset[]).map((option) => (
@@ -292,6 +294,6 @@ export function HistoryPage() {
           </BottomSheet>
         ) : null}
       </div>
-    </AppShell>
+    </>
   );
 }

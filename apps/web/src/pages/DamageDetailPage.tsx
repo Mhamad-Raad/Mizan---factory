@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, DateField, TextField, Toast, Toggle } from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
@@ -115,8 +115,10 @@ export function DamageDetailPage() {
   const isCompany = record?.attribution === 'company';
   const isCustomerOrder = record?.attribution === 'customer_order';
 
+  usePageTitle(record ? t('damages:number', { number: formatter.number(record.number) }) : t('damages:title'));
+
   return (
-    <AppShell title={record ? t('damages:number', { number: formatter.number(record.number) }) : t('damages:title')}>
+    <>
       <div className="mz-stack">
         <QueryStates query={damage}>
           {record ? (
@@ -395,7 +397,7 @@ export function DamageDetailPage() {
           {t('common:back')}
         </Button>
       </div>
-    </AppShell>
+    </>
   );
 }
 

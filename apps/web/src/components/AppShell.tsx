@@ -56,7 +56,15 @@ const DESTINATIONS: Destination[] = [
  */
 const VISIBLE_TABS = 4;
 
-export function AppShell({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * The shell: header, navigation, and a hole where the screen goes.
+ *
+ * It used to be a component each page wrapped itself in, which meant the page *owned* the
+ * chrome — so a screen still loading took the sidebar, the header and the navigation down with
+ * it and the whole window blinked on every tab. It is a layout route now: this renders once,
+ * outlives every navigation, and only its `children` — the content column — are replaced.
+ */
+export function AppShell({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const user = useApp((state) => state.user);
@@ -67,6 +75,9 @@ export function AppShell({ title, children }: { title: string; children: React.R
   /** The lock screen is for a device other people pick up; a desk does not need it. */
   const isSharedDevice = useApp((state) => state.preferences.sharedDevice);
   const [moreOpen, setMoreOpen] = useState(false);
+  const title = useApp((state) => state.pageTitle);
+  const collapsed = useApp((state) => state.preferences.sidebarCollapsed ?? false);
+  const setPreference = useApp((state) => state.setPreference);
 
   const permitted = DESTINATIONS.filter((destination) => {
     if (destination.adminOnly) return user?.role === 'admin';
@@ -89,7 +100,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
   };
 
   return (
-    <div className="mz-app mz-app--shell">
+    <div className="mz-app mz-app--shell" data-sidebar={collapsed ? 'collapsed' : 'open'}>
       <header className="mz-header">
         <MizanMark size={26} />
         <h1 className="mz-header__title">
@@ -120,7 +131,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
         {/* ── the sidebar, on a screen with room for one ─────────────────────────── */}
         <div className="mz-sidebar__brand">
           <MizanMark size={24} />
-          <span>{t('common:app_name')}</span>
+          <span className="mz-sidebar__brand-name">{t('common:app_name')}</span>
         </div>
 
         {GROUPS.map((group) => {
@@ -134,9 +145,10 @@ export function AppShell({ title, children }: { title: string; children: React.R
                   key={destination.to}
                   to={destination.to}
                   className="mz-tabbar__item mz-tabbar__item--sidebar"
+                  title={collapsed ? t(destination.labelKey) : undefined}
                 >
                   <Icon name={destination.icon} />
-                  {t(destination.labelKey)}
+                  <span className="mz-tabbar__label">{t(destination.labelKey)}</span>
                 </NavLink>
               ))}
             </div>
@@ -146,19 +158,43 @@ export function AppShell({ title, children }: { title: string; children: React.R
         {/* Who is signed in, and the two ways out — which used to exist only on the lock
             screen, so a desktop had no way to sign out at all. */}
         <div className="mz-sidebar__footer">
+          <button
+            type="button"
+            className="mz-tabbar__item mz-tabbar__item--sidebar"
+            aria-expanded={!collapsed}
+            title={collapsed ? t('common:expand_sidebar') : undefined}
+            aria-label={collapsed ? t('common:expand_sidebar') : t('common:collapse_sidebar')}
+            onClick={() => setPreference('sidebarCollapsed', !collapsed)}
+          >
+            {/* Both mirror in RTL by the registry's own rule, so the arrow points at the edge
+                the sidebar is about to move to, in either direction (2.10.6 point 2). */}
+            <Icon name={collapsed ? 'chevron' : 'back'} />
+            <span className="mz-tabbar__label">{t('common:collapse_sidebar')}</span>
+          </button>
+
           <p className="mz-sidebar__label">{t('common:signed_in_as')}</p>
           <p className="mz-sidebar__user">
             <bdi>{user?.display_name ?? ''}</bdi>
           </p>
           {isSharedDevice ? (
-            <button type="button" className="mz-tabbar__item mz-tabbar__item--sidebar" onClick={() => void lock()}>
+            <button
+              type="button"
+              className="mz-tabbar__item mz-tabbar__item--sidebar"
+              title={collapsed ? t('auth:lock_now') : undefined}
+              onClick={() => void lock()}
+            >
               <Icon name="lock" />
-              {t('auth:lock_now')}
+              <span className="mz-tabbar__label">{t('auth:lock_now')}</span>
             </button>
           ) : null}
-          <button type="button" className="mz-tabbar__item mz-tabbar__item--sidebar" onClick={() => void signOut()}>
+          <button
+            type="button"
+            className="mz-tabbar__item mz-tabbar__item--sidebar"
+            title={collapsed ? t('auth:sign_out') : undefined}
+            onClick={() => void signOut()}
+          >
             <Icon name="logout" />
-            {t('auth:sign_out')}
+            <span className="mz-tabbar__label">{t('auth:sign_out')}</span>
           </button>
         </div>
 

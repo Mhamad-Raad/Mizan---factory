@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
 import { useFormatter } from '../lib/store.js';
@@ -48,8 +48,10 @@ export function DashboardPage() {
 
   const tiles = dashboard.data?.tiles ?? [];
 
+  usePageTitle(t('dashboard:title'));
+
   return (
-    <AppShell title={t('dashboard:title')}>
+    <>
       <div className="mz-stack">
         {/* Proposed — not requested (FR-1106): a rate nobody has touched skews every dollar. */}
         {dashboard.data?.rate?.is_stale ? (
@@ -92,6 +94,6 @@ export function DashboardPage() {
           </div>
         </QueryStates>
       </div>
-    </AppShell>
+    </>
   );
 }

@@ -22,6 +22,17 @@ interface AppState {
   formatter: Formatter;
   setPreference: <K extends keyof Preferences>(key: K, value: Preferences[K]) => void;
 
+  /**
+   * What the header says, set by the screen that is open.
+   *
+   * The shell used to be *inside* every page, so a page that was still loading took the
+   * sidebar, the header and the navigation down with it — the whole window blinked on every
+   * tab. The shell is now a layout that outlives the pages, and this is how a page tells it
+   * what to call itself.
+   */
+  pageTitle: string;
+  setPageTitle: (title: string) => void;
+
   user: SessionUser | null;
   permissions: ReadonlySet<string>;
   isLocked: boolean;
@@ -74,6 +85,8 @@ export const useApp = create<AppState>((set, get) => ({
   setSession: ({ user, permissions, isLocked = false }) =>
     set({ user, permissions: new Set(permissions), isLocked }),
   clearSession: () => set({ user: null, permissions: new Set<string>(), isLocked: false }),
+  pageTitle: '',
+  setPageTitle: (title) => set((state) => (state.pageTitle === title ? state : { pageTitle: title })),
   setLocked: (isLocked) => set({ isLocked }),
   setOnline: (isOnline) => set({ isOnline }),
 }));

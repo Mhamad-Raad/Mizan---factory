@@ -6,7 +6,7 @@ import { Button, Card, Chip, DateField, IconButton, NumberField, TextField, Toas
 import { computeLineTotals, convert, documentTotals } from '@mizan/money';
 import type { Currency, Measure, Rate } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { DraftBanner } from '../components/DraftBanner.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { MoneyInput } from '../components/MoneyInput.js';
@@ -69,9 +69,11 @@ export function PurchaseFormPage({ mode }: { mode: 'create' | 'edit' }) {
     enabled: mode === 'edit',
   });
 
+  usePageTitle(mode === 'edit' ? t('purchases:edit_purchase') : t('purchases:add_material'));
+
   if (mode === 'edit') {
     return (
-      <AppShell title={t('purchases:edit_purchase')}>
+      <>
         <QueryStates query={existing} skeletonLines={10}>
           {existing.data ? (
             <PurchaseForm
@@ -82,12 +84,12 @@ export function PurchaseFormPage({ mode }: { mode: 'create' | 'edit' }) {
             />
           ) : null}
         </QueryStates>
-      </AppShell>
+      </>
     );
   }
 
   return (
-    <AppShell title={t('purchases:add_material')}>
+    <>
       <PurchaseForm
         mode="create"
         initial={{
@@ -102,7 +104,7 @@ export function PurchaseFormPage({ mode }: { mode: 'create' | 'edit' }) {
           lines: [],
         }}
       />
-    </AppShell>
+    </>
   );
 }
 

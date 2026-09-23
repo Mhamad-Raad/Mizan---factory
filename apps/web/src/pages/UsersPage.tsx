@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Avatar, Button, Chip, EmptyState, ErrorState, Icon, Skeleton, TextField, Toggle } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { useFormatter } from '../lib/store.js';
 
 interface UserRow {
@@ -31,8 +31,10 @@ export function UsersPage() {
       ),
   });
 
+  usePageTitle(t('users:title'));
+
   return (
-    <AppShell title={t('users:title')}>
+    <>
       <div className="mz-stack">
         <TextField
           label={t('common:search')}
@@ -98,6 +100,6 @@ export function UsersPage() {
           </ul>
         ) : null}
       </div>
-    </AppShell>
+    </>
   );
 }

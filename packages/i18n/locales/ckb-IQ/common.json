@@ -67,5 +67,7 @@
   "nav_records": "تۆمارەکان",
   "nav_insight": "بینین و ڕاپۆرت",
   "nav_admin": "بەڕێوەبردن",
-  "signed_in_as": "چووەتە ژوورەوە وەک"
+  "signed_in_as": "چووەتە ژوورەوە وەک",
+  "collapse_sidebar": "لاتەنیشت بنوقێنە",
+  "expand_sidebar": "لاتەنیشت بکەرەوە"
 }

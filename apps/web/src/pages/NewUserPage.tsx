@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { applyPreset } from '@mizan/permissions';
 import { Button, Card, SegmentedControl, TextField } from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { PermissionEditor } from '../components/PermissionEditor.js';
 import type { PermissionSelection } from '../components/PermissionEditor.js';
 
@@ -70,9 +70,11 @@ export function NewUserPage() {
     }
   };
 
+  usePageTitle(t('users:new_user'));
+
   if (temporaryPassword) {
     return (
-      <AppShell title={t('users:new_user')}>
+      <>
         <Card>
           <div className="mz-stack">
             <h2 className="mz-heading">{t('auth:temporary_password')}</h2>
@@ -89,12 +91,12 @@ export function NewUserPage() {
             <Button onClick={() => navigate('/users')}>{t('users:title')}</Button>
           </div>
         </Card>
-      </AppShell>
+      </>
     );
   }
 
   return (
-    <AppShell title={t('users:new_user')}>
+    <>
       <Card>
         <form className="mz-stack" onSubmit={submit} noValidate>
           <TextField
@@ -143,6 +145,6 @@ export function NewUserPage() {
           </Button>
         </form>
       </Card>
-    </AppShell>
+    </>
   );
 }

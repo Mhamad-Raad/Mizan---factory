@@ -67,5 +67,7 @@
   "nav_records": "السجلات",
   "nav_insight": "التقارير والاطلاع",
   "nav_admin": "الإدارة",
-  "signed_in_as": "مسجَّل الدخول كـ"
+  "signed_in_as": "مسجَّل الدخول كـ",
+  "collapse_sidebar": "تصغير الشريط الجانبي",
+  "expand_sidebar": "توسيع الشريط الجانبي"
 }

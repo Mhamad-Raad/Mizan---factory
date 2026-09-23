@@ -6,7 +6,7 @@ import { Button, Card, Chip, DateField, IconButton, NumberField, SegmentedContro
 import { computeLineTotals, convert, documentTotals } from '@mizan/money';
 import type { Currency, Measure, Rate } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { DraftBanner } from '../components/DraftBanner.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { MoneyInput } from '../components/MoneyInput.js';
@@ -77,9 +77,11 @@ export function OrderFormPage({ mode }: { mode: 'create' | 'edit' }) {
   // An edit form has nothing to show until the order is loaded (spec 3.3: skeleton first,
   // fields disabled meanwhile). Loading it *before* the form is mounted is also what keeps
   // the form's state initialised once, from its own props, instead of synced in an effect.
+  usePageTitle(mode === 'edit' ? t('orders:edit_order') : t('orders:new_order'));
+
   if (mode === 'edit') {
     return (
-      <AppShell title={t('orders:edit_order')}>
+      <>
         <QueryStates query={existing} skeletonLines={10}>
           {existing.data ? (
             <OrderForm
@@ -90,12 +92,12 @@ export function OrderFormPage({ mode }: { mode: 'create' | 'edit' }) {
             />
           ) : null}
         </QueryStates>
-      </AppShell>
+      </>
     );
   }
 
   return (
-    <AppShell title={t('orders:new_order')}>
+    <>
       <OrderForm
         mode="create"
         initial={{
@@ -113,7 +115,7 @@ export function OrderFormPage({ mode }: { mode: 'create' | 'edit' }) {
           lines: [],
         }}
       />
-    </AppShell>
+    </>
   );
 }
 

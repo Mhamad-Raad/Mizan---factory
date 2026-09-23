@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { LedgerList } from '../components/LedgerList.js';
@@ -177,8 +177,10 @@ export function CustomerDetailPage() {
   const excessNeeded =
     payment.error instanceof ApiError && payment.error.fieldError('amount')?.code === 'EXCEEDS_REMAINING';
 
+  usePageTitle(customer.data ? customerName(customer.data, t) : t('customers:title'));
+
   return (
-    <AppShell title={customer.data ? customerName(customer.data, t) : t('customers:title')}>
+    <>
       <div className="mz-stack">
         <QueryStates query={customer}>
           {customer.data ? (
@@ -495,7 +497,7 @@ export function CustomerDetailPage() {
           {t('common:back')}
         </Button>
       </div>
-    </AppShell>
+    </>
   );
 }
 

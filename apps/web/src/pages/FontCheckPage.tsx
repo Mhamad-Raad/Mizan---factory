@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Card } from '@mizan/ui';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { useApp, useFormatter } from '../lib/store.js';
 import type { FontScale } from '../lib/preferences.js';
@@ -49,8 +49,10 @@ export function FontCheckPage() {
   const formatter = useFormatter();
   const preferences = useApp((state) => state.preferences);
 
+  usePageTitle(t('settings:font_check'));
+
   return (
-    <AppShell title={t('settings:font_check')}>
+    <>
       <div className="mz-stack">
         <Card>
           <div className="mz-stack">
@@ -113,6 +115,6 @@ export function FontCheckPage() {
           </div>
         </Card>
       </div>
-    </AppShell>
+    </>
   );
 }

@@ -1250,10 +1250,17 @@ html[data-mirroring='true'] body {
   .mz-main {
     grid-area: main;
 
-    /* No tab bar to clear at the bottom of the screen any more. */
+    /*
+     * The whole column, not a measure in the middle of it.
+     *
+     * A 1,100 px cap is right for prose and wrong for this: the screens here are tables an
+     * office reads across, and capping them left a monitor's worth of empty page beside the
+     * work. Forms keep their own width (`mz-main--narrow`), because a text field the width of
+     * a monitor is nobody's idea of a form.
+     */
     padding-block: var(--space-6);
     padding-inline: var(--space-6);
-    max-inline-size: 1100px;
+    max-inline-size: none;
     margin-inline: 0;
   }
 
@@ -1528,5 +1535,73 @@ html[data-mirroring='true'] body {
     padding-inline: var(--space-3);
     padding-block-end: var(--space-2);
     font-weight: 600;
+  }
+}
+
+/* ─────────────────────────── the sidebar, folded to its icons ───────────────────────────
+ *
+ * A screen is for the work, not for the navigation. Folded, the sidebar keeps every
+ * destination reachable in one tap and gives the content 12rem back; the labels go, the icons
+ * stay, and each row carries its name as a tooltip for the eye and an `aria-label` for a
+ * screen reader. The choice is remembered per device, like the language and the theme.
+ */
+.mz-sidebar__collapse {
+  display: none;
+}
+
+@media (width >= 64rem) {
+  .mz-app--shell {
+    /* The fold is a movement, not a jump; the reduced-motion block flattens it like the rest. */
+    transition: grid-template-columns var(--duration-micro) var(--ease-out);
+  }
+
+  .mz-app--shell[data-sidebar='collapsed'] {
+    grid-template-columns: 4.75rem 1fr;
+  }
+
+  .mz-sidebar__collapse {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: none;
+    padding: var(--space-1);
+    color: var(--color-text-muted);
+    min-inline-size: 32px;
+    min-block-size: 32px;
+  }
+
+  .mz-sidebar__collapse:hover {
+    background: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  .mz-sidebar__brand {
+    justify-content: space-between;
+  }
+
+  [data-sidebar='collapsed'] .mz-sidebar__brand {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  /* Folded: no labels, no group headings, and every row a centred icon. */
+  [data-sidebar='collapsed'] .mz-sidebar__brand-name,
+  [data-sidebar='collapsed'] .mz-sidebar__label,
+  [data-sidebar='collapsed'] .mz-sidebar__user,
+  [data-sidebar='collapsed'] .mz-tabbar__label {
+    display: none;
+  }
+
+  [data-sidebar='collapsed'] .mz-tabbar__item--sidebar {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  [data-sidebar='collapsed'] .mz-sidebar__group {
+    margin-block-end: var(--space-3);
   }
 }

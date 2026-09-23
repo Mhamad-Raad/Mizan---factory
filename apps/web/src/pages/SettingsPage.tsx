@@ -6,7 +6,7 @@ import { Button, Card, DateField, NumberField, SegmentedControl, TextField, Togg
 import { LANGUAGE_NAMES, LOCALES } from '@mizan/i18n';
 import type { Locale } from '@mizan/i18n';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
 import type { FontScale, Theme } from '../lib/preferences.js';
 
@@ -24,8 +24,10 @@ export function SettingsPage() {
   const user = useApp((state) => state.user);
   const maySetRate = usePermission('settings.set_global_rate');
 
+  usePageTitle(t('settings:title'));
+
   return (
-    <AppShell title={t('settings:title')}>
+    <>
       <div className="mz-stack">
         <Card>
           <div className="mz-stack">
@@ -107,7 +109,7 @@ export function SettingsPage() {
         {user?.role === 'admin' || maySetRate ? <GlobalRateCard /> : null}
         {user?.role === 'admin' ? <SystemCard /> : null}
       </div>
-    </AppShell>
+    </>
   );
 }
 

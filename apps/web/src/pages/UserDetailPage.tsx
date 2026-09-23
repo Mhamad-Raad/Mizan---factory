@@ -7,7 +7,7 @@ import type { PresetKey } from '@mizan/permissions';
 import { Button, Card, Chip, ErrorState, Skeleton, Tabs, TextField } from '@mizan/ui';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { PermissionEditor } from '../components/PermissionEditor.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { QueryStates } from '../components/states.js';
 import { useFormatter } from '../lib/store.js';
 
@@ -43,23 +43,25 @@ export function UserDetailPage() {
     queryFn: () => apiRequest<UserDetail>(`/users/${id}`),
   });
 
+  usePageTitle(user.data?.display_name ?? t('users:title'));
+
   if (user.isPending) {
     return (
-      <AppShell title={t('users:title')}>
+      <>
         <Skeleton lines={8} />
-      </AppShell>
+      </>
     );
   }
   if (user.isError || !user.data) {
     return (
-      <AppShell title={t('users:title')}>
+      <>
         <ErrorState title={t('common:not_found_title')} body={t('common:not_found_body')} />
-      </AppShell>
+      </>
     );
   }
 
   return (
-    <AppShell title={user.data.display_name}>
+    <>
       <div className="mz-stack">
         <Tabs
           label={t('users:title')}
@@ -77,7 +79,7 @@ export function UserDetailPage() {
         {tab === 'sessions' ? <SessionsTab userId={user.data.id} /> : null}
         {tab === 'activity' ? <ActivityTab userId={user.data.id} /> : null}
       </div>
-    </AppShell>
+    </>
   );
 }
 

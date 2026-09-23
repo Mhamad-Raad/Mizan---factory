@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, NumberField, SegmentedControl, TextField } from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 
 /**
  * "New material" (FR-301, FR-302): a name and the pricing unit are all that is required, so a
@@ -46,8 +46,10 @@ export function NewMaterialPage() {
   const duplicate =
     create.error instanceof ApiError ? create.error.fieldError('name') : undefined;
 
+  usePageTitle(t('materials:new_material'));
+
   return (
-    <AppShell title={t('materials:new_material')}>
+    <>
       <div className="mz-stack">
         <TextField
           label={t('materials:name')}
@@ -104,6 +106,6 @@ export function NewMaterialPage() {
           {t('glossary:cancel')}
         </Button>
       </div>
-    </AppShell>
+    </>
   );
 }

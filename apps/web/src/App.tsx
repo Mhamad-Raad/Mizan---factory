@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Button, ErrorState, Skeleton } from '@mizan/ui';
+import { AppShell } from './components/AppShell.js';
 import { RouteBoundary } from './components/RouteBoundary.js';
 import { loadTwice } from './lib/chunk.js';
 import { ApiError, apiRequest } from './lib/api.js';
@@ -212,6 +213,19 @@ export function App() {
     );
   }
 
+  /*
+   * A locked session is standing outside the door, so it gets the door and nothing else: the
+   * lock screen is not a page within the shell, and rendering it inside one would put a second
+   * application frame around it.
+   */
+  if (isLocked || location.pathname === '/lock') {
+    return (
+      <Routes>
+        <Route path="*" element={<LockPage />} />
+      </Routes>
+    );
+  }
+
   return (
     /*
      * A route's chunk may still be arriving: the skeleton is the same one the shell shows
@@ -225,18 +239,16 @@ export function App() {
      * says "loading"; when the chunk is already in memory, which is every visit after the
      * first, nothing suspends and no skeleton is seen at all.
      */
-    <RouteBoundary resetKey={routeKey(location.pathname)} onLeave={() => navigate('/')}>
-        <Suspense
-          key={routeKey(location.pathname)}
-          fallback={
-          <main className="mz-main">
-            <Skeleton lines={6} />
-          </main>
-        }
-      >
+    <AppShell>
+      <RouteBoundary resetKey={routeKey(location.pathname)} onLeave={() => navigate('/')}>
+        {/*
+          * The fallback is the *content* of a screen, not a screen: the shell around it —
+          * sidebar, header, navigation — is rendered by the layout above and stays put while a
+          * chunk or a query arrives. Before this, every tab took the whole window down.
+          */}
+        <Suspense key={routeKey(location.pathname)} fallback={<Skeleton lines={6} />}>
         <Routes>
-          <Route path="/lock" element={<LockPage />} />
-          <Route path="/login" element={<Navigate to="/" replace />} />
+            <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/orders/new" element={<OrderFormPage mode="create" />} />
           <Route path="/orders/:id" element={<OrderDetailPage />} />
@@ -289,7 +301,8 @@ export function App() {
             }
           />
         </Routes>
-      </Suspense>
-    </RouteBoundary>
+        </Suspense>
+      </RouteBoundary>
+    </AppShell>
   );
 }

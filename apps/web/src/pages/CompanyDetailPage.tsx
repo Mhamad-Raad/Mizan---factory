@@ -16,7 +16,7 @@ import {
 } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { LedgerList } from '../components/LedgerList.js';
@@ -254,8 +254,10 @@ export function CompanyDetailPage() {
     return row.entry_type === 'purchase';
   });
 
+  usePageTitle(company.data?.name ?? t('companies:title'));
+
   return (
-    <AppShell title={company.data?.name ?? t('companies:title')}>
+    <>
       <div className="mz-stack">
         <QueryStates query={company}>
           {company.data ? (
@@ -756,7 +758,7 @@ export function CompanyDetailPage() {
           {t('common:back')}
         </Button>
       </div>
-    </AppShell>
+    </>
   );
 }
 
