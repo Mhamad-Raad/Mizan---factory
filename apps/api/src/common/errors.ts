@@ -18,6 +18,8 @@ export const ERROR_CODES = {
   RECEIVED_AMOUNT_OUT_OF_TOLERANCE: 422,
   DOCUMENT_VOID: 409,
   STOCK_INSUFFICIENT: 422,
+  /** A buy whose stock has already gone out in a sale or a damage cannot be voided or edited (D-062). */
+  BUY_IN_USE: 409,
   IDEMPOTENCY_MISMATCH: 422,
   RATE_LIMITED: 429,
   /** A request body larger than the API will read — a CSV import of more than 10,000 rows. */

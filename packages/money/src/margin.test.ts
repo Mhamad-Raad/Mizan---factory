@@ -37,6 +37,29 @@ describe('the margin of one order line (FR-1005, spec 2.11)', () => {
     });
   });
 
+  it('costs a sale at what the buys it took stock from cost, not at an average unit (D-062)', () => {
+    // 300 bottles sold at $2.00: 100 from the buy at $1.00 and 200 from the buy at $1.50.
+    // Cost = 100 × $1.00 + 200 × $1.50 = $400.00; revenue $600.00; margin $200.00, and in
+    // dinars $200.00 × 1,310 = 262,000 د.ع. The rounded average ($1.33) would have said $201.
+    expect(
+      lineMargin(
+        line({
+          priced_measure: 'count',
+          qty_count: 300,
+          qty_kg: null,
+          unit_price_iqd: 2620,
+          unit_price_usd_cents: 200,
+          price_entered_currency: 'USD',
+          cost_unit_iqd: 1747,
+          cost_unit_usd_cents: 133,
+          cost_source: 'lots',
+          cost_total_iqd: 524_000,
+          cost_total_usd_cents: 40_000,
+        }),
+      ),
+    ).toEqual({ margin_iqd: 262_000, margin_usd_cents: 20_000, price_fallback: false });
+  });
+
   it('computes in dollars when the price was typed in dollars', () => {
     // (100 − 80) × 40 = $8.00 → 20 × 40 = 800¢, and 800¢ at 1,310 is 10,480 د.ع.
     expect(

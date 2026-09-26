@@ -25,7 +25,7 @@ export interface DamageRow {
   stock_effect: StockEffect;
   est_value_iqd: string | null;
   est_value_usd_cents: string | null;
-  est_value_source: PriceSource;
+  est_value_source: PriceSource | 'lots';
   status: 'active' | 'void';
   void_reason: string | null;
   voided_by: string | null;
@@ -35,6 +35,8 @@ export interface DamageRow {
   created_by: string;
   updated_at: Date;
   version: number;
+  compensation: 'none' | 'owed' | 'paid_money' | 'paid_materials';
+  compensated_at: Date | null;
 }
 
 export interface DamageListRow extends DamageRow {
@@ -84,6 +86,7 @@ export interface DamageTotals {
 }
 
 export interface NewDamage {
+  compensation?: 'none' | 'owed';
   item_id: string;
   qty_count: number | null;
   qty_kg: string | null;
@@ -99,7 +102,7 @@ export interface NewDamage {
   stock_effect: StockEffect;
   est_value_iqd: number | null;
   est_value_usd_cents: number | null;
-  est_value_source: PriceSource;
+  est_value_source: PriceSource | 'lots';
   notes: string | null;
   created_by: string;
 }
@@ -135,6 +138,8 @@ function damageColumns(alias = 'damages'): string {
     'created_by',
     'updated_at',
     'version',
+    'compensation::text AS compensation',
+    'compensated_at',
   ]
     .map((field) =>
       field.startsWith('to_char') ? field.replace('damage_date', `${alias}.damage_date`) : `${alias}.${field}`,
@@ -157,7 +162,10 @@ const LIST_COLUMNS = `i.name AS item_name, i.pricing_unit::text AS pricing_unit,
                       cust.name AS customer_name,
                       p.number::text AS purchase_number,
                       (EXISTS (SELECT 1 FROM company_ledger cl WHERE cl.damage_id = d.id)
-                       OR EXISTS (SELECT 1 FROM customer_ledger cu WHERE cu.damage_id = d.id)) AS credited`;
+                       -- The charge a company's damage puts on their account names the record
+                       -- too, but it is what they owe, not a credit (D-062).
+                       OR EXISTS (SELECT 1 FROM customer_ledger cu
+                                   WHERE cu.damage_id = d.id AND cu.entry_type <> 'damage')) AS credited`;
 
 const JOINS = `
   JOIN items i ON i.id = d.item_id
@@ -328,9 +336,11 @@ export class DamagesRepository {
       `INSERT INTO damages
          (item_id, qty_count, qty_kg, damage_date, acting_user_id, reason, attribution,
           order_id, company_id, purchase_id, is_returnable, return_status, stock_effect,
-          est_value_iqd, est_value_usd_cents, est_value_source, notes, created_by, updated_by)
+          est_value_iqd, est_value_usd_cents, est_value_source, notes, created_by, updated_by,
+          compensation)
        VALUES ($1, $2, $3::numeric, $4::date, $5, $6, $7::damage_attribution, $8, $9, $10, $11,
-               $12::return_status, $13::stock_effect, $14, $15, $16::cost_source, $17, $18, $18)
+               $12::return_status, $13::stock_effect, $14, $15, $16::cost_source, $17, $18, $18,
+               $19::damage_compensation)
        RETURNING ${damageColumns()}`,
       [
         input.item_id,
@@ -351,6 +361,7 @@ export class DamagesRepository {
         input.est_value_source,
         input.notes,
         input.created_by,
+        input.compensation ?? 'none',
       ],
     );
     return rows[0] as DamageRow;
@@ -376,12 +387,15 @@ export class DamagesRepository {
       stock_effect: StockEffect;
       est_value_iqd: number | null;
       est_value_usd_cents: number | null;
-      est_value_source: PriceSource;
+      est_value_source: PriceSource | 'lots';
       notes: string | null;
       status: 'active' | 'void';
       void_reason: string | null;
       voided_by: string | null;
       voided_at: Date | null;
+      compensation: 'none' | 'owed' | 'paid_money' | 'paid_materials';
+      compensated_at: Date | null;
+      compensated_by: string | null;
     }>,
     updatedBy: string,
     tx: Db,
@@ -398,6 +412,7 @@ export class DamagesRepository {
       return_status: '::return_status',
       stock_effect: '::stock_effect',
       est_value_source: '::cost_source',
+      compensation: '::damage_compensation',
       status: '::doc_status',
     };
     for (const field of fields) {

@@ -95,5 +95,6 @@
   "history_created": "دروستکردن",
   "history_status": "شاردنەوە و پیشاندان",
   "rate_changed": "نرخ {{old}} ← {{new}}",
-  "rate_set": "نرخ دانرا بە {{new}}"
+  "rate_set": "نرخ دانرا بە {{new}}",
+  "entry.damage": "زیان"
 }

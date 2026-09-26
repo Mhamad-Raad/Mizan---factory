@@ -144,7 +144,10 @@ export interface NewOrderLine {
   cost_unit_iqd: number | null;
   cost_unit_usd_cents: number | null;
   cost_month_price_id: string | null;
-  cost_source: 'month' | 'fallback' | 'none';
+  cost_source: 'month' | 'fallback' | 'lots' | 'none';
+  /** The exact cost of the stock sold, from the buys it came from (D-062); drives the margin. */
+  cost_total_iqd?: number | null;
+  cost_total_usd_cents?: number | null;
   note: string | null;
 }
 
@@ -353,6 +356,8 @@ export class OrdersRepository {
         cost_unit_iqd: line.cost_unit_iqd,
         cost_unit_usd_cents: line.cost_unit_usd_cents,
         cost_source: line.cost_source,
+        cost_total_iqd: line.cost_total_iqd ?? null,
+        cost_total_usd_cents: line.cost_total_usd_cents ?? null,
       });
       const { rows } = await tx.query<OrderLineRow>(
         `INSERT INTO order_lines

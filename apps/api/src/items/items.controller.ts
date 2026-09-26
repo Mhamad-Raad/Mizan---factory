@@ -25,7 +25,7 @@ const listSchema = z.object({
   ...pageFields,
 });
 
-const createSchema = z.object({
+const baseSchema = z.object({
   name: z.string().min(1).max(200),
   pricing_unit: z.enum(['per_piece', 'per_kg']),
   code: z.string().max(40).nullish(),
@@ -34,7 +34,24 @@ const createSchema = z.object({
   notes: z.string().max(2000).nullish(),
 });
 
-const updateSchema = createSchema.partial().extend({ version: z.number().int().positive() });
+/**
+ * Creating a material is buying it (D-062): the first buy — how much came in and what each one
+ * cost — travels with the material and is written in the same transaction. Optional here only
+ * because the go-live import creates materials by the hundred; the screen always sends it.
+ */
+const createSchema = baseSchema.extend({
+  buy: z
+    .object({
+      qty_count: z.number().int().positive().nullish(),
+      qty_kg: kg.nullish(),
+      unit_price: money,
+      purchase_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      note: z.string().max(500).nullish(),
+    })
+    .nullish(),
+});
+
+const updateSchema = baseSchema.partial().extend({ version: z.number().int().positive() });
 const versionSchema = z.object({ version: z.number().int().positive() });
 
 const pricesSchema = z.object({
@@ -98,6 +115,7 @@ export class ItemsController {
   @HttpCode(201)
   async create(@Req() request: RequestWithContext, @Body(zodBody(createSchema)) body: z.infer<typeof createSchema>) {
     return this.items.create(contextOf(request), {
+      buy: body.buy ?? null,
       name: body.name,
       pricing_unit: body.pricing_unit,
       code: body.code ?? null,
@@ -175,6 +193,16 @@ export class ItemsController {
     @Body(zodBody(versionSchema)) body: z.infer<typeof versionSchema>,
   ) {
     await this.items.softDelete(contextOf(request), id, body.version);
+  }
+
+  /**
+   * The material's stock split by what we paid (D-062): every buy, oldest first, with how much of
+   * it is left. The unit costs are bought prices and leave with the same flag as every other.
+   */
+  @Get('items/:id/lots')
+  @RequirePermission('materials.view')
+  async lots(@Param('id') id: string) {
+    return this.items.lots(id);
   }
 
   @Get('items/:id/prices')

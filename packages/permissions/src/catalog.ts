@@ -57,6 +57,16 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
   },
   { key: 'purchases.edit', page: 'purchases', implies: ['purchases.view'], labelKey: 'permissions.purchases.edit' },
   { key: 'purchases.void', page: 'purchases', implies: ['purchases.view'], labelKey: 'permissions.purchases.void' },
+  // The accountant page (D-062): the period's sold, bought, cost, profit, damage and expenses.
+  // Its whole subject is money, so it carries the two money flags with it.
+  {
+    key: 'accounts.view',
+    page: 'purchases',
+    implies: ['purchases.view', 'fields.see_bought_price', 'fields.see_profit'],
+    labelKey: 'permissions.accounts.view',
+  },
+  { key: 'expenses.create', page: 'purchases', implies: ['accounts.view'], labelKey: 'permissions.expenses.create' },
+  { key: 'expenses.void', page: 'purchases', implies: ['accounts.view'], labelKey: 'permissions.expenses.void' },
 
   // Orders
   { key: 'orders.view', page: 'orders', implies: [], labelKey: 'permissions.orders.view' },

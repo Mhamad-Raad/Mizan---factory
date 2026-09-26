@@ -85,8 +85,9 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       sale: 18_000,
       bought: 15_000,
     });
-    await addStock(copper, '6000.000');
-    await addStock(steel, '500.000', 500);
+    // Stock arrives by buying it (D-062), at the bought price: 700 د.ع a kilo, 15,000 a sheet.
+    await addStock(copper, '6000.000', undefined, 700);
+    await addStock(steel, '500.000', 500, 15_000);
 
     // "Kawa Trading" (the demo script's customer).
     const customer = await as(ctx.http, admin)
@@ -126,14 +127,20 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
     return id;
   }
 
-  async function addStock(itemId: string, kg: string, count?: number): Promise<void> {
+  async function addStock(itemId: string, kg: string, count?: number, unitCost = 700): Promise<void> {
     await as(ctx.http, admin)
-      .post(`/api/v1/items/${itemId}/opening-stock`)
+      .post('/api/v1/purchases')
       .send({
-        entry_date: today(),
-        qty_kg: kg,
-        qty_count: count ?? null,
-        note: 'go-live count',
+        company_id: null,
+        purchase_date: today(),
+        lines: [
+          {
+            item_id: itemId,
+            qty_kg: kg,
+            qty_count: count ?? null,
+            unit_price: { amount: unitCost, currency: 'IQD' },
+          },
+        ],
       })
       .expect(201);
   }
@@ -241,7 +248,8 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
         lines: [{ item_id: copper, qty_kg: '10.000' }],
       }).expect(201);
       const asAdmin = await as(ctx.http, admin).get(`/api/v1/orders/${order.body.id}`).expect(200);
-      expect(asAdmin.body.lines[0].cost).toMatchObject({ unit_iqd: 700, source: 'month' });
+      // The cost is what the stock it sold cost us — the buy at 700 — not the month's price.
+      expect(asAdmin.body.lines[0].cost).toMatchObject({ unit_iqd: 700, source: 'lots' });
 
       await as(ctx.http, admin)
         .put(`/api/v1/items/${copper}/prices/${new Date().toISOString().slice(0, 7)}`)
@@ -270,6 +278,67 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       }).expect(201);
       const read = await as(ctx.http, sales).get(`/api/v1/orders/${order.body.id}`).expect(200);
       expect('cost' in read.body.lines[0]).toBe(false);
+    });
+  });
+
+  describe('the cost of a sale is what the stock it sold cost us (D-062)', () => {
+    async function lotsOf(itemId: string) {
+      const read = await as(ctx.http, admin).get(`/api/v1/items/${itemId}/lots`).expect(200);
+      return read.body.items as { remaining: string; unit_cost_iqd: number }[];
+    }
+
+    it('takes the oldest buy first and costs a sale across two buys exactly', async () => {
+      // Copper already has 6,000 kg bought at 700; a second buy of 1,000 kg costs 900.
+      await addStock(copper, '1000.000', undefined, 900);
+      const order = await createOrder(sales, {
+        lines: [{ item_id: copper, qty_kg: '6500.000' }],
+      }).expect(201);
+
+      // 6,000 kg × 700 + 500 kg × 900 = 4,650,000 د.ع of cost; sold at 850 → 5,525,000 revenue.
+      const read = await as(ctx.http, admin).get(`/api/v1/orders/${order.body.id}`).expect(200);
+      expect(read.body.lines[0].cost).toMatchObject({ source: 'lots' });
+      const report = await as(ctx.http, admin).get('/api/v1/accounts/summary').expect(200);
+      expect(report.body.cost_of_sold.amount_iqd).toBe(4_650_000);
+      expect(report.body.profit.amount_iqd).toBe(5_525_000 - 4_650_000);
+
+      const lots = await lotsOf(copper);
+      expect(lots.map((lot) => [lot.unit_cost_iqd, lot.remaining])).toEqual([
+        [700, '0.000'],
+        [900, '500.000'],
+      ]);
+    });
+
+    it('gives the stock back to the very buys it came from when the order is voided', async () => {
+      await addStock(copper, '1000.000', undefined, 900);
+      const order = await createOrder(sales, {
+        lines: [{ item_id: copper, qty_kg: '6500.000' }],
+      }).expect(201);
+      await as(ctx.http, admin)
+        .post(`/api/v1/orders/${order.body.id}/void`)
+        .send({ reason: 'typed twice' })
+        .expect(200);
+
+      const lots = await lotsOf(copper);
+      expect(lots.map((lot) => lot.remaining)).toEqual(['6000.000', '1000.000']);
+    });
+
+    it('refuses to void a buy whose stock has already been sold', async () => {
+      const bought = await as(ctx.http, admin)
+        .post('/api/v1/purchases')
+        .send({
+          company_id: null,
+          purchase_date: today(),
+          lines: [{ item_id: steel, qty_count: 10, unit_price: { amount: 16_000, currency: 'IQD' } }],
+        })
+        .expect(201);
+      // Selling 505 sheets reaches into the second buy.
+      await createOrder(sales, { lines: [{ item_id: steel, qty_count: 505 }] }).expect(201);
+
+      const refused = await as(ctx.http, admin)
+        .post(`/api/v1/purchases/${bought.body.id}/void`)
+        .send({ reason: 'wrong' })
+        .expect(409);
+      expect(refused.body.error.code).toBe('BUY_IN_USE');
     });
   });
 
@@ -720,7 +789,7 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
         .get(`/api/v1/items/${copper}/movements`)
         .expect(200);
       const types = movements.body.items.map((row: { movement_type: string }) => row.movement_type);
-      expect(types).toEqual(['sale_out', 'reversal', 'sale_out', 'opening']);
+      expect(types).toEqual(['sale_out', 'reversal', 'sale_out', 'purchase_in']);
 
       const material = await as(ctx.http, admin).get(`/api/v1/items/${copper}`).expect(200);
       expect(material.body.stock.stock_kg).toBe('5920.000');

@@ -46,6 +46,10 @@ import { ReportsService } from './reports/reports.service.js';
 import { DashboardController } from './dashboard/dashboard.controller.js';
 import { PeriodService } from './settings/period.service.js';
 import { StockService } from './stock/stock.service.js';
+import { LotsService } from './lots/lots.service.js';
+import { AccountsController } from './accounts/accounts.controller.js';
+import { AccountsService } from './accounts/accounts.service.js';
+import { ExpensesService } from './accounts/expenses.service.js';
 import { SettingsController } from './settings/settings.controller.js';
 import { SettingsService } from './settings/settings.service.js';
 import { UsersController } from './users/users.controller.js';
@@ -73,6 +77,7 @@ import { UsersService } from './users/users.service.js';
     ReportsController,
     DashboardController,
     ImportsController,
+    AccountsController,
     HealthController,
   ],
   providers: [
@@ -90,6 +95,9 @@ import { UsersService } from './users/users.service.js';
     PeriodService,
     RatesService,
     StockService,
+    LotsService,
+    AccountsService,
+    ExpensesService,
     CustomerLedgerService,
     CompanyLedgerService,
     ItemsRepository,

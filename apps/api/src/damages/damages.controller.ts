@@ -37,6 +37,13 @@ const voidSchema = z.object({
   version: z.number().int().positive().optional(),
 });
 
+const paidBackSchema = z.object({
+  method: z.enum(['money', 'materials']),
+  entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  note: z.string().max(2000).nullish(),
+  version: z.number().int().positive().optional(),
+});
+
 const returnSchema = z.object({
   status: z.enum(['returned', 'written_off']),
   returned_at: isoDate.nullish(),
@@ -153,6 +160,21 @@ export class DamagesController {
    * `companies.record_credit`, which the service checks with the record loaded — the credit is
    * optional, so it cannot be a second key on the route (the same shape as D-023's converse).
    */
+  /**
+   * "Paid back" (D-062): a company settled a damage it owes us for, in money or in materials.
+   * Until this is confirmed the damage is a cost and a debt on their account; after it, neither.
+   */
+  @Post('damages/:id/paid-back')
+  @RequirePermission('damages.mark_returned')
+  @HttpCode(200)
+  async paidBack(
+    @Req() request: RequestWithContext,
+    @Param('id') id: string,
+    @Body(zodBody(paidBackSchema)) body: z.infer<typeof paidBackSchema>,
+  ) {
+    return this.damages.paidBack(contextOf(request), id, body);
+  }
+
   @Post('damages/:id/return')
   @RequirePermission('damages.mark_returned')
   @HttpCode(200)

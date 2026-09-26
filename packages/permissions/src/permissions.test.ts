@@ -169,6 +169,8 @@ describe('the five extras and their "partly" state (FR-204, spec 2.6.5)', () => 
 
   it('names every granted key that holds another one on', () => {
     expect(keysRequiring(PRESETS.accountant.keys, 'fields.see_bought_price')).toEqual([
+      'accounts.view',
+      'expenses.create',
       'fields.see_profit',
       'materials.set_prices',
     ]);

@@ -69,8 +69,10 @@ describe('the reports (FR-1001 to FR-1013)', () => {
 
     copper = await createMaterial('Copper wire 2 mm', 'per_kg', { sale: 850, bought: 700 });
     plates = await createMaterial('Steel plate 10 mm', 'per_piece', { sale: 18_000, bought: 15_000 });
-    await addStock(copper, '6000.000');
-    await addStock(plates, '500.000', 500);
+    // Stock arrives by buying it (D-062), at the bought price — bought last month, so this
+    // month's purchase figures hold only what each test buys itself.
+    await addStock(copper, '6000.000', undefined, 700, beforeThisMonth());
+    await addStock(plates, '500.000', 500, 15_000, beforeThisMonth());
 
     // Two customers, each sold to by a different employee.
     kawa = (
@@ -108,11 +110,21 @@ describe('the reports (FR-1001 to FR-1013)', () => {
     return id;
   }
 
-  async function addStock(itemId: string, kg: string, count?: number): Promise<void> {
+  async function addStock(itemId: string, kg: string, count?: number, unitCost = 700, date = today()): Promise<void> {
     await as(ctx.http, admin)
-      .post(`/api/v1/items/${itemId}/opening-stock`)
-      .send({ entry_date: today(), qty_kg: kg, qty_count: count ?? null, note: 'go-live count' })
+      .post('/api/v1/purchases')
+      .send({
+        company_id: null,
+        purchase_date: date,
+        lines: [{ item_id: itemId, qty_kg: kg, qty_count: count ?? null, unit_price: { amount: unitCost, currency: 'IQD' } }],
+      })
       .expect(201);
+  }
+
+  function beforeThisMonth(): string {
+    const day = new Date(`${today().slice(0, 7)}-01T00:00:00Z`);
+    day.setUTCDate(day.getUTCDate() - 1);
+    return day.toISOString().slice(0, 10);
   }
 
   function today(): string {
@@ -331,7 +343,8 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       for (const group of report.body.groups) {
         expect(Math.sign(group.cost.margin_iqd)).toBe(Math.sign(group.cost.margin_usd_cents));
       }
-      expect(report.body.basis).toBe('month_price');
+      // The cost is what the stock sold cost us, from the buys it came from (D-062).
+      expect(report.body.basis).toBe('bought');
     });
 
     it('lists lines with no cost price separately instead of counting them as profit', async () => {
@@ -362,18 +375,20 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       expect(report.body.totals.lines_without_cost).toBe(1);
     });
 
-    it('flags a group whose cost came from an earlier month', async () => {
-      // A material priced only last month: this month's order carries a fallback snapshot.
+    it('costs a sale at its buy, whatever month the stock was bought in (D-062)', async () => {
+      // Priced and bought only last month: this month's sale is costed from that buy, exactly —
+      // there is no "earlier month's price" to fall back to any more.
       const late = await as(ctx.http, admin)
         .post('/api/v1/items')
         .send({ name: 'Brass fitting', pricing_unit: 'per_piece' })
         .expect(201);
       const lastMonth = new Date();
-      lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1);
+      lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1, 15);
       await as(ctx.http, admin)
         .put(`/api/v1/items/${late.body.id}/prices/${lastMonth.toISOString().slice(0, 7)}`)
         .send({ sale: { amount: 3_000, currency: 'IQD' }, bought: { amount: 2_500, currency: 'IQD' } })
         .expect(200);
+      await addStock(late.body.id, '0', 10, 2_500, lastMonth.toISOString().slice(0, 10));
 
       await as(ctx.http, rebaz)
         .post('/api/v1/orders')
@@ -387,7 +402,7 @@ describe('the reports (FR-1001 to FR-1013)', () => {
 
       const report = await as(ctx.http, rebaz).get(`/api/v1/reports/profit?${range()}&group_by=item`).expect(200);
       const row = report.body.groups.find((group: { key: string }) => group.key === late.body.id);
-      expect(row.price_fallback).toBe(true);
+      expect(row.price_fallback).toBe(false);
       expect(row.cost.margin_iqd).toBe(2_000);
     });
 
@@ -422,7 +437,8 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       await seedActivity();
       const report = await as(ctx.http, admin).get(`/api/v1/reports/stock?${range()}`).expect(200);
       const copperRow = report.body.groups.find((group: { key: string }) => group.key === copper);
-      expect(copperRow.moved_in_kg).toBe('6500.000');
+      // The 6,000 kg fixture buy was last month; this month moved in only the 500 kg bought now.
+      expect(copperRow.moved_in_kg).toBe('500.000');
       expect(copperRow.moved_out_kg).toBe('154.000');
     });
 

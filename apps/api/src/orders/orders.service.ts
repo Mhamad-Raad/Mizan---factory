@@ -4,12 +4,12 @@ import {
   completePair,
   computeLineTotals,
   convert,
-  costSnapshotOf,
   defaultLinePrice,
   documentTotals,
   firstOfMonth,
   formatRate,
   impliedRate,
+  roundHalfAwayFromZero,
   selectMonthPrice,
   withinTolerance,
 } from '@mizan/money';
@@ -34,6 +34,8 @@ import { RatesService } from '../rates/rates.service.js';
 import { PeriodService } from '../settings/period.service.js';
 import { SettingsService } from '../settings/settings.service.js';
 import { StockService } from '../stock/stock.service.js';
+import { LotsService } from '../lots/lots.service.js';
+import type { Plan } from '../lots/lots.service.js';
 import { OrdersRepository } from './orders.repository.js';
 import type { NewOrderLine, OrderFilters, OrderListRow } from './orders.repository.js';
 import type { OrderDto, OrderLineDto, OrderLineRow, PaymentType } from './order.types.js';
@@ -70,6 +72,8 @@ export interface CreateOrderInput {
 interface PreparedLine extends NewOrderLine {
   item_name: string;
   price_from_month: string | null;
+  /** Which buys this line takes its stock from, oldest first (D-062); recorded after insert. */
+  lot_plan: Plan;
 }
 
 /**
@@ -96,6 +100,7 @@ export class OrdersService {
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
     private readonly history: HistoryRepository,
+    private readonly lots: LotsService,
   ) {}
 
   async list(
@@ -214,6 +219,7 @@ export class OrdersService {
 
       const insertedLines = await this.orders.insertLines(order.id, lines, context.userId, tx);
       await this.writeSaleMovements(tx, context, order.id, input.order_date, insertedLines, lines);
+      await this.recordLots(tx, context, insertedLines, lines);
 
       const creditWarning = await this.writeDocumentEntries(context, tx, locked, {
         orderId: order.id,
@@ -312,8 +318,6 @@ export class OrdersService {
       if (!locked) throw ApiError.notFound();
 
       const oldLines = await this.orders.linesOf(id, tx);
-      const oldMonth = firstOfMonth(order.order_date);
-      const newMonth = firstOfMonth(input.order_date);
 
       // Step 2 of 2.5.3: reverse everything live that belongs to this document.
       await this.stock.reverseLiveForRef(
@@ -328,10 +332,9 @@ export class OrdersService {
         related: { order_id: id, customer_id: order.customer_id },
       });
 
-      const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource, {
-        previous: oldLines,
-        monthUnchanged: oldMonth === newMonth,
-      });
+      // The old lines give their stock back to the buys it came from before the new lines take.
+      await this.lots.release(tx, { type: 'order_line', ids: oldLines.map((line) => line.id), createdBy: context.userId });
+      const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource);
       const discount = this.discountPair(input.discount, rate, rateSource, lines);
       const totals = documentTotals(lines, {
         discount_iqd: discount.amount_iqd,
@@ -351,6 +354,7 @@ export class OrdersService {
       await this.orders.softDeleteLines(id, tx);
       const insertedLines = await this.orders.insertLines(id, lines, context.userId, tx);
       await this.writeSaleMovements(tx, context, id, input.order_date, insertedLines, lines);
+      await this.recordLots(tx, context, insertedLines, lines);
 
       const updated = await this.orders.updateOrder(
         id,
@@ -450,6 +454,8 @@ export class OrdersService {
         { ref_type: 'order_line', ref_ids: lines.map((line) => line.id) },
         { created_by: context.userId, note: input.reason, entry_date: order.order_date },
       );
+      // The stock goes back to the very buys it came from, at their prices (D-062).
+      await this.lots.release(tx, { type: 'order_line', ids: lines.map((line) => line.id), createdBy: context.userId });
       await this.ledger.reverseLiveForDocument(context, tx, locked, id, {
         note: input.reason,
         entry_date: order.order_date,
@@ -794,10 +800,12 @@ export class OrdersService {
     orderDate: string,
     rate: Rate,
     rateSource: RateSource,
-    carryOver?: { previous: readonly OrderLineRow[]; monthUnchanged: boolean },
   ): Promise<PreparedLine[]> {
     const month = firstOfMonth(orderDate);
     const prepared: PreparedLine[] = [];
+    // What earlier lines of this order already take from each buy, so two lines selling the
+    // same material do not both take the oldest stock.
+    const pending = new Map<string, Decimal>();
 
     for (const [index, input] of inputs.entries()) {
       const item = await this.items.findById(input.item_id, tx);
@@ -898,20 +906,27 @@ export class OrdersService {
         document_rate_source: rateSource,
       });
 
-      // The cost snapshot: kept from the line it replaces when the material and the month are
-      // unchanged, re-taken otherwise (2.2.3 `order_lines`, 2.5.3 step 3).
-      const previous = carryOver?.previous.find((line) => line.item_id === item.id);
-      const cost =
-        previous && carryOver?.monthUnchanged
-          ? {
-              cost_unit_iqd:
-                previous.cost_unit_iqd === null ? null : Number(previous.cost_unit_iqd),
-              cost_unit_usd_cents:
-                previous.cost_unit_usd_cents === null ? null : Number(previous.cost_unit_usd_cents),
-              cost_month_price_id: previous.cost_month_price_id,
-              cost_source: previous.cost_source,
-            }
-          : costSnapshotOf(selectMonthPrice(prices, 'bought', orderDate));
+      // The cost: what the stock this line sells actually cost us, taken from the buys oldest
+      // first (D-062). A material never bought has no cost, and the line no margin.
+      const lotPlan = await this.lots.plan(tx, item.id, String(pricedQuantity), pending);
+      const quantity = new Decimal(String(pricedQuantity));
+      const cost = lotPlan.costed
+        ? {
+            cost_unit_iqd: roundHalfAwayFromZero(new Decimal(lotPlan.cost_total_iqd).dividedBy(quantity)),
+            cost_unit_usd_cents: roundHalfAwayFromZero(new Decimal(lotPlan.cost_total_usd_cents).dividedBy(quantity)),
+            cost_month_price_id: null,
+            cost_source: 'lots' as const,
+            cost_total_iqd: lotPlan.cost_total_iqd,
+            cost_total_usd_cents: lotPlan.cost_total_usd_cents,
+          }
+        : {
+            cost_unit_iqd: null,
+            cost_unit_usd_cents: null,
+            cost_month_price_id: null,
+            cost_source: 'none' as const,
+            cost_total_iqd: null,
+            cost_total_usd_cents: null,
+          };
 
       prepared.push({
         line_no: index + 1,
@@ -933,8 +948,11 @@ export class OrdersService {
         cost_unit_usd_cents: cost.cost_unit_usd_cents,
         cost_month_price_id: cost.cost_month_price_id,
         cost_source: cost.cost_source,
+        cost_total_iqd: cost.cost_total_iqd,
+        cost_total_usd_cents: cost.cost_total_usd_cents,
         note: input.note?.trim() || null,
         price_from_month: priceFromMonth,
+        lot_plan: lotPlan,
       });
     }
 
@@ -980,6 +998,24 @@ export class OrdersService {
       ]);
     }
     return pair;
+  }
+
+  /** Each line's take from the buys, written against the line now that it has an id (D-062). */
+  private async recordLots(
+    tx: Db,
+    context: RequestContext,
+    inserted: readonly OrderLineRow[],
+    prepared: readonly PreparedLine[],
+  ): Promise<void> {
+    for (const [index, line] of inserted.entries()) {
+      const source = prepared[index] as PreparedLine;
+      await this.lots.record(tx, source.lot_plan, {
+        type: 'order_line',
+        id: line.id,
+        itemId: source.item_id,
+        createdBy: context.userId,
+      });
+    }
   }
 
   /** One `sale_out` movement per line, referencing the line it came from (FR-608). */

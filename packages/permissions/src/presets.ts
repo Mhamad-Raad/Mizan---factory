@@ -61,7 +61,8 @@ export const PRESETS: Readonly<Record<PresetKey, Preset>> = {
   },
   accountant: {
     key: 'accountant',
-    version: 1,
+    // 2: the accountant page and its expenses (D-062).
+    version: 2,
     labelKey: 'permissions.preset.accountant',
     keys: [
       'companies.view',
@@ -73,6 +74,8 @@ export const PRESETS: Readonly<Record<PresetKey, Preset>> = {
       'companies.record_credit',
       'companies.opening_balance',
       'purchases.view',
+      'accounts.view',
+      'expenses.create',
       'orders.view',
       'orders.change_payment_type',
       'orders.record_payment',

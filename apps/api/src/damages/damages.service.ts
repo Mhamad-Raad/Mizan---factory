@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Decimal, firstOfMonth, selectMonthPrice } from '@mizan/money';
+import { Decimal, completePair, firstOfMonth, selectMonthPrice } from '@mizan/money';
 import type { Currency, Measure, PriceSource } from '@mizan/money';
 import {
   ReturnNotAllowedError,
@@ -22,6 +22,9 @@ import { HistoryRepository } from '../history/history.repository.js';
 import { ItemsRepository } from '../items/items.repository.js';
 import { PeriodService } from '../settings/period.service.js';
 import { StockService } from '../stock/stock.service.js';
+import { LotsService } from '../lots/lots.service.js';
+import { CustomerLedgerService } from '../ledger/customer-ledger.service.js';
+import { CustomersService } from '../customers/customers.service.js';
 import { DamagesRepository } from './damages.repository.js';
 import type { DamageFilters, DamageListRow, DamageTotals } from './damages.repository.js';
 
@@ -70,6 +73,12 @@ export interface ReturnDamageInput {
 }
 
 export interface DamageDto {
+  /**
+   * A company's damage is owed by that company until it is marked paid back, in money or in
+   * materials (D-062); our own is simply a loss (`none`).
+   */
+  compensation: 'none' | 'owed' | 'paid_money' | 'paid_materials';
+  compensated_at: string | null;
   id: string;
   number: number;
   item_id: string;
@@ -108,7 +117,7 @@ export interface DamageDto {
   cost: {
     est_value_iqd: number | null;
     est_value_usd_cents: number | null;
-    est_value_source: PriceSource;
+    est_value_source: PriceSource | 'lots';
   };
 }
 
@@ -155,6 +164,9 @@ export class DamagesService {
     private readonly period: PeriodService,
     private readonly audit: AuditService,
     private readonly history: HistoryRepository,
+    private readonly lots: LotsService,
+    private readonly customerLedger: CustomerLedgerService,
+    private readonly customers: CustomersService,
   ) {}
 
   async list(
@@ -215,15 +227,33 @@ export class DamagesService {
 
     // The value of what was lost, snapshotted from the damage month's bought price (FR-807).
     const prices = await this.items.pricesUpTo(item.id, firstOfMonth(input.damage_date));
-    const value = damageValue(
-      { priced_measure: pricedMeasure, ...quantity },
-      selectMonthPrice(prices, 'bought', input.damage_date),
-    );
+    const value: {
+      est_value_iqd: number | null;
+      est_value_usd_cents: number | null;
+      est_value_source: PriceSource | 'lots';
+    } = {
+      ...damageValue({ priced_measure: pricedMeasure, ...quantity }, selectMonthPrice(prices, 'bought', input.damage_date)),
+    };
     const stockEffect = stockEffectOf(attribution);
+    // A company that damaged our goods owes us for them until it pays back (D-062).
+    const owedByCompany = attribution === 'company' && links.company_id !== null && links.purchase_id === null;
 
     const created = await this.database.transaction(async (tx) => {
+      // What the damaged stock cost us: taken from the buys oldest first, like a sale (D-062).
+      // The month price above stands in only for a material that was never bought.
+      const lotPlan =
+        stockEffect === 'reduced'
+          ? await this.lots.plan(tx, item.id, pricedMeasure === 'count' ? String(quantity.qty_count) : String(quantity.qty_kg))
+          : null;
+      if (lotPlan?.costed) {
+        value.est_value_iqd = lotPlan.cost_total_iqd;
+        value.est_value_usd_cents = lotPlan.cost_total_usd_cents;
+        value.est_value_source = 'lots';
+      }
+
       const record = await this.damages.create(
         {
+          compensation: owedByCompany ? 'owed' : 'none',
           item_id: item.id,
           qty_count: quantity.qty_count,
           qty_kg: quantity.qty_kg,
@@ -248,6 +278,15 @@ export class DamagesService {
 
       if (stockEffect === 'reduced') {
         await this.writeDamageOut(tx, context, record.id, item.id, input.damage_date, quantity);
+      }
+      if (lotPlan) {
+        await this.lots.record(tx, lotPlan, { type: 'damage', id: record.id, itemId: item.id, createdBy: context.userId });
+      }
+      if (owedByCompany && links.company_id && value.est_value_iqd !== null && value.est_value_usd_cents !== null) {
+        await this.chargeCompany(context, tx, links.company_id, record.id, record.number, input.damage_date, {
+          iqd: value.est_value_iqd,
+          usd_cents: value.est_value_usd_cents,
+        });
       }
 
       await this.audit.record(
@@ -337,6 +376,13 @@ export class DamagesService {
       decimalsEqual(quantity.qty_kg, existing.qty_kg) === false;
     const attributionChanged = attribution !== existing.attribution;
     const dateChanged = damageDate !== existing.damage_date;
+
+    // A damage costed from the buys (D-062) has taken its stock and, for a company, put its cost
+    // on their account. Its quantity, who did it and its date are that booking: changing them is
+    // a void and a new record, never a rewrite. The texts stay editable.
+    if (existing.est_value_source === 'lots' && (quantityChanged || attributionChanged || dateChanged)) {
+      throw new ApiError('EDIT_WINDOW_CLOSED', { reason: 'damage_booked' });
+    }
 
     const prices = await this.items.pricesUpTo(existing.item_id, firstOfMonth(damageDate));
     const value = damageValue(
@@ -455,12 +501,34 @@ export class DamagesService {
       const record = await this.damages.lock(id, tx);
       if (!record) throw ApiError.notFound();
       if (record.status === 'void') throw new ApiError('DOCUMENT_VOID', { damage_id: id });
+      // Money that came back for it stays on the account; a paid-back damage is history now.
+      if (record.compensation === 'paid_money' || record.compensation === 'paid_materials') {
+        throw ApiError.validation([
+          { path: 'compensation', code: 'PAID_BACK', message_key: 'errors:damage_paid_back', params: {} },
+        ]);
+      }
 
       await this.stock.reverseLiveForRef(
         tx,
         { ref_type: 'damage', ref_ids: [id] },
         { created_by: context.userId, note: input.reason, entry_date: record.damage_date },
       );
+      await this.lots.release(tx, { type: 'damage', ids: [id], createdBy: context.userId });
+      if (record.compensation === 'owed' && record.company_id) {
+        const account = await this.customerLedger.lockOwner(tx, record.company_id);
+        if (account) {
+          const entries = await this.customerLedger.entriesFor(tx, record.company_id);
+          const reversed = new Set(entries.map((entry) => entry.reverses_entry_id).filter(Boolean));
+          for (const entry of entries) {
+            if (entry.entry_type === 'damage' && entry.refs.damage_id === id && !reversed.has(entry.id)) {
+              await this.customerLedger.reverse(context, tx, account, entry.id, {
+                note: input.reason,
+                related: { damage_id: id, customer_id: record.company_id },
+              });
+            }
+          }
+        }
+      }
 
       const updated = await this.damages.update(
         id,
@@ -822,6 +890,152 @@ export class DamagesService {
   }
 
   /** One `damage_out` movement for the record's quantities, negated (2.5.1, FR-804). */
+  /**
+   * The row that says a company owes us for a damage (D-062): positive, on their account, at
+   * what the damaged stock cost us, in their settlement currency with the other side at their
+   * own rate — the same way an order puts its total on the account.
+   */
+  private async chargeCompany(
+    context: RequestContext,
+    tx: Db,
+    companyId: string,
+    damageId: string,
+    damageNumber: string,
+    entryDate: string,
+    cost: { iqd: number; usd_cents: number },
+  ): Promise<void> {
+    const account = await this.customerLedger.lockOwner(tx, companyId);
+    if (!account) throw ApiError.notFound();
+    const { rate, source } = await this.customers.rateFor(companyId, tx);
+    const entered = account.settlement_currency;
+    const money = completePair({
+      amount: entered === 'IQD' ? cost.iqd : cost.usd_cents,
+      currency: entered,
+      rate,
+      rate_source: source,
+    });
+    await this.customerLedger.write(
+      context,
+      tx,
+      account,
+      {
+        entry_type: 'damage',
+        money,
+        entry_date: entryDate,
+        note: `Damage #${damageNumber}`,
+        performed_by_user_id: context.userId,
+        refs: { order_id: null, damage_id: damageId },
+      },
+      { audit_note: `Damage #${damageNumber}`, related: { damage_id: damageId, customer_id: companyId } },
+    );
+  }
+
+  /**
+   * "Paid back" (D-062): the company settled a damage it owes us for.
+   *
+   *  · in **money** — a payment on their account that clears the charge, like any payment;
+   *  · in **materials** — they replaced the goods: a credit clears the charge, the stock comes
+   *    back in, and it returns to the very buys it came from at their prices, so the loss is gone
+   *    from the accounts as if it had not happened.
+   *
+   * Either way the damage stops counting as a cost the moment this is confirmed, and not before.
+   */
+  async paidBack(
+    context: RequestContext,
+    id: string,
+    input: { method: 'money' | 'materials'; entry_date?: string | null; note?: string | null; version?: number },
+  ): Promise<DamageDetailDto> {
+    const existing = await this.requireDamage(id);
+    if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { damage_id: id });
+    const entryDate = input.entry_date ?? this.period.today();
+    this.period.assertNotFuture(entryDate, 'entry_date');
+
+    await this.database.transaction(async (tx) => {
+      const record = await this.damages.lock(id, tx);
+      if (!record) throw ApiError.notFound();
+      if (record.compensation !== 'owed' || !record.company_id) {
+        throw ApiError.validation([
+          { path: 'compensation', code: 'NOT_OWED', message_key: 'errors:damage_not_owed', params: {} },
+        ]);
+      }
+      const account = await this.customerLedger.lockOwner(tx, record.company_id);
+      if (!account) throw ApiError.notFound();
+
+      // The live charge this record put on the account is what is paid back, to the dinar.
+      const entries = await this.customerLedger.entriesFor(tx, record.company_id);
+      const reversed = new Set(entries.map((entry) => entry.reverses_entry_id).filter(Boolean));
+      const charge = entries.find(
+        (entry) => entry.entry_type === 'damage' && entry.refs.damage_id === id && !reversed.has(entry.id),
+      );
+      if (!charge) throw ApiError.notFound();
+      const note = input.note?.trim() || `Damage #${record.number} paid back`;
+
+      await this.customerLedger.write(
+        context,
+        tx,
+        account,
+        {
+          entry_type: input.method === 'money' ? 'payment' : 'credit',
+          money: {
+            amount_iqd: -charge.amount_iqd,
+            amount_usd_cents: -charge.amount_usd_cents,
+            entered_currency: charge.entered_currency,
+            rate_iqd_per_usd: charge.rate_iqd_per_usd,
+            rate_source: charge.rate_source,
+          },
+          entry_date: entryDate,
+          note,
+          performed_by_user_id: context.userId,
+          refs: { order_id: null, damage_id: id },
+          method: input.method === 'money' ? 'cash' : null,
+        },
+        { audit_note: note, related: { damage_id: id, customer_id: record.company_id } },
+      );
+
+      if (input.method === 'materials') {
+        // The goods are back: stock returns, and to the buys it was taken from.
+        await this.stock.append(tx, {
+          item_id: record.item_id,
+          movement_type: 'return_in',
+          qty_count: record.qty_count,
+          qty_kg: record.qty_kg,
+          entry_date: entryDate,
+          ref_type: 'damage',
+          ref_id: id,
+          note,
+          created_by: context.userId,
+        });
+        await this.lots.release(tx, { type: 'damage', ids: [id], createdBy: context.userId });
+      }
+
+      const compensation = input.method === 'money' ? 'paid_money' : 'paid_materials';
+      const updated = await this.damages.update(
+        id,
+        input.version ?? record.version,
+        { compensation, compensated_at: new Date(), compensated_by: context.userId },
+        context.userId,
+        tx,
+      );
+      if (!updated) throw await this.versionConflict(id);
+
+      await this.audit.record(
+        context,
+        {
+          action: 'update',
+          entity_type: 'damage',
+          entity_id: id,
+          entity_label: `Damage #${record.number}`,
+          changes: { compensation: { old: 'owed', new: compensation } },
+          note,
+          related: { damage_id: id, item_id: record.item_id, customer_id: record.company_id },
+        },
+        tx,
+      );
+    });
+
+    return this.get(id);
+  }
+
   private async writeDamageOut(
     tx: Db,
     context: RequestContext,
@@ -933,6 +1147,8 @@ function toDamageDto(row: DamageListRow): DamageDto {
     voided_by_name: row.voided_by_name,
     version: row.version,
     created_at: row.created_at.toISOString(),
+    compensation: row.compensation,
+    compensated_at: row.compensated_at?.toISOString() ?? null,
     cost: {
       est_value_iqd: row.est_value_iqd === null ? null : Number(row.est_value_iqd),
       est_value_usd_cents:

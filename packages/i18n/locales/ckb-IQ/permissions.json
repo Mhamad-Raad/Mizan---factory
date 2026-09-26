@@ -4,10 +4,10 @@
   "permissions.materials.create": "زیادکردنی کەرەستە",
   "permissions.materials.edit": "دەستکاری کەرەستە",
   "permissions.materials.set_prices": "دانانی نرخی مانگانە",
-  "permissions.materials.opening_stock": "تۆمارکردنی کۆگای سەرەتایی",
-  "permissions.purchases.view": "بینینی کڕینەکان",
-  "permissions.purchases.create": "تۆمارکردنی کڕین",
-  "permissions.purchases.edit": "دەستکاری کڕین",
+  "permissions.materials.opening_stock": "ڕاستکردنەوەی کۆگا بە دەست",
+  "permissions.purchases.view": "بینینی ئەوەی کڕدراوە",
+  "permissions.purchases.create": "کڕینی کۆگا (کەرەستەی نوێ یان زیاتر لێی)",
+  "permissions.purchases.edit": "دەستکاریکردنی کڕین",
   "permissions.purchases.void": "هەڵوەشاندنەوەی کڕین",
   "permissions.orders.view": "بینینی فرۆشتنەکان",
   "permissions.orders.create": "تۆمارکردنی فرۆشتن",
@@ -70,7 +70,7 @@
   "extra.can_adjust_owed": "دەتوانێت قەرزی ئێمە ڕاست بکاتەوە",
   "extra.can_set_rates": "دەتوانێت نرخی ئاڵوگۆڕ دابنێت",
   "page.materials": "کەرەستەکان",
-  "page.purchases": "کڕینەکان",
+  "page.purchases": "کڕین و ژمێریاری",
   "page.orders": "فرۆشتنەکان",
   "page.customers": "کڕیارەکان",
   "page.companies": "کۆمپانیاکان",
@@ -94,5 +94,8 @@
   "col_edit": "دەستکاری",
   "col_void": "هەڵوەشاندنەوە",
   "col_also": "دەسەڵاتی تایبەت",
-  "fields_row": "چی دەبینێت"
+  "fields_row": "چی دەبینێت",
+  "permissions.accounts.view": "بینینی پەڕەی ژمێریار",
+  "permissions.expenses.create": "زیادکردنی خەرجی",
+  "permissions.expenses.void": "هەڵوەشاندنەوەی خەرجی"
 }

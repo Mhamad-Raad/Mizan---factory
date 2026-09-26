@@ -192,8 +192,8 @@ export class ReportsService {
 
     return {
       ...meta,
-      /** The report is a **list-price** margin and says so on the screen (FR-1005). */
-      basis: 'month_price',
+      /** The margin is against what the stock sold actually cost, from its buys (D-062). */
+      basis: 'bought',
       ...paged(request, sortGroups(groups, filters.group_by ?? 'month', (group) => group.cost.margin_iqd)),
       totals: {
         lines: sum(groups.map((group) => group.lines)),

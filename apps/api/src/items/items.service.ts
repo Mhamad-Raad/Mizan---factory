@@ -15,6 +15,9 @@ import { HistoryRepository } from '../history/history.repository.js';
 import { RatesService } from '../rates/rates.service.js';
 import { PeriodService } from '../settings/period.service.js';
 import { StockService } from '../stock/stock.service.js';
+import { PurchasesService } from '../purchases/purchases.service.js';
+import { LotsService } from '../lots/lots.service.js';
+import type { Lot } from '../lots/lots.service.js';
 import { ItemsRepository } from './items.repository.js';
 import type { ItemFilters, ItemListRow, StoredMonthPrice } from './items.repository.js';
 import type { ItemDto, ItemRow, MonthPriceDto, PricePairDto, PricingUnit } from './item.types.js';
@@ -27,9 +30,17 @@ export interface CreateItemInput {
   min_stock_count?: number | null;
   min_stock_kg?: string | null;
   notes?: string | null;
+  /** The first buy of the material, written with it (D-062). */
+  buy?: {
+    qty_count?: number | null;
+    qty_kg?: string | null;
+    unit_price: { amount: number; currency: 'IQD' | 'USD'; other_amount?: number | null };
+    purchase_date: string;
+    note?: string | null;
+  } | null;
 }
 
-export interface UpdateItemInput extends Partial<CreateItemInput> {
+export interface UpdateItemInput extends Partial<Omit<CreateItemInput, 'buy'>> {
   version: number;
 }
 
@@ -63,6 +74,8 @@ export class ItemsService {
     private readonly period: PeriodService,
     private readonly audit: AuditService,
     private readonly history: HistoryRepository,
+    private readonly purchases: PurchasesService,
+    private readonly lotStore: LotsService,
   ) {}
 
   async list(filters: ItemFilters): Promise<{ items: ItemDto[]; total: number }> {
@@ -165,6 +178,8 @@ export class ItemsService {
    * with the same word typed on a Kurdish one instead of creating a twin (FR-1205).
    */
   async create(context: RequestContext, input: CreateItemInput): Promise<ItemDto> {
+    // The first buy is a buy: it needs the key that buying needs.
+    if (input.buy && !can(context, 'purchases.create')) throw ApiError.permissionDenied('purchases.create');
     const name = input.name.trim();
     const existing = await this.items.findByNormalizedName(normalizeForSearch(name));
     if (existing) {
@@ -208,10 +223,32 @@ export class ItemsService {
         },
         tx,
       );
+
+      if (input.buy) {
+        await this.purchases.createWithin(tx, context, {
+          company_id: null,
+          purchase_date: input.buy.purchase_date,
+          notes: input.buy.note?.trim() || null,
+          lines: [
+            {
+              item_id: row.id,
+              qty_count: input.buy.qty_count ?? null,
+              qty_kg: input.buy.qty_kg ?? null,
+              unit_price: input.buy.unit_price,
+            },
+          ],
+        });
+      }
       return row;
     });
 
     return this.detailOf(created);
+  }
+
+  /** Every buy of the material, oldest first, and what is left of it (D-062). */
+  async lots(id: string): Promise<{ items: Lot[] }> {
+    if (!(await this.items.findById(id))) throw ApiError.notFound();
+    return { items: await this.lotStore.lotsOf(id) };
   }
 
   async update(context: RequestContext, id: string, input: UpdateItemInput): Promise<ItemDto> {

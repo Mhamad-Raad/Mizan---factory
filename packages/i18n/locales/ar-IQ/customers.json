@@ -95,5 +95,6 @@
   "history_created": "الإنشاء",
   "history_status": "الإخفاء والإظهار",
   "rate_changed": "السعر {{old}} ← {{new}}",
-  "rate_set": "تم تعيين السعر {{new}}"
+  "rate_set": "تم تعيين السعر {{new}}",
+  "entry.damage": "تلف"
 }

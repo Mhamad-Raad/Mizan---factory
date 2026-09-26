@@ -51,5 +51,8 @@
   "return_to_stock_customer_only": "Only goods a customer brought back can be put into stock again",
   "already_returned_to_stock": "These goods have already been put back into stock",
   "no_settlement": "This order has no cash settlement to reverse",
-  "REQUEST_TOO_LARGE": "That file is too large — split it into two smaller ones."
+  "REQUEST_TOO_LARGE": "That file is too large — split it into two smaller ones.",
+  "BUY_IN_USE": "Some of this stock has already been sold or recorded as damaged, so this buy can no longer be changed",
+  "damage_not_owed": "This damage is not owed by a company, or it was already paid back",
+  "damage_paid_back": "This damage was already paid back and cannot be voided"
 }
