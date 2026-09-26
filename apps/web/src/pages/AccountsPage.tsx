@@ -153,7 +153,7 @@ export function AccountsPage() {
         <label className="mz-field">
           <span className="mz-field__label">{t('purchases:period')}</span>
           <select
-            className="mz-select"
+            className="mz-select mz-select--field"
             value={preset}
             onChange={(event) => {
               const value = event.target.value as Preset;

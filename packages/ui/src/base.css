@@ -3722,6 +3722,21 @@ html[data-mirroring='true'] body {
   gap: var(--space-3);
 }
 
+/* A select that sits in a row of form fields — the period beside its two dates — is as tall as
+   they are, so the three labels and the three boxes line up; the compact `.mz-select` is for
+   toolbars. */
+.mz-select--field {
+  padding-block: var(--space-3);
+  font-size: 1rem;
+}
+
+/* The date boxes carry the browser's own height, which is not the select's: the period row
+   sets one height for all three (in rem, so it follows the text size). */
+.mz-accounts__period .mz-field__control,
+.mz-accounts__period .mz-select--field {
+  block-size: 3.25rem;
+}
+
 /* What is left, first and largest: the one figure the page exists to answer. */
 .mz-accounts__net {
   display: grid;
