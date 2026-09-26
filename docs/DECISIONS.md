@@ -1018,3 +1018,49 @@ each. Where a fix had to choose, this is the choice.
   (migration 0028). Relied on: 2.9.1, 2.9.2, FR-1305.
 - **Numbers refused by a schema** now say so as numbers (`errors:field.number_too_small` with
   `min`), and every field error carries its `min`/`max`. Relied on: 2.9.2.
+
+## D-065 · 2026-09-27 · security review follow-up · What the second pass decided
+
+A review of `fix/security-review` found the per-address ceiling could lock out the factory, the
+password check held a pooled connection, and History still read ledger amounts to readers
+without the flags. This supersedes the per-address and backup bullets of D-064.
+
+- **The per-address ceiling counts only wrong passwords.** 100 an hour per address across
+  sign-in, unlock and change-password (`SIGN_IN_FAILURES_PER_HOUR`); reaching it refuses the
+  address for 5 minutes (`SIGN_IN_BLOCK_MINUTES`), doubling for each further block within a
+  day, capped at an hour. Right passwords never count, so a shift change or a day of
+  idle-locked tablets behind the factory's one public address cannot trip it. A check under way
+  counts until it succeeds, so a parallel burst across usernames cannot overshoot. IPv6 is
+  counted by its /64 (`normalizeIp` of `@nestjs/throttler`), IPv4-mapped IPv6 as IPv4. In
+  memory per replica, as before; `ThrottlerModule` and its guard are gone.
+  Relied on: 2.8, NFR-13, C-07.
+- **No connection is held while Argon2 runs.** Per throttle key, in the in-process queue: a
+  short read of the failures (locked → refused, password not checked), the password check
+  outside any transaction, then a short transaction under the advisory lock that reads the
+  failures again and records the result. On one replica a burst still gets exactly five checks;
+  across replicas the count stays exact and at most one check per other replica can be in
+  flight when the fifth failure lands — answered as locked if another replica locked the key
+  meanwhile. Relied on: 2.8, FR-101.
+- **History's ledger rows follow the Ledger tab's flags.** A row on a customer's or a company's
+  ledger (`changes.entry`, `changes.balance`) shows its amount only with that ledger's flag
+  (`fields.see_customer_balances` / `fields.see_company_balances`); one whose amount *is* a bought
+  figure — a purchase on a company's account, its reversal, and anything naming a damage (the
+  charge at cost, its reversal, the payment or credit that settles it) — also needs
+  `fields.see_bought_price`. A customer row's `payable` (the supplier side re-based with the
+  settlement currency) needs the company flag. The per-kind rules now apply on the global page,
+  My activity, and the customer, company and order History tabs; on an order's tab the payments
+  against that order keep their amounts, because the order shows them to anyone who may open it.
+  Audited money fields checked: purchase `unit_price`/`line_total`/`purchase_total`, item
+  `bought`/unit costs, damage `est_value`, order `cost`/`balance`, customer/company `balance`,
+  expense `amount` — all already covered. **Left as it is:** the company Ledger tab itself shows
+  purchase amounts under the company flag alone (FR-704 vs. the Purchases row of 2.6.2); the
+  spec reads both ways, so the owner should decide. Relied on: 2.4.4, 2.6.2, FR-503, FR-704.
+- **Backups.** A copy without its `.hmac` is refused unless `--allow-untagged` is given. The MAC
+  key is PBKDF2 (200,000 rounds, SHA-512, fixed salt "mizanmac") of the passphrase via
+  `openssl enc -P`, which reads the passphrase from the environment; tags are
+  `hmac-sha256-v2`. Nothing was deployed, so v1 tags are not verified. An empty
+  `AWS_ENDPOINT_URL` is unset. Relied on: 2.13, 2.14, NFR-08.
+- **Smaller.** Origin/Referer and CORS compare with `new URL(APP_BASE_URL).origin`; the runbook
+  demotes `mizan_migrate` only after the first migrate (0002 creates `mizan_app`) and sets
+  `mizan_app`'s password; an import number too big says so (`imports:number_too_big`,
+  `number_too_small`, `number_above`); `api` and `migrate` share `mizan-api:${MIZAN_IMAGE_TAG}`.
