@@ -55,7 +55,7 @@ test.describe('the buying screens', () => {
       await withPreferences(page, testCase);
       await signIn(page, ACCOUNTANT);
 
-      await page.goto('/companies');
+      await page.goto('/customers?side=supplier');
       await expect(page.getByRole('link').filter({ hasText: 'Al-Noor' }).first()).toBeVisible();
       await shot(page, `companies-${testCase.name}.png`);
 
@@ -69,9 +69,9 @@ test.describe('the buying screens', () => {
     await withPreferences(page, { lang: 'ckb-IQ', theme: 'light' });
     await signIn(page, ACCOUNTANT);
 
-    await page.goto('/companies');
+    await page.goto('/customers?side=supplier');
     await page.getByRole('link').filter({ hasText: 'Al-Noor' }).first().click();
-    await expect(page).toHaveURL(/\/companies\/[0-9a-f-]{36}$/);
+    await expect(page).toHaveURL(/\/customers\/[0-9a-f-]{36}$/);
     await expect(page.locator('.mz-segmented')).toBeVisible();
     await expect(page.getByText('Al-Noor Steel Co.').first()).toBeVisible();
 
@@ -90,9 +90,9 @@ test.describe('the buying screens', () => {
     await withPreferences(page, { lang: 'en', theme: 'light' });
     await signIn(page, ACCOUNTANT);
 
-    await page.goto('/companies');
+    await page.goto('/customers?side=supplier');
     await page.getByRole('link').filter({ hasText: 'Al-Noor' }).first().click();
-    await page.getByRole('button', { name: 'Accounting' }).click();
+    await page.getByRole('button', { name: 'Purchases account' }).click();
 
     // The purchase and the payment, with the running balance the API computed in posting order.
     await expect(page.getByText('Purchase').first()).toBeVisible();
@@ -145,7 +145,7 @@ test.describe('the buying screens', () => {
     await withPreferences(page, { lang: 'ar-IQ', theme: 'light' });
     await signIn(page, ACCOUNTANT);
 
-    await page.goto('/companies');
+    await page.goto('/customers?side=supplier');
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
     await page.getByRole('link').filter({ hasText: 'Al-Noor' }).first().click();
     // The profile has to be the screen before the primary button is reached for: since the

@@ -23,7 +23,7 @@ const LINKS: Record<string, string> = {
   sales_today: '/orders',
   unpaid_orders: '/orders',
   purchases_today: '/purchases',
-  we_owe_companies: '/companies?sort=balance',
+  we_owe_companies: '/customers?side=supplier',
   low_stock: '/materials',
   pending_returns: '/damages',
   my_actions_today: '/history',

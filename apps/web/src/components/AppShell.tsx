@@ -61,13 +61,6 @@ const DESTINATIONS: Destination[] = [
     permission: 'customers.view',
   },
   {
-    to: '/companies',
-    labelKey: 'companies:title',
-    icon: 'companies',
-    group: 'records',
-    permission: 'companies.view',
-  },
-  {
     to: '/damages',
     labelKey: 'damages:tab_label',
     icon: 'warning',

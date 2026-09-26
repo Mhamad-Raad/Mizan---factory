@@ -2133,6 +2133,12 @@ html[data-mirroring='true'] body {
   grid-column: 1 / -1;
 }
 
+/* In a phone's two-column grid a long filter label wraps inside its button rather than off it. */
+.mz-toolbar__filters .mz-filter-chip {
+  white-space: normal;
+  text-align: center;
+}
+
 /* The label above a toolbar control is noise beside its own placeholder; it stays for readers. */
 .mz-toolbar__search .mz-field__label {
   position: absolute;
@@ -2169,6 +2175,10 @@ html[data-mirroring='true'] body {
     inline-size: auto;
   }
 
+  .mz-toolbar__filters .mz-filter-chip {
+    white-space: nowrap;
+  }
+
   /* The page's action keeps its label on one line at the end of the first row. */
   .mz-toolbar > :not(.mz-toolbar__filters) {
     flex: none;
@@ -2192,8 +2202,10 @@ html[data-mirroring='true'] body {
 }
 
 @media (width >= 64rem) {
-  .mz-toolbar__filters {
-    flex-wrap: nowrap;
+  /* One row when the filters fit, which is most pages; a page with more of them wraps rather
+     than squeezing the labels into one another. */
+  .mz-toolbar__filters > :not(.mz-toolbar__search) {
+    flex: none;
   }
 
   .mz-toolbar__search {
@@ -2812,6 +2824,10 @@ html[data-mirroring='true'] body {
   background: var(--color-surface);
   padding: var(--space-1);
   min-inline-size: 11rem;
+
+  /* A row reads on one line when the screen has room for it, and wraps only on a phone. */
+  inline-size: max-content;
+  max-inline-size: min(20rem, calc(100vw - 2 * var(--space-4)));
   inset-block-start: calc(100% + var(--space-1));
   box-shadow: var(--shadow-sheet);
 }

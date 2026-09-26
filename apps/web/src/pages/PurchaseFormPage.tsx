@@ -39,6 +39,12 @@ interface FormLine {
 }
 
 interface FormState {
+  /**
+   * The business the goods came from. The short form never asks (the floor's choice), so a new
+   * purchase names nobody; an edit keeps whatever the purchase already names, because moving a
+   * purchase to another business is a void and a new purchase, never an edit (FR-405).
+   */
+  company_id: string | null;
   purchase_date: string;
   notes: string;
   lines: FormLine[];
@@ -80,7 +86,7 @@ export function PurchaseFormPage({ mode }: { mode: 'create' | 'edit' }) {
   return (
     <PurchaseForm
       mode="create"
-      initial={{ purchase_date: formatter.today(), notes: '', lines: [] }}
+      initial={{ company_id: null, purchase_date: formatter.today(), notes: '', lines: [] }}
     />
   );
 }
@@ -88,6 +94,7 @@ export function PurchaseFormPage({ mode }: { mode: 'create' | 'edit' }) {
 /** The purchase as the form holds it, so the form is initialised once and never synced. */
 function fromPurchase(purchase: PurchaseDetail): FormState {
   return {
+    company_id: purchase.company_id,
     purchase_date: purchase.purchase_date,
     notes: purchase.notes ?? '',
     lines: purchase.lines.map((line) => {
@@ -165,7 +172,7 @@ function PurchaseForm({
   const save = useMutation({
     mutationFn: () => {
       const body = {
-        company_id: null,
+        company_id: form.company_id,
         purchase_date: form.purchase_date,
         notes: form.notes.trim() === '' ? null : form.notes.trim(),
         discount: null,
