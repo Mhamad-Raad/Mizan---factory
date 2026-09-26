@@ -1902,7 +1902,10 @@ html[data-mirroring='true'] body {
     inset-block-start: 0;
     inset-inline: auto;
     color: var(--color-sidebar-text);
-    overflow-y: auto;
+
+    /* Not a scroller itself: the links scroll inside `.mz-sidebar__nav`, and a scrolling
+       sidebar clipped the account menu that opens out of its foot (client review). */
+    overflow: visible;
   }
 
   /* A nav row: 36 px, rounded, icon then label, the current page marked twice over. */
@@ -3999,4 +4002,189 @@ html[data-mirroring='true'] body {
 /* A table to read, not to open: its rows are not links, so they do not pretend to be. */
 .mz-table--static tbody tr {
   cursor: default;
+}
+
+/* ── History: a day's work, read as a diary (client review) ────────────────────────── */
+
+.mz-activity {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* The day heading, with how many things happened in it. */
+.mz-activity__day {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.mz-activity__list {
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  background: var(--color-surface);
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+}
+
+/* One thing that happened: who, what, to which record, when — and what changed. */
+.mz-activity__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  border-block-end: 1px solid var(--color-border);
+  padding-block: var(--space-3);
+  padding-inline: var(--space-4);
+}
+
+.mz-activity__item:last-child {
+  border-block-end: 0;
+}
+
+.mz-activity__item:nth-child(odd) {
+  background: var(--color-table-stripe);
+}
+
+.mz-activity__item[data-open='true'] {
+  background: var(--color-table-hover);
+}
+
+/* The person, as initials in the palette's soft tint. */
+.mz-activity__avatar {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  color: var(--color-on-primary-soft);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.mz-activity__body {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.mz-activity__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+}
+
+.mz-activity__record {
+  font-weight: 600;
+}
+
+.mz-activity__change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.mz-activity__arrow {
+  display: inline-flex;
+  color: var(--color-text-muted);
+}
+
+.mz-activity__note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+.mz-activity__detail {
+  display: grid;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+  border-block-start: 1px dashed var(--color-border);
+  padding-block-start: var(--space-2);
+}
+
+.mz-activity__earlier {
+  display: grid;
+  gap: var(--space-1);
+  border-inline-start: 2px solid var(--color-border);
+  padding-inline-start: var(--space-3);
+}
+
+/* The time and "Details" at the end of the row. */
+.mz-activity__side {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+/* ── the account menu at the foot of the sidebar opens upward (client review) ─────── */
+
+/* Its button sits at the bottom of the screen, so a menu opening downward landed below the
+   window's edge where nothing could be clicked. Here it opens above the button instead. */
+
+/* Folded to its icons, the row is one avatar wide: the menu opens at its own width, over the page. */
+[data-sidebar='collapsed'] .mz-sidebar__user .mz-menu__list {
+  inset-inline-end: auto;
+  min-inline-size: 11rem;
+}
+
+/* The menu is anchored to the whole profile row rather than its small button, so it opens
+   above the name at the row's width and never runs past the sidebar's edge, which clips it. */
+.mz-sidebar__user {
+  position: relative;
+}
+
+.mz-sidebar__user .mz-menu {
+  position: static;
+}
+
+.mz-sidebar__user .mz-menu__list {
+  z-index: 60;
+  inset-block-start: auto;
+  inset-block-end: calc(100% + var(--space-1));
+  inset-inline: 0;
+  inline-size: auto;
+  min-inline-size: 0;
+}
+
+/* A money entry's kind and a new record's facts, in the History row. */
+.mz-activity__kind {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.mz-activity__fact {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* The whole profile row opens the account menu, not only its three dots (client review): the
+   dots' button stretches an invisible layer over the row, so it stays one real button — one
+   tab stop, one name for a screen reader — with a target the size of the row. */
+.mz-sidebar__user .mz-menu > .mz-icon-button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+}
+
+.mz-sidebar__user:hover {
+  border-radius: var(--radius-md);
+  background: var(--color-sidebar-hover);
+  cursor: pointer;
 }

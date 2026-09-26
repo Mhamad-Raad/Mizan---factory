@@ -37,6 +37,8 @@ export interface HistoryFilters {
    */
   about_party?: string;
   action?: string;
+  /** False leaves out signing in and out, locking and switching user — the noise of a day. */
+  sessions?: boolean;
   /** Collapse an edit storm into one entry per record (spec 2.4.5, last row). */
   group_edits?: boolean;
   /**
@@ -102,6 +104,11 @@ export class HistoryRepository {
     if (filters.action) {
       values.push(filters.action);
       conditions.push(`a.action = $${values.length}::audit_action`);
+    }
+    if (filters.sessions === false) {
+      conditions.push(
+        `a.action NOT IN ('login', 'logout', 'login_failed', 'lockout', 'lock', 'unlock', 'switch_user')`,
+      );
     }
     if (filters.cursor) {
       const [occurredAt, id] = filters.cursor.split('|');

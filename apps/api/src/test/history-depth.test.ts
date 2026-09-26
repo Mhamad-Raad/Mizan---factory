@@ -90,6 +90,15 @@ describe('history depth (FR-902, FR-903)', () => {
       .expect(201);
   }
 
+  it('leaves out signing in and out when asked, so the day reads as the work done (client review)', async () => {
+    // Signing in writes a row for each of the three people above.
+    const all = await as(ctx.http, admin).get('/api/v1/history').expect(200);
+    expect(all.body.items.some((row: { action: string }) => row.action === 'login')).toBe(true);
+
+    const work = await as(ctx.http, admin).get('/api/v1/history?sessions=false').expect(200);
+    expect(work.body.items.some((row: { action: string }) => row.action === 'login')).toBe(false);
+  });
+
   it('collapses an edit storm into one entry that expands to the whole story (2.4.5)', async () => {
     const order = await orderFor(rebaz);
 
