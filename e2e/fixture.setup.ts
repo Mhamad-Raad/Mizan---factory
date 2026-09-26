@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { Client } from 'pg';
 import { request, test as setup } from '@playwright/test';
 import { todayInBaghdad } from '@mizan/i18n';
-import { ACCOUNTANT, ADMIN, SALES, WAREHOUSE } from './accounts.js';
+import { ACCOUNTANT, ADMIN, API_URL, SALES, WAREHOUSE } from './accounts.js';
 
 /**
  * Seeds the data the selling screens are photographed with (spec 2.12, Definition of done
@@ -14,7 +14,7 @@ import { ACCOUNTANT, ADMIN, SALES, WAREHOUSE } from './accounts.js';
  * application role has no DELETE on the append-only tables, and that is the point.
  */
 
-const BASE = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
+const BASE = API_URL;
 const INITIAL_ADMIN_PASSWORD = 'mizan-e2e-initial-2026';
 const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgresql://mizan_app:mizan_app@localhost:5432/mizan_test';
