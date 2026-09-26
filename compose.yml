@@ -31,6 +31,8 @@ services:
       NODE_ENV: production
       PORT: 3000
       TZ: Asia/Baghdad
+      # One proxy (Caddy, below) stands in front of the API, so `request.ip` is the browser's.
+      TRUST_PROXY: '1'
       # The application role only: it reads the list of applied migrations to refuse to start
       # on a pending one, and has no use for the role that owns the schema (security review, 9).
       DATABASE_URL: ${DATABASE_URL:?}

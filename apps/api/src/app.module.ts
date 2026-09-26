@@ -1,5 +1,7 @@
 import { Inject, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { SignInThrottleGuard, signInThrottlerOptions } from './auth/sign-in-throttle.js';
 import { ENV, loadEnv } from './config/env.js';
 import type { Env } from './config/env.js';
 import { AuditService } from './audit/audit.service.js';
@@ -63,6 +65,9 @@ import { UsersService } from './users/users.service.js';
  * rather than a third path of their own. Reports and the rest arrive with their own iterations.
  */
 @Module({
+  // Read when the application is built, not when this file is imported, so the environment a
+  // test sets is the one it gets.
+  imports: [ThrottlerModule.forRootAsync({ useFactory: () => signInThrottlerOptions(loadEnv()) })],
   controllers: [
     AuthController,
     UsersController,
@@ -88,6 +93,7 @@ import { UsersService } from './users/users.service.js';
     SessionService,
     AuthService,
     AuthGuard,
+    SignInThrottleGuard,
     UsersRepository,
     UsersService,
     HistoryRepository,

@@ -30,6 +30,9 @@ const app = await NestFactory.create<NestExpressApplication>(AppModule, {
   logger: env.NODE_ENV === 'production' ? new StructuredLogger() : undefined,
 });
 applyRequestLimits(app);
+// Behind Caddy, `request.ip` must be the browser's address — the sign-in throttle counts by it,
+// and History records it (security review, finding 4). See TRUST_PROXY in config/env.ts.
+app.set('trust proxy', env.TRUST_PROXY);
 app.setGlobalPrefix('api/v1');
 app.use(cookieParser());
 app.use(

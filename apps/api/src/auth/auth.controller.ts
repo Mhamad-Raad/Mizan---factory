@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 import type { Response } from 'express';
 import { AllowBeforePasswordChange, AllowWhenLocked, Public, SessionOnly } from '../common/decorators.js';
@@ -8,6 +8,7 @@ import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { AuthService } from './auth.service.js';
+import { SignInThrottleGuard } from './sign-in-throttle.js';
 import { SESSION_COOKIE, SessionService } from './session.service.js';
 import { randomBytes } from 'node:crypto';
 
@@ -37,6 +38,7 @@ export class AuthController {
 
   @Post('login')
   @Public()
+  @UseGuards(SignInThrottleGuard)
   @HttpCode(200)
   async login(
     @Req() request: RequestWithContext,
@@ -86,6 +88,7 @@ export class AuthController {
 
   @Post('change-password')
   @SessionOnly()
+  @UseGuards(SignInThrottleGuard)
   @AllowBeforePasswordChange()
   @AllowWhenLocked()
   @HttpCode(204)
@@ -106,6 +109,7 @@ export class AuthController {
 
   @Post('unlock')
   @SessionOnly()
+  @UseGuards(SignInThrottleGuard)
   @AllowBeforePasswordChange()
   @AllowWhenLocked()
   @HttpCode(204)
