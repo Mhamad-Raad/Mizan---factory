@@ -121,8 +121,9 @@ export class ImportsService {
     const table: 'items' | 'customers' | 'companies' =
       kind === 'materials' || kind === 'opening_stock'
         ? 'items'
-        : kind === 'customers' || kind === 'customer_opening_balance'
-          ? 'customers'
+        : kind === 'customers' || kind === 'customer_opening_balance' || kind === 'companies'
+          ? // A new business of either kind collides with any business of that name (D-054).
+            'customers'
           : 'companies';
     const known = await this.namesIn(table, identities);
     const isKnown = (name: string): boolean => known.has(normalizeForSearch(name));
@@ -269,8 +270,10 @@ export class ImportsService {
         return;
 
       case 'companies':
-        await this.companies.create(context, {
+        await this.customers.create(context, {
           name: text(row.name) as string,
+          is_customer: false,
+          is_supplier: true,
           contact_name: text(row.contact_name),
           phone: text(row.phone),
           address: text(row.address),
@@ -334,8 +337,8 @@ export class ImportsService {
     const normalized = [...new Set(identities.map((name) => normalizeForSearch(name)))];
     if (normalized.length === 0) return new Map();
     const { rows } = await this.database.query<{ id: string; name_normalized: string }>(
-      `SELECT id::text AS id, name_normalized FROM ${table}
-        WHERE name_normalized = ANY($1::text[]) AND deleted_at IS NULL`,
+      `SELECT id::text AS id, name_normalized FROM ${sourceOf(table)}
+        name_normalized = ANY($1::text[]) AND deleted_at IS NULL`,
       [normalized],
     );
     return new Map(rows.map((row) => [row.name_normalized, row.id]));
@@ -346,7 +349,7 @@ export class ImportsService {
     name: string,
   ): Promise<string | null> {
     const { rows } = await this.database.query<{ id: string }>(
-      `SELECT id::text AS id FROM ${table} WHERE name_normalized = $1 AND deleted_at IS NULL LIMIT 1`,
+      `SELECT id::text AS id FROM ${sourceOf(table)} name_normalized = $1 AND deleted_at IS NULL LIMIT 1`,
       [normalizeForSearch(name)],
     );
     return rows[0]?.id ?? null;
@@ -397,4 +400,13 @@ export class ImportsService {
 function text(value: string | null | undefined): string | null {
   const trimmed = (value ?? '').trim();
   return trimmed === '' ? null : trimmed;
+}
+
+/**
+ * Where a name is looked up. Customers and companies are one table (D-054): a company is a
+ * business with `is_supplier`, so an opening debt to a company only finds suppliers — but a new
+ * row of either kind collides with any business of that name, because it would be the same one.
+ */
+function sourceOf(table: 'items' | 'customers' | 'companies'): string {
+  return table === 'companies' ? 'customers WHERE is_supplier AND' : `${table} WHERE`;
 }

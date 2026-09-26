@@ -12,6 +12,9 @@ function customerColumns(alias = 'customers'): string {
     'id',
     'name',
     'name_normalized',
+    'contact_name',
+    'is_customer',
+    'is_supplier',
     'phone',
     'phone_normalized',
     'address',
@@ -39,12 +42,28 @@ export interface CustomerScope {
   userId: string;
   /** `customers.view_all`: sees every customer. Otherwise only their own, plus the walk-in. */
   viewAll: boolean;
+  /**
+   * `companies.view`: sees every supplier. Suppliers were never scoped (FR-711) and still are
+   * not — a warehouse employee records purchases from any of them — so a record that is a
+   * supplier is visible to them even when it is also somebody else's customer (D-054).
+   */
+  seesSuppliers: boolean;
+}
+
+/** The scope predicate over alias `c`, with the caller's values at `$userParam`, `$suppliersParam`. */
+function scopeCondition(alias: string, userParam: number, suppliersParam: number): string {
+  return (
+    `(${alias}.is_system OR ${alias}.assigned_user_id = $${userParam}::uuid` +
+    ` OR (${alias}.is_supplier AND $${suppliersParam}::boolean))`
+  );
 }
 
 export interface CustomerFilters {
   q?: string;
+  /** One side of the business: the order form asks for customers, the purchase form suppliers. */
+  side?: 'customer' | 'supplier';
   assigned_to?: string;
-  /** `owes` = the customer owes us, `credit` = we owe them, `settled` = zero (FR-505). */
+  /** On the net figure: `owes` = they owe us, `credit` = we owe them, `settled` = zero (FR-505). */
   balance?: 'owes' | 'settled' | 'credit';
   include_inactive?: boolean;
   sort?: 'name' | 'balance';
@@ -54,7 +73,10 @@ export interface CustomerFilters {
 
 export interface CustomerListRow extends CustomerRow {
   assigned_user_name: string | null;
+  /** What they owe us, what we owe them, and the difference — all in the settlement currency. */
   balance: string;
+  payable: string;
+  net: string;
 }
 
 @Injectable()
@@ -69,8 +91,8 @@ export class CustomersRepository {
     const { rows } = await (tx ?? this.database).query<CustomerRow>(
       `SELECT ${customerColumns()} FROM customers
         WHERE id = $1 AND deleted_at IS NULL
-          AND ($2::boolean OR is_system OR assigned_user_id = $3::uuid)`,
-      [id, scope.viewAll, scope.userId],
+          AND ($2::boolean OR ${scopeCondition('customers', 3, 4)})`,
+      [id, scope.viewAll, scope.userId, scope.seesSuppliers],
     );
     return rows[0] ?? null;
   }
@@ -134,9 +156,11 @@ export class CustomersRepository {
 
     // Scope first, so every later condition narrows an already-permitted set (spec 2.6.4).
     if (!scope.viewAll) {
-      values.push(scope.userId);
-      conditions.push(`(c.is_system OR c.assigned_user_id = $${values.length}::uuid)`);
+      values.push(scope.userId, scope.seesSuppliers);
+      conditions.push(scopeCondition('c', values.length - 1, values.length));
     }
+    if (filters.side === 'customer') conditions.push('c.is_customer');
+    if (filters.side === 'supplier') conditions.push('c.is_supplier');
     if (!filters.include_inactive) conditions.push('c.is_active = true');
     if (filters.assigned_to) {
       values.push(filters.assigned_to);
@@ -155,9 +179,11 @@ export class CustomersRepository {
           ` AND c.phone_normalized LIKE $${phoneParam}))`,
       );
     }
-    if (filters.balance === 'owes') conditions.push('bal.balance > 0');
-    if (filters.balance === 'credit') conditions.push('bal.balance < 0');
-    if (filters.balance === 'settled') conditions.push('bal.balance = 0');
+    // The filters and the sort read the net figure (D-054): "owes us" means after what we owe them.
+    const net = '(bal.balance - pay.payable)';
+    if (filters.balance === 'owes') conditions.push(`${net} > 0`);
+    if (filters.balance === 'credit') conditions.push(`${net} < 0`);
+    if (filters.balance === 'settled') conditions.push(`${net} = 0`);
 
     // The balance is a sum over the customer's own rows, which `customer_ledger_running_idx`
     // serves as one index scan per customer rather than an aggregate of the whole ledger.
@@ -169,13 +195,22 @@ export class CustomersRepository {
           FROM customer_ledger l
          WHERE l.customer_id = c.id
       ) bal ON true`;
-    const from = `FROM customers c\n${assignee}${balance}`;
+    // What we owe them, from the buying side's ledger, served by `company_ledger_balance_idx`.
+    const payable = `
+      LEFT JOIN LATERAL (
+        SELECT coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0)
+                 AS payable
+          FROM company_ledger l
+         WHERE l.company_id = c.id
+      ) pay ON true`;
+    const from = `FROM customers c\n${assignee}${balance}${payable}`;
     const where = `WHERE ${conditions.join(' AND ')}`;
     // Counting thirty thousand customers does not need each one's balance summed — only a
     // filter on the balance does (`countFrom`, the system-wide review).
     const forCount = countFrom('FROM customers c', where, [
       { alias: 'u.', sql: assignee },
       { alias: 'bal.', sql: balance },
+      { alias: 'pay.', sql: payable },
     ]);
 
     const countValues = [...values];
@@ -183,11 +218,12 @@ export class CustomersRepository {
     const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
     values.push(pageSize, offset);
 
-    const order = filters.sort === 'balance' ? 'bal.balance DESC, c.name ASC' : 'c.name ASC';
+    const order = filters.sort === 'balance' ? `${net} DESC, c.name ASC` : 'c.name ASC';
 
     const [list, count] = await Promise.all([
       this.database.query<CustomerListRow>(
-        `SELECT ${customerColumns('c')}, u.display_name AS assigned_user_name, bal.balance::text AS balance
+        `SELECT ${customerColumns('c')}, u.display_name AS assigned_user_name, bal.balance::text AS balance,
+                pay.payable::text AS payable, ${net}::text AS net
          ${from} ${where}
          ORDER BY ${order}
          LIMIT $${values.length - 1} OFFSET $${values.length}`,
@@ -199,7 +235,16 @@ export class CustomersRepository {
     return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0) };
   }
 
-  /** The balance of one customer: the sum of the settlement-currency column (spec 2.2.6). */
+  /** What we owe this business on the buying side (0 when it has never been a supplier). */
+  async payableOf(id: string, tx?: Db): Promise<number> {
+    const { rows } = await (tx ?? this.database).query<{ payable: string }>(
+      `SELECT payable::text AS payable FROM party_balances WHERE customer_id = $1`,
+      [id],
+    );
+    return Number(rows[0]?.payable ?? 0);
+  }
+
+  /** The selling-side balance of one customer: the sum of the settlement-currency column (2.2.6). */
   async balanceOf(id: string, tx?: Db): Promise<number> {
     const { rows } = await (tx ?? this.database).query<{ balance: string }>(
       `SELECT balance::text AS balance FROM customer_balances WHERE customer_id = $1`,
@@ -211,6 +256,9 @@ export class CustomersRepository {
   async create(
     input: {
       name: string;
+      contact_name: string | null;
+      is_customer: boolean;
+      is_supplier: boolean;
       phone: string | null;
       address: string | null;
       notes: string | null;
@@ -225,8 +273,9 @@ export class CustomersRepository {
     const { rows } = await tx.query<CustomerRow>(
       `INSERT INTO customers (name, name_normalized, phone, phone_normalized, address, notes,
                               settlement_currency, assigned_user_id, credit_limit_iqd,
-                              credit_limit_usd_cents, created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::currency, $8, $9, $10, $11, $11)
+                              credit_limit_usd_cents, created_by, updated_by,
+                              contact_name, is_customer, is_supplier)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::currency, $8, $9, $10, $11, $11, $12, $13, $14)
        RETURNING ${customerColumns()}`,
       [
         input.name,
@@ -240,6 +289,9 @@ export class CustomersRepository {
         input.credit_limit_iqd,
         input.credit_limit_usd_cents,
         input.created_by,
+        input.contact_name,
+        input.is_customer,
+        input.is_supplier,
       ],
     );
     return rows[0] as CustomerRow;
@@ -250,6 +302,9 @@ export class CustomersRepository {
     version: number,
     patch: Partial<{
       name: string;
+      contact_name: string | null;
+      is_customer: boolean;
+      is_supplier: boolean;
       phone: string | null;
       address: string | null;
       notes: string | null;
@@ -302,11 +357,14 @@ export class CustomersRepository {
     return rows[0] ?? null;
   }
 
-  /** A customer may only be hidden while nothing references them (FR-507, A-32). */
+  /** A business may only be hidden while nothing on either side references it (FR-507, A-32). */
   async isReferenced(id: string, tx?: Db): Promise<boolean> {
     const { rows } = await (tx ?? this.database).query<{ referenced: boolean }>(
       `SELECT EXISTS (SELECT 1 FROM orders WHERE customer_id = $1)
-           OR EXISTS (SELECT 1 FROM customer_ledger WHERE customer_id = $1) AS referenced`,
+           OR EXISTS (SELECT 1 FROM customer_ledger WHERE customer_id = $1)
+           OR EXISTS (SELECT 1 FROM purchases WHERE company_id = $1)
+           OR EXISTS (SELECT 1 FROM company_ledger WHERE company_id = $1)
+           OR EXISTS (SELECT 1 FROM damages WHERE company_id = $1) AS referenced`,
       [id],
     );
     return rows[0]?.referenced ?? true;

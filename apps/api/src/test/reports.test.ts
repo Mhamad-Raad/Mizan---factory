@@ -87,7 +87,7 @@ describe('the reports (FR-1001 to FR-1013)', () => {
     ).body.id;
 
     alNoor = (
-      await as(ctx.http, admin).post('/api/v1/companies').send({ name: 'Al-Noor Steel Co.' }).expect(201)
+      await as(ctx.http, admin).post('/api/v1/customers').send({ is_customer: false, is_supplier: true, name: 'Al-Noor Steel Co.' }).expect(201)
     ).body.id;
   });
 

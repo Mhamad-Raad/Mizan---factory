@@ -112,7 +112,14 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
   },
 
   // Companies
-  { key: 'companies.view', page: 'companies', implies: [], labelKey: 'permissions.companies.view' },
+  // A company is a business with `is_supplier` on the one Customers page (D-054), so seeing the
+  // companies means opening that page — where the scope rule shows this employee the suppliers.
+  {
+    key: 'companies.view',
+    page: 'companies',
+    implies: ['customers.view'],
+    labelKey: 'permissions.companies.view',
+  },
   { key: 'companies.create', page: 'companies', implies: ['companies.view'], labelKey: 'permissions.companies.create' },
   { key: 'companies.edit', page: 'companies', implies: ['companies.view'], labelKey: 'permissions.companies.edit' },
   { key: 'companies.assign', page: 'companies', implies: ['companies.view'], labelKey: 'permissions.companies.assign' },

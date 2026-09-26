@@ -92,7 +92,7 @@ export async function resetDatabase(): Promise<void> {
     `TRUNCATE audit_log, login_attempts, idempotency_keys, user_permissions, sessions,
               customer_ledger, company_ledger, stock_ledger, order_payment_type_changes,
               order_lines, orders, purchase_lines, purchases, damages, customers,
-              company_rates, companies, item_month_prices, items, global_rates, settings, users
+              customer_rates, item_month_prices, items, global_rates, settings, users
      RESTART IDENTITY CASCADE`,
   );
   // `RESTART IDENTITY` only touches sequences a truncated table owns. Document numbers,

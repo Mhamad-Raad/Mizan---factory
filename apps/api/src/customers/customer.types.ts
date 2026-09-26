@@ -4,6 +4,10 @@ export interface CustomerRow {
   id: string;
   name: string;
   name_normalized: string;
+  contact_name: string | null;
+  /** Which sides of the business this record takes part in (D-054): at least one is true. */
+  is_customer: boolean;
+  is_supplier: boolean;
   phone: string | null;
   phone_normalized: string | null;
   address: string | null;
@@ -36,6 +40,9 @@ export interface BalanceDto {
 export interface CustomerDto {
   id: string;
   name: string;
+  contact_name: string | null;
+  is_customer: boolean;
+  is_supplier: boolean;
   phone: string | null;
   address: string | null;
   notes: string | null;
@@ -47,8 +54,21 @@ export interface CustomerDto {
   /** Proposed — not requested (FR-616): warns on a borrowed order, never blocks. */
   credit_limit: { amount_iqd: number; amount_usd_cents: number } | null;
   is_active: boolean;
-  /** Stripped for a caller without `fields.see_customer_balances` (FR-503). */
+  /**
+   * What they owe us on the selling side. Stripped for a caller without
+   * `fields.see_customer_balances` (FR-503).
+   */
   balance: BalanceDto | null;
+  /**
+   * What we owe them on the buying side; null when the record is not a supplier. Stripped for a
+   * caller without `fields.see_company_balances` (FR-704).
+   */
+  payable: BalanceDto | null;
+  /**
+   * The one figure the client asked for (D-054): `balance − payable`. Positive — they owe us;
+   * negative — we owe them. Present only for a caller who may see both sides.
+   */
+  net: BalanceDto | null;
   /**
    * The customer's own IQD-per-USD rate, or the global one when they have none. `is_customer_rate`
    * says which, so the order form can default to the customer's rate and the page can say so.

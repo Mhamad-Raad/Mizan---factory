@@ -63,12 +63,14 @@ function companyColumns(alias = 'companies'): string {
 }
 
 /**
- * All SQL for companies (decision D-008).
+ * The buying side of a business, read from `customers` (D-054): a "company" is a business with
+ * `is_supplier`, and the record itself — creating, editing, assigning, its rate and its
+ * settlement currency — belongs to the customers module. What stays here is what the buying
+ * side reads: the supplier as the purchase and damage forms see it, its balance, its rate.
  *
- * There is no scope rule here: every user with `companies.view` sees every company (FR-711,
- * 2.6.4), which is the one place the supplier side deliberately differs from the customer one.
- * The balance and the current rate are read per row through LATERALs, served by the covering
- * index of migration 0008 — the pattern the I1 review measured into place.
+ * There is no scope rule here: every user with `companies.view` sees every supplier (FR-711,
+ * 2.6.4). The balance and the current rate are read per row through LATERALs, served by the
+ * covering index of migration 0008 — the pattern the I1 review measured into place.
  */
 @Injectable()
 export class CompaniesRepository {
@@ -76,7 +78,7 @@ export class CompaniesRepository {
 
   async findById(id: string, tx?: Db): Promise<CompanyRow | null> {
     const { rows } = await (tx ?? this.database).query<CompanyRow>(
-      `SELECT ${companyColumns()} FROM companies WHERE id = $1 AND deleted_at IS NULL`,
+      `SELECT ${companyColumns()} FROM customers companies WHERE id = $1 AND is_supplier AND deleted_at IS NULL`,
       [id],
     );
     return rows[0] ?? null;
@@ -84,22 +86,14 @@ export class CompaniesRepository {
 
   async lock(id: string, tx: Db): Promise<CompanyRow | null> {
     const { rows } = await tx.query<CompanyRow>(
-      `SELECT ${companyColumns()} FROM companies WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+      `SELECT ${companyColumns()} FROM customers companies WHERE id = $1 AND is_supplier AND deleted_at IS NULL FOR UPDATE`,
       [id],
     );
     return rows[0] ?? null;
   }
 
-  async findByNormalizedName(normalized: string, tx?: Db): Promise<CompanyRow | null> {
-    const { rows } = await (tx ?? this.database).query<CompanyRow>(
-      `SELECT ${companyColumns()} FROM companies WHERE name_normalized = $1 AND deleted_at IS NULL`,
-      [normalized],
-    );
-    return rows[0] ?? null;
-  }
-
   async list(filters: CompanyFilters): Promise<{ rows: CompanyListRow[]; total: number }> {
-    const conditions = ['c.deleted_at IS NULL'];
+    const conditions = ['c.deleted_at IS NULL', 'c.is_supplier'];
     const values: unknown[] = [];
 
     if (!filters.include_inactive) conditions.push('c.is_active = true');
@@ -132,15 +126,15 @@ export class CompaniesRepository {
     const currentRate = `
       LEFT JOIN LATERAL (
         SELECT r.rate_iqd_per_usd, r.effective_from
-          FROM company_rates r
-         WHERE r.company_id = c.id AND r.effective_from <= now()
+          FROM customer_rates r
+         WHERE r.customer_id = c.id AND r.effective_from <= now()
          ORDER BY r.effective_from DESC
          LIMIT 1
       ) rate ON true`;
-    const from = `FROM companies c\n${assignee}${owed}${currentRate}`;
+    const from = `FROM customers c\n${assignee}${owed}${currentRate}`;
     const where = `WHERE ${conditions.join(' AND ')}`;
     // The count needs none of the three unless a filter mentions one (`countFrom`).
-    const forCount = countFrom('FROM companies c', where, [
+    const forCount = countFrom('FROM customers c', where, [
       { alias: 'u.', sql: assignee },
       { alias: 'bal.', sql: owed },
       { alias: 'rate.', sql: currentRate },
@@ -178,151 +172,19 @@ export class CompaniesRepository {
     return Number(rows[0]?.balance ?? 0);
   }
 
-  async create(
-    input: {
-      name: string;
-      contact_name: string | null;
-      phone: string | null;
-      address: string | null;
-      notes: string | null;
-      settlement_currency: Currency;
-      assigned_user_id: string | null;
-      created_by: string;
-    },
-    tx: Db,
-  ): Promise<CompanyRow> {
-    const { rows } = await tx.query<CompanyRow>(
-      `INSERT INTO companies (name, name_normalized, contact_name, phone, phone_normalized, address,
-                              notes, settlement_currency, assigned_user_id, created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::currency, $9, $10, $10)
-       RETURNING ${companyColumns()}`,
-      [
-        input.name,
-        normalizeForSearch(input.name),
-        input.contact_name,
-        input.phone,
-        input.phone ? normalizePhone(input.phone) || null : null,
-        input.address,
-        input.notes,
-        input.settlement_currency,
-        input.assigned_user_id,
-        input.created_by,
-      ],
-    );
-    return rows[0] as CompanyRow;
-  }
-
-  async update(
-    id: string,
-    version: number,
-    patch: Partial<{
-      name: string;
-      contact_name: string | null;
-      phone: string | null;
-      address: string | null;
-      notes: string | null;
-      settlement_currency: Currency;
-      assigned_user_id: string | null;
-      is_active: boolean;
-    }>,
-    updatedBy: string,
-    tx: Db,
-  ): Promise<CompanyRow | null> {
-    const fields = Object.keys(patch) as (keyof typeof patch)[];
-    if (fields.length === 0) return this.lock(id, tx);
-
-    const values: unknown[] = [id, version, updatedBy];
-    const assignments: string[] = [];
-    for (const field of fields) {
-      values.push(patch[field] ?? null);
-      assignments.push(`${field} = $${values.length}`);
-      if (field === 'name') {
-        values.push(normalizeForSearch(String(patch.name ?? '')));
-        assignments.push(`name_normalized = $${values.length}`);
-      }
-      if (field === 'phone') {
-        const phone = patch.phone ? normalizePhone(patch.phone) || null : null;
-        values.push(phone);
-        assignments.push(`phone_normalized = $${values.length}`);
-      }
-    }
-
-    const { rows } = await tx.query<CompanyRow>(
-      `UPDATE companies
-          SET ${assignments.join(', ')}, updated_at = now(), updated_by = $3, version = version + 1
-        WHERE id = $1 AND version = $2 AND deleted_at IS NULL
-        RETURNING ${companyColumns()}`,
-      values,
-    );
-    return rows[0] ?? null;
-  }
-
-  async softDelete(id: string, version: number, deletedBy: string, tx: Db): Promise<CompanyRow | null> {
-    const { rows } = await tx.query<CompanyRow>(
-      `UPDATE companies
-          SET deleted_at = now(), deleted_by = $3, updated_at = now(), updated_by = $3, version = version + 1
-        WHERE id = $1 AND version = $2 AND deleted_at IS NULL
-        RETURNING ${companyColumns()}`,
-      [id, version, deletedBy],
-    );
-    return rows[0] ?? null;
-  }
-
-  /** A company may only be hidden while nothing references it (A-32). */
-  async isReferenced(id: string, tx?: Db): Promise<boolean> {
-    const { rows } = await (tx ?? this.database).query<{ referenced: boolean }>(
-      `SELECT EXISTS (SELECT 1 FROM purchases WHERE company_id = $1)
-           OR EXISTS (SELECT 1 FROM company_ledger WHERE company_id = $1)
-           OR EXISTS (SELECT 1 FROM company_rates WHERE company_id = $1) AS referenced`,
-      [id],
-    );
-    return rows[0]?.referenced ?? true;
-  }
-
   // ─────────────────────────────── rates (FR-703) ───────────────────────────────
 
-  /** The company's current rate, or null when it has never had one (then the global applies). */
+  /** The business's current rate (one per business, D-054), or null: then the global applies. */
   async currentRate(id: string, tx?: Db): Promise<{ rate: string; since: Date } | null> {
     const { rows } = await (tx ?? this.database).query<{ rate: string; since: Date }>(
       `SELECT rate_iqd_per_usd::text AS rate, effective_from AS since
-         FROM company_rates
-        WHERE company_id = $1 AND effective_from <= now()
+         FROM customer_rates
+        WHERE customer_id = $1 AND effective_from <= now()
         ORDER BY effective_from DESC
         LIMIT 1`,
       [id],
     );
     return rows[0] ?? null;
-  }
-
-  async rateHistory(id: string, limit = 50) {
-    const { rows } = await this.database.query<{
-      id: string;
-      rate_iqd_per_usd: string;
-      effective_from: Date;
-      note: string | null;
-      created_by_name: string | null;
-    }>(
-      `SELECT r.id, r.rate_iqd_per_usd::text AS rate_iqd_per_usd, r.effective_from, r.note,
-              u.display_name AS created_by_name
-         FROM company_rates r
-         LEFT JOIN users u ON u.id = r.created_by
-        WHERE r.company_id = $1
-        ORDER BY r.effective_from DESC
-        LIMIT $2`,
-      [id, Math.min(limit, 100)],
-    );
-    return rows;
-  }
-
-  async insertRate(
-    input: { company_id: string; rate: string; note: string | null; created_by: string },
-    tx: Db,
-  ): Promise<void> {
-    await tx.query(
-      `INSERT INTO company_rates (company_id, rate_iqd_per_usd, note, created_by)
-       VALUES ($1, $2::numeric, $3, $4)`,
-      [input.company_id, input.rate, input.note, input.created_by],
-    );
   }
 
   /** The active purchases of a company, for the oldest-first allocation of FR-712. */

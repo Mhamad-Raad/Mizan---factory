@@ -155,7 +155,7 @@ export class PurchasesRepository {
     const { rows } = await (tx ?? this.database).query<PurchaseListRow>(
       `SELECT ${purchaseColumns('p')}, ${LIST_COLUMNS}
          FROM purchases p
-         LEFT JOIN companies co ON co.id = p.company_id
+         LEFT JOIN customers co ON co.id = p.company_id
          LEFT JOIN users u ON u.id = p.acting_user_id
          LEFT JOIN users v ON v.id = p.voided_by
         WHERE p.id = $1 AND p.deleted_at IS NULL`,
@@ -226,7 +226,7 @@ export class PurchasesRepository {
 
     const from = `
       FROM purchases p
-      LEFT JOIN companies co ON co.id = p.company_id
+      LEFT JOIN customers co ON co.id = p.company_id
       LEFT JOIN users u ON u.id = p.acting_user_id
       LEFT JOIN users v ON v.id = p.voided_by`;
     const where = `WHERE ${conditions.join(' AND ')}`;

@@ -236,7 +236,7 @@ export class ReportsRepository {
               coalesce(sum(p.total_usd_cents), 0)::bigint AS total_usd_cents,
               NULL::int AS qty_count, NULL::text AS qty_kg
          FROM purchases p
-         LEFT JOIN companies co ON co.id = p.company_id
+         LEFT JOIN customers co ON co.id = p.company_id
          LEFT JOIN users u ON u.id = p.acting_user_id
         WHERE ${conditions.join(' AND ')}
         GROUP BY ${grouping.group}
@@ -570,7 +570,8 @@ export class ReportsRepository {
 
   async payables(filters: ReportFilters) {
     const values: unknown[] = [filters.from, filters.to];
-    const conditions = ['co.deleted_at IS NULL'];
+    // A company is a business with `is_supplier` (D-054).
+    const conditions = ['co.deleted_at IS NULL', 'co.is_supplier'];
     if (filters.company_id) {
       values.push(filters.company_id);
       conditions.push(`co.id = $${values.length}::uuid`);
@@ -608,7 +609,7 @@ export class ReportsRepository {
               ${this.periodSum("l.entry_type = 'payment'", 'paid', true)},
               ${this.periodSum("l.entry_type = 'credit'", 'credits', true)},
               ${this.periodSum("l.entry_type = 'adjustment'", 'adjustments')}
-         FROM companies co
+         FROM customers co
          LEFT JOIN company_ledger l ON l.company_id = co.id
         WHERE ${conditions.join(' AND ')}
         GROUP BY co.id, co.name, co.settlement_currency

@@ -688,3 +688,43 @@ so nothing about the checks changes. Preview **22.7 s → 0.1 s**; the 10,000-cu
 own acceptance criterion). The screen now says a large file takes about a minute, and so does
 the admin guide, because somebody watching a button spin deserves to be told. Relied on:
 FR-1312, NFR-03.
+
+## D-054 · 2026-09-26 · client review · Customers and companies are one record per business
+
+The client, reviewing the running site: "companies and customers are one thing — we are treating
+them as different data and pages." The specification kept them apart (FR-501, FR-701) and gave
+each its own rate, balance and page; the client's businesses are both, and a company's own rate
+never reached its orders because the order side did not know companies existed.
+
+**Choice** (asked in the session; the client chose a *net* balance and a clean slate):
+
+- **One record per business** — the `customers` table, which gains `contact_name`, `is_customer`
+  and `is_supplier` (at least one). The `companies` table is gone; `purchases.company_id`,
+  `company_ledger.company_id` and `damages.company_id` name a `customers` row and keep their
+  column names, meaning "the business on the buying side of this document". Migration 0023
+  refuses to run over any company data, so it can never drop a real record; no production
+  database existed, and the client asked for the dummy data to be cleared and re-seeded.
+- **One net balance.** The two ledgers stay exactly as they were — append-only, their own sign
+  conventions, the oldest-first purchase allocation, the order-remaining trigger — and
+  `party_balances` nets them: *what they owe us − what we owe them*, in the one settlement
+  currency. Nothing about how money is written changed; netting is a read.
+- **One rate per business** (`customer_rates`; `company_rates` is gone), used for its orders,
+  its purchases, and every payment, credit and adjustment on both sides. It is stored with
+  `rate_source = 'company'` — "this party's own rate" — on orders too, which lifts the old
+  `orders_rate_source_customer_side` check; before, an order at the customer's rate was filed as
+  `manual`, indistinguishable from a rate typed for the deal.
+- **One settlement currency.** Changing it re-bases both ledgers in one transaction at the one
+  agreed rate, so the net never subtracts dollars from dinars.
+- **Permissions keep their sides.** Creating, editing or assigning a customer needs
+  `customers.*`, a company `companies.*`, a record that is both needs both; `companies.view` now
+  implies `customers.view`, and the scope rule shows an employee who may see companies every
+  company — they never were scoped (FR-711) — while customers stay scoped by assignment (2.6.4).
+  The net figure is returned only to somebody who may see both balances, or the hidden side
+  could be worked out from it.
+- **Names are no longer unique among companies.** Two records named alike were exactly the
+  duplication the client complained of; the duplicate warning of FR-501 now covers both sides.
+
+**Glossary:** "Company" stays the client's word for the business we buy from (1.6); the page
+is the Customers page, and each record says which sides it takes part in. The new strings are
+listed for the glossary review (Q-26). Relied on: the client's instruction; 2.2.6 (balances
+are sums), 2.3.3 (the document's rate), 2.3.5 (re-basing), 2.6.4 (scope in repositories).

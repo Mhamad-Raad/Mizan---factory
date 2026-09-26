@@ -111,12 +111,12 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     // A supplier with its own rate, a purchase that brought the copper in, and a customer
     // order that took some of it away again — the three things damage can be attributed to.
     const company = await as(ctx.http, admin)
-      .post('/api/v1/companies')
-      .send({ name: 'Al-Noor Steel Co.' })
+      .post('/api/v1/customers')
+      .send({ is_customer: false, is_supplier: true, name: 'Al-Noor Steel Co.' })
       .expect(201);
     alNoor = company.body.id;
     await as(ctx.http, admin)
-      .post(`/api/v1/companies/${alNoor}/rates`)
+      .post(`/api/v1/customers/${alNoor}/rates`)
       .send({ rate_iqd_per_usd: '1310' })
       .expect(201);
 
@@ -370,8 +370,8 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
 
     it('refuses a purchase that belongs to another company', async () => {
       const other = await as(ctx.http, admin)
-        .post('/api/v1/companies')
-        .send({ name: 'Zagros Metals' })
+        .post('/api/v1/customers')
+        .send({ is_customer: false, is_supplier: true, name: 'Zagros Metals' })
         .expect(201);
 
       const response = await recordDamage(warehouse, {

@@ -163,7 +163,7 @@ const JOINS = `
   LEFT JOIN users u ON u.id = d.acting_user_id
   LEFT JOIN users r ON r.id = d.returned_by
   LEFT JOIN users v ON v.id = d.voided_by
-  LEFT JOIN companies co ON co.id = d.company_id
+  LEFT JOIN customers co ON co.id = d.company_id
   LEFT JOIN orders o ON o.id = d.order_id
   LEFT JOIN customers cust ON cust.id = o.customer_id
   LEFT JOIN purchases p ON p.id = d.purchase_id`;
@@ -462,7 +462,7 @@ export class DamagesRepository {
               l.entry_type::text AS entry_type, to_char(l.entry_date, 'YYYY-MM-DD') AS entry_date,
               l.amount_iqd::text AS amount_iqd, l.amount_usd_cents::text AS amount_usd_cents,
               c.settlement_currency::text AS settlement_currency, l.note
-         FROM company_ledger l JOIN companies c ON c.id = l.company_id
+         FROM company_ledger l JOIN customers c ON c.id = l.company_id
         WHERE l.damage_id = $1
         UNION ALL
        SELECT 'customer' AS side, l.customer_id AS owner_id, cu.name AS owner_name, l.id AS entry_id,

@@ -127,7 +127,11 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     body: Record<string, unknown>,
     session: Session = accountant,
   ): Promise<string> {
-    const created = await as(ctx.http, session).post('/api/v1/companies').send(body).expect(201);
+    // A company is a business we buy from (D-054): created on the one record, as a supplier.
+    const created = await as(ctx.http, session)
+      .post('/api/v1/customers')
+      .send({ is_customer: false, is_supplier: true, ...body })
+      .expect(201);
     return created.body.id as string;
   }
 
@@ -222,16 +226,18 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       });
 
       const rows = await auditRows({ entityId: alNoor, action: 'create' });
-      expect(rows[0]?.entity_label).toBe('Company: Al-Noor Steel Co.');
+      expect(rows[0]?.entity_label).toBe('Customer: Al-Noor Steel Co.');
       expect(rows[0]?.changes).toMatchObject({ settlement_currency: { old: null, new: 'IQD' } });
     });
 
-    it('refuses a second company with the same name, because one supplier is one account', async () => {
+    it('warns about a business of the same name, whichever side it was created on (D-054)', async () => {
+      // Names are no longer unique — a customer and a company were the same business twice —
+      // so the duplicate check of FR-501 answers for both sides before the form is saved.
       const response = await as(ctx.http, accountant)
-        .post('/api/v1/companies')
-        .send({ name: 'al-noor steel co.' })
-        .expect(422);
-      expect(response.body.error.fields[0]).toMatchObject({ path: 'name', code: 'DUPLICATE_NAME' });
+        .get('/api/v1/customers/duplicates')
+        .query({ name: 'al-noor steel co.' })
+        .expect(200);
+      expect(response.body.duplicates.map((row: { id: string }) => row.id)).toEqual([alNoor]);
     });
 
     it('shows every company to every user with companies.view, assigned or not (FR-711)', async () => {
@@ -248,7 +254,7 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
 
     it('sets the company rate, keeps its history and applies it to new documents (FR-703)', async () => {
       await as(ctx.http, accountant)
-        .post(`/api/v1/companies/${alNoor}/rates`)
+        .post(`/api/v1/customers/${alNoor}/rates`)
         .send({ rate_iqd_per_usd: '1310', note: 'agreed with Al-Noor' })
         .expect(201);
 
@@ -259,7 +265,7 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       });
 
       const history = await as(ctx.http, accountant)
-        .get(`/api/v1/companies/${alNoor}/rates`)
+        .get(`/api/v1/customers/${alNoor}/rates`)
         .expect(200);
       expect(history.body.items[0]).toMatchObject({
         rate_iqd_per_usd: '1310.0000',
@@ -272,13 +278,13 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
 
     it('accepts a new company rate without a change guard', async () => {
       await as(ctx.http, accountant)
-        .post(`/api/v1/companies/${alNoor}/rates`)
+        .post(`/api/v1/customers/${alNoor}/rates`)
         .send({ rate_iqd_per_usd: '1310' })
         .expect(201);
 
       // A large change is accepted directly — the ±% guard was removed.
       await as(ctx.http, accountant)
-        .post(`/api/v1/companies/${alNoor}/rates`)
+        .post(`/api/v1/customers/${alNoor}/rates`)
         .send({ rate_iqd_per_usd: '13100' })
         .expect(201);
     });
@@ -397,7 +403,7 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
         settlement_currency: 'USD',
       });
       await as(ctx.http, accountant)
-        .post(`/api/v1/companies/${usdCompany}/rates`)
+        .post(`/api/v1/customers/${usdCompany}/rates`)
         .send({ rate_iqd_per_usd: '1310' })
         .expect(201);
 
@@ -595,7 +601,7 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
   describe('payments, credits, adjustments and openings (FR-705 to FR-708)', () => {
     beforeEach(async () => {
       await as(ctx.http, accountant)
-        .post(`/api/v1/companies/${alNoor}/rates`)
+        .post(`/api/v1/customers/${alNoor}/rates`)
         .send({ rate_iqd_per_usd: '1310' })
         .expect(201);
     });
@@ -805,7 +811,7 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
         await expect(client.query('DELETE FROM company_ledger')).rejects.toThrow(
           /permission denied/i,
         );
-        await expect(client.query('DELETE FROM company_rates')).rejects.toThrow(
+        await expect(client.query('DELETE FROM customer_rates')).rejects.toThrow(
           /permission denied/i,
         );
         await expect(client.query('DELETE FROM purchases')).rejects.toThrow(/permission denied/i);
@@ -922,7 +928,7 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       );
 
       const refused = await as(ctx.http, admin)
-        .put(`/api/v1/companies/${alNoor}/settlement-currency`)
+        .put(`/api/v1/customers/${alNoor}/settlement-currency`)
         .send({ currency: 'USD', note: 'they invoice in dollars now' })
         .expect(422);
       expect(refused.body.error.code).toBe('REBASE_RATE_REQUIRED');
@@ -936,7 +942,7 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       const storedUsd = Number(before[0]?.amount_usd_cents);
 
       const changed = await as(ctx.http, admin)
-        .put(`/api/v1/companies/${alNoor}/settlement-currency`)
+        .put(`/api/v1/customers/${alNoor}/settlement-currency`)
         .send({ currency: 'USD', note: 'they invoice in dollars now', rebase_rate: '1310' })
         .expect(200);
 
@@ -958,7 +964,7 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
 
     it('never alters a stored entry when the rate changes afterwards (FR-703)', async () => {
       await as(ctx.http, accountant)
-        .post(`/api/v1/companies/${alNoor}/rates`)
+        .post(`/api/v1/customers/${alNoor}/rates`)
         .send({ rate_iqd_per_usd: '1310' })
         .expect(201);
       const purchase = await createPurchase(warehouse, {
@@ -967,7 +973,7 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       const before = await companyLedger(alNoor);
 
       await as(ctx.http, accountant)
-        .post(`/api/v1/companies/${alNoor}/rates`)
+        .post(`/api/v1/customers/${alNoor}/rates`)
         .send({ rate_iqd_per_usd: '1400' })
         .expect(201);
 
@@ -986,7 +992,7 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
   describe('what the review measured and fixed', () => {
     beforeEach(async () => {
       await as(ctx.http, accountant)
-        .post(`/api/v1/companies/${alNoor}/rates`)
+        .post(`/api/v1/customers/${alNoor}/rates`)
         .send({ rate_iqd_per_usd: '1310' })
         .expect(201);
     });
