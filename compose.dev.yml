@@ -11,7 +11,8 @@ services:
       POSTGRES_USER: mizan_migrate
       POSTGRES_PASSWORD: mizan_migrate
       TZ: Asia/Baghdad
-    ports: ['5432:5432']
+    # This machine only: the development database's password is in the repository.
+    ports: ['127.0.0.1:5432:5432']
     volumes:
       - dev-db-data:/var/lib/postgresql/data
     healthcheck:
