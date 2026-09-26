@@ -962,3 +962,59 @@ one toolbar (search, period, who broke it, owed or paid back, who recorded it, v
 desktop, cards on a phone. The list API gained `compensation=owed|paid` and the owed total; the
 Today tile that counted returns (which the D-062 flow never creates) now counts broken goods a
 company still owes for.
+
+## D-064 · 2026-09-26 · security review · What the security fixes decided
+
+A security review listed twenty-one findings; the fixes are on `fix/security-review`, one commit
+each. Where a fix had to choose, this is the choice.
+
+- **The sign-in lockout is per account.** When the typed name resolves, the count is kept under
+  the username, whichever alias was typed; when it does not, under the name normalised as the
+  lookup normalises it (a phone number in any spelling is one key). Login, unlock and
+  change-password share that key. Check-and-record runs under
+  `pg_advisory_xact_lock(hashtext(key))` in one transaction, with an in-process queue per key in
+  front so a burst does not hold pooled connections while it waits; the transaction spans the
+  Argon2 check (tens of milliseconds), which the pool of ten absorbs at 30 users. An unknown name
+  is checked against a dummy hash, so it costs the same time. Relied on: 2.8, FR-101.
+- **Changing your own password** answers to the lockout (checked before the password is) and
+  signs out every other session of the user; the device it was changed on stays signed in.
+  Relied on: 2.8, FR-108.
+- **Paid back on a damage** needs `companies.record_payment` (money) or `companies.record_credit`
+  (materials) besides `damages.mark_returned`, checked in the service with the method known, and
+  refused with a message naming the missing permission. **Recording** a company-attributed damage
+  is *not* gated on a company key: that charge is a document posting like a purchase's or an
+  order's, which need only their own create key — gating it would stop the warehouse preset from
+  recording supplier damage at all. Relied on: 1.5.2, 2.6.2, D-062.
+- **Must change password** is enforced by the guard: until then only `me`, change-password,
+  logout, lock and unlock answer; everything else is `403 PASSWORD_CHANGE_REQUIRED`. Relied on:
+  FR-101, FR-108.
+- **The global History page** strips the same fields the per-record History tabs do, per kind
+  of record (a purchase's `unit_price` is a bought price, an order's is not; `balance` follows the
+  customer or the company flag). Relied on: 2.4.4, 2.6.2.
+- **Per-address ceiling** on sign-in, unlock and change-password only: 30 a minute and 200 an
+  hour per address per door (`SIGN_IN_LIMIT_PER_MINUTE`, `SIGN_IN_LIMIT_PER_HOUR`), counted by
+  `request.ip` with `TRUST_PROXY` (default off; `compose.yml` sets 1 for Caddy). **No global
+  limit**: the whole factory reaches the server from one address, and a limit loose enough for a
+  busy day at thirty users protects nothing a login ceiling does not. In memory per replica.
+  Relied on: 2.8, NFR-13, C-07.
+- **The API no longer holds the migrate role.** Migration 0027 grants the app role `SELECT` on
+  `mizan_migrations`; migrations run from a one-off `migrate` service in `compose.yml`. Making
+  `mizan_migrate` a non-superuser on the existing volume is a manual step (runbook), not code.
+  Relied on: 2.13, 2.14.
+- **Backups have no local-only mode** (the runbook never described one): a copy that cannot leave
+  the host fails the run and withholds the heartbeat. Encrypted copies carry an HMAC-SHA256 tag;
+  restore refuses a copy whose tag does not match and decrypts an untagged (older) copy with a
+  warning. Relied on: 2.13, 2.14, NFR-08.
+- **Development settings refuse a public address**: `NODE_ENV=development` (the default) with an
+  `APP_BASE_URL` that is not localhost or a private network stops the API at start-up. Relied on:
+  2.8 (Secure cookie), D-007.
+- **CSRF, partly.** A write whose `Referer` names another site is refused when `Origin` is absent;
+  a request with neither is still left to the double-submit token, because non-browser clients
+  send neither. Binding the token to the session was not done: the custom header already cannot
+  be sent cross-site without a preflight the API only grants to `APP_BASE_URL`. Relied on: 2.8,
+  2.13.
+- **A malformed record id is 404** (global pipe over `id`, `entryId`, `sessionId`, after the
+  guard); **idempotency keys** must be 8–128 of `[A-Za-z0-9_-]` and are unique per user
+  (migration 0028). Relied on: 2.9.1, 2.9.2, FR-1305.
+- **Numbers refused by a schema** now say so as numbers (`errors:field.number_too_small` with
+  `min`), and every field error carries its `min`/`max`. Relied on: 2.9.2.
