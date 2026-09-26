@@ -39,7 +39,7 @@ const baseSchema = z.object({
  * cost — travels with the material and is written in the same transaction. Optional here only
  * because the go-live import creates materials by the hundred; the screen always sends it.
  */
-const createSchema = baseSchema.extend({
+export const createSchema = baseSchema.extend({
   buy: z
     .object({
       qty_count: z.number().int().positive().nullish(),
@@ -67,7 +67,7 @@ const copyMonthSchema = z.object({
   item_ids: z.array(uuid).max(1000).nullish(),
 });
 
-const movementSchema = z.object({
+export const movementSchema = z.object({
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   qty_count: z.number().int().nullish(),
   qty_kg: kg.nullish(),

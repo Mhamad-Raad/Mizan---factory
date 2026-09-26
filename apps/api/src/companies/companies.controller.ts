@@ -33,7 +33,7 @@ const paymentSchema = money.extend({
   note: z.string().max(2000).nullish(),
 });
 
-const entrySchema = money.extend({
+export const entrySchema = money.extend({
   entry_date: isoDate,
   note: z.string().min(1).max(2000),
   purchase_id: z.string().uuid().nullish(),
