@@ -783,7 +783,7 @@ whose account it is): "remove that from the system".
 
 Relied on: the client's instruction; 2.6.4 (the scope rules this empties); rule 2.
 
-## D-057 · Today shows two weeks, who owes us most, and the latest orders (client review)
+## D-057 · 2026-09-26 · client review · Today shows two weeks, who owes us most, and the latest orders
 
 The client: "make the today ui better with charts and if needed tables of the recent orders".
 
