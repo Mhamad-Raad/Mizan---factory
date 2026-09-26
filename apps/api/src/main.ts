@@ -6,6 +6,7 @@ import { applyRequestLimits } from './request-limits.js';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
+import { appOrigin } from './common/csrf.middleware.js';
 import { StructuredLogger } from './common/logger.js';
 import { loadEnv } from './config/env.js';
 import { pendingMigrations } from './database/migrate.js';
@@ -47,7 +48,7 @@ app.use(
     referrerPolicy: { policy: 'same-origin' },
   }),
 );
-app.enableCors({ origin: env.APP_BASE_URL, credentials: true });
+app.enableCors({ origin: appOrigin(env.APP_BASE_URL), credentials: true });
 
 await app.listen(env.PORT);
 logger.log(`Mizan API listening on ${env.PORT} (${env.NODE_ENV})`);
