@@ -6,6 +6,8 @@ import type { IconName } from '@mizan/ui';
 import { useApp } from '../lib/store.js';
 import { AppearanceMenus } from './Appearance.js';
 import { apiRequest } from '../lib/api.js';
+import { useQueryClient } from '@tanstack/react-query';
+import { signOutEverywhereHere } from '../lib/signOut.js';
 
 type NavGroup = 'home' | 'trade' | 'records' | 'insight' | 'admin';
 
@@ -105,9 +107,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const visible = permitted.slice(0, VISIBLE_TABS);
   const more = permitted.slice(VISIBLE_TABS);
 
+  const queryClient = useQueryClient();
   const signOut = async () => {
-    await apiRequest('/auth/logout', { method: 'POST' });
-    clearSession();
+    await signOutEverywhereHere(queryClient, clearSession);
     navigate('/login');
   };
 
