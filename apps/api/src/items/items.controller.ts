@@ -16,6 +16,11 @@ const money = z.object({
   /** Overwriting the calculated side stores the implied rate as `manual` (spec 2.3.2). */
   other_amount: z.number().int().nullish(),
 });
+/** A bought or sale price: never below zero (security review, finding 16). */
+const price = money.extend({
+  amount: z.number().int().nonnegative(),
+  other_amount: z.number().int().nonnegative().nullish(),
+});
 
 const listSchema = z.object({
   q: z.string().max(200).optional(),
@@ -44,7 +49,7 @@ export const createSchema = baseSchema.extend({
     .object({
       qty_count: z.number().int().positive().nullish(),
       qty_kg: kg.nullish(),
-      unit_price: money,
+      unit_price: price,
       purchase_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       note: z.string().max(500).nullish(),
     })
@@ -55,8 +60,8 @@ const updateSchema = baseSchema.partial().extend({ version: z.number().int().pos
 const versionSchema = z.object({ version: z.number().int().positive() });
 
 const pricesSchema = z.object({
-  bought: money.nullish(),
-  sale: money.nullish(),
+  bought: price.nullish(),
+  sale: price.nullish(),
   note: z.string().max(2000).nullish(),
   version: z.number().int().positive().nullish(),
 });
@@ -71,7 +76,7 @@ export const movementSchema = z.object({
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   qty_count: z.number().int().nullish(),
   qty_kg: kg.nullish(),
-  unit_cost: money.nullish(),
+  unit_cost: price.nullish(),
   note: z.string().min(1).max(2000),
 });
 

@@ -10,20 +10,24 @@ import { limitField, pageFields } from '../common/paging.js';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const kg = z.string().regex(/^\d{1,9}(\.\d{1,3})?$/);
-const money = z.object({
-  amount: z.number().int(),
+/**
+ * A price, a line total or a discount: never below zero. Refused here with the field named,
+ * rather than by the table's CHECK as a 500 (security review, finding 16).
+ */
+const price = z.object({
+  amount: z.number().int().nonnegative(),
   currency: z.enum(['IQD', 'USD']),
-  other_amount: z.number().int().nullish(),
+  other_amount: z.number().int().nonnegative().nullish(),
 });
 
 const lineSchema = z.object({
   item_id: z.string().uuid(),
   qty_count: z.number().int().positive().nullish(),
   qty_kg: kg.nullish(),
-  unit_price: money.nullish(),
+  unit_price: price.nullish(),
   /** The line's total, entered directly (spec: "how much did you add, total"). When present it
       is authoritative and the unit price is derived from it; `unit_price` is the older path. */
-  total: money.nullish(),
+  total: price.nullish(),
   note: z.string().max(500).nullish(),
 });
 
@@ -36,7 +40,7 @@ const createSchema = z.object({
     .string()
     .regex(/^\d+(\.\d{1,4})?$/)
     .nullish(),
-  discount: money.nullish(),
+  discount: price.nullish(),
   lines: z.array(lineSchema).min(1).max(200),
   acting_user_id: z.string().uuid().nullish(),
 });

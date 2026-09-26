@@ -1,5 +1,5 @@
 import { Inject, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { SignInThrottleGuard, signInThrottlerOptions } from './auth/sign-in-throttle.js';
 import { ENV, loadEnv } from './config/env.js';
@@ -15,6 +15,7 @@ import { SessionService } from './auth/session.service.js';
 import { CsrfMiddleware } from './common/csrf.middleware.js';
 import { ErrorFilter } from './common/error.filter.js';
 import { IdempotencyInterceptor } from './common/idempotency.interceptor.js';
+import { IdParamPipe } from './common/id-param.pipe.js';
 import { RequestIdMiddleware } from './common/request-id.middleware.js';
 import { SensitiveFieldInterceptor } from './common/sensitive-field.interceptor.js';
 import { Database } from './database/pool.js';
@@ -125,6 +126,8 @@ import { UsersService } from './users/users.service.js';
     // The guard runs on every route: a route without a decorator is refused, not opened.
     { provide: APP_GUARD, useExisting: AuthGuard },
     { provide: APP_FILTER, useClass: ErrorFilter },
+    // A record id that is not a UUID is a wrong link: 404, never a database error.
+    { provide: APP_PIPE, useClass: IdParamPipe },
     { provide: APP_INTERCEPTOR, useClass: SensitiveFieldInterceptor },
     { provide: APP_INTERCEPTOR, useExisting: IdempotencyInterceptor },
   ],

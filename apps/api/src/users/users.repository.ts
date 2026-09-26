@@ -4,6 +4,7 @@ import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import type { DirectoryEntryDto, UserRole, UserRow } from './user.types.js';
 import { pagingOf } from '../common/paging.js';
+import { containing } from '../common/like.js';
 
 const COLUMNS = `id, username::text AS username, phone, display_name, role, password_hash,
                  must_change_password, preset_key, preset_version,
@@ -75,10 +76,10 @@ export class UsersRepository {
     if (query) {
       // Names are matched after script normalisation, so a name typed on an Arabic keyboard
       // is found from a Kurdish one (FR-1205, FR-206).
-      values.push(`%${normalizeForSearch(query)}%`);
+      values.push(containing(normalizeForSearch(query)));
       const nameParam = values.length;
       const phone = normalizePhone(query);
-      values.push(phone === '' ? null : `%${phone}%`);
+      values.push(phone === '' ? null : containing(phone));
       const phoneParam = values.length;
       conditions.push(
         `(display_name_normalized LIKE $${nameParam}` +

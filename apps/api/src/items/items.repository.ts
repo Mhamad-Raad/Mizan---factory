@@ -7,6 +7,7 @@ import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import type { ItemRow, PricingUnit } from './item.types.js';
 import { pagingOf, type Paging } from '../common/paging.js';
+import { containing } from '../common/like.js';
 
 /**
  * Column lists take the table alias they are read under, so the same list serves a plain
@@ -179,7 +180,7 @@ export class ItemsRepository {
     }
     const query = filters.q?.trim();
     if (query) {
-      values.push(`%${normalizeForSearch(query)}%`);
+      values.push(containing(normalizeForSearch(query)));
       conditions.push(`(i.name_normalized LIKE $${values.length} OR i.code ILIKE $${values.length})`);
     }
     // The one filter whose cost grows with the number of movements: it has to know each

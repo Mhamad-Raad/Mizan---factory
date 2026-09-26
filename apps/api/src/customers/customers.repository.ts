@@ -6,6 +6,7 @@ import type { Db } from '../database/pool.js';
 import type { CustomerRow } from './customer.types.js';
 import { countFrom } from '../common/count-from.js';
 import { pagingOf, type Paging } from '../common/paging.js';
+import { containing } from '../common/like.js';
 
 /** Alias-aware column list, so the same fields serve a plain read and the list query. */
 function customerColumns(alias = 'customers'): string {
@@ -116,10 +117,10 @@ export class CustomersRepository {
     if (!filters.include_inactive) conditions.push('c.is_active = true');
     const query = filters.q?.trim();
     if (query) {
-      values.push(`%${normalizeForSearch(query)}%`);
+      values.push(containing(normalizeForSearch(query)));
       const nameParam = values.length;
       const phone = normalizePhone(query);
-      values.push(phone === '' ? null : `%${phone}%`);
+      values.push(phone === '' ? null : containing(phone));
       const phoneParam = values.length;
       conditions.push(
         `(c.name_normalized LIKE $${nameParam}` +

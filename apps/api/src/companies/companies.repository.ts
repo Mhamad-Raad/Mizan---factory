@@ -5,6 +5,7 @@ import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import { countFrom } from '../common/count-from.js';
 import { pagingOf } from '../common/paging.js';
+import { containing } from '../common/like.js';
 
 export interface CompanyRow {
   id: string;
@@ -96,10 +97,10 @@ export class CompaniesRepository {
     if (!filters.include_inactive) conditions.push('c.is_active = true');
     const query = filters.q?.trim();
     if (query) {
-      values.push(`%${normalizeForSearch(query)}%`);
+      values.push(containing(normalizeForSearch(query)));
       const nameParam = values.length;
       const phone = normalizePhone(query);
-      values.push(phone === '' ? null : `%${phone}%`);
+      values.push(phone === '' ? null : containing(phone));
       const phoneParam = values.length;
       conditions.push(
         `(c.name_normalized LIKE $${nameParam}` +

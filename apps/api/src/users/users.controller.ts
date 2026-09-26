@@ -50,7 +50,7 @@ const permissionsSchema = z.object({
 });
 
 const listSchema = z.object({
-  q: z.string().optional(),
+  q: z.string().max(200).optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
   ...pageFields,
 });

@@ -3,6 +3,7 @@ import { Decimal } from '@mizan/money';
 import { normalizeForSearch } from '@mizan/text';
 import { pagingOf } from '../common/paging.js';
 import { Database } from '../database/pool.js';
+import { containing } from '../common/like.js';
 
 /** An amount in both currencies, summed from stored pairs — never converted here (rule 1). */
 export interface Pair {
@@ -130,7 +131,7 @@ export class AccountsService {
     let search = '';
     const query = filters.q?.trim();
     if (query) {
-      values.push(`%${normalizeForSearch(query)}%`, query.replace(/\D/g, '') || null);
+      values.push(containing(normalizeForSearch(query)), query.replace(/\D/g, '') || null);
       search = `AND (c.name_normalized LIKE $3 OR o.number::text = $4)`;
     }
     const where = `o.status = 'active' AND o.deleted_at IS NULL AND o.order_date BETWEEN $1::date AND $2::date ${search}`;
@@ -206,7 +207,7 @@ export class AccountsService {
     let search = '';
     const query = filters.q?.trim();
     if (query) {
-      values.push(`%${normalizeForSearch(query)}%`);
+      values.push(containing(normalizeForSearch(query)));
       search = `AND i.name_normalized LIKE $3`;
     }
     const paging = pagingOf(filters);

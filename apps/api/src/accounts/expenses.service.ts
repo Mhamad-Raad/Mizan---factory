@@ -8,6 +8,7 @@ import type { RequestContext } from '../common/request-context.js';
 import { Database } from '../database/pool.js';
 import { RatesService } from '../rates/rates.service.js';
 import { PeriodService } from '../settings/period.service.js';
+import { containing } from '../common/like.js';
 
 export interface ExpenseDto {
   id: string;
@@ -107,7 +108,7 @@ export class ExpensesService {
     }
     const query = filters.q?.trim();
     if (query) {
-      values.push(`%${query}%`);
+      values.push(containing(query));
       const param = values.length;
       where.push(`(e.title ILIKE $${param} OR e.note ILIKE $${param} OR e.number::text = btrim($${param}, '%'))`);
     }

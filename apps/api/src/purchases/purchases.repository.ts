@@ -4,6 +4,7 @@ import type { Currency, Measure, RateSource } from '@mizan/money';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import { pagingOf } from '../common/paging.js';
+import { containing } from '../common/like.js';
 
 export type PriceSource = 'month' | 'override';
 
@@ -217,9 +218,9 @@ export class PurchasesRepository {
     }
     const query = filters.q?.trim();
     if (query) {
-      values.push(`%${normalizeForSearch(query)}%`);
+      values.push(containing(normalizeForSearch(query)));
       const nameParam = values.length;
-      values.push(`%${query}%`);
+      values.push(containing(query));
       const textParam = values.length;
       const asNumber = Number(query.replace(/\D/g, ''));
       values.push(Number.isFinite(asNumber) && asNumber > 0 ? asNumber : null);
