@@ -94,7 +94,8 @@ const historySchema = z.object({
  * (FR-807, D-022).
  */
 @Controller()
-@SensitiveFields({ cost: 'fields.see_bought_price' })
+// `est_value` is the same cost as it was recorded in a History row's diff.
+@SensitiveFields({ cost: 'fields.see_bought_price', est_value: 'fields.see_bought_price' })
 export class DamagesController {
   constructor(private readonly damages: DamagesService) {}
 

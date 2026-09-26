@@ -62,6 +62,56 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
   });
 
   describe('the History page (FR-902)', () => {
+    it('withholds bought prices and balances the reader has no flag for, as the record tabs do', async () => {
+      await as(ctx.http, adminSession).post('/api/v1/settings/global-rates').send({ rate_iqd_per_usd: '1310' }).expect(201);
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(new Date());
+      const item = await as(ctx.http, adminSession)
+        .post('/api/v1/items')
+        .send({
+          name: 'Glass bottle 1 L',
+          pricing_unit: 'per_piece',
+          buy: { qty_count: 100, unit_price: { amount: 1_310, currency: 'IQD' }, purchase_date: today },
+        })
+        .expect(201);
+      const kawa = (await as(ctx.http, adminSession).post('/api/v1/customers').send({ name: 'Kawa Trading' }).expect(201))
+        .body.id;
+      await as(ctx.http, adminSession)
+        .post('/api/v1/purchases')
+        .send({
+          company_id: kawa,
+          purchase_date: today,
+          lines: [{ item_id: item.body.id, qty_count: 20, unit_price: { amount: 1_965, currency: 'IQD' } }],
+        })
+        .expect(201);
+
+      type Entry = { entity_type: string; changes: Record<string, unknown>; rows: { changes: unknown }[] };
+      const read = async (permissions: string[], username: string) => {
+        const session = await signIn(ctx.http, await seedUser({ username, permissions }));
+        const body = (await as(ctx.http, session).get('/api/v1/history?limit=100').expect(200)).body as {
+          items: Entry[];
+        };
+        const of = (type: string) => JSON.stringify(body.items.filter((entry) => entry.entity_type === type));
+        return { purchase: of('purchase'), company: of('company'), all: body.items };
+      };
+
+      const everything = await read(['history.view_all', 'fields.see_bought_price', 'fields.see_company_balances'], 'full');
+      // The fixture really does carry the figures, or the assertions below would prove nothing.
+      expect(everything.purchase).toContain('"unit_price"');
+      expect(everything.purchase).toContain('"purchase_total"');
+      expect(everything.company).toContain('"balance"');
+
+      const plain = await read(['history.view_all'], 'plain');
+      // Rows are thinned, never dropped.
+      const records = (entries: Entry[]) => entries.filter((entry) => entry.entity_type !== 'session').length;
+      expect(records(plain.all)).toBe(records(everything.all));
+      for (const key of ['"unit_price"', '"line_total"', '"purchase_total"', '"cost"']) {
+        expect(plain.purchase).not.toContain(key);
+      }
+      expect(plain.company).not.toContain('"balance"');
+      // What is not a bought price stays: the purchase's lines and their quantities.
+      expect(plain.purchase).toContain('"qty_count"');
+    });
+
     it('returns newest first with a cursor, and the cursor pages backwards without gaps', async () => {
       for (let index = 0; index < 5; index += 1) {
         await as(ctx.http, adminSession)
