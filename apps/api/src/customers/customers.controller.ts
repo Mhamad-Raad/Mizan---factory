@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AdminOnly, RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
+import { stripHistory } from '../history/history-fields.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { CustomersService } from './customers.service.js';
@@ -366,7 +367,11 @@ export class CustomersController {
     @Param('id') id: string,
     @Query(zodBody(historySchema)) query: z.infer<typeof historySchema>,
   ) {
-    return this.customers.historyOf(contextOf(request), id, query);
+    const context = contextOf(request);
+    const page = await this.customers.historyOf(context, id, query);
+    // Its rows are of several kinds — the business's selling and buying sides, their ledgers —
+    // so the per-kind rules of the History page apply, not only this controller's `balance`.
+    return { ...page, items: stripHistory(context, page.items) };
   }
 }
 

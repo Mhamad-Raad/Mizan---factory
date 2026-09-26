@@ -39,7 +39,8 @@ interface HistoryRow {
   actor_display_name: string | null;
   note: string | null;
   changes: {
-    entry?: { type: string; amount_iqd: number; amount_usd_cents: number };
+    /** The amounts are absent when the caller's field flags withhold them. */
+    entry?: { type: string; amount_iqd?: number; amount_usd_cents?: number };
     rate_iqd_per_usd?: { old: string | null; new: string };
   } | null;
 }
@@ -609,7 +610,7 @@ function HistoryItem({ row, settlement }: { row: HistoryRow; settlement: Currenc
           </span>
         ) : null}
       </span>
-      {money ? (
+      {money?.amount_iqd !== undefined && money.amount_usd_cents !== undefined ? (
         <span className="mz-list__end">
           <DualAmount
             amount_iqd={Math.abs(money.amount_iqd)}

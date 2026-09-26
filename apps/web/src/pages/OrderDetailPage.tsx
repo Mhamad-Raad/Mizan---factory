@@ -455,7 +455,8 @@ export function OrderDetailPage() {
                             </span>
                             <RowNote note={row.entry.note} />
                           </span>
-                          {row.entry.changes?.entry ? (
+                          {row.entry.changes?.entry?.amount_iqd !== undefined &&
+                          row.entry.changes.entry.amount_usd_cents !== undefined ? (
                             <span className="mz-list__end">
                               <DualAmount
                                 amount_iqd={Math.abs(row.entry.changes.entry.amount_iqd)}

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
+import { stripHistory } from '../history/history-fields.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { CompaniesService } from './companies.service.js';
@@ -246,10 +247,13 @@ export class CompaniesController {
   @Get('companies/:id/history')
   @RequirePermission('companies.view')
   async history(
+    @Req() request: RequestWithContext,
     @Param('id') id: string,
     @Query(zodBody(historySchema)) query: z.infer<typeof historySchema>,
   ) {
-    return this.companies.historyOf(id, query);
+    const page = await this.companies.historyOf(id, query);
+    // A ledger row's amount needs the balance flag, and a purchase's the bought-price flag too.
+    return { ...page, items: stripHistory(contextOf(request), page.items) };
   }
 }
 

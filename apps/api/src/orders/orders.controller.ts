@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
+import { stripHistory } from '../history/history-fields.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { OrdersService } from './orders.service.js';
@@ -222,7 +223,11 @@ export class OrdersController {
     @Param('id') id: string,
     @Query(zodBody(historySchema)) query: z.infer<typeof historySchema>,
   ) {
-    return this.orders.historyOf(contextOf(request), id, query);
+    const context = contextOf(request);
+    const page = await this.orders.historyOf(context, id, query);
+    // The damages reported from the order and other rows naming it follow their own kind's
+    // rules; the payments against the order itself stay, as the order shows them anyway.
+    return { ...page, items: stripHistory(context, page.items, { ownOrderId: id }) };
   }
 
   /** Proposed — not requested (FR-613): the figures the client renders as a receipt. */
