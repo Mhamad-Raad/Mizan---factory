@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, Checkbox, SegmentedControl, StickyFooter, TextField } from '@mizan/ui';
+import { Button, Card, NumberField, SegmentedControl, StickyFooter, TextField } from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
-import { usePermission } from '../lib/store.js';
+import { useFormatter, usePermission } from '../lib/store.js';
 
 interface Duplicate {
   id: string;
@@ -17,28 +17,28 @@ interface Duplicate {
 }
 
 /**
- * "New customer or company" (FR-501, FR-701, D-054).
+ * "New company" (FR-501, FR-701, D-054, D-055).
  *
- * One record per business: the two boxes say whether we sell to it, buy from it, or both, and
- * each is offered only to somebody who may create that side. The duplicate check runs while the
- * name is typed and over *every* business, whatever this employee may see: when the twin belongs
- * to a colleague the warning says to ask the admin instead of offering a record they cannot open.
+ * One kind of account: a company we sell to and buy from. Its own conversion rate is typed here,
+ * on the same form — empty means the system-wide rate — because every order and purchase with it
+ * is priced at that rate and keeps it. The duplicate check runs while the name is typed and over
+ * *every* account, whatever this employee may see: when the twin belongs to a colleague the
+ * warning says to ask the admin instead of offering a record they cannot open.
  */
 export function NewCustomerPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
   const queryClient = useQueryClient();
-  const mayCreateCustomer = usePermission('customers.create');
-  const mayCreateCompany = usePermission('companies.create');
-  const mayAssign = usePermission('customers.assign');
+  const formatter = useFormatter();
+  const mayAssignCustomer = usePermission('customers.assign');
   const mayAssignCompany = usePermission('companies.assign');
+  const maySetCustomerRate = usePermission('customers.set_rate');
+  const maySetCompanyRate = usePermission('companies.set_rate');
+  const canAssign = mayAssignCustomer || mayAssignCompany;
+  const maySetRate = maySetCustomerRate || maySetCompanyRate;
 
-  // A link from the purchase form asks for a company; otherwise a customer, when allowed.
-  const askedForCompany = params.get('side') === 'supplier';
-  const [isCustomer, setIsCustomer] = useState(mayCreateCustomer && !askedForCompany);
-  const [isSupplier, setIsSupplier] = useState(mayCreateCompany && (askedForCompany || !mayCreateCustomer));
   const [name, setName] = useState('');
+  const [ownRate, setOwnRate] = useState('');
   const [contactName, setContactName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
@@ -47,8 +47,6 @@ export function NewCustomerPage() {
   const [assignee, setAssignee] = useState('');
   const [creditLimit, setCreditLimit] = useState<MoneyValue>({ amount: null, currency: 'IQD', other_amount: null });
   const [idempotencyKey] = useState(newIdempotencyKey);
-
-  const canAssign = mayAssign || (isSupplier && !isCustomer && mayAssignCompany);
 
   const rate = useQuery({
     queryKey: ['global-rate'],
@@ -75,16 +73,15 @@ export function NewCustomerPage() {
         idempotencyKey,
         body: {
           name: name.trim(),
-          is_customer: isCustomer,
-          is_supplier: isSupplier,
-          contact_name: isSupplier && contactName.trim() !== '' ? contactName.trim() : null,
+          contact_name: contactName.trim() === '' ? null : contactName.trim(),
+          rate_iqd_per_usd: ownRate.trim() === '' ? null : ownRate.trim(),
           phone: phone.trim() === '' ? null : phone.trim(),
           address: address.trim() === '' ? null : address.trim(),
           notes: notes.trim() === '' ? null : notes.trim(),
           settlement_currency: currency,
           assigned_user_id: assignee === '' ? null : assignee,
           credit_limit:
-            !isCustomer || creditLimit.amount === null
+            creditLimit.amount === null
               ? null
               : {
                   amount: creditLimit.amount,
@@ -101,11 +98,11 @@ export function NewCustomerPage() {
   });
 
   const matches = duplicates.data?.duplicates ?? [];
-  const noSide = !isCustomer && !isSupplier;
+  const systemRate = rate.data?.current?.rate_iqd_per_usd ?? '1310.0000';
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (name.trim() !== '' && !noSide) create.mutate();
+    if (name.trim() !== '') create.mutate();
   };
 
   usePageTitle(t('customers:new_party'));
@@ -146,37 +143,13 @@ export function NewCustomerPage() {
               </div>
             ) : null}
 
-            {/* Which sides of the business this record takes part in (D-054). */}
-            <fieldset className="mz-form-grid__wide mz-stack" style={{ gap: 'var(--space-1)', border: 0, padding: 0, margin: 0 }}>
-              <legend className="mz-field__label">{t('customers:sides')}</legend>
-              <Checkbox
-                label={t('customers:side_customer_hint')}
-                checked={isCustomer}
-                disabled={!mayCreateCustomer}
-                onChange={setIsCustomer}
-              />
-              <Checkbox
-                label={t('customers:side_company_hint')}
-                checked={isSupplier}
-                disabled={!mayCreateCompany}
-                onChange={setIsSupplier}
-              />
-              {noSide ? (
-                <p className="mz-field__error" role="alert">
-                  {t('errors:customer_no_side')}
-                </p>
-              ) : null}
-            </fieldset>
-
-            {isSupplier ? (
-              <TextField
-                label={t('companies:contact_name')}
-                hint={t('common:optional')}
-                value={contactName}
-                onChange={(event) => setContactName(event.target.value)}
-                maxLength={200}
-              />
-            ) : null}
+            <TextField
+              label={t('companies:contact_name')}
+              hint={t('common:optional')}
+              value={contactName}
+              onChange={(event) => setContactName(event.target.value)}
+              maxLength={200}
+            />
             <TextField
               label={t('customers:phone')}
               hint={t('common:optional')}
@@ -201,6 +174,18 @@ export function NewCustomerPage() {
 
       <Card>
         <div className="mz-stack">
+          {/* The company's own conversion rate (2.3.3, D-055): what its orders and purchases are
+              priced at, and what each of them keeps. Empty, the system-wide rate applies. */}
+          {maySetRate ? (
+            <NumberField
+              label={t('customers:rate_field')}
+              hint={t('customers:rate_field_hint', { rate: formatter.rate(systemRate) })}
+              decimals={4}
+              value={ownRate}
+              onChange={(event) => setOwnRate(event.target.value)}
+            />
+          ) : null}
+
           <SegmentedControl
             label={t('glossary:settlement_currency')}
             value={currency}
@@ -232,15 +217,13 @@ export function NewCustomerPage() {
           ) : null}
 
           {/* Proposed — not requested (FR-616): a warning on a borrowed order, never a block. */}
-          {isCustomer ? (
-            <MoneyInput
-              label={t('customers:credit_limit')}
-              value={creditLimit}
-              rate={rate.data?.current?.rate_iqd_per_usd ?? '1310.0000'}
-              onChange={setCreditLimit}
-              hint={t('customers:credit_limit_hint')}
-            />
-          ) : null}
+          <MoneyInput
+            label={t('customers:credit_limit')}
+            value={creditLimit}
+            rate={systemRate}
+            onChange={setCreditLimit}
+            hint={t('customers:credit_limit_hint')}
+          />
 
           <TextField
             label={t('glossary:notes')}
@@ -259,7 +242,7 @@ export function NewCustomerPage() {
       </Card>
 
       <StickyFooter>
-        <Button type="submit" block loading={create.isPending} disabled={name.trim() === '' || noSide}>
+        <Button type="submit" block loading={create.isPending} disabled={name.trim() === ''}>
           {t('common:save')}
         </Button>
         <Button type="button" variant="ghost" block onClick={() => navigate('/customers')}>

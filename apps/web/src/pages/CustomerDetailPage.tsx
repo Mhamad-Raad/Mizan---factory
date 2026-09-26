@@ -22,7 +22,7 @@ import { statementWindow, useCompanySide } from '../components/party/CompanySide
 import { EditPartySheet, RateHistorySheet, SettlementCurrencySheet } from '../components/party/PartySheets.js';
 import { customerName } from '../lib/customers.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
-import { SideChips, balanceToShow, directionOf } from './CustomersPage.js';
+import { InactiveChip, balanceToShow, directionOf } from './CustomersPage.js';
 import type { BalanceValue, CustomerRow } from './CustomersPage.js';
 import type { OrderRow } from './OrdersPage.js';
 
@@ -37,8 +37,24 @@ interface HistoryRow {
   occurred_at: string;
   actor_display_name: string | null;
   note: string | null;
-  changes: { entry?: { type: string; amount_iqd: number; amount_usd_cents: number } } | null;
+  changes: {
+    entry?: { type: string; amount_iqd: number; amount_usd_cents: number };
+    rate_iqd_per_usd?: { old: string | null; new: string };
+  } | null;
 }
+
+type HistoryAction = 'all' | 'rate_change' | 'ledger_entry' | 'update' | 'create' | 'assignment_change' | 'status_change';
+
+/** The kinds of change the History tab can narrow to, in the order an accountant asks for them. */
+const HISTORY_ACTIONS: { value: HistoryAction; label: string }[] = [
+  { value: 'all', label: 'customers:history_all' },
+  { value: 'rate_change', label: 'customers:history_rates' },
+  { value: 'ledger_entry', label: 'customers:history_money' },
+  { value: 'update', label: 'customers:history_edits' },
+  { value: 'create', label: 'customers:history_created' },
+  { value: 'assignment_change', label: 'customers:history_assignment' },
+  { value: 'status_change', label: 'customers:history_status' },
+];
 
 /**
  * One business (D-054, FR-503, FR-704): a customer, a company we buy from, or both.
@@ -79,8 +95,10 @@ export function CustomerDetailPage() {
     queryFn: () => apiRequest<CustomerRow>(`/customers/${id}`),
   });
   const data = party.data;
-  const selling = Boolean(data?.is_customer);
-  const buying = Boolean(data?.is_supplier);
+  const walkInRecord = Boolean(data?.is_system);
+  // Every account is a company we sell to and buy from (D-055); the walk-in only buys from us.
+  const selling = Boolean(data);
+  const buying = Boolean(data) && !walkInRecord;
   const walkIn = Boolean(data?.is_system);
 
   const orders = useQuery({
@@ -98,9 +116,13 @@ export function CustomerDetailPage() {
     enabled: tab === 'sales' && selling && maySeeSelling && !walkIn,
   });
 
+  const [historyAction, setHistoryAction] = useState<HistoryAction>('all');
   const history = useQuery({
-    queryKey: ['customers', id, 'history'],
-    queryFn: () => apiRequest<{ items: HistoryRow[] }>(`/customers/${id}/history`),
+    queryKey: ['customers', id, 'history', historyAction],
+    queryFn: () =>
+      apiRequest<{ items: HistoryRow[] }>(
+        `/customers/${id}/history${historyAction === 'all' ? '' : `?action=${historyAction}`}`,
+      ),
     enabled: tab === 'history',
   });
 
@@ -193,9 +215,9 @@ export function CustomerDetailPage() {
   const excessNeeded =
     payment.error instanceof ApiError && payment.error.fieldError('amount')?.code === 'EXCEEDS_REMAINING';
 
-  const mayRate = (selling && maySetCustomerRate) || (buying && maySetCompanyRate);
-  const mayEdit = !walkIn && ((selling && mayEditCustomer) || (buying && mayEditCompany));
-  const mayAssign = !walkIn && ((selling && mayAssignCustomer) || (buying && mayAssignCompany));
+  const mayRate = maySetCustomerRate || maySetCompanyRate;
+  const mayEdit = !walkIn && (mayEditCustomer || mayEditCompany);
+  const mayAssign = !walkIn && (mayAssignCustomer || mayAssignCompany);
   const sellingActions = selling && !walkIn && (mayRecordPayment || mayCredit || mayOpeningBalance);
 
   const moreItems: MenuItem[] = [
@@ -250,7 +272,7 @@ export function CustomerDetailPage() {
                       </span>
                     ) : null}
                   </div>
-                  <SideChips row={data} />
+                  <InactiveChip row={data} />
                 </div>
 
                 <hr className="mz-divider" />
@@ -378,17 +400,37 @@ export function CustomerDetailPage() {
               {tab === 'account' ? companySide.accountTab : null}
 
               {tab === 'history' ? (
-                <QueryStates
-                  query={history}
-                  isEmpty={(history.data?.items.length ?? 0) === 0}
-                  emptyTitle={t('history:empty')}
-                >
-                  <ul className="mz-list">
-                    {(history.data?.items ?? []).map((row) => (
-                      <HistoryItem key={row.id} row={row} settlement={settlement} />
-                    ))}
-                  </ul>
-                </QueryStates>
+                <>
+                  {/* One kind of change at a time — the rate changes, the money, the edits — each
+                      row saying who made it and when (rule 3). */}
+                  <div className="mz-toolbar">
+                    <div className="mz-toolbar__filters">
+                      <select
+                        className="mz-select"
+                        aria-label={t('customers:history_filter')}
+                        value={historyAction}
+                        onChange={(event) => setHistoryAction(event.target.value as HistoryAction)}
+                      >
+                        {HISTORY_ACTIONS.map((action) => (
+                          <option key={action.value} value={action.value}>
+                            {t(action.label)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <QueryStates
+                    query={history}
+                    isEmpty={(history.data?.items.length ?? 0) === 0}
+                    emptyTitle={t('history:empty')}
+                  >
+                    <ul className="mz-list">
+                      {(history.data?.items ?? []).map((row) => (
+                        <HistoryItem key={row.id} row={row} settlement={settlement} />
+                      ))}
+                    </ul>
+                  </QueryStates>
+                </>
               ) : null}
             </>
           ) : null}
@@ -555,7 +597,7 @@ function PartyFigure({ party }: { party: CustomerRow }) {
   const settlement = party.settlement_currency;
   const side = (value: BalanceValue | null | undefined) =>
     value ? (settlement === 'IQD' ? value.amount_iqd : value.amount_usd_cents) : 0;
-  const bothSides = party.net && party.is_customer && party.is_supplier;
+  const bothSides = party.net && !party.is_system;
 
   return (
     <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
@@ -591,16 +633,32 @@ function HistoryItem({ row, settlement }: { row: HistoryRow; settlement: Currenc
   const { t } = useTranslation();
   const formatter = useFormatter();
   const money = row.changes?.entry;
+  const rate = row.action === 'rate_change' ? row.changes?.rate_iqd_per_usd : undefined;
   const namespace = row.entity_type === 'company' ? 'companies' : 'customers';
-  const icon: IconName = money ? 'check' : row.action === 'create' ? 'plus' : row.action === 'update' ? 'edit' : 'clock';
+  const icon: IconName = money
+    ? 'check'
+    : rate
+      ? 'refresh'
+      : row.action === 'create'
+        ? 'plus'
+        : row.action === 'update'
+          ? 'edit'
+          : 'clock';
+  const title = money
+    ? t(`${namespace}:entry.${money.type}`)
+    : rate
+      ? rate.old
+        ? t('customers:rate_changed', { old: formatter.rate(rate.old), new: formatter.rate(rate.new) })
+        : t('customers:rate_set', { new: formatter.rate(rate.new) })
+      : t(`history:action.${row.action}`);
   return (
     <li className="mz-list__item mz-list__item--detail">
       <span className="mz-row-lead">
         <Icon name={icon} size={18} />
       </span>
       <span className="mz-list__body">
-        <span className="mz-list__title">
-          {money ? t(`${namespace}:entry.${money.type}`) : t(`history:action.${row.action}`)}
+        <span className="mz-list__title" data-tabular={rate ? true : undefined}>
+          {title}
         </span>
         <span className="mz-caption">
           {formatter.timestamp(new Date(row.occurred_at))}

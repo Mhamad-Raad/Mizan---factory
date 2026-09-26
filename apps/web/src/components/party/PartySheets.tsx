@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { BottomSheet, Button, Checkbox, Icon, NumberField, TextField } from '@mizan/ui';
+import { BottomSheet, Button, Icon, NumberField, TextField } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { apiRequest } from '../../lib/api.js';
 import { QueryStates } from '../states.js';
@@ -9,9 +9,10 @@ import { useFormatter, usePermission } from '../../lib/store.js';
 import type { CustomerRow } from '../../pages/CustomersPage.js';
 
 /**
- * Edit the business itself (FR-501, FR-701, D-054): its name and contact details, and which
- * sides it takes part in. A side is offered only to somebody who may edit that side, and a side
- * that already has documents on it cannot be switched off — the server says so in words.
+ * Edit the account itself (FR-501, FR-701, D-055): its name, contact details and its own
+ * conversion rate. A changed rate is written as a new rate — the old one is never edited — so
+ * every order and purchase already saved keeps the rate it was made at, and History says who
+ * changed it and when.
  */
 export function EditPartySheet({
   party,
@@ -27,42 +28,36 @@ export function EditPartySheet({
   onSave: (body: Record<string, unknown>) => void;
 }) {
   const { t } = useTranslation();
-  const mayEditCustomer = usePermission('customers.edit');
-  const mayEditCompany = usePermission('companies.edit');
+  const formatter = useFormatter();
+  const maySetCustomerRate = usePermission('customers.set_rate');
+  const maySetCompanyRate = usePermission('companies.set_rate');
+  const ownRate = party.rate?.is_customer_rate ? party.rate.rate_iqd_per_usd : '';
   const [name, setName] = useState(party.name);
+  const [rate, setRate] = useState(ownRate);
   const [contactName, setContactName] = useState(party.contact_name ?? '');
   const [phone, setPhone] = useState(party.phone ?? '');
   const [address, setAddress] = useState(party.address ?? '');
   const [notes, setNotes] = useState(party.notes ?? '');
-  const [isCustomer, setIsCustomer] = useState(party.is_customer);
-  const [isSupplier, setIsSupplier] = useState(party.is_supplier);
-  const noSide = !isCustomer && !isSupplier;
+  const rateChanged = rate.trim() !== '' && rate.trim() !== ownRate;
 
   return (
     <BottomSheet title={t('common:edit')} open onClose={onClose} closeLabel={t('common:close')}>
       <div className="mz-stack">
         <TextField label={t('customers:name')} value={name} onChange={(event) => setName(event.target.value)} />
-        <fieldset className="mz-stack" style={{ gap: 'var(--space-1)', border: 0, padding: 0, margin: 0 }}>
-          <legend className="mz-field__label">{t('customers:sides')}</legend>
-          <Checkbox
-            label={t('customers:side_customer_hint')}
-            checked={isCustomer}
-            disabled={!mayEditCustomer || party.is_system}
-            onChange={setIsCustomer}
-          />
-          <Checkbox
-            label={t('customers:side_company_hint')}
-            checked={isSupplier}
-            disabled={!mayEditCompany || party.is_system}
-            onChange={setIsSupplier}
-          />
-        </fieldset>
-        {isSupplier ? (
-          <TextField
-            label={t('companies:contact_name')}
-            hint={t('common:optional')}
-            value={contactName}
-            onChange={(event) => setContactName(event.target.value)}
+        <TextField
+          label={t('companies:contact_name')}
+          hint={t('common:optional')}
+          value={contactName}
+          onChange={(event) => setContactName(event.target.value)}
+        />
+        {(maySetCustomerRate || maySetCompanyRate) && !party.is_system ? (
+          <NumberField
+            label={t('customers:rate_field')}
+            hint={t('customers:rate_field_edit_hint')}
+            decimals={4}
+            value={rate}
+            placeholder={formatter.rate(party.rate?.rate_iqd_per_usd ?? '0')}
+            onChange={(event) => setRate(event.target.value)}
           />
         ) : null}
         <TextField
@@ -85,11 +80,6 @@ export function EditPartySheet({
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
         />
-        {noSide ? (
-          <p className="mz-field__error" role="alert">
-            {t('errors:customer_no_side')}
-          </p>
-        ) : null}
         {error ? (
           <p className="mz-field__error" role="alert">
             {error}
@@ -98,7 +88,7 @@ export function EditPartySheet({
         <Button
           block
           loading={saving}
-          disabled={name.trim() === '' || noSide}
+          disabled={name.trim() === ''}
           onClick={() =>
             onSave({
               name: name.trim(),
@@ -106,8 +96,7 @@ export function EditPartySheet({
               phone: phone.trim() === '' ? null : phone.trim(),
               address: address.trim() === '' ? null : address.trim(),
               notes: notes.trim() === '' ? null : notes.trim(),
-              is_customer: isCustomer,
-              is_supplier: isSupplier,
+              ...(rateChanged ? { rate_iqd_per_usd: rate.trim() } : {}),
               version: party.version,
             })
           }

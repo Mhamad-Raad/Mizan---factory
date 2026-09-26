@@ -58,6 +58,8 @@
   "count_symbol": "pcs",
   "rate_used": "At the rate {{rate}}",
   "manual_rate": "Manual rate {{rate}}",
+  "rate_company": "Company rate {{rate}}",
+  "rate_system": "System rate {{rate}}",
   "draft_found": "You have unsaved work from {{time}}",
   "draft_restore": "Restore it",
   "statement_window": "This statement covers the last twelve months; anything earlier is inside the opening balance.",

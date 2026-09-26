@@ -1,7 +1,6 @@
 {
   "order": "فرۆشتن",
   "purchase": "کڕین",
-  "customer": "کڕیار",
   "company": "کۆمپانیا",
   "material": "کەرەستە",
   "materials": "کەرەستەکان",
@@ -81,8 +80,9 @@
   "companies": "کۆمپانیاکان",
   "purchases": "کڕینەکان",
   "system_rate": "نرخی سیستەم",
-  "customer_rate": "نرخی زبوون",
   "order_rate": "نرخی ئەم داواکارییە",
   "item": "کاڵا",
-  "amount": "بڕ"
+  "amount": "بڕ",
+  "customer": "کۆمپانیا",
+  "customer_rate": "نرخی کۆمپانیا"
 }

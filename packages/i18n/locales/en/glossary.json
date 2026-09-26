@@ -1,7 +1,6 @@
 {
   "order": "Order",
   "purchase": "Purchase",
-  "customer": "Customer",
   "company": "Company",
   "material": "Material",
   "materials": "Materials",
@@ -81,8 +80,9 @@
   "companies": "Companies",
   "purchases": "Purchases",
   "system_rate": "the system rate",
-  "customer_rate": "the customer's rate",
   "order_rate": "this order's rate",
   "item": "Item",
-  "amount": "Amount"
+  "amount": "Amount",
+  "customer": "Company",
+  "customer_rate": "the company rate"
 }

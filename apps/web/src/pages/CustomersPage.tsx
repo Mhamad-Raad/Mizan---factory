@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Chip, Icon, TextField } from '@mizan/ui';
@@ -20,13 +20,11 @@ export interface BalanceValue {
   kind: 'derived';
 }
 
-/** One business (D-054): a customer, a company we buy from, or both. */
+/** One account (D-054, D-055): a company we sell to and buy from. */
 export interface CustomerRow {
   id: string;
   name: string;
   contact_name: string | null;
-  is_customer: boolean;
-  is_supplier: boolean;
   phone: string | null;
   address: string | null;
   notes: string | null;
@@ -47,33 +45,26 @@ export interface CustomerRow {
   version: number;
 }
 
-type Side = 'all' | 'customer' | 'supplier';
 type BalanceFilter = 'all' | 'owes' | 'settled' | 'credit';
 
 /**
- * The one page for every business the factory deals with (D-054, FR-505, FR-709).
+ * The Companies page (D-054, D-055, FR-505, FR-709): every account the factory deals with.
  *
- * A row says which sides the business takes part in and its one balance: what it owes us less
- * what we owe it, labelled by which way it points. A caller who may see only one side sees that
- * side's balance instead, never a net they could work the other side out of.
+ * A row carries the account's one balance — what it owes us less what we owe it — labelled by
+ * which way it points. A caller who may see only one side sees that side's balance instead,
+ * never a net they could work the other side out of.
  */
 export function CustomersPage() {
   const { t } = useTranslation();
-  const [params] = useSearchParams();
   const [query, setQuery] = useState('');
-  const [side, setSide] = useState<Side>(() => {
-    const asked = params.get('side');
-    return asked === 'customer' || asked === 'supplier' ? asked : 'all';
-  });
   const [balance, setBalance] = useState<BalanceFilter>('all');
   const [includeInactive, setIncludeInactive] = useState(false);
   const [sort, setSort] = useState<'name' | 'balance'>('name');
 
   const customers = useQuery({
-    queryKey: ['customers', query, side, balance, includeInactive, sort],
+    queryKey: ['customers', query, balance, includeInactive, sort],
     queryFn: () => {
       const search = new URLSearchParams({ q: query, include_inactive: String(includeInactive), sort });
-      if (side !== 'all') search.set('side', side);
       if (balance !== 'all') search.set('balance', balance);
       return apiRequest<{ items: CustomerRow[]; total: number }>(`/customers?${search.toString()}`);
     },
@@ -99,16 +90,6 @@ export function CustomersPage() {
               inputMode="search"
             />
           </div>
-          <select
-            className="mz-select"
-            aria-label={t('common:type')}
-            value={side}
-            onChange={(event) => setSide(event.target.value as Side)}
-          >
-            <option value="all">{t('customers:all_sides')}</option>
-            <option value="customer">{t('customers:filter_customers')}</option>
-            <option value="supplier">{t('customers:filter_companies')}</option>
-          </select>
           <select
             className="mz-select"
             aria-label={t('customers:net_balance')}
@@ -153,7 +134,6 @@ export function CustomersPage() {
                   </span>
                 ),
               },
-              { header: t('common:type'), cell: (row) => <SideChips row={row} /> },
               {
                 header: t('glossary:assigned_to'),
                 secondary: true,
@@ -176,7 +156,7 @@ export function CustomersPage() {
                   <span className="mz-list__title">
                     <bdi>{customerName(row, t)}</bdi>
                   </span>
-                  <SideChips row={row} />
+                  <InactiveChip row={row} />
                 </span>
                 <PartyCaption row={row} />
                 <span className="mz-rowcard__foot">
@@ -191,7 +171,7 @@ export function CustomersPage() {
   );
 }
 
-/** "New customer or company", for whoever may create either side. */
+/** "New company", for whoever may create an account on either side. */
 function NewPartyLink() {
   const { t } = useTranslation();
   const mayCreateCustomer = usePermission('customers.create');
@@ -221,14 +201,13 @@ function PartyCaption({ row }: { row: CustomerRow }) {
   );
 }
 
-/** Which sides of the business this record takes part in. */
-export function SideChips({ row }: { row: Pick<CustomerRow, 'is_customer' | 'is_supplier' | 'is_active'> }) {
+/** A deactivated account says so wherever it is listed. */
+export function InactiveChip({ row }: { row: Pick<CustomerRow, 'is_active'> }) {
   const { t } = useTranslation();
+  if (row.is_active) return null;
   return (
     <span className="mz-rowcard__chips">
-      {row.is_customer ? <Chip tone="primary">{t('glossary:customer')}</Chip> : null}
-      {row.is_supplier ? <Chip>{t('glossary:company')}</Chip> : null}
-      {!row.is_active ? <Chip icon="close">{t('common:deactivated')}</Chip> : null}
+      <Chip icon="close">{t('common:deactivated')}</Chip>
     </span>
   );
 }
@@ -270,7 +249,7 @@ export function directionOf(shown: Shown): 'they_owe_us' | 'we_owe_them' | 'sett
 
 export function balanceToShow(row: CustomerRow): Shown | null {
   if (row.net) return { kind: 'net', value: row.net };
-  if (row.balance && row.is_customer) return { kind: 'receivable', value: row.balance };
+  if (row.balance) return { kind: 'receivable', value: row.balance };
   if (row.payable) return { kind: 'payable', value: row.payable };
   return null;
 }

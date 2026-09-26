@@ -749,7 +749,7 @@ function OrderForm({
           title={t('orders:choose_customer')}
           open
           onClose={() => setPicking(null)}
-          path="/customers?side=customer"
+          path="/customers"
           icon="customers"
           searchLabel={t('customers:search_placeholder')}
           emptyTitle={t('customers:empty')}

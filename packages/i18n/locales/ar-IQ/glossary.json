@@ -1,7 +1,6 @@
 {
   "order": "طلب بيع",
   "purchase": "شراء",
-  "customer": "زبون",
   "company": "شركة",
   "material": "مادة",
   "materials": "المواد",
@@ -81,8 +80,9 @@
   "companies": "الشركات",
   "purchases": "المشتريات",
   "system_rate": "سعر النظام",
-  "customer_rate": "سعر الزبون",
   "order_rate": "سعر هذا الطلب",
   "item": "الصنف",
-  "amount": "المبلغ"
+  "amount": "المبلغ",
+  "customer": "شركة",
+  "customer_rate": "سعر الشركة"
 }
