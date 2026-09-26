@@ -864,3 +864,19 @@ The client: "improve the purchases UI generally like the orders page".
   "Remaining before this payment" caption; the sheet now takes the hint as its own prop.
 
 Relied on: the client's instruction; FR-407, FR-712; 2.10.2 (one list, two layouts).
+
+## D-060 · 2026-09-26 · client review · Tables are framed, with striped rows
+
+The client: "all the tables … need to be outlined in a nice way so it separates from the
+background, and rows have a nice colour for odds and the others normal — like the dashboard".
+
+Every data table (`.mz-table` in its `.mz-table-wrap`: the lists on a desktop, the ledgers, a
+material's movements and history, a user's activity, the dashboard's figures) now sits in a
+bordered, rounded surface with the card shadow (no second shadow inside a card), under a tinted
+header in small bold type — capitals and tracking in English only, because Kurdish and Arabic
+have no capitals and spacing a joined script breaks its words. Odd rows take a stripe a shade off
+the surface; hover takes the brand's soft tint. Three tokens per theme (`--color-table-head`,
+`-stripe`, `-hover`), so dark mode has its own steps. The permission matrix wears the same
+header and stripes. The pager lost its top rule, which doubled the table's frame.
+
+Relied on: the client's instruction; rule 9 (identity through tokens, no forked component).

@@ -104,6 +104,12 @@
   --color-on-header: #121e17;
   --color-brass: #93690d;
 
+  /* Data tables (client review, after the delivery dashboard): a tinted header, the odd
+     rows a shade off the surface, and a hover in the brand's soft tint. */
+  --color-table-head: #eef3f0;
+  --color-table-stripe: #f1f5f3;
+  --color-table-hover: #e2f3ee;
+
   /*
    * The two chart series of Today — sales and purchases. Validated with the dataviz palette
    * check against the light surface: lightness band, chroma, CVD ΔE 10.1 (protan), normal
@@ -156,6 +162,11 @@
   --color-sidebar-hover: #202c25;
   --color-on-header: #e9f1ec;
   --color-brass: #e6b55d;
+
+  /* The data tables' header, stripe and hover on the dark surface. */
+  --color-table-head: #1f2b24;
+  --color-table-stripe: #1d2922;
+  --color-table-hover: #21382f;
 
   /* The dark steps of the same two hues, validated against the dark surface: CVD ΔE 12.6
      (deutan), normal ΔE 17.1, inside the dark lightness band. */

@@ -2563,6 +2563,11 @@ html[data-mirroring='true'] body {
   overflow: hidden;
 }
 
+/* The permission matrix wears the same stripes as every other table. */
+.mz-matrix tbody tr:nth-child(odd) {
+  background: var(--color-table-stripe);
+}
+
 .mz-matrix th,
 .mz-matrix td {
   border-block-end: 1px solid var(--color-border);
@@ -2582,7 +2587,7 @@ html[data-mirroring='true'] body {
 }
 
 .mz-matrix thead th {
-  background: var(--color-surface-2);
+  background: var(--color-table-head);
   color: var(--color-text-muted);
   font-size: 0.8125rem;
   font-weight: 600;
@@ -2731,11 +2736,26 @@ html[data-mirroring='true'] body {
 
 /* ─────────────────── the list, as a table ───────────────────
  *
- * From 64rem up a DataList is a real table (DataList.tsx), and so are the movements and history
- * on a material. The class carried the clickable-row behaviour but no look, so the rows sat as
- * bare browser defaults. This is a light data table — no boxed frame, just a quiet header, a
- * rule under each row and a hover — the airy shape the office is used to reading down a column.
+ * From 64rem up a DataList is a real table (DataList.tsx), and so are the ledgers, the movements
+ * and history on a material, a user's activity and the dashboard's figures. Every one is framed
+ * the way the delivery dashboard frames its tables (client review): a bordered, rounded surface
+ * that stands off the page, a tinted header, the odd rows a shade darker so the eye keeps its line
+ * across a wide row, and a hover in the brand's soft tint.
  */
+.mz-table-wrap {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  background: var(--color-surface);
+  max-inline-size: 100%;
+  overflow-x: auto;
+}
+
+/* Inside a card the table is already on a surface: the frame stays, the second shadow goes. */
+.mz-card .mz-table-wrap {
+  box-shadow: none;
+}
+
 .mz-table {
   inline-size: 100%;
   border-collapse: collapse;
@@ -2752,10 +2772,24 @@ html[data-mirroring='true'] body {
 }
 
 .mz-table thead th {
-  block-size: 2.75rem;
+  border-block-end-color: var(--color-border);
+  background: var(--color-table-head);
+  block-size: 2.5rem;
   color: var(--color-text-muted);
-  font-weight: 500;
+  font-size: 0.75rem;
+  font-weight: 600;
   white-space: nowrap;
+}
+
+/* Capitals and tracking only for English: Kurdish and Arabic have no capitals, and spacing the
+   letters of a joined script pulls its words apart. */
+:root:lang(en) .mz-table thead th {
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mz-table tbody tr:nth-child(odd) {
+  background: var(--color-table-stripe);
 }
 
 /* An amount still owed reads in the warning colour so a column of balances shows at a glance who
@@ -2785,7 +2819,7 @@ html[data-mirroring='true'] body {
 }
 
 .mz-table tbody tr:hover {
-  background: var(--color-surface-2);
+  background: var(--color-table-hover);
 }
 
 /* ─────────────── a table row is clickable, all of it ───────────────
@@ -3569,8 +3603,7 @@ html[data-mirroring='true'] body {
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: var(--space-2) var(--space-4);
-  border-block-start: 1px solid var(--color-border);
-  padding-block-start: var(--space-3);
+  padding-block-start: var(--space-1);
 }
 
 .mz-pager__size {
