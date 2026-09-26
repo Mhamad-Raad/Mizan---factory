@@ -506,7 +506,7 @@ function schemaProblems(
   const parsed = schemaOf(kind).safeParse(bodyOf(kind, row, '2000-01-01'));
   if (parsed.success) return [];
   return parsed.error.issues.map((raw) => {
-    const issue = raw as typeof raw & { origin?: string; maximum?: unknown };
+    const issue = raw as typeof raw & { origin?: string; minimum?: unknown; maximum?: unknown; inclusive?: boolean };
     const field = String(issue.path[0] ?? '');
     const column = field === '' ? null : (COLUMN_OF[field] ?? field);
     const value = column ? (text(row[column]) ?? '') : '';
@@ -518,8 +518,14 @@ function schemaProblems(
     if (issue.code === 'too_small' && isText) {
       return { column, message_key: 'errors:field.required', params: { field: column } };
     }
-    if (issue.code === 'too_small' || issue.code === 'too_big') {
-      return { column, message_key: 'imports:number_out_of_range', params: { value } };
+    // Below or above the bound, saying which bound: "cannot be negative" was also what a
+    // number over its maximum was told.
+    if (issue.code === 'too_small') {
+      const key = issue.inclusive === false ? 'imports:number_above' : 'imports:number_too_small';
+      return { column, message_key: key, params: { value, min: Number(issue.minimum) } };
+    }
+    if (issue.code === 'too_big') {
+      return { column, message_key: 'imports:number_too_big', params: { value, max: Number(issue.maximum) } };
     }
     if (value !== '' && Number.isNaN(Number(value))) {
       return { column, message_key: 'imports:not_a_number', params: { value } };

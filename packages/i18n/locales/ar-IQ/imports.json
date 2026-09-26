@@ -31,7 +31,9 @@
   "not_a_number": "\"{{value}}\" ليس رقماً",
   "quantity_required": "أدخل عدداً أو وزناً",
   "patience": "الملف الكبير يستغرق وقتاً: عشرة آلاف سطر نحو دقيقة. لا تغلق الشاشة.",
-  "number_out_of_range": "\"{{value}}\" غير مسموح هنا — لا يمكن أن يكون سالباً",
+  "number_too_small": "\"{{value}}\" غير مسموح هنا — يجب أن يكون {{min}} أو أكثر",
+  "number_above": "\"{{value}}\" غير مسموح هنا — يجب أن يكون أكثر من {{min}}",
+  "number_too_big": "\"{{value}}\" غير مسموح هنا — يجب أن يكون {{max}} أو أقل",
   "whole_number_required": "\"{{value}}\" يجب أن يكون عدداً صحيحاً",
   "value_not_accepted": "\"{{value}}\" غير مقبول في هذا العمود"
 }

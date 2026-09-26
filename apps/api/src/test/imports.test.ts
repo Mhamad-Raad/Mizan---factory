@@ -130,13 +130,21 @@ describe('CSV import of go-live data (FR-1312)', () => {
         { name: 'Washer M8', pricing_unit: 'per_piece', min_stock: '2.5' },
         { name: 'x'.repeat(201), pricing_unit: 'per_kg' },
         { name: 'Copper wire 2 mm', pricing_unit: 'per_kg', min_stock: '50.000' },
+        { name: 'Screw M8', pricing_unit: 'per_piece', min_stock: '99999999999999999999' },
       ];
       const checked = await preview('materials', rows).expect(201);
       const byRow = new Map<number, { column: string; message_key: string; params: Record<string, unknown> }>(
         checked.body.problems.map((problem: { row: number }) => [problem.row, problem]),
       );
       expect(byRow.get(1)).toMatchObject({ column: 'min_stock', message_key: 'imports:not_a_number', params: { value: 'twenty' } });
-      expect(byRow.get(2)).toMatchObject({ column: 'min_stock', message_key: 'imports:number_out_of_range' });
+      expect(byRow.get(2)).toMatchObject({
+        column: 'min_stock',
+        message_key: 'imports:number_too_small',
+        params: { value: '-5', min: 0 },
+      });
+      // Too big is told as too big, not as "cannot be negative".
+      expect(byRow.get(6)).toMatchObject({ column: 'min_stock', message_key: 'imports:number_too_big' });
+      expect(byRow.get(6)?.params.max).toEqual(expect.any(Number));
       expect(byRow.get(3)).toMatchObject({ column: 'min_stock', message_key: 'imports:whole_number_required' });
       expect(byRow.get(4)).toMatchObject({ column: 'name', message_key: 'errors:field.too_long', params: { max: 200 } });
       expect(byRow.has(5)).toBe(false);
