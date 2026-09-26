@@ -19,9 +19,9 @@
     "@mizan/money": "workspace:*",
     "@mizan/permissions": "workspace:*",
     "@mizan/text": "workspace:*",
-    "@nestjs/common": "^11.1.6",
-    "@nestjs/core": "^11.1.6",
-    "@nestjs/platform-express": "^11.1.6",
+    "@nestjs/common": "^11.2.6",
+    "@nestjs/core": "^11.2.6",
+    "@nestjs/platform-express": "^11.2.6",
     "@node-rs/argon2": "^2.0.2",
     "cookie-parser": "^1.4.7",
     "helmet": "^8.1.0",
@@ -31,7 +31,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@nestjs/testing": "^11.1.6",
+    "@nestjs/testing": "^11.2.6",
     "@swc/core": "^1.16.2",
     "@types/cookie-parser": "^1.4.9",
     "@types/express": "^5.0.3",
