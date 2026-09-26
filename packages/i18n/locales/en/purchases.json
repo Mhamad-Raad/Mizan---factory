@@ -32,6 +32,10 @@
   "filter_stock_only": "Stock only",
   "filter_voided": "Voided",
   "search_hint": "Number, company or notes",
-  "lines_count": "{{count}} materials",
-  "edit_window_closed": "This purchase can no longer be edited — void it and enter it again."
+  "lines_count": "Materials: {{count}}",
+  "edit_window_closed": "This purchase can no longer be edited — void it and enter it again.",
+  "materials_column": "Materials",
+  "make_payment": "Pay for this purchase",
+  "no_payments": "Nothing paid against this purchase yet",
+  "settle_in_full_hint": "Closes this purchase exactly, even when the last payment is in the other currency"
 }

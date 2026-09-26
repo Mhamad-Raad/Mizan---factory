@@ -839,3 +839,28 @@ hundred", pointing at the delivery dashboard's pager.
 
 Relied on: the client's instruction; NFR-03 and NFR-13 (a phone on a slow line, years of data);
 2.4.1; 2.10.6 (mirrored directional icons).
+
+## D-059 · 2026-09-26 · client review · Purchases look and work like Orders
+
+The client: "improve the purchases UI generally like the orders page".
+
+- **The list:** the Orders toolbar — search, a date select (today, this week, this month, any
+  date, or a custom range that opens its two dates in place), "done by", and the Stock only and
+  Voided chips — with "Add material" at its end. The rows go through a new `PurchaseTable`, the
+  buying twin of `OrderTable`: a table on a desktop (number and date, company or "Stock only"
+  with who recorded it, materials, total), a card per purchase on a phone. A company's
+  Purchases tab uses the same component, with the remaining column its allocation provides
+  (FR-712). A standing purchase carries no status chip; only Void does.
+- **The detail:** the order's layout — the purchase number as the title, the company as a link,
+  the date and who did it; the total with its rate beside "We owe for this purchase" in red while
+  something is owed; the actions in the order's three groups (pay; edit, duplicate, damaged
+  items; Void apart at the end); Lines, Payments and History as one segmented control. Lines
+  read "5,000 kg × IQD 760" with a chip when the price was typed for the purchase.
+- **"Pay for this purchase"** records a company payment that names this purchase
+  (`purchase_id`), pre-filled with what this purchase still owes, so the money comes off this
+  purchase first rather than the oldest one. The Payments tab lists what was paid or credited
+  against it.
+- **Found on the way:** the company page passed its "Settle in full" hint in place of the
+  "Remaining before this payment" caption; the sheet now takes the hint as its own prop.
+
+Relied on: the client's instruction; FR-407, FR-712; 2.10.2 (one list, two layouts).

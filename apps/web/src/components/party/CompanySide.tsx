@@ -3,17 +3,17 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, DateField, SegmentedControl, TextField } from '@mizan/ui';
+import { BottomSheet, Button, Card, DateField, SegmentedControl, TextField } from '@mizan/ui';
 import type { MenuItem } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../../lib/api.js';
 import { Can } from '../Can.js';
-import { DualAmount } from '../DualAmount.js';
 import { LedgerList } from '../LedgerList.js';
 import type { LedgerRow } from '../LedgerList.js';
 import { MoneyInput } from '../MoneyInput.js';
 import type { MoneyValue } from '../MoneyInput.js';
 import { PaymentSheet } from '../PaymentSheet.js';
+import { PurchaseTable } from '../PurchaseTable.js';
 import { ShareDocumentSheet } from '../ShareDocumentSheet.js';
 import { Pager } from '../Pager.js';
 import { QueryStates } from '../states.js';
@@ -228,16 +228,14 @@ export function useCompanySide(input: {
       emptyAction={newPurchase}
       skeletonLines={3}
     >
-      <ul className="mz-list">
-        {(list.data?.items ?? []).map((purchase) => (
-          <PurchaseListItem
-            key={purchase.id}
-            purchase={purchase}
-            settlement={settlement}
-            remaining={owingAllocation?.purchases.find((row) => row.purchase_id === purchase.id)?.remaining ?? null}
-          />
-        ))}
-      </ul>
+      <PurchaseTable
+        rows={list.data?.items ?? []}
+        showCompany={false}
+        settlement={settlement}
+        remainingOf={(purchase) =>
+          owingAllocation?.purchases.find((row) => row.purchase_id === purchase.id)?.remaining ?? null
+        }
+      />
       {paged ? (
         <Pager
           page={purchasesPaging.page}
@@ -349,7 +347,7 @@ export function useCompanySide(input: {
           amountLabel={t('companies:amount_paid')}
           remainingLabel={t('companies:we_owe_them')}
           saveLabel={t('customers:make_payment')}
-          remainingHint={t('companies:settle_in_full_hint')}
+          settleHint={t('companies:settle_in_full_hint')}
           remaining={Math.max(owed, 0)}
           settlement_currency={settlement}
           rate={rate}
@@ -481,49 +479,6 @@ function singularOf(filter: EntryFilter): string {
   if (filter === 'adjustments') return 'adjustment';
   if (filter === 'credits') return 'credit';
   return 'purchase';
-}
-
-function PurchaseListItem({
-  purchase,
-  settlement,
-  remaining,
-}: {
-  purchase: PurchaseRow;
-  settlement: Currency;
-  remaining: number | null;
-}) {
-  const { t } = useTranslation();
-  const formatter = useFormatter();
-  return (
-    <li>
-      <Link to={`/purchases/${purchase.id}`} className="mz-list__item mz-list__item--interactive mz-list__item--detail">
-        <span className="mz-list__body">
-          <span className="mz-list__title">{t('purchases:number', { number: formatter.number(purchase.number) })}</span>
-          <span className="mz-caption" style={{ display: 'block' }}>
-            {formatter.date(purchase.purchase_date)}
-          </span>
-          {remaining !== null && remaining > 0 ? (
-            <span className="mz-caption mz-owed" style={{ display: 'block' }} data-tabular>
-              {t('glossary:remaining')}: {formatter.money(remaining, settlement)}
-            </span>
-          ) : null}
-        </span>
-        <span className="mz-list__end">
-          {purchase.doc_status === 'void' ? (
-            <Chip tone="danger" icon="close">
-              {t('glossary:void')}
-            </Chip>
-          ) : purchase.cost ? (
-            <DualAmount
-              amount_iqd={purchase.cost.total_iqd}
-              amount_usd_cents={purchase.cost.total_usd_cents}
-              primary={settlement}
-            />
-          ) : null}
-        </span>
-      </Link>
-    </li>
-  );
 }
 
 /**

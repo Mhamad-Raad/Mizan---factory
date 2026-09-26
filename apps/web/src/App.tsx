@@ -233,8 +233,8 @@ export function App() {
             <Route path="/customers/new" element={<NewCustomerPage />} />
             <Route path="/customers/:id" element={<CustomerDetailPage />} />
             {/* Companies are businesses on the Customers page now (D-054); old links still land. */}
-            <Route path="/companies" element={<Navigate to="/customers?side=supplier" replace />} />
-            <Route path="/companies/new" element={<Navigate to="/customers/new?side=supplier" replace />} />
+            <Route path="/companies" element={<Navigate to="/customers" replace />} />
+            <Route path="/companies/new" element={<Navigate to="/customers/new" replace />} />
             <Route path="/companies/:id" element={<CompanyRedirect />} />
             <Route path="/purchases" element={<PurchasesPage />} />
             <Route path="/purchases/new" element={<PurchaseFormPage mode="create" />} />

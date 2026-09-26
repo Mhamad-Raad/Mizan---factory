@@ -32,6 +32,10 @@
   "filter_stock_only": "للمخزون فقط",
   "filter_voided": "المُبطلة",
   "search_hint": "الرقم أو الشركة أو الملاحظات",
-  "lines_count": "{{count}} مواد",
-  "edit_window_closed": "لا يمكن تعديل هذا الشراء — أبطله وأدخله من جديد."
+  "lines_count": "المواد: {{count}}",
+  "edit_window_closed": "لا يمكن تعديل هذا الشراء — أبطله وأدخله من جديد.",
+  "materials_column": "المواد",
+  "make_payment": "الدفع لهذه المشتريات",
+  "no_payments": "لم يُدفع شيء لهذه المشتريات بعد",
+  "settle_in_full_hint": "يُغلق هذه المشتريات بالضبط حتى لو كانت الدفعة الأخيرة بعملة أخرى"
 }

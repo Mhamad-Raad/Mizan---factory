@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { BottomSheet, Button, Chip, DateField, TextField } from '@mizan/ui';
+import { DateField, Icon, TextField } from '@mizan/ui';
 import type { Currency, Measure } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
-import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
+import { PurchaseTable } from '../components/PurchaseTable.js';
 import { usePaging } from '../lib/paging.js';
 import { FilterChip } from './MaterialsPage.js';
 import { useFormatter } from '../lib/store.js';
@@ -67,12 +67,14 @@ export interface PurchaseDetail extends PurchaseRow {
   duplicate_item_warning?: { item_id: string; item_name: string }[];
 }
 
-type DateFilter = 'all' | 'today' | 'week' | 'month';
+type DateFilter = 'all' | 'today' | 'week' | 'month' | 'custom';
 
 /**
- * The Purchases page (spec 3.3): date chips and a filter sheet, rows leading with the number,
- * the company — or "Stock only" when there is none (FR-407) — and the total in both
- * currencies for those allowed to see purchase amounts. Quantities stay visible either way.
+ * The Purchases page (spec 3.3), laid out as the Orders page is (client review): one toolbar
+ * with the search, the date, who recorded it and the two chips, "New purchase" at its end; then
+ * the purchases as a table on a desktop and as cards on a phone, through the same `DataList`
+ * the orders use. A purchase with no company reads "Stock only" (FR-407); the totals show only
+ * to those allowed to see purchase amounts, and everything else shows either way.
  */
 export function PurchasesPage() {
   const { t } = useTranslation();
@@ -81,7 +83,6 @@ export function PurchasesPage() {
   const [dates, setDates] = useState<DateFilter>('month');
   const [stockOnly, setStockOnly] = useState(false);
   const [voided, setVoided] = useState(false);
-  const [filters, setFilters] = useState(false);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [doneBy, setDoneBy] = useState('');
@@ -89,7 +90,7 @@ export function PurchasesPage() {
   // Business dates are Asia/Baghdad days, through the same helper the rest of the app uses:
   // `new Date().toISOString()` is UTC, and for the first three hours of every Baghdad day it
   // names yesterday — which silently hid today's purchases from the list (I2 review).
-  const range = rangeFor(dates, formatter.today(), from, to);
+  const range = dates === 'custom' ? rangeFor('all', formatter.today(), from, to) : rangeFor(dates, formatter.today(), '', '');
 
   const paging = usePaging({
     storageKey: 'purchases',
@@ -107,13 +108,14 @@ export function PurchasesPage() {
       if (doneBy) params.set('done_by', doneBy);
       return apiRequest<{ items: PurchaseRow[]; total: number }>(`/purchases?${params.toString()}&${paging.query}`);
     },
+    // Keep the rows on screen while a filter or a page change refetches, as the Orders page does.
     placeholderData: keepPreviousData,
   });
+  const refreshing = purchases.isFetching && purchases.isPlaceholderData;
 
   const directory = useQuery({
     queryKey: ['users', 'directory'],
     queryFn: () => apiRequest<{ id: string; display_name: string; is_active: boolean }[]>('/users/directory'),
-    enabled: filters,
   });
 
   const rows = purchases.data?.items ?? [];
@@ -121,151 +123,105 @@ export function PurchasesPage() {
   usePageTitle(t('purchases:title'));
 
   return (
-    <>
-      <div className="mz-stack">
-        <TextField
-          label={t('common:search')}
-          placeholder={t('purchases:search_hint')}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          type="search"
-          inputMode="search"
-        />
-
-        <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          <FilterChip active={dates === 'today'} onClick={() => setDates(dates === 'today' ? 'all' : 'today')}>
-            {t('common:today')}
-          </FilterChip>
-          <FilterChip active={dates === 'week'} onClick={() => setDates(dates === 'week' ? 'all' : 'week')}>
-            {t('common:this_week')}
-          </FilterChip>
-          <FilterChip active={dates === 'month'} onClick={() => setDates(dates === 'month' ? 'all' : 'month')}>
-            {t('common:this_month')}
-          </FilterChip>
+    <div className="mz-stack">
+      <div className="mz-toolbar">
+        <div className="mz-toolbar__filters">
+          <div className="mz-toolbar__search">
+            <TextField
+              label={t('common:search')}
+              placeholder={t('purchases:search_hint')}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              type="search"
+              inputMode="search"
+            />
+          </div>
+          <select
+            className="mz-select"
+            aria-label={t('common:date')}
+            value={dates}
+            onChange={(event) => setDates(event.target.value as DateFilter)}
+          >
+            <option value="today">{t('common:today')}</option>
+            <option value="week">{t('common:this_week')}</option>
+            <option value="month">{t('common:this_month')}</option>
+            <option value="all">{t('orders:any_date')}</option>
+            <option value="custom">{t('common:custom_range')}</option>
+          </select>
+          <select
+            className="mz-select"
+            aria-label={t('glossary:done_by')}
+            value={doneBy}
+            onChange={(event) => setDoneBy(event.target.value)}
+          >
+            <option value="">{t('orders:anyone')}</option>
+            {(directory.data ?? [])
+              .filter((user) => user.is_active)
+              .map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.display_name}
+                </option>
+              ))}
+          </select>
           <FilterChip active={stockOnly} onClick={() => setStockOnly(!stockOnly)}>
             {t('purchases:filter_stock_only')}
           </FilterChip>
           <FilterChip active={voided} onClick={() => setVoided(!voided)}>
             {t('purchases:filter_voided')}
           </FilterChip>
-          <FilterChip active={filters} onClick={() => setFilters(true)}>
-            {t('orders:more_filters')}
-          </FilterChip>
         </div>
 
         <Can permission="purchases.create">
-          <Link to="/purchases/new" className="mz-button mz-button--primary mz-button--block">
+          <Link to="/purchases/new" className="mz-button mz-button--primary">
+            <Icon name="plus" />
             {t('purchases:add_material')}
           </Link>
         </Can>
-
-        <QueryStates
-          query={purchases}
-          isEmpty={rows.length === 0}
-          emptyTitle={query ? t('purchases:empty_search', { query }) : t('purchases:empty')}
-          emptyAction={
-            <Can permission="purchases.create">
-              <Link to="/purchases/new" className="mz-button mz-button--primary">
-                {t('purchases:add_material')}
-              </Link>
-            </Can>
-          }
-        >
-          <ul className="mz-list">
-            {rows.map((purchase) => (
-              <li key={purchase.id}>
-                <Link to={`/purchases/${purchase.id}`} className="mz-list__item mz-list__item--interactive">
-                  <span className="mz-list__body">
-                    <span className="mz-list__title">
-                      {t('purchases:number', { number: formatter.number(purchase.number) })}
-                    </span>
-                    <span className="mz-caption" style={{ display: 'block' }}>
-                      {purchase.company_name ?? t('purchases:stock_only_badge')} · {formatter.date(purchase.purchase_date)}
-                      {purchase.acting_user_name ? ` · ${purchase.acting_user_name}` : ''}
-                    </span>
-                    <span className="mz-caption" style={{ display: 'block' }}>
-                      {t('purchases:lines_count', { count: purchase.line_count })}
-                    </span>
-                    {purchase.cost ? (
-                      <DualAmount
-                        amount_iqd={purchase.cost.total_iqd}
-                        amount_usd_cents={purchase.cost.total_usd_cents}
-                        primary={purchase.settlement_currency ?? 'IQD'}
-                      />
-                    ) : null}
-                  </span>
-                  <span className="mz-list__end">
-                    {purchase.company_id === null ? <Chip>{t('purchases:stock_only_badge')}</Chip> : null}
-                    {purchase.doc_status === 'void' ? (
-                      <Chip tone="danger" icon="close">
-                        {t('glossary:void')}
-                      </Chip>
-                    ) : null}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <Pager
-            page={paging.page}
-            pageSize={paging.pageSize}
-            total={purchases.data?.total ?? 0}
-            onPage={paging.setPage}
-            onPageSize={paging.setPageSize}
-          />
-        </QueryStates>
-
-        {filters ? (
-          <BottomSheet
-            title={t('orders:more_filters')}
-            open
-            onClose={() => setFilters(false)}
-            closeLabel={t('common:close')}
-          >
-            <div className="mz-stack">
-              <DateField
-                label={t('common:date_from')}
-                value={from}
-                max={formatter.today()}
-                onChange={(event) => {
-                  setFrom(event.target.value);
-                  setDates('all');
-                }}
-              />
-              <DateField
-                label={t('common:date_to')}
-                value={to}
-                max={formatter.today()}
-                onChange={(event) => {
-                  setTo(event.target.value);
-                  setDates('all');
-                }}
-              />
-              <label className="mz-field">
-                <span className="mz-field__label">{t('common:done_by')}</span>
-                <select
-                  className="mz-field__control"
-                  value={doneBy}
-                  onChange={(event) => setDoneBy(event.target.value)}
-                >
-                  <option value="">{t('history:everyone')}</option>
-                  {(directory.data ?? [])
-                    .filter((user) => user.is_active)
-                    .map((user) => (
-                      <option key={user.id} value={user.id}>
-                        <bdi>{user.display_name}</bdi>
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <Button block onClick={() => setFilters(false)}>
-                {t('common:close')}
-              </Button>
-            </div>
-          </BottomSheet>
-        ) : null}
       </div>
-    </>
+
+      {/* A custom period opens its two dates in place, rather than behind a sheet. */}
+      {dates === 'custom' ? (
+        <div className="mz-grid-2">
+          <DateField
+            label={t('common:date_from')}
+            value={from}
+            max={to || formatter.today()}
+            onChange={(event) => setFrom(event.target.value)}
+          />
+          <DateField
+            label={t('common:date_to')}
+            value={to}
+            min={from || undefined}
+            max={formatter.today()}
+            onChange={(event) => setTo(event.target.value)}
+          />
+        </div>
+      ) : null}
+
+      <QueryStates
+        query={purchases}
+        isEmpty={rows.length === 0}
+        emptyTitle={query ? t('purchases:empty_search', { query }) : t('purchases:empty')}
+        emptyAction={
+          <Can permission="purchases.create">
+            <Link to="/purchases/new" className="mz-button mz-button--primary">
+              {t('purchases:add_material')}
+            </Link>
+          </Can>
+        }
+      >
+        <div className="mz-refreshable" data-busy={refreshing ? 'true' : undefined} aria-busy={refreshing}>
+          <PurchaseTable rows={rows} />
+        </div>
+        <Pager
+          page={paging.page}
+          pageSize={paging.pageSize}
+          total={purchases.data?.total ?? 0}
+          onPage={paging.setPage}
+          onPageSize={paging.setPageSize}
+        />
+      </QueryStates>
+    </div>
   );
 }
 

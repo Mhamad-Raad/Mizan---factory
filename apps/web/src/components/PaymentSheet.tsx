@@ -40,6 +40,8 @@ export interface PaymentSheetProps {
   remainingLabel?: string;
   saveLabel?: string;
   remainingHint?: string;
+  /** What "Settle in full" closes — an order, a purchase, an account — worded by the caller. */
+  settleHint?: string;
   /**
    * The open purchases of this company, for "More → link to a purchase" (wireframe 3.4.2).
    * Leaving a payment unlinked is the normal case: the oldest-first view allocates it anyway
@@ -69,6 +71,7 @@ export function PaymentSheet({
   remainingLabel,
   saveLabel,
   remainingHint,
+  settleHint,
   purchases,
 }: PaymentSheetProps) {
   const { t } = useTranslation();
@@ -152,7 +155,7 @@ export function PaymentSheet({
             />
             <Toggle
               label={t('glossary:settle_in_full')}
-              hint={t('customers:settle_in_full_hint')}
+              hint={settleHint ?? t('customers:settle_in_full_hint')}
               checked={settleInFull}
               onChange={setSettleInFull}
             />
