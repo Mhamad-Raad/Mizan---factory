@@ -14,6 +14,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
  */
 import '@fontsource-variable/inter/index.css';
 import '@fontsource-variable/vazirmatn/index.css';
+// The other typefaces of Settings (D-061): declared here, and downloaded by the browser only
+// when a device chooses one — a @font-face nobody uses costs nothing on the wire.
+import '@fontsource-variable/noto-sans-arabic/index.css';
+import '@fontsource-variable/noto-kufi-arabic/index.css';
+import '@fontsource-variable/noto-naskh-arabic/index.css';
+import '@fontsource/ibm-plex-sans-arabic/400.css';
+import '@fontsource/ibm-plex-sans-arabic/500.css';
+import '@fontsource/ibm-plex-sans-arabic/600.css';
+import '@fontsource/ibm-plex-sans-arabic/700.css';
 import '@mizan/ui/tokens.css';
 import '@mizan/ui/base.css';
 import { App } from './App.js';

@@ -224,7 +224,7 @@ export function DashboardPage() {
                 <p className="mz-muted mz-chart-empty">{t('dashboard:no_debtors')}</p>
               ) : (
                 <BarList
-                  color="var(--color-chart-sales)"
+                  color="var(--color-primary)"
                   rows={debtors.map((row) => ({
                     key: row.id,
                     label: row.name,

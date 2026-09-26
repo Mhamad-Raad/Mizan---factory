@@ -58,5 +58,21 @@
   "theme_hint": "ڕووناک یان تاریک، تەنها لەم ئامێرەدا",
   "font_size_hint": "قەبارەی نووسین لە هەموو پەردەکان",
   "reads_rtl": "لە ڕاست بۆ چەپ دەخوێنرێت",
-  "reads_ltr": "لە چەپ بۆ ڕاست دەخوێنرێت"
+  "reads_ltr": "لە چەپ بۆ ڕاست دەخوێنرێت",
+  "palette": "ڕەنگ",
+  "palette_hint": "ئەو ڕەنگەی بەرنامەکە لەسەر ئەم ئامێرە پێیەتی",
+  "palette_teal": "سەوزی شین",
+  "palette_ocean": "شین",
+  "palette_plum": "مۆری",
+  "palette_clay": "قوڕی",
+  "palette_graphite": "خۆڵەمێشی",
+  "typeface": "جۆری فۆنت",
+  "typeface_hint": "ئەو پیتانەی کوردی و عەرەبی پێ دەنووسرێن، لەسەر ئەم ئامێرە",
+  "typeface_vazirmatn_hint": "ڕوون و نوێ — بنەڕەتی",
+  "typeface_plex_hint": "هێڵی یەکسان؛ ئینگلیزیش",
+  "typeface_noto_hint": "سادە و بێلایەن",
+  "typeface_kufi_hint": "ئەندازەیی و ڕاست",
+  "typeface_naskh_hint": "کلاسیکی، وەک چاپ",
+  "typeface_sample": "کۆمپانیای زاگرۆس",
+  "typeface_letters": "ڵ ڕ ۆ ێ ە ڤ"
 }

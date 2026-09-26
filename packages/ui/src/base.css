@@ -3341,6 +3341,35 @@ html[data-mirroring='true'] body {
   text-overflow: ellipsis;
 }
 
+/* A typeface card's specimen (D-061): a Kurdish line and an amount, set in the face it names —
+   the box carries `data-font`, so `--font-arabic` here is that face's, whatever is chosen. */
+.mz-typeface {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-1);
+  background: var(--color-surface-2);
+  padding: var(--space-3);
+  block-size: 96px;
+  font-family: var(--font-arabic);
+}
+
+.mz-typeface__sample {
+  overflow: hidden;
+  font-size: 1.125rem;
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mz-typeface__figures {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
 /* ── Today: stat tiles, the two-week chart, who owes us, recent orders (client review) ── */
 
 /* Headline numbers: two across on a phone, four on a desktop; each opens the list it counts. */

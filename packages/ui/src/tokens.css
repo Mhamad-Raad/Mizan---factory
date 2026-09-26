@@ -60,6 +60,34 @@
 }
 
 /*
+ * The typefaces of Settings (D-061). Each names the family for Kurdish and Arabic text and keeps
+ * Inter for English — except IBM Plex, which has its own Latin — and every one carries the Sorani
+ * letters ڵ ڕ ۆ ێ ە ڤ. Vazirmatn is the default in the block above, and restated here so its own
+ * Settings card draws in Vazirmatn whatever the device has chosen.
+ */
+[data-font='vazirmatn'] {
+  --font-arabic: 'Vazirmatn Variable', 'Vazirmatn', 'Noto Sans Arabic', 'Segoe UI', tahoma, sans-serif;
+  --font-latin: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+[data-font='plex'] {
+  --font-arabic: 'IBM Plex Sans Arabic', 'Vazirmatn Variable', tahoma, sans-serif;
+  --font-latin: 'IBM Plex Sans Arabic', 'Inter Variable', system-ui, sans-serif;
+}
+
+[data-font='noto'] {
+  --font-arabic: 'Noto Sans Arabic Variable', 'Vazirmatn Variable', tahoma, sans-serif;
+}
+
+[data-font='kufi'] {
+  --font-arabic: 'Noto Kufi Arabic Variable', 'Vazirmatn Variable', tahoma, sans-serif;
+}
+
+[data-font='naskh'] {
+  --font-arabic: 'Noto Naskh Arabic Variable', 'Vazirmatn Variable', serif;
+}
+
+/*
  * The light ramp answers to the attribute as well as to the root, because the theme previews in
  * Settings draw a miniature of a theme **other** than the one on screen: a box marked
  * `data-theme="light"` inside a dark app declares the light colours again on itself, and the
@@ -180,4 +208,241 @@
   --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
 
   color-scheme: dark;
+}
+
+/*
+ * Colour palettes (client review, after the item-management system): a device can wear Mizan in
+ * another colour. Teal is the default and has no block — it is the ramp above. Each palette is that
+ * same ramp turned to another hue in OKLCH, its brand steps and its tinted greys alike, at the same
+ * lightness, so every pair keeps the contrast the teal was measured at; `check:contrast` measures
+ * every palette in both themes anyway. Status colours, the chart series and brass are not palette
+ * colours: paid, owed and a series keep their meaning whatever the palette.
+ *
+ * The selectors answer both on the root and on a preview box inside it, as the themes do, so a
+ * palette card in Settings draws its miniature in its own colours; a box that names its own
+ * palette (a teal card in a plum app) is left to its own.
+ */
+
+/* Ocean: a steel blue. */
+[data-palette='ocean'][data-theme='light'],
+[data-palette='ocean'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fafcff;
+  --color-surface-2: #edf2f6;
+  --color-text: #121c24;
+  --color-text-muted: #5a656e;
+  --color-border: #d9dfe4;
+  --color-border-strong: #7c8892;
+  --color-primary: #3d72a7;
+  --color-primary-hover: #315f8d;
+  --color-primary-soft: #d7eaff;
+  --color-on-primary-soft: #173049;
+  --color-sidebar: #f7fafd;
+  --color-sidebar-text: #121c24;
+  --color-sidebar-accent: #d7eaff;
+  --color-sidebar-accent-text: #173049;
+  --color-sidebar-hover: #edf2f6;
+  --color-on-header: #121c24;
+  --color-table-head: #eef2f6;
+  --color-table-stripe: #f1f4f7;
+  --color-table-hover: #e5f0fb;
+  --color-focus: #3d72a7;
+  --color-neutral-chip-bg: #edf2f6;
+  --color-neutral-chip-text: #5a656e;
+}
+
+[data-palette='ocean'][data-theme='dark'],
+[data-palette='ocean'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #0e171f;
+  --color-surface: #172028;
+  --color-surface-2: #252f38;
+  --color-text: #e9f0f6;
+  --color-text-muted: #9aa6b1;
+  --color-border: #2a343d;
+  --color-border-strong: #69737c;
+  --color-primary: #6daae7;
+  --color-primary-hover: #8cc3fc;
+  --color-on-primary: #0a1722;
+  --color-primary-soft: #283a4c;
+  --color-on-primary-soft: #d0e0f2;
+  --color-header: #172028;
+  --color-sidebar: #151e26;
+  --color-sidebar-text: #e9f0f6;
+  --color-sidebar-accent: #283a4c;
+  --color-sidebar-accent-text: #d0e0f2;
+  --color-sidebar-hover: #202a33;
+  --color-on-header: #e9f0f6;
+  --color-table-head: #1f2932;
+  --color-table-stripe: #1d272f;
+  --color-table-hover: #253443;
+  --color-focus: #6daae7;
+  --color-neutral-chip-bg: #252f38;
+  --color-neutral-chip-text: #9aa6b1;
+}
+
+/* Plum: a muted plum. */
+[data-palette='plum'][data-theme='light'],
+[data-palette='plum'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fefbfd;
+  --color-surface-2: #f4f0f3;
+  --color-text: #20181f;
+  --color-text-muted: #6a6068;
+  --color-border: #e1dce1;
+  --color-border-strong: #8d828b;
+  --color-primary: #925786;
+  --color-primary-hover: #7b4770;
+  --color-primary-soft: #f9dff2;
+  --color-on-primary-soft: #3f2339;
+  --color-sidebar: #fcf9fb;
+  --color-sidebar-text: #20181f;
+  --color-sidebar-accent: #f9dff2;
+  --color-sidebar-accent-text: #3f2339;
+  --color-sidebar-hover: #f4f0f3;
+  --color-on-header: #20181f;
+  --color-table-head: #f4f0f3;
+  --color-table-stripe: #f6f3f5;
+  --color-table-hover: #f7eaf4;
+  --color-focus: #925786;
+  --color-neutral-chip-bg: #f4f0f3;
+  --color-neutral-chip-text: #6a6068;
+}
+
+[data-palette='plum'][data-theme='dark'],
+[data-palette='plum'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #1b131a;
+  --color-surface: #241c23;
+  --color-surface-2: #332a32;
+  --color-text: #f3ecf2;
+  --color-text-muted: #aca1aa;
+  --color-border: #382f37;
+  --color-border-strong: #776e76;
+  --color-primary: #cf8ac0;
+  --color-primary-hover: #e6a6d7;
+  --color-on-primary: #1c111b;
+  --color-primary-soft: #453040;
+  --color-on-primary-soft: #ebd7e6;
+  --color-header: #241c23;
+  --color-sidebar: #221a21;
+  --color-sidebar-text: #f3ecf2;
+  --color-sidebar-accent: #453040;
+  --color-sidebar-accent-text: #ebd7e6;
+  --color-sidebar-hover: #2e252d;
+  --color-on-header: #f3ecf2;
+  --color-table-head: #2d242c;
+  --color-table-stripe: #2b222a;
+  --color-table-hover: #3d2c39;
+  --color-focus: #cf8ac0;
+  --color-neutral-chip-bg: #332a32;
+  --color-neutral-chip-text: #aca1aa;
+}
+
+/* Clay: a warm terracotta. */
+[data-palette='clay'][data-theme='light'],
+[data-palette='clay'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fffbfa;
+  --color-surface-2: #f6f0ed;
+  --color-text: #241812;
+  --color-text-muted: #6e605a;
+  --color-border: #e4dcd9;
+  --color-border-strong: #91837c;
+  --color-primary: #a05842;
+  --color-primary-hover: #864835;
+  --color-primary-soft: #fee0d7;
+  --color-on-primary-soft: #462319;
+  --color-sidebar: #fdf9f7;
+  --color-sidebar-text: #241812;
+  --color-sidebar-accent: #fee0d7;
+  --color-sidebar-accent-text: #462319;
+  --color-sidebar-hover: #f6f0ed;
+  --color-on-header: #241812;
+  --color-table-head: #f6f0ee;
+  --color-table-stripe: #f7f3f1;
+  --color-table-hover: #fbebe5;
+  --color-focus: #a05842;
+  --color-neutral-chip-bg: #f6f0ed;
+  --color-neutral-chip-text: #6e605a;
+}
+
+[data-palette='clay'][data-theme='dark'],
+[data-palette='clay'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #1e130f;
+  --color-surface: #271c17;
+  --color-surface-2: #372b25;
+  --color-text: #f5ede9;
+  --color-text-muted: #b1a19a;
+  --color-border: #3c302a;
+  --color-border-strong: #7b6e68;
+  --color-primary: #e08c72;
+  --color-primary-hover: #f6a78f;
+  --color-on-primary: #21110a;
+  --color-primary-soft: #4a3129;
+  --color-on-primary-soft: #f1d8d0;
+  --color-header: #271c17;
+  --color-sidebar: #251a16;
+  --color-sidebar-text: #f5ede9;
+  --color-sidebar-accent: #4a3129;
+  --color-sidebar-accent-text: #f1d8d0;
+  --color-sidebar-hover: #322620;
+  --color-on-header: #f5ede9;
+  --color-table-head: #31251f;
+  --color-table-stripe: #2f231d;
+  --color-table-hover: #422d26;
+  --color-focus: #e08c72;
+  --color-neutral-chip-bg: #372b25;
+  --color-neutral-chip-text: #b1a19a;
+}
+
+/* Graphite: slate greys with a quiet blue. */
+[data-palette='graphite'][data-theme='light'],
+[data-palette='graphite'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fbfcfd;
+  --color-surface-2: #f0f1f3;
+  --color-text: #181b1e;
+  --color-text-muted: #616467;
+  --color-border: #dddee0;
+  --color-border-strong: #83868a;
+  --color-primary: #5d7089;
+  --color-primary-hover: #4d5d73;
+  --color-primary-soft: #e0e9f4;
+  --color-on-primary-soft: #262f3b;
+  --color-sidebar: #f9fafb;
+  --color-sidebar-text: #181b1e;
+  --color-sidebar-accent: #e0e9f4;
+  --color-sidebar-accent-text: #262f3b;
+  --color-sidebar-hover: #f0f1f3;
+  --color-on-header: #181b1e;
+  --color-table-head: #f0f2f3;
+  --color-table-stripe: #f3f4f5;
+  --color-table-hover: #ebeff4;
+  --color-focus: #5d7089;
+  --color-neutral-chip-bg: #f0f1f3;
+  --color-neutral-chip-text: #616467;
+}
+
+[data-palette='graphite'][data-theme='dark'],
+[data-palette='graphite'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #141619;
+  --color-surface: #1d1f22;
+  --color-surface-2: #2b2e31;
+  --color-text: #edeff1;
+  --color-text-muted: #a2a5a9;
+  --color-border: #303336;
+  --color-border-strong: #6f7275;
+  --color-primary: #90a7c4;
+  --color-primary-hover: #abc0db;
+  --color-on-primary: #13161a;
+  --color-primary-soft: #323942;
+  --color-on-primary-soft: #d8dfe7;
+  --color-header: #1d1f22;
+  --color-sidebar: #1b1d20;
+  --color-sidebar-text: #edeff1;
+  --color-sidebar-accent: #323942;
+  --color-sidebar-accent-text: #d8dfe7;
+  --color-sidebar-hover: #26292c;
+  --color-on-header: #edeff1;
+  --color-table-head: #25282b;
+  --color-table-stripe: #232629;
+  --color-table-hover: #2d333a;
+  --color-focus: #90a7c4;
+  --color-neutral-chip-bg: #2b2e31;
+  --color-neutral-chip-text: #a2a5a9;
 }

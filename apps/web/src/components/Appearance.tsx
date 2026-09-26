@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { Card, Icon, Menu } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import { LANGUAGE_NAMES, LOCALES, directionOf } from '@mizan/i18n';
-import { FONT_SCALES, THEMES, resolveTheme } from '../lib/preferences.js';
-import type { FontScale, Theme } from '../lib/preferences.js';
+import { FONT_SCALES, PALETTES, THEMES, TYPEFACES, resolveTheme } from '../lib/preferences.js';
+import type { FontScale, Palette, Theme, Typeface } from '../lib/preferences.js';
 import { useApp } from '../lib/store.js';
 
 /**
@@ -19,6 +19,15 @@ import { useApp } from '../lib/store.js';
  */
 
 const THEME_ICONS: Record<Theme, IconName> = { light: 'sun', dark: 'moon', auto: 'monitor' };
+
+/** A typeface is named by its own name in every language, as a language is (spec 1.6). */
+const TYPEFACE_NAMES: Record<Typeface, string> = {
+  vazirmatn: 'Vazirmatn',
+  plex: 'IBM Plex',
+  noto: 'Noto Sans',
+  kufi: 'Noto Kufi',
+  naskh: 'Noto Naskh',
+};
 
 /** What each size is called — the same four names the old strip carried. */
 const SCALE_LABELS: Record<FontScale, string> = {
@@ -139,9 +148,9 @@ function OptionGroup({
  * `data-theme` on this box makes the ramp declare itself again here (tokens.css), so a light
  * miniature stays light inside a dark app — which is the whole point of the preview.
  */
-function Miniature({ mode }: { mode: 'light' | 'dark' }) {
+function Miniature({ mode, palette }: { mode: 'light' | 'dark'; palette?: Palette }) {
   return (
-    <span className="mz-mini" data-theme={mode}>
+    <span className="mz-mini" data-theme={mode} data-palette={palette}>
       <span className="mz-mini__nav">
         <span className="mz-mini__brand" />
         <span className="mz-mini__row mz-mini__row--on" />
@@ -212,7 +221,29 @@ function TextSpecimen({ scale, label, sample }: { scale: FontScale; label: strin
   );
 }
 
-/** Language, theme and text size: the three cards at the top of Settings. */
+/**
+ * A typeface drawn in itself: a Kurdish line carrying the letters a weaker font drops or
+ * reshapes, and an amount, so the choice is made on what the screens will actually show.
+ */
+function TypefaceSpecimen({ typeface, sample, letters }: { typeface: Typeface; sample: string; letters: string }) {
+  return (
+    <span className="mz-typeface" data-font={typeface} aria-hidden="true">
+      <span className="mz-typeface__sample" lang="ckb" dir="rtl">
+        {sample}
+      </span>
+      <span className="mz-typeface__figures">
+        <span lang="ckb" dir="rtl">
+          {letters}
+        </span>
+        <span dir="ltr" data-tabular>
+          1,250,000
+        </span>
+      </span>
+    </span>
+  );
+}
+
+/** Language, theme, colour, typeface and text size: the cards at the top of Settings. */
 export function AppearanceCards() {
   const { t } = useTranslation();
   const preferences = useApp((state) => state.preferences);
@@ -248,6 +279,47 @@ export function AppearanceCards() {
             hint={t(`settings:theme_${mode}_hint`)}
             icon={THEME_ICONS[mode]}
             preview={<ThemePreview mode={mode} />}
+          />
+        ))}
+      </OptionGroup>
+
+      {/* The colour and the typeface (D-061), after the item-management system: each card draws
+          the app in that colour, in the light or dark the screen shows now. */}
+      <OptionGroup title={t('settings:palette')} hint={t('settings:palette_hint')} wide>
+        {PALETTES.map((palette) => (
+          <OptionCard
+            key={palette}
+            name="mizan-palette"
+            value={palette}
+            checked={preferences.palette === palette}
+            onSelect={() => setPreference('palette', palette)}
+            title={t(`settings:palette_${palette}`)}
+            preview={
+              <span aria-hidden="true">
+                <Miniature mode={resolveTheme(preferences.theme)} palette={palette} />
+              </span>
+            }
+          />
+        ))}
+      </OptionGroup>
+
+      <OptionGroup title={t('settings:typeface')} hint={t('settings:typeface_hint')} wide>
+        {TYPEFACES.map((typeface) => (
+          <OptionCard
+            key={typeface}
+            name="mizan-typeface"
+            value={typeface}
+            checked={preferences.typeface === typeface}
+            onSelect={() => setPreference('typeface', typeface)}
+            title={TYPEFACE_NAMES[typeface]}
+            hint={t(`settings:typeface_${typeface}_hint`)}
+            preview={
+              <TypefaceSpecimen
+                typeface={typeface}
+                sample={t('settings:typeface_sample')}
+                letters={t('settings:typeface_letters')}
+              />
+            }
           />
         ))}
       </OptionGroup>

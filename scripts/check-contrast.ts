@@ -78,6 +78,9 @@ const CHECKS: Check[] = [
   { foreground: '--color-surface', background: '--color-border-strong', minimum: 3, what: 'toggle knob when it is off' },
   { foreground: '--color-border-strong', background: '--color-surface', minimum: 3, what: 'input boundary' },
   { foreground: '--color-focus', background: '--color-surface', minimum: 3, what: 'focus ring' },
+  { foreground: '--color-sidebar-accent-text', background: '--color-sidebar-accent', minimum: 4.5, what: 'current page in the sidebar' },
+  { foreground: '--color-neutral-chip-text', background: '--color-neutral-chip-bg', minimum: 4.5, what: 'neutral chip' },
+  { foreground: '--color-text', background: '--color-table-stripe', minimum: 4.5, what: 'text on a striped row' },
 ];
 
 const themes: [string, Record<string, string>][] = [
@@ -86,6 +89,18 @@ const themes: [string, Record<string, string>][] = [
   ['light', tokensOf('[data-theme=\'light\']')],
   ['dark', tokensOf('[data-theme=\'dark\']')],
 ];
+
+/*
+ * Every colour palette of Settings (D-061), in both themes: a palette block restates only the
+ * tokens it turns to its hue, so it is measured over the theme it sits on.
+ */
+const PALETTES = ['ocean', 'plum', 'clay', 'graphite'];
+const baseThemes = [...themes];
+for (const palette of PALETTES) {
+  for (const [mode, base] of baseThemes) {
+    themes.push([`${palette}/${mode}`, { ...base, ...tokensOf(`[data-palette='${palette}'][data-theme='${mode}']`) }]);
+  }
+}
 
 const failures: string[] = [];
 const report: string[] = [];
@@ -99,7 +114,7 @@ for (const [theme, tokens] of themes) {
       continue;
     }
     const measured = ratio(foreground, background);
-    const line = `  ${theme.padEnd(5)} ${check.what.padEnd(32)} ${measured.toFixed(2)}:1 (needs ${check.minimum}:1)`;
+    const line = `  ${theme.padEnd(14)} ${check.what.padEnd(32)} ${measured.toFixed(2)}:1 (needs ${check.minimum}:1)`;
     report.push(line);
     if (measured < check.minimum) failures.push(`${theme}: ${check.what} is ${measured.toFixed(2)}:1, needs ${check.minimum}:1`);
   }

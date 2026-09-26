@@ -30,6 +30,10 @@
         var lang = LOCALES[prefs.lang] ? prefs.lang : 'ckb-IQ';
         var theme = prefs.theme === 'light' || prefs.theme === 'dark' ? prefs.theme : 'auto';
         var scale = SCALES.indexOf(prefs.fontScale) >= 0 ? prefs.fontScale : 1;
+        // The colour palette and the typeface of Settings (D-061), validated like the rest.
+        var palette = ['teal', 'ocean', 'plum', 'clay', 'graphite'].indexOf(prefs.palette) >= 0 ? prefs.palette : 'teal';
+        var typeface =
+          ['vazirmatn', 'plex', 'noto', 'kufi', 'naskh'].indexOf(prefs.typeface) >= 0 ? prefs.typeface : 'vazirmatn';
 
         var resolved =
           theme === 'auto'
@@ -43,6 +47,8 @@
         root.setAttribute('data-locale', lang);
         root.setAttribute('dir', LOCALES[lang]);
         root.setAttribute('data-theme', resolved);
+        root.setAttribute('data-palette', palette);
+        root.setAttribute('data-font', typeface);
         root.style.setProperty('--font-scale', String(scale));
 
         var meta = document.querySelector('meta[name="theme-color"]');

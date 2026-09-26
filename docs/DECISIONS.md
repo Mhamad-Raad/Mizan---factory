@@ -880,3 +880,29 @@ the surface; hover takes the brand's soft tint. Three tokens per theme (`--color
 header and stripes. The pager lost its top rule, which doubled the table's frame.
 
 Relied on: the client's instruction; rule 9 (identity through tokens, no forked component).
+
+## D-061 · 2026-09-26 · client review · A colour palette and a typeface per device
+
+The client: "check the themes changing inside the item management system — the user can pick a
+variation of fonts and themes — implement that here as well; all preferences saved in local
+storage".
+
+- **Colour:** five palettes — Teal (Mizan's own, the default), Ocean, Plum, Clay, Graphite. Each
+  is Mizan's ramp turned to another hue in OKLCH, brand steps and tinted greys alike, at the same
+  lightness, in both themes. Paid/owed/warning colours, brass and the two chart series are not
+  palette colours, so they keep their meaning in every palette; the single-series "who owes us
+  most" bars take the palette's primary. `check:contrast` now measures every palette in both
+  themes (220 pairs).
+- **Typeface:** five faces for Kurdish and Arabic text, each carrying every Sorani letter, all
+  self-hosted (`font-src 'self'`): Vazirmatn (default), IBM Plex Sans Arabic (which also sets the
+  English text), Noto Sans Arabic, Noto Kufi, Noto Naskh. English otherwise stays in Inter. A face
+  nobody chooses is never downloaded.
+- **Where and how:** two new groups of cards in Settings beside Theme and Text size, each drawing
+  its choice — the app in miniature in that palette, a Kurdish line, the Sorani letters and an
+  amount in that face. Saved in `mizan.prefs.v1` in local storage with the rest, validated on
+  read, and applied by the pre-paint script, so the first frame is already in the chosen colour
+  and face. The inline script changed, so `ops/docker/csp-hash.sh` must be run again at deploy
+  (as the runbook says).
+
+Relied on: the client's instruction; FR-1103 (appearance is per device); rule 9 (identity
+through tokens); spec 3.7.1 (self-hosted fonts).
