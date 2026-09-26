@@ -833,7 +833,9 @@ hundred", pointing at the delivery dashboard's pager.
 - **On screen:** one `Pager` under every list — rows per page (25, 50, 100, remembered per
   list in this browser), "26–50 of 312", and arrows from the icon registry so they point the
   reading way. Page and size live in the address, so Back and a shared link keep the page; two
-  lists on one screen use separate names. Changing a filter goes back to page one.
+  lists on one screen use separate names. Changing a filter goes back to page one. The pager
+  shows under every list that has rows, even when they fit on one page, so the size can always
+  be changed; only an empty list has none.
 
 Relied on: the client's instruction; NFR-03 and NFR-13 (a phone on a slow line, years of data);
 2.4.1; 2.10.6 (mirrored directional icons).

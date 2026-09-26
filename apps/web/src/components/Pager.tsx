@@ -12,6 +12,9 @@ import { useFormatter } from '../lib/store.js';
  * With a `total` it reads "26–50 of 312"; a list paged by cursor has no total and reads
  * "Page 3", and knows only whether there is a next page.
  *
+ * It shows under every list that has rows, even a single page's worth, so the size is always
+ * there to change.
+ *
  * Turning the page brings the top of the list back into view — the arrows are at its foot,
  * and the next page's first row is what somebody wants to read.
  */
@@ -44,8 +47,9 @@ export function Pager({
   }, [lastPage, page, onPage]);
 
   const canNext = lastPage !== null ? page < lastPage : Boolean(hasNext);
-  // One page of fewer rows than the smallest size needs no foot at all.
-  if (page === 1 && !canNext && (total ?? 0) <= PAGE_SIZES[0]) return null;
+  // Always shown under a list with rows, even when they fit on one page: the size can be
+  // changed and the count read on every list (client review). Only an empty list has no foot.
+  if (total === 0) return null;
 
   const turn = (next: number) => {
     onPage(next);
