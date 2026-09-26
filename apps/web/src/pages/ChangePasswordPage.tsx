@@ -2,7 +2,8 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, PasswordField } from '@mizan/ui';
+import { Button, PasswordField } from '@mizan/ui';
+import { Doorway } from '../components/Doorway.js';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { useApp } from '../lib/store.js';
 
@@ -40,53 +41,48 @@ export function ChangePasswordPage() {
   };
 
   return (
-    <div className="mz-app">
-      <header className="mz-header">
-        <h1 className="mz-header__title">{t('auth:must_change_password_title')}</h1>
-      </header>
-      <main className="mz-main">
-        <Card>
-          <form className="mz-stack" onSubmit={submit} noValidate>
-            <p className="mz-muted">{t('auth:must_change_password_body')}</p>
-            <PasswordField
-              label={t('auth:current_password')}
-              showLabel={t('auth:show_password')}
-              hideLabel={t('auth:hide_password')}
-              value={current}
-              onChange={(event) => setCurrent(event.target.value)}
-              autoComplete="current-password"
-              required
-            />
-            <PasswordField
-              label={t('auth:new_password')}
-              showLabel={t('auth:show_password')}
-              hideLabel={t('auth:hide_password')}
-              value={next}
-              onChange={(event) => setNext(event.target.value)}
-              autoComplete="new-password"
-              required
-            />
-            <PasswordField
-              label={t('auth:confirm_password')}
-              showLabel={t('auth:show_password')}
-              hideLabel={t('auth:hide_password')}
-              value={repeat}
-              onChange={(event) => setRepeat(event.target.value)}
-              error={mismatch ? t('errors:field.passwords_do_not_match') : undefined}
-              autoComplete="new-password"
-              required
-            />
-            {error ? (
-              <p className="mz-field__error" role="alert">
-                {error}
-              </p>
-            ) : null}
-            <Button type="submit" block loading={busy} disabled={!current || !next || mismatch}>
-              {t('auth:change_password')}
-            </Button>
-          </form>
-        </Card>
-      </main>
-    </div>
+    <Doorway
+      title={t('auth:must_change_password_title')}
+      subtitle={t('auth:must_change_password_body')}
+    >
+      <form className="mz-stack" onSubmit={submit} noValidate>
+        <PasswordField
+          label={t('auth:current_password')}
+          showLabel={t('auth:show_password')}
+          hideLabel={t('auth:hide_password')}
+          value={current}
+          onChange={(event) => setCurrent(event.target.value)}
+          autoComplete="current-password"
+          required
+        />
+        <PasswordField
+          label={t('auth:new_password')}
+          showLabel={t('auth:show_password')}
+          hideLabel={t('auth:hide_password')}
+          value={next}
+          onChange={(event) => setNext(event.target.value)}
+          autoComplete="new-password"
+          required
+        />
+        <PasswordField
+          label={t('auth:confirm_password')}
+          showLabel={t('auth:show_password')}
+          hideLabel={t('auth:hide_password')}
+          value={repeat}
+          onChange={(event) => setRepeat(event.target.value)}
+          error={mismatch ? t('errors:field.passwords_do_not_match') : undefined}
+          autoComplete="new-password"
+          required
+        />
+        {error ? (
+          <p className="mz-field__error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <Button type="submit" block loading={busy} disabled={!current || !next || mismatch}>
+          {t('auth:change_password')}
+        </Button>
+      </form>
+    </Doorway>
   );
 }

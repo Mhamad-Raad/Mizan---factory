@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { z } from 'zod';
 import { EXTRAS, PERMISSIONS, PRESETS } from '@mizan/permissions';
 import { AdminOnly, SessionOnly } from '../common/decorators.js';
@@ -15,11 +26,16 @@ const createSchema = z.object({
   phone: z.string().max(32).nullish(),
   role: z.enum(['admin', 'employee']),
   preset_key: z.enum(presetKeys).nullish(),
+  /** The exact per-action set, chosen on the create screen rather than on a second visit. */
+  keys: z.array(z.string()).max(200).optional(),
 });
 
 const updateSchema = z.object({
   display_name: z.string().min(1).max(120).optional(),
-  username: z.string().regex(/^[a-zA-Z0-9._]{3,32}$/).optional(),
+  username: z
+    .string()
+    .regex(/^[a-zA-Z0-9._]{3,32}$/)
+    .optional(),
   phone: z.string().max(32).nullish(),
   role: z.enum(['admin', 'employee']).optional(),
   version: z.number().int().positive(),
@@ -83,7 +99,10 @@ export class UsersController {
   @Post('users')
   @AdminOnly()
   @HttpCode(201)
-  async create(@Req() request: RequestWithContext, @Body(zodBody(createSchema)) body: z.infer<typeof createSchema>) {
+  async create(
+    @Req() request: RequestWithContext,
+    @Body(zodBody(createSchema)) body: z.infer<typeof createSchema>,
+  ) {
     return this.users.create(contextOf(request), body);
   }
 
@@ -160,16 +179,5 @@ export class UsersController {
     @Param('sessionId') sessionId: string,
   ) {
     await this.users.revokeSession(contextOf(request), id, sessionId);
-  }
-
-  /**
-   * Take PIN sign-in away from every browser at once (2.9.3). One route rather than one per
-   * ticket, because the question an admin actually has is "make the PIN stop working", and
-   * revoking one of three tablets leaves the other two (D-036).
-   */
-  @Delete('users/:id/device-tickets')
-  @AdminOnly()
-  async revokeDeviceTickets(@Req() request: RequestWithContext, @Param('id') id: string) {
-    return this.users.revokeDeviceTickets(contextOf(request), id);
   }
 }

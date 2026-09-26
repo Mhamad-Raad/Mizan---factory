@@ -207,6 +207,8 @@ export class OrdersController {
 
   @Get('orders/:id/history')
   @RequirePermission('orders.view')
+  // A payment's History row carries the customer's balance before and after it (2.6.2).
+  @SensitiveFields({ cost: 'fields.see_bought_price', balance: 'fields.see_customer_balances' })
   async history(
     @Req() request: RequestWithContext,
     @Param('id') id: string,

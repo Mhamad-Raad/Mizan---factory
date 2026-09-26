@@ -39,5 +39,8 @@
   "movement.return_in": "Returned to stock",
   "movement.opening": "Opening stock",
   "movement.adjustment": "Correction",
-  "movement.reversal": "Reversal"
+  "movement.reversal": "Reversal",
+  "new_material_hint": "A material you buy and sell — its name, code, how much you have now, and its prices.",
+  "prices": "Prices",
+  "prices_hint": "This month's prices — type in dinars or dollars."
 }

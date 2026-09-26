@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import { createFormatter } from '@mizan/i18n';
 import type { Formatter, Locale } from '@mizan/i18n';
-import { applyPreferences, readPreferences, storageAvailable, writePreferences } from './preferences.js';
+import {
+  applyPreferences,
+  readPreferences,
+  storageAvailable,
+  writePreferences,
+} from './preferences.js';
 import type { Preferences } from './preferences.js';
 import { i18next } from './i18n.js';
 
@@ -12,7 +17,6 @@ export interface SessionUser {
   role: 'admin' | 'employee';
   is_active: boolean;
   must_change_password: boolean;
-  has_pin: boolean;
 }
 
 interface AppState {
@@ -21,6 +25,17 @@ interface AppState {
   preferencesPersisted: boolean;
   formatter: Formatter;
   setPreference: <K extends keyof Preferences>(key: K, value: Preferences[K]) => void;
+
+  /**
+   * What the header says, set by the screen that is open.
+   *
+   * The shell used to be *inside* every page, so a page that was still loading took the
+   * sidebar, the header and the navigation down with it — the whole window blinked on every
+   * tab. The shell is now a layout that outlives the pages, and this is how a page tells it
+   * what to call itself.
+   */
+  pageTitle: string;
+  setPageTitle: (title: string) => void;
 
   user: SessionUser | null;
   permissions: ReadonlySet<string>;
@@ -41,7 +56,11 @@ function mirrorLayout(): void {
 }
 
 function formatterFor(preferences: Preferences): Formatter {
-  return createFormatter({ locale: preferences.lang, numerals: preferences.numerals });
+  // Numbers always render in Western/Latin digits (0–9), on every locale and whatever a
+  // saved preference or migrated storage still holds. The per-device Eastern-numerals
+  // option was removed with the "This device" settings card, and this is the single point
+  // that guarantees it everywhere useFormatter() reaches.
+  return createFormatter({ locale: preferences.lang, numerals: 'latn' });
 }
 
 const initialPreferences = readPreferences();
@@ -74,6 +93,9 @@ export const useApp = create<AppState>((set, get) => ({
   setSession: ({ user, permissions, isLocked = false }) =>
     set({ user, permissions: new Set(permissions), isLocked }),
   clearSession: () => set({ user: null, permissions: new Set<string>(), isLocked: false }),
+  pageTitle: '',
+  setPageTitle: (title) =>
+    set((state) => (state.pageTitle === title ? state : { pageTitle: title })),
   setLocked: (isLocked) => set({ isLocked }),
   setOnline: (isOnline) => set({ isOnline }),
 }));

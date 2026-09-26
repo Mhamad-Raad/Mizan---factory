@@ -28,42 +28,10 @@
   --brass-600: #8c6a12;
   --brass-300: #e4c260;
 
-  /* ── semantic tokens (light) ───────────────────────────────────────────── */
-  --color-bg: #faf7f4;
-  --color-surface: #fff;
-  --color-surface-2: #f3eee9;
-  --color-text: #221b20;
-  --color-text-muted: #6b5f68;
-  --color-border: #e4dcd8;
-  --color-border-strong: #9e9098;
-  --color-primary: #7a2e63;
-  --color-primary-hover: #66244f;
-  --color-on-primary: #fff;
-  --color-primary-soft: #f7e6f1;
-  --color-on-primary-soft: #6a2555;
-  --color-success: #1e7a4c;
-  --color-success-soft: #e3f3ea;
-  --color-warning: #8f5400;
-  --color-warning-soft: #fbebd1;
-  --color-danger: #b3261e;
-  --color-danger-soft: #fce4e2;
-
-  /* What sits on a danger fill — a button label, an icon. Light theme: white on deep red. */
-  --color-on-danger: #fff;
-  --color-header: #5e1f4b;
-  --color-on-header: #fff;
-  --color-brass: #8c6a12;
-  --color-focus: #7a2e63;
-  --color-neutral-chip-bg: #f3eee9;
-  --color-neutral-chip-text: #6b5f68;
-  --color-backdrop: rgb(34 27 32 / 40%);
-  --shadow-sheet: 0 -8px 24px rgb(34 27 32 / 12%);
-  --shadow-card: 0 1px 2px rgb(34 27 32 / 6%);
-
   /* ── shape, spacing and motion (unchanged from the palette system, 3.2.1) ─ */
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -89,6 +57,58 @@
 
   /* Reading direction as a number, so animations and gestures mirror (spec 2.10.6). */
   --dir: 1;
+}
+
+/*
+ * The light ramp answers to the attribute as well as to the root, because the theme previews in
+ * Settings draw a miniature of a theme **other** than the one on screen: a box marked
+ * `data-theme="light"` inside a dark app declares the light colours again on itself, and the
+ * miniature's own elements then read them. Without the second selector a light preview in a
+ * dark app was a dark rectangle.
+ */
+:root,
+[data-theme='light'] {
+  /* ── semantic tokens (light) ───────────────────────────────────────────── */
+  --color-bg: #fafdfb;
+  --color-surface: #fff;
+  --color-surface-2: #edf3f0;
+  --color-text: #121e17;
+  --color-text-muted: #5a675f;
+  --color-border: #d9e0dc;
+  --color-border-strong: #7c8a82;
+  --color-primary: #00816c;
+  --color-primary-hover: #006c58;
+  --color-on-primary: #fff;
+  --color-primary-soft: #cdf1e8;
+  --color-on-primary-soft: #00372e;
+  --color-success: #1d7d3e;
+  --color-success-soft: #e1f5e4;
+  --color-warning: #8d5e00;
+  --color-warning-soft: #ffecc9;
+  --color-danger: #c21725;
+  --color-danger-soft: #ffe7e4;
+
+  /* What sits on a danger fill — a button label, an icon. Light theme: white on deep red. */
+  --color-on-danger: #fff;
+  --color-header: #fff;
+
+  /*
+   * The sidebar is its own surface, a shade off the page, with its own accent for the current
+   * page — the arrangement the client asked for from the item-management shell.
+   */
+  --color-sidebar: #f7fbf9;
+  --color-sidebar-text: #121e17;
+  --color-sidebar-accent: #cdf1e8;
+  --color-sidebar-accent-text: #00372e;
+  --color-sidebar-hover: #edf3f0;
+  --color-on-header: #121e17;
+  --color-brass: #93690d;
+  --color-focus: #00816c;
+  --color-neutral-chip-bg: #edf3f0;
+  --color-neutral-chip-text: #5a675f;
+  --color-backdrop: rgb(14 25 19 / 40%);
+  --shadow-sheet: 0 -8px 24px rgb(14 25 19 / 10%);
+  --shadow-card: 0 1px 2px rgb(14 25 19 / 6%);
 
   color-scheme: light;
 }
@@ -98,34 +118,39 @@
 }
 
 [data-theme='dark'] {
-  --color-bg: #161116;
-  --color-surface: #211a21;
-  --color-surface-2: #2c232c;
-  --color-text: #f4ecf1;
-  --color-text-muted: #b4a5af;
-  --color-border: #3b2f3a;
-  --color-border-strong: #756573;
-  --color-primary: #e79acf;
-  --color-primary-hover: #f0b0dc;
-  --color-on-primary: #33112a;
-  --color-primary-soft: #3c1f35;
-  --color-on-primary-soft: #f2c4e4;
-  --color-success: #63cf98;
-  --color-success-soft: #163325;
-  --color-warning: #f0b450;
-  --color-warning-soft: #3a2a10;
-  --color-danger: #f58b84;
-  --color-danger-soft: #3e1a18;
+  --color-bg: #0e1913;
+  --color-surface: #17221c;
+  --color-surface-2: #25312a;
+  --color-text: #e9f1ec;
+  --color-text-muted: #9aa9a0;
+  --color-border: #2a362f;
+  --color-border-strong: #68756e;
+  --color-primary: #46bba5;
+  --color-primary-hover: #6fd3be;
+  --color-on-primary: #051a16;
+  --color-primary-soft: #1f3f38;
+  --color-on-primary-soft: #cae5de;
+  --color-success: #62bb78;
+  --color-success-soft: #1a3520;
+  --color-warning: #e9b452;
+  --color-warning-soft: #403012;
+  --color-danger: #f2716a;
+  --color-danger-soft: #4d2623;
 
   /* The dark theme's danger is a *light* salmon, so what sits on it has to be dark: white was
      1.71:1 on it, which is an invisible label on the one button that voids an order. */
-  --color-on-danger: #3b0f0c;
-  --color-header: #211a21;
-  --color-on-header: #f4ecf1;
-  --color-brass: #e4c260;
-  --color-focus: #e79acf;
-  --color-neutral-chip-bg: #2c232c;
-  --color-neutral-chip-text: #b4a5af;
+  --color-on-danger: #22100f;
+  --color-header: #17221c;
+  --color-sidebar: #15201a;
+  --color-sidebar-text: #e9f1ec;
+  --color-sidebar-accent: #1f3f38;
+  --color-sidebar-accent-text: #cae5de;
+  --color-sidebar-hover: #202c25;
+  --color-on-header: #e9f1ec;
+  --color-brass: #e6b55d;
+  --color-focus: #46bba5;
+  --color-neutral-chip-bg: #25312a;
+  --color-neutral-chip-text: #9aa9a0;
   --color-backdrop: rgb(0 0 0 / 60%);
   --shadow-sheet: 0 -8px 24px rgb(0 0 0 / 50%);
   --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);

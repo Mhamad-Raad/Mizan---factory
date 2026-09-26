@@ -100,40 +100,108 @@ input[type='tel'] {
   min-block-size: 100dvh;
 }
 
+/*
+ * The app bar, as the item-management shell has it: the page's own surface rather than a band
+ * of brand colour, translucent with a blur so content scrolling under it stays legible, a
+ * hairline at the bottom, and the page's name read as quiet text at the start rather than
+ * announced in white. The brand lives in the sidebar, which is where it belongs on a desktop.
+ */
 .mz-header {
   display: flex;
   position: sticky;
   z-index: 10;
   align-items: center;
-  gap: var(--space-3);
-  background: var(--color-header);
-  padding-inline: var(--space-4);
+  gap: var(--space-1);
+  border-block-end: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg) 85%, transparent);
+  padding-inline: var(--space-2);
   min-block-size: 56px;
-  color: var(--color-on-header);
+  color: var(--color-text);
   inset-block-start: 0;
+  backdrop-filter: blur(8px);
 }
 
 .mz-header__title {
   flex: 1;
   margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  text-align: center;
+  padding-inline: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: start;
+
+  /* The bar's controls sit at the reading end; the title takes what is left of the line. */
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.mz-login-band {
+/*
+ * The doorway — sign in, the lock screen, the forced password change.
+ *
+ * One card of a form's width centred on the page, as the land-allocation system has it: a text
+ * field the width of a monitor is nobody's idea of a sign-in. The appearance menus take their
+ * own row at the top rather than floating over the page, so on a short phone in landscape the
+ * card can never slide under them. At 360 px the card is the screen less a 16 px gutter.
+ */
+.mz-doorway {
+  background: var(--color-bg);
+}
+
+.mz-doorway__tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  padding: var(--space-2);
+}
+
+.mz-doorway__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding-block: var(--space-2) var(--space-6);
+  padding-inline: var(--space-4);
+}
+
+.mz-doorway .mz-doorway__card {
+  inline-size: 100%;
+  max-inline-size: 24rem;
+  padding: var(--space-5);
+}
+
+.mz-doorway__head {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
-  background: var(--color-header);
-  padding-block: var(--space-5);
-  color: var(--color-on-header);
+  gap: var(--space-1);
+  margin-block-end: var(--space-5);
+  text-align: center;
 }
 
-.mz-login-band__name {
+.mz-doorway__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-block-end: var(--space-2);
+  border-radius: var(--radius-lg);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  inline-size: 48px;
+  block-size: 48px;
+}
+
+.mz-doorway__title {
+  margin: 0;
   font-size: 1.25rem;
   font-weight: 600;
+}
+
+.mz-doorway__subtitle {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
 }
 
 /*
@@ -141,8 +209,7 @@ input[type='tel'] {
  * that carries the identity — without it the header and the page are the same colour and the
  * app loses the "which application am I in" cue at a glance (spec 3.2.4).
  */
-[data-theme='dark'] .mz-header,
-[data-theme='dark'] .mz-login-band {
+[data-theme='dark'] .mz-header {
   border-block-end: 2px solid var(--color-primary);
 }
 
@@ -231,6 +298,13 @@ input[type='tel'] {
 .mz-caption {
   color: var(--color-text-muted);
   font-size: 0.75rem;
+}
+
+/* A hairline that separates two groups inside one card. */
+.mz-divider {
+  border: 0;
+  border-block-start: 1px solid var(--color-border);
+  margin: 0;
 }
 
 /* ── controls ─────────────────────────────────────────────────────────────── */
@@ -447,7 +521,11 @@ a.mz-button {
 }
 
 .mz-toggle__track[aria-checked='mixed']::before {
-  background: linear-gradient(to inline-end, var(--color-primary) 50%, var(--color-border-strong) 50%);
+  background: linear-gradient(
+    to inline-end,
+    var(--color-primary) 50%,
+    var(--color-border-strong) 50%
+  );
 }
 
 .mz-toggle__thumb {
@@ -570,6 +648,10 @@ a.mz-button {
   border-inline: 0;
   border-block-start: 0;
   inline-size: 100%;
+
+  /* A whole-card link on a phone reads as a card, not as blue underlined text. */
+  color: inherit;
+  text-decoration: none;
 }
 
 .mz-list__item--interactive:hover {
@@ -582,8 +664,43 @@ a.mz-button {
 }
 
 .mz-list__title {
+  display: block;
   font-weight: 500;
   overflow-wrap: anywhere;
+}
+
+/* A picker row leads with the kind of thing being chosen and ends with a chevron, so the row
+   reads as "pick this one" rather than as a line of text. */
+.mz-picker__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  color: var(--color-on-primary-soft);
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+}
+
+.mz-picker__chevron {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+/* A row's figure — the stock on hand — as a quiet pill at the row's end, not text run into the
+   name. Tabular digits so a column of them lines up. */
+.mz-picker__meta {
+  flex: none;
+  border-radius: 999px;
+  background: var(--color-surface-2);
+  padding-block: 3px;
+  padding-inline: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /**
@@ -608,6 +725,187 @@ a.mz-button {
   block-size: 40px;
   color: var(--color-on-primary-soft);
   font-weight: 600;
+}
+
+/* ── the order-detail summary: identity on one side, the money as a quiet grid of figures ──
+   On a phone it stacks; from tablet up the figures sit to the end so the total and what
+   qualifies it read across the card instead of down a single narrow column. */
+.mz-detail-summary {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+@media (width >= 48rem) {
+  .mz-detail-summary {
+    grid-template-columns: minmax(0, auto) 1fr;
+    gap: var(--space-6);
+  }
+}
+
+.mz-detail-figures {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(7rem, max-content));
+  place-content: start start;
+}
+
+@media (width >= 48rem) {
+  .mz-detail-figures {
+    place-content: start end;
+    text-align: end;
+  }
+}
+
+.mz-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mz-figure__label {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.mz-figure__value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* An outstanding balance reads in the warning colour so "what is still owed" stands out from a
+   settled zero without needing a second glance. */
+.mz-figure__value--owed {
+  color: var(--color-danger);
+}
+
+/* A page's action bar, read as groups: money actions, then document actions, with the one
+   destructive action set apart at the end. A hairline divides adjacent groups from tablet up;
+   on a phone the buttons wrap and lean on spacing alone. */
+.mz-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mz-actions__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mz-actions__group--end {
+  margin-inline-start: auto;
+}
+
+/*
+ * Tablet and below: the bar becomes rows of equal buttons rather than a ragged wrap. Each group
+ * is its own row — money first, then the document, then Void apart at the end — and the buttons
+ * in a row share its width, so nothing is left hanging on a line of its own. On a phone the
+ * money actions take the full width (they are the ones a thumb reaches for) and the document
+ * actions sit two to a row.
+ */
+@media (width < 64rem) {
+  .mz-actions {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .mz-actions__group {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: var(--space-2);
+  }
+
+  .mz-actions__group--end {
+    display: flex;
+    justify-content: flex-end;
+    margin-inline-start: 0;
+  }
+}
+
+@media (width < 40rem) {
+  .mz-actions__group {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mz-actions__group--primary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* An odd one out takes the whole row rather than half of it beside a hole. */
+  .mz-actions__group > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .mz-actions__group--end > * {
+    flex: 1;
+  }
+}
+
+/* From a desktop up the bar is one line of groups, with a hairline between adjacent ones. */
+@media (width >= 64rem) {
+  .mz-actions__group + .mz-actions__group:not(.mz-actions__group--end) {
+    border-inline-start: 1px solid var(--color-border);
+    padding-inline-start: var(--space-3);
+  }
+}
+
+/*
+ * A row of a document's detail list — a line, a payment, a History entry: the kind of row, what
+ * it is, and its amount at the end. On a phone the amount would squeeze the name to a word per
+ * line, so it takes a line of its own under the name, still at the reading end so a column of
+ * amounts lines up.
+ */
+.mz-list__item--detail {
+  display: grid;
+  grid-template-areas: 'lead body end';
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: var(--space-3);
+}
+
+.mz-list__item--detail > .mz-row-lead {
+  grid-area: lead;
+}
+
+.mz-list__item--detail > .mz-list__body {
+  grid-area: body;
+}
+
+.mz-list__item--detail > .mz-list__end {
+  grid-area: end;
+
+  /* The column is sized by its content; a percentage cap here would be a share of itself. */
+  max-inline-size: none;
+}
+
+@media (width < 40rem) {
+  .mz-list__item--detail {
+    grid-template-areas:
+      'lead body'
+      'lead end';
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    row-gap: var(--space-1);
+  }
+
+}
+
+/* A detail-list row leads with a soft icon marking what kind of row it is, the way a picker row
+   does, so lines, payments and history each read as a labelled entry rather than a run of text. */
+.mz-row-lead {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
 }
 
 .mz-skeleton {
@@ -671,6 +969,28 @@ a.mz-button {
 
 @keyframes mz-fade {
   from {
+    opacity: 0;
+  }
+}
+
+/* From a laptop up, a sheet is a centred dialog, not a bar risen from the bottom edge: a
+   bounded, rounded card in the middle of the screen — which is what a picker or a small form
+   wants on a mouse-driven back office, rather than the phone's thumb-reachable bottom sheet. */
+@media (width >= 48rem) {
+  .mz-sheet {
+    inset: 50% auto auto 50%;
+    transform: translate(-50%, -50%);
+    inline-size: min(42rem, calc(100vw - 2 * var(--space-6)));
+    max-block-size: min(85dvh, 46rem);
+    border-radius: var(--radius-lg);
+    padding-block-end: var(--space-4);
+    animation-name: mz-pop;
+  }
+}
+
+@keyframes mz-pop {
+  from {
+    transform: translate(-50%, -50%) scale(0.96);
     opacity: 0;
   }
 }
@@ -763,6 +1083,17 @@ a.mz-button {
   flex-direction: column;
   gap: var(--space-2);
   margin-block-start: var(--space-4);
+
+  /*
+   * The bar spans the screen, not the content column.
+   *
+   * It lives inside `.mz-main`, which holds a 16 px gutter on each side, so the bar — and the
+   * button filling it — stopped short of the edges and read as a card rather than as the
+   * screen's action. The negative margin takes it back out to the edges and the padding puts
+   * the gutter back inside the bar, where it belongs: the button is then the full width of the
+   * screen less one gutter, and the bar's own line and shadow run edge to edge.
+   */
+  margin-inline: calc(-1 * var(--space-4));
   padding-block: var(--space-3);
   padding-inline: var(--space-4);
   border-block-start: 1px solid var(--color-border);
@@ -819,6 +1150,7 @@ a.mz-button {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  gap: var(--space-3);
   font-size: 1.125rem;
   font-weight: 600;
 }
@@ -891,6 +1223,210 @@ a.mz-button {
   display: flex;
   justify-content: space-between;
   gap: var(--space-3);
+}
+
+/*
+ * An off-screen copy of a printable document (the order receipt), kept in the DOM so the Print
+ * button can print it straight away with no preview modal. It is pushed out of sight on screen
+ * rather than `display: none` so the print stylesheet below can still reach it.
+ */
+.mz-print-region {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: -9999px;
+  inline-size: 21cm;
+}
+
+/* ── the order invoice/receipt: a proper printed document, not a stack of lines ──────────────
+   Who issued it, who it is for, an item table, the money worked down to the total and balance,
+   and the rate it settled at. Built from design tokens so it also reads on screen if ever shown,
+   and forced to black-on-white by the print block below. */
+.mz-invoice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.9375rem;
+}
+
+.mz-invoice__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  border-block-end: 2px solid var(--color-text);
+  padding-block-end: var(--space-3);
+}
+
+.mz-invoice__brand {
+  display: flex;
+  flex-direction: column;
+}
+
+.mz-invoice__name {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.mz-invoice__doc {
+  display: flex;
+  flex-direction: column;
+  text-align: end;
+}
+
+.mz-invoice__doctype {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mz-invoice__muted {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.mz-invoice__parties {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.mz-invoice__party {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mz-invoice__party--end {
+  align-items: flex-end;
+  text-align: end;
+}
+
+.mz-invoice__label {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mz-invoice__table {
+  inline-size: 100%;
+  border-collapse: collapse;
+}
+
+.mz-invoice__table th,
+.mz-invoice__table td {
+  border-block-end: 1px solid var(--color-border);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-2);
+  text-align: start;
+}
+
+.mz-invoice__table th {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mz-invoice__num {
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  white-space: nowrap;
+}
+
+.mz-invoice__totals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-inline-start: auto;
+  inline-size: min(22rem, 100%);
+}
+
+.mz-invoice__total-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.mz-invoice__total-row--grand {
+  border-block-start: 1px solid var(--color-border);
+  padding-block-start: var(--space-2);
+  font-size: 1.05rem;
+}
+
+.mz-invoice__foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-block-start: 1px solid var(--color-border);
+  padding-block-start: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+/*
+ * Printing a receipt (FR-613). The receipt otherwise sits either off-screen (the order's Print
+ * button) or inside a fixed, centre-translated share sheet behind a full-page backdrop (customer
+ * and company statements); either way the browser would print the app shell and drop the receipt,
+ * so the page comes out blank. Here we silence everything, bring back just the receipt, and lift
+ * it to the top of the sheet of paper in plain black on white.
+ */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .mz-receipt,
+  .mz-receipt *,
+  .mz-invoice,
+  .mz-invoice * {
+    visibility: visible !important;
+  }
+
+  .mz-backdrop {
+    display: none !important;
+  }
+
+  .mz-sheet {
+    position: static !important;
+    max-block-size: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    inline-size: auto !important;
+    padding: 0 !important;
+    transform: none !important;
+  }
+
+  .mz-print-region {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: 0;
+    inline-size: 100%;
+  }
+
+  .mz-receipt,
+  .mz-invoice {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: 0;
+    border: 0;
+    background: #fff;
+    color: #000;
+    print-color-adjust: exact;
+  }
+
+  .mz-invoice__head {
+    border-block-end-color: #000;
+  }
 }
 
 /*
@@ -1198,4 +1734,1463 @@ html[data-mirroring='true'] body {
   100% {
     opacity: 1;
   }
+}
+
+/* ─────────────────────────── the desktop shell (spec 2.10.2) ───────────────────────────
+ *
+ * Mizan is designed for a 360 px phone held one-handed, and that is where its rules come
+ * from — but the office reviews it on a laptop, where a bottom tab bar and a column of cards
+ * read as a phone app someone stretched. From 64rem up the same markup becomes a back-office
+ * layout: the tab bar is a sidebar carrying **every** destination (no "More" to hunt through),
+ * the header is a bar over the content rather than a phone's centred title, and the content
+ * keeps a readable measure instead of running the width of a monitor.
+ *
+ * Everything below is additive and keyed on width alone, so the phone layout — which is what
+ * the screenshot suite and the 360 px checks assert — is untouched.
+ */
+
+/* A phone's bar carries four tabs and More; the brand and the rest belong to the sidebar. */
+.mz-sidebar__brand,
+.mz-tabbar__item--secondary {
+  display: none;
+}
+
+@media (width >= 64rem) {
+  .mz-app--shell {
+    display: grid;
+    grid-template: 'nav header' auto 'nav offline' auto 'nav main' 1fr / 17rem 1fr;
+  }
+
+  .mz-header {
+    grid-area: header;
+    padding-inline: var(--space-6);
+    min-block-size: 56px;
+  }
+
+  /* The mark lives in the sidebar at this width, so the header does not repeat it. */
+  .mz-header > svg:first-child {
+    display: none;
+  }
+
+  .mz-offline {
+    grid-area: offline;
+  }
+
+  .mz-main {
+    grid-area: main;
+
+    /*
+     * The whole column, not a measure in the middle of it.
+     *
+     * A 1,100 px cap is right for prose and wrong for this: the screens here are tables an
+     * office reads across, and capping them left a monitor's worth of empty page beside the
+     * work. The doorway screens keep a card of a form's width (`.mz-doorway__card`).
+     */
+    padding-block: var(--space-6);
+    padding-inline: var(--space-6);
+    max-inline-size: none;
+    margin-inline: 0;
+  }
+
+  .mz-tabbar {
+    grid-area: nav;
+    flex-direction: column;
+    position: sticky;
+    justify-content: flex-start;
+    gap: 0;
+    border-block-start: 0;
+    border-inline-end: 1px solid var(--color-border);
+    background: var(--color-sidebar);
+    padding: 0;
+    block-size: 100dvh;
+    inset-block-start: 0;
+    inset-inline: auto;
+    color: var(--color-sidebar-text);
+    overflow-y: auto;
+  }
+
+  /* A nav row: 36 px, rounded, icon then label, the current page marked twice over. */
+  .mz-tabbar__item--sidebar {
+    display: flex;
+    position: relative;
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    border-radius: var(--radius-md);
+    padding-inline: var(--space-3);
+    padding-block: 0;
+    min-block-size: 36px;
+    color: var(--color-sidebar-text);
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-align: start;
+    opacity: 0.85;
+  }
+
+  .mz-tabbar__item--sidebar:hover {
+    background: var(--color-sidebar-hover);
+    opacity: 1;
+  }
+
+  .mz-tabbar__item--sidebar[aria-current='page'] {
+    background: var(--color-sidebar-accent);
+    color: var(--color-sidebar-accent-text);
+    font-weight: 600;
+    opacity: 1;
+  }
+
+  /* Colour is never the only marker: the current page carries a bar at the reading start. */
+  .mz-tabbar__item--sidebar[aria-current='page']::before {
+    content: '';
+    position: absolute;
+    border-radius: 999px;
+    background: var(--color-primary);
+    inline-size: 3px;
+    inset-block: 6px;
+    inset-inline-start: 0;
+  }
+
+  .mz-tabbar__item--sidebar svg {
+    flex: none;
+  }
+
+  .mz-tabbar__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The brand: a mark in a primary square, the name, and what this is underneath it. */
+  .mz-sidebar__brand {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-3);
+    border-block-end: 1px solid var(--color-border);
+    padding-inline: var(--space-4);
+    padding-block: 0;
+    min-block-size: 64px;
+    color: var(--color-sidebar-text);
+  }
+
+  .mz-sidebar__mark {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    inline-size: 36px;
+    block-size: 36px;
+  }
+
+  .mz-sidebar__brand-name {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .mz-sidebar__tagline {
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    font-weight: 400;
+  }
+}
+
+/* ─────────────────── the sidebar's groups, labels and footer ───────────────────
+ *
+ * Twelve destinations in one column is a list to read; in four labelled groups — the day's
+ * work, the records, what the office looks back on, and administration — it is a place to
+ * navigate. The footer says who is signed in and carries the two ways out, which until now
+ * existed only on the lock screen: a desktop had no way to sign out at all.
+ */
+.mz-sidebar__group,
+.mz-sidebar__footer,
+.mz-sidebar__label,
+.mz-sidebar__user,
+.mz-tabbar__item--sidebar {
+  display: none;
+}
+
+@media (width >= 64rem) {
+  .mz-sidebar__group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-block-end: var(--space-4);
+  }
+
+  .mz-sidebar__label {
+    display: block;
+    margin: 0;
+    padding-inline: var(--space-3);
+    padding-block-end: var(--space-1);
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* Kurdish and Arabic have no capitals, so the tracking and the transform are Latin-only. */
+  :lang(ckb) .mz-sidebar__label,
+  :lang(ar) .mz-sidebar__label {
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .mz-tabbar__item--sidebar {
+    display: flex;
+  }
+
+  /* The bar's four tabs and More belong to the phone. */
+  .mz-tabbar__item--tab {
+    display: none;
+  }
+
+  .mz-sidebar__footer {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-block-start: auto;
+    border-block-start: 1px solid var(--color-border);
+    padding: var(--space-2);
+  }
+
+  /* Who is signed in: their initial in a circle, their name, and what they are. */
+  .mz-sidebar__user {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: 0;
+    padding-inline: var(--space-2);
+    padding-block: var(--space-2);
+    min-inline-size: 0;
+  }
+
+  .mz-sidebar__avatar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--color-primary-soft);
+    color: var(--color-on-primary-soft);
+    inline-size: 36px;
+    block-size: 36px;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .mz-sidebar__who {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    font-size: 0.875rem;
+    line-height: 1.25;
+  }
+
+  .mz-sidebar__who strong {
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mz-sidebar__role {
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+  }
+
+  .mz-sidebar__nav {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding-inline: var(--space-3);
+    padding-block: var(--space-3);
+    overflow-y: auto;
+  }
+}
+
+/* ─────────────────────────── the sidebar, folded to its icons ───────────────────────────
+ *
+ * A screen is for the work, not for the navigation. Folded, the sidebar keeps every
+ * destination reachable in one tap and gives the content 12rem back; the labels go, the icons
+ * stay, and each row carries its name as a tooltip for the eye and an `aria-label` for a
+ * screen reader. The choice is remembered per device, like the language and the theme.
+ */
+@media (width >= 64rem) {
+  .mz-app--shell {
+    /* The fold is a movement, not a jump; the reduced-motion block flattens it like the rest. */
+    transition: grid-template-columns var(--duration-micro) var(--ease-out);
+  }
+
+  .mz-app--shell[data-sidebar='collapsed'] {
+    grid-template-columns: 4.75rem 1fr;
+  }
+
+  /* Folded: no labels, no group headings, and every row a centred icon. */
+  [data-sidebar='collapsed'] .mz-sidebar__brand-name,
+  [data-sidebar='collapsed'] .mz-sidebar__label,
+  [data-sidebar='collapsed'] .mz-sidebar__who,
+  [data-sidebar='collapsed'] .mz-tabbar__label {
+    display: none;
+  }
+
+  [data-sidebar='collapsed'] .mz-sidebar__brand {
+    justify-content: center;
+    padding-inline: var(--space-2);
+  }
+
+  /* The rows centre their own icons; the column only gives back its side padding. */
+  [data-sidebar='collapsed'] .mz-sidebar__nav {
+    padding-inline: var(--space-2);
+  }
+
+  /*
+   * Folded, the initial and the account menu stack: 60 px of usable width takes a 36 px circle
+   * or a 32 px button beside it, not both. The menu stays reachable — folding the sidebar must
+   * not be the thing that hides the way out.
+   */
+  [data-sidebar='collapsed'] .mz-sidebar__user {
+    flex-direction: column;
+    gap: var(--space-1);
+    padding-inline: 0;
+  }
+
+  [data-sidebar='collapsed'] .mz-tabbar__item--sidebar {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  [data-sidebar='collapsed'] .mz-sidebar__group {
+    margin-block-end: var(--space-3);
+  }
+}
+
+/* ─────────────── a cell with two lines: a name over what identifies it ───────────────
+ *
+ * A table row is one line per record, but the first column often carries two facts that belong
+ * together — a name and the username beneath it, a material and its code. This keeps them one
+ * cell rather than two columns that repeat the same subject.
+ */
+.mz-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.mz-cell__body {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.mz-cell__body > .mz-caption {
+  display: block;
+}
+
+/* ─────────────── the list's toolbar ───────────────
+ *
+ * Search, the filters and the page's own action, every control the same 44 px tall so they
+ * line up along one edge.
+ *
+ * - Phone: the search takes a line of its own and the filters sit two to a row under it, so
+ *   four filters cost two lines rather than four; an odd one out takes the whole last row.
+ * - Tablet: the search and the page's action share the first line, the filters wrap beneath.
+ * - Desktop: one row — search, filters, and the action at the end.
+ */
+.mz-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.mz-toolbar__filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.mz-toolbar__filters > * {
+  min-inline-size: 0;
+}
+
+.mz-toolbar__search {
+  grid-column: 1 / -1;
+  inline-size: 100%;
+}
+
+/* The search is the first control, so an odd count of the rest leaves the last one alone. */
+.mz-toolbar__filters > :last-child:nth-child(even) {
+  grid-column: 1 / -1;
+}
+
+/* The label above a toolbar control is noise beside its own placeholder; it stays for readers. */
+.mz-toolbar__search .mz-field__label {
+  position: absolute;
+  clip-path: inset(50%);
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* A form field is 48 px of breathing room; in a toolbar it matches the selects beside it. */
+.mz-toolbar .mz-field__control {
+  padding-block: var(--space-2);
+}
+
+@media (width >= 48rem) {
+  .mz-toolbar {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .mz-toolbar__filters {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .mz-toolbar__search {
+    flex: 1 1 100%;
+  }
+
+  .mz-toolbar__filters .mz-select {
+    inline-size: auto;
+  }
+
+  /* The page's action keeps its label on one line at the end of the first row. */
+  .mz-toolbar > :not(.mz-toolbar__filters) {
+    flex: none;
+  }
+
+  /* …and is as tall as the controls it sits beside, so the row has one top and one bottom. */
+  .mz-toolbar > .mz-button {
+    padding-block: var(--space-2);
+    min-block-size: var(--tap-target);
+
+    /* A `--block` button fills a phone's width; beside the filters it is its own width. */
+    inline-size: auto;
+  }
+
+  /* A toggle in a toolbar is a control, not a row of a form. */
+  .mz-toolbar__filters .mz-toggle {
+    flex: none;
+    gap: var(--space-2);
+    inline-size: auto;
+  }
+}
+
+@media (width >= 64rem) {
+  .mz-toolbar__filters {
+    flex-wrap: nowrap;
+  }
+
+  .mz-toolbar__search {
+    flex: 1 1 16rem;
+    max-inline-size: 24rem;
+  }
+
+}
+
+/* A compact select for a toolbar filter, with its own chevron set in from the reading end so
+   the arrow is not jammed against the border the way the browser's default one is. The padding
+   is logical, so the room for the arrow is at the end in both directions. */
+.mz-select {
+  appearance: none;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%237c8a82' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-3) center;
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3) 2.25rem;
+  min-block-size: var(--tap-target);
+  color: var(--color-text);
+  font: inherit;
+  inline-size: 100%;
+  text-overflow: ellipsis;
+}
+
+/* The arrow moves to the left in Kurdish and Arabic; the padding above already follows it. */
+[dir='rtl'] .mz-select {
+  background-position: left var(--space-3) center;
+}
+
+/* A filter that is on or off: a pill the height of the selects beside it, tinted when on. */
+.mz-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  cursor: pointer;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding-inline: var(--space-3);
+  min-block-size: var(--tap-target);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.mz-filter-chip:hover {
+  background: var(--color-surface-2);
+}
+
+.mz-filter-chip[aria-pressed='true'] {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-on-primary-soft);
+}
+
+/*
+ * A document's row on a phone or tablet: what it is and its state on the first line, who and
+ * when on the second, the money on the third — the total at the start and what is still owed at
+ * the end, so a thumb-scroll down a list reads as two columns of figures.
+ */
+.mz-rowcard {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.mz-rowcard__head,
+.mz-rowcard__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+}
+
+.mz-rowcard__chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.mz-rowcard__foot {
+  align-items: baseline;
+  margin-block-start: var(--space-1);
+}
+
+/* ─────────────────────────────── checkboxes ───────────────────────────────
+ *
+ * The label is inside the target, so the whole row is 44 px of tappable even though the box is
+ * 20 px (NFR-10). Used where a switch would be too heavy and too wide: the permission grid,
+ * where a dozen choices belong on the screen at once rather than one per row.
+ */
+.mz-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-2);
+  min-block-size: var(--tap-target);
+}
+
+.mz-check:hover {
+  background: var(--color-surface-2);
+}
+
+.mz-check--disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mz-check__box {
+  flex: none;
+  accent-color: var(--color-primary);
+  margin: 0;
+  inline-size: 20px;
+  block-size: 20px;
+
+  /* The box sits on the first line of its label, whatever the text size. */
+  margin-block-start: 2px;
+}
+
+.mz-check__box:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.mz-check__body {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+/* ─────────────── a form that is not one field per row ───────────────
+ *
+ * A name, a username and a phone number are short; giving each the width of the screen makes a
+ * five-field form scroll on a monitor. Two columns from 48rem, one on a phone, and a field can
+ * opt out with `mz-form-grid__wide` when it genuinely needs the width (a note, an address).
+ */
+.mz-form-grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: 1fr;
+}
+
+@media (width >= 48rem) {
+  .mz-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mz-form-grid__wide {
+    grid-column: 1 / -1;
+  }
+}
+
+/* A form page reads as a document column on a desktop, not one field stretched across a monitor:
+   the content is capped and centred, so a single input is the width of an input, and the fields
+   above pair up two to a row. On a phone it is the full width it always was. */
+.mz-form-page {
+  inline-size: 100%;
+  max-inline-size: 60rem;
+  margin-inline: auto;
+}
+
+/* ─────────────── permissions, grouped by the screen they govern ───────────────
+ *
+ * Forty-eight settings as full-width switches was a page nobody could take in. Grouped by
+ * screen, as checkboxes, the whole set is a few cards an admin can read at once — and on a
+ * phone the groups stack and each row is still a 44 px target.
+ */
+.mz-check-groups {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: 1fr;
+}
+
+@media (width >= 48rem) {
+  .mz-check-groups {
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  }
+}
+
+.mz-check-group {
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  min-inline-size: 0;
+}
+
+.mz-check-group__legend {
+  padding-inline: var(--space-2);
+  color: var(--color-text);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+/* A form's action belongs at the end of the form on a desktop, not pinned over it.
+ *
+ * A bar fixed to the bottom of the glass is right on a phone, where the thumb is there and the
+ * form is taller than the screen. On a monitor it floats over the content and hides the last
+ * rows of whatever is being filled in — so here it goes back into the flow. */
+@media (width >= 64rem) {
+  .mz-sticky-footer {
+    position: static;
+
+    /* One row on a desktop, the actions gathered at the reading-end of the form rather than
+       stacked down its start edge. */
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+
+    /* No full-bleed bar on a desktop: the action is part of the form, not the screen's edge —
+       but a hairline above it still divides the actions from the form they finish. */
+    margin-inline: 0;
+    margin-block-start: var(--space-2);
+    border-block-start: 1px solid var(--color-border);
+    background: none;
+    padding-block: var(--space-4) 0;
+    padding-inline: 0;
+    box-shadow: none;
+  }
+
+  /* Save is the primary, so it takes the very end of the row; Cancel sits before it. The phone
+     keeps its DOM order — Save on top, in the thumb zone — because `order` only applies here. */
+  .mz-sticky-footer .mz-button--primary {
+    order: 1;
+  }
+
+  .mz-sticky-footer .mz-button--block {
+    inline-size: auto;
+    min-inline-size: 14rem;
+  }
+}
+
+/* ─────────────────── the permission matrix ───────────────────
+ *
+ * Features down, actions across. Eleven groups of checkboxes with a line of explanation under
+ * every row was a wall; the same forty-eight keys as ten rows can be read in one look, and
+ * what a key drags in with it is a tooltip on the box rather than a second line everywhere.
+ */
+.mz-matrix {
+  inline-size: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  border-collapse: collapse;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.mz-matrix th,
+.mz-matrix td {
+  border-block-end: 1px solid var(--color-border);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+
+  /*
+   * Top, not middle.
+   *
+   * A row is as tall as its longest cell — Companies carries six feature-specific permissions
+   * over three lines — and middle-aligned cells pushed that row's See/Add/Edit/Void boxes 48 px
+   * below the boxes beside them. Every box now sits on the row's first line, so a column of
+   * them reads as a column.
+   */
+  vertical-align: top;
+  text-align: start;
+}
+
+.mz-matrix thead th {
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mz-matrix tbody th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mz-matrix tbody tr:last-child th,
+.mz-matrix tbody tr:last-child td {
+  border-block-end: 0;
+}
+
+.mz-matrix tbody tr:hover {
+  background: var(--color-surface-2);
+}
+
+/*
+ * A column of boxes reads as a column when the boxes are centred under their heading — and the
+ * heading has to be centred too. `.mz-matrix th` sets `text-align: start` and is the more
+ * specific selector, so the class is qualified with the element to beat it rather than left to
+ * lose quietly.
+ */
+.mz-matrix th.mz-matrix__action,
+.mz-matrix td.mz-matrix__action {
+  inline-size: 5.5rem;
+  text-align: center;
+}
+
+.mz-matrix__action .mz-check {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+/* What is peculiar to one feature, on that feature's row. */
+.mz-matrix__also {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+
+/* No inline padding, so the first box's edge is the heading's edge; the gap between the boxes
+ * does the spacing instead. */
+.mz-matrix__also .mz-check {
+  padding-inline: 0;
+}
+
+/* A box with no visible label is the cell's whole content, so it needs no room for one. */
+.mz-check--bare {
+  justify-content: center;
+  padding-inline: var(--space-1);
+}
+
+/* "This feature has no such action", occupying exactly what a checkbox occupies: the same
+ * 20 px line with the same 2 px above it, so a column of boxes and dashes is one column. */
+.mz-check--absent {
+  justify-content: center;
+  cursor: default;
+}
+
+.mz-check--absent:hover {
+  background: none;
+}
+
+.mz-check__absent {
+  display: block;
+  margin-block-start: 2px;
+  color: var(--color-text-muted);
+  block-size: 20px;
+  line-height: 20px;
+}
+
+/* ─────────────────────────── device panels ───────────────────────────
+ *
+ * A session is a device somebody is holding, and the first attempt made it a 265 px box that
+ * floated at the start of an empty row with a link where its action should be — small and, in
+ * the client's word, ugly. A panel instead: the device's kind as a badge, its name and the
+ * three facts about it on one line, its state as a chip, and the action at the end. `auto-fit`
+ * lets one panel fill the row and two sit side by side, so a single session looks deliberate
+ * rather than stranded; on a phone the parts stack.
+ */
+.mz-devices {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: 1fr;
+}
+
+@media (width >= 48rem) {
+  .mz-devices {
+    grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr));
+  }
+}
+
+.mz-device {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  padding: var(--space-4);
+}
+
+.mz-device__badge {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  color: var(--color-on-primary-soft);
+  inline-size: 40px;
+  block-size: 40px;
+}
+
+.mz-device__body {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.mz-device__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* The facts read as one line, separated rather than stacked: kind · how · when. */
+.mz-device__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 2px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.mz-device__facts > span + span::before {
+  content: '·';
+  margin-inline-end: var(--space-2);
+}
+
+/* ─────────────────── the list, as a table ───────────────────
+ *
+ * From 64rem up a DataList is a real table (DataList.tsx), and so are the movements and history
+ * on a material. The class carried the clickable-row behaviour but no look, so the rows sat as
+ * bare browser defaults. This is a light data table — no boxed frame, just a quiet header, a
+ * rule under each row and a hover — the airy shape the office is used to reading down a column.
+ */
+.mz-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.mz-table th,
+.mz-table td {
+  border-block-end: 1px solid var(--color-border);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  text-align: start;
+  vertical-align: middle;
+}
+
+.mz-table thead th {
+  block-size: 2.75rem;
+  color: var(--color-text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* An amount still owed reads in the warning colour so a column of balances shows at a glance who
+   still has to pay. */
+.mz-owed {
+  color: var(--color-danger);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* A list that keeps its rows on screen while a filter refetches: it dims and stops taking clicks
+   for the moment the new rows are on their way, instead of collapsing to a skeleton. */
+.mz-refreshable[data-busy='true'] {
+  opacity: 0.55;
+  transition: opacity var(--duration-micro) var(--ease-out);
+  pointer-events: none;
+}
+
+.mz-table th[data-numeric],
+.mz-table td[data-numeric] {
+  text-align: end;
+}
+
+.mz-table tbody tr:last-child th,
+.mz-table tbody tr:last-child td {
+  border-block-end: 0;
+}
+
+.mz-table tbody tr:hover {
+  background: var(--color-surface-2);
+}
+
+/* ─────────────── a table row is clickable, all of it ───────────────
+ *
+ * The name was a link and the rest of the row was scenery, so the wrong half of a row did
+ * nothing. The link in the first cell now stretches over the whole row, which keeps it a real
+ * link — one tab stop, one announcement to a screen reader, no JavaScript — while anything
+ * else interactive in the row (a phone number, a button) sits above the stretch and keeps its
+ * own click.
+ */
+.mz-table tbody tr {
+  position: relative;
+  cursor: pointer;
+}
+
+/* The name is the row's link, but the row is what the eye reads — so the link takes the row's
+   own text colour and drops the underline. The whole row is still clickable (the stretch below);
+   it just no longer announces itself as blue underlined text. */
+.mz-table__link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.mz-table__link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.mz-table td a:not(.mz-table__link),
+.mz-table td button,
+.mz-table td input,
+.mz-table td label {
+  position: relative;
+  z-index: 1;
+}
+
+/* One field of an audit diff: stacked on a phone, label and value at either end on a desktop. */
+.mz-diff__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+@media (width >= 48rem) {
+  .mz-diff__row {
+    flex-flow: row wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+}
+
+/* ─────────────────── an activity entry on a narrow screen ───────────────────
+ *
+ * A table of four columns is not a 360 px layout, and the first attempt — every row's whole
+ * diff poured into a card — was worse: four fields of a sign-in, values ragged against the
+ * right edge, twenty-five times over. An entry is now what happened and when, the record it
+ * happened to, and a disclosure for the detail, so the tab can be scanned and read.
+ */
+.mz-entries {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mz-entry {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  padding: var(--space-3);
+}
+
+.mz-entry__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.mz-entry__when {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.mz-entry__record {
+  margin: var(--space-2) 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.mz-entry__kind {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.mz-entry__details {
+  margin-block-start: var(--space-2);
+}
+
+.mz-entry__summary {
+  cursor: pointer;
+  padding-block: var(--space-2);
+  color: var(--color-primary);
+  font-size: 0.875rem;
+  min-block-size: var(--tap-target);
+}
+
+.mz-entry__body {
+  padding-block-start: var(--space-2);
+}
+
+/* ─────────────────────────── a small menu ───────────────────────────
+ *
+ * Hung off the button that opens it, at the reading end of the bar. Logical properties, so in
+ * Kurdish and Arabic it opens towards the other edge without a second rule.
+ */
+.mz-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.mz-menu__list {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-1);
+  min-inline-size: 11rem;
+  inset-block-start: calc(100% + var(--space-1));
+  box-shadow: var(--shadow-sheet);
+}
+
+.mz-menu__list--end {
+  inset-inline-end: 0;
+}
+
+.mz-menu__list--start {
+  inset-inline-start: 0;
+}
+
+.mz-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: none;
+  padding-inline: var(--space-2);
+  padding-block: var(--space-2);
+  min-block-size: var(--tap-target);
+  color: var(--color-text);
+  font: inherit;
+  text-align: start;
+}
+
+.mz-menu__item:hover {
+  background: var(--color-surface-2);
+}
+
+.mz-menu__item[aria-current='true'] {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* Keeps the labels in one column whether or not a row carries the tick. */
+.mz-menu__gap {
+  inline-size: 16px;
+}
+
+/* A labelled menu trigger — a toolbar's Filter button: icon, label, then the chevron. */
+.mz-menu__trigger {
+  gap: var(--space-2);
+}
+
+/* How many filters are on, read at a glance on the closed button. */
+.mz-menu__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 1.25rem;
+  block-size: 1.25rem;
+  border-radius: 999px;
+  background: var(--color-primary);
+  padding-inline: 0.375rem;
+  color: var(--color-on-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.mz-header .mz-icon-button,
+.mz-header .mz-menu .mz-icon-button {
+  color: var(--color-text-muted);
+}
+
+.mz-header .mz-icon-button:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+@media (width >= 64rem) {
+  /* The sidebar carries the account at this width, so the bar does not repeat it. */
+  .mz-header__account {
+    display: none;
+  }
+}
+
+/* ─────────────────────── a choice you can see ───────────────────────
+ *
+ * The appearance settings, where the words are not the point: a language named in its own
+ * script, a theme drawn as the screen it would give you, a text size drawn *at* that size. A
+ * radio inside a card, so the whole card is the target and the keyboard gets arrow keys between
+ * the options for nothing.
+ */
+.mz-options {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: 1fr;
+}
+
+@media (width >= 48rem) {
+  .mz-options {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* Four sizes, four columns — but only where there is room for the specimens. */
+  .mz-options--wide {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (width >= 80rem) {
+  .mz-options--wide {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.mz-option {
+  display: flex;
+  position: relative;
+  flex-direction: column;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow: hidden;
+  transition:
+    box-shadow var(--duration-micro) var(--ease-out),
+    border-color var(--duration-micro) var(--ease-out);
+}
+
+.mz-option:hover {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-card);
+}
+
+.mz-option[data-selected] {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+/*
+ * The radio is the accessible control and the whole card is its hit area, so it is stretched
+ * over the card and made invisible — not `display: none`, which would take it out of the
+ * accessibility tree and out of the tab order with it.
+ */
+.mz-option__input {
+  position: absolute;
+  z-index: 1;
+  cursor: pointer;
+  inset: 0;
+  appearance: none;
+  margin: 0;
+  opacity: 0;
+}
+
+.mz-option:has(.mz-option__input:focus-visible) {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.mz-option__preview {
+  display: block;
+  border-block-end: 1px solid var(--color-border);
+}
+
+.mz-option__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  min-block-size: 56px;
+}
+
+.mz-option__badge {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  inline-size: 34px;
+  block-size: 34px;
+}
+
+.mz-option[data-selected] .mz-option__badge {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+/* `min-inline-size: 0` lets a long translated name shorten instead of widening the grid. */
+.mz-option__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-inline-size: 0;
+}
+
+.mz-option__title {
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+
+.mz-option__hint {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.mz-option__check {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  inline-size: 22px;
+  block-size: 22px;
+}
+
+/* ── the theme in miniature: a sidebar, a heading, three figures, a table ──
+ *
+ * Every measurement here is in pixels on purpose. The miniature is a picture of the screen, not
+ * a piece of text, so it must not grow with the text size the card beside it is selling — at
+ * 1.25 a `rem`-sized preview overflowed its own card.
+ */
+.mz-mini {
+  display: flex;
+  background: var(--color-bg);
+  block-size: 96px;
+  overflow: hidden;
+}
+
+.mz-mini__nav {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 5px;
+  border-inline-end: 1px solid var(--color-border);
+  background: var(--color-sidebar);
+  padding: 6px;
+  inline-size: 44px;
+}
+
+.mz-mini__brand {
+  border-radius: 3px;
+  background: var(--color-primary);
+  block-size: 10px;
+}
+
+.mz-mini__row {
+  border-radius: 3px;
+  background: var(--color-surface-2);
+  block-size: 8px;
+}
+
+.mz-mini__row--on {
+  background: var(--color-sidebar-accent);
+}
+
+.mz-mini__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  min-inline-size: 0;
+}
+
+.mz-mini__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mz-mini__title {
+  border-radius: 2px;
+  background: var(--color-text-muted);
+  inline-size: 48px;
+  block-size: 7px;
+}
+
+.mz-mini__dot {
+  flex: none;
+  border-radius: 999px;
+  background: var(--color-primary);
+  inline-size: 12px;
+  block-size: 12px;
+}
+
+.mz-mini__tiles {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.mz-mini__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: var(--color-surface);
+  padding: 3px;
+}
+
+.mz-mini__label {
+  border-radius: 1px;
+  background: var(--color-border-strong);
+  inline-size: 66%;
+  block-size: 4px;
+}
+
+.mz-mini__figure {
+  border-radius: 1px;
+  background: var(--color-primary);
+  inline-size: 50%;
+  block-size: 6px;
+}
+
+.mz-mini__figure--success {
+  background: var(--color-success);
+}
+
+.mz-mini__figure--warning {
+  background: var(--color-warning);
+}
+
+.mz-mini__table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.mz-mini__head {
+  background: var(--color-surface-2);
+  block-size: 7px;
+}
+
+.mz-mini__line {
+  background: var(--color-surface);
+  block-size: 7px;
+}
+
+.mz-mini__line--alt {
+  background: var(--color-bg);
+}
+
+/* Follow the device: half of each, side by side, because neither half is the truth alone. */
+.mz-mini-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+/* ── the text size, drawn at that size ──
+ *
+ * The box sets the root size the option would produce and everything inside is in `em`, so the
+ * four cards differ from one another — which a `rem` preview would not.
+ */
+.mz-specimen {
+  display: block;
+  background: var(--color-surface-2);
+  padding: var(--space-3);
+  block-size: 96px;
+}
+
+.mz-specimen__label {
+  display: block;
+  margin-block-end: 0.25em;
+  color: var(--color-text-muted);
+  font-size: 0.75em;
+}
+
+.mz-specimen__field {
+  display: block;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  padding: 0.45em 0.7em;
+  font-size: 0.875em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

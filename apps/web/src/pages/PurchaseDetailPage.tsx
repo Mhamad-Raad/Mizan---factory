@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, TextField, Toast } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { Can } from '../components/Can.js';
 import { QueryStates } from '../components/states.js';
@@ -91,10 +91,10 @@ export function PurchaseDetailPage() {
   const settlement = data?.settlement_currency ?? 'IQD';
   const remaining = balance.data?.cost.remaining ?? null;
 
+  usePageTitle(data ? t('purchases:number', { number: formatter.number(data.number) }) : t('purchases:title'));
+
   return (
-    <AppShell
-      title={data ? t('purchases:number', { number: formatter.number(data.number) }) : t('purchases:title')}
-    >
+    <>
       <div className="mz-stack">
         <QueryStates query={purchase}>
           {data ? (
@@ -345,6 +345,6 @@ export function PurchaseDetailPage() {
           {t('common:back')}
         </Button>
       </div>
-    </AppShell>
+    </>
   );
 }

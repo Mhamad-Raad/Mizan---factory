@@ -81,7 +81,9 @@ const CHECKS: Check[] = [
 ];
 
 const themes: [string, Record<string, string>][] = [
-  ['light', tokensOf(':root')],
+  // The light semantic tokens live in the `:root, [data-theme='light']` block, not the first
+  // `:root` (which now carries only primitives), so the light theme is read by its own selector.
+  ['light', tokensOf('[data-theme=\'light\']')],
   ['dark', tokensOf('[data-theme=\'dark\']')],
 ];
 

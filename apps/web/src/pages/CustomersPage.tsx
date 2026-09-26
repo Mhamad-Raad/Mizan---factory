@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Chip, TextField } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
@@ -28,6 +28,8 @@ export interface CustomerRow {
     currency: Currency;
     kind: 'derived';
   } | null;
+  /** The customer's own IQD-per-USD rate, or the global one when they have none. */
+  rate: { rate_iqd_per_usd: string; since: string | null; is_customer_rate: boolean } | null;
   version: number;
 }
 
@@ -54,8 +56,10 @@ export function CustomersPage() {
 
   const rows = customers.data?.items ?? [];
 
+  usePageTitle(t('customers:title'));
+
   return (
-    <AppShell title={t('customers:title')}>
+    <>
       <div className="mz-stack">
         <TextField
           label={t('common:search')}
@@ -129,6 +133,6 @@ export function CustomersPage() {
           </ul>
         </QueryStates>
       </div>
-    </AppShell>
+    </>
   );
 }

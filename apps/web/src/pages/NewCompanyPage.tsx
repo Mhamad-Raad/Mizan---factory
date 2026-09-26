@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, SegmentedControl, TextField } from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { usePermission } from '../lib/store.js';
 
 /**
@@ -59,8 +59,10 @@ export function NewCompanyPage() {
   const existingId = duplicate?.params?.id as string | undefined;
   const existingName = duplicate?.params?.name as string | undefined;
 
+  usePageTitle(t('companies:new_company'));
+
   return (
-    <AppShell title={t('companies:new_company')}>
+    <>
       <div className="mz-stack">
         <TextField
           label={t('companies:name')}
@@ -151,6 +153,6 @@ export function NewCompanyPage() {
           {t('glossary:cancel')}
         </Button>
       </div>
-    </AppShell>
+    </>
   );
 }

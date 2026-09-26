@@ -1,12 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { formatRate, rateIsStale } from '@mizan/money';
+import { formatRate } from '@mizan/money';
 import type { Rate } from '@mizan/money';
 import { AuditService } from '../audit/audit.service.js';
 import { ApiError } from '../common/errors.js';
 import type { RequestContext } from '../common/request-context.js';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
-import { SettingsService } from '../settings/settings.service.js';
 
 export interface GlobalRateRow {
   id: string;
@@ -21,8 +20,6 @@ export interface GlobalRateRow {
 export interface CurrentRate {
   rate_iqd_per_usd: Rate;
   effective_from: string;
-  /** Proposed — not requested (FR-1106): the prompt to set today's rate before it skews USD. */
-  is_stale: boolean;
 }
 
 /**
@@ -33,13 +30,15 @@ export interface CurrentRate {
 export class RatesService {
   constructor(
     private readonly database: Database,
-    private readonly settings: SettingsService,
     private readonly audit: AuditService,
   ) {}
 
   /** The row with the latest `effective_from ≤ now()`, or null before the first rate is set. */
   async current(tx?: Db): Promise<CurrentRate | null> {
-    const { rows } = await (tx ?? this.database).query<{ rate_iqd_per_usd: string; effective_from: Date }>(
+    const { rows } = await (tx ?? this.database).query<{
+      rate_iqd_per_usd: string;
+      effective_from: Date;
+    }>(
       `SELECT rate_iqd_per_usd::text AS rate_iqd_per_usd, effective_from
          FROM global_rates
         WHERE effective_from <= now()
@@ -49,11 +48,9 @@ export class RatesService {
     const row = rows[0];
     if (!row) return null;
 
-    const staleDays = await this.settings.get('rate_stale_days');
     return {
       rate_iqd_per_usd: formatRate(row.rate_iqd_per_usd),
       effective_from: row.effective_from.toISOString(),
-      is_stale: rateIsStale(row.effective_from, new Date(), staleDays),
     };
   }
 
@@ -90,36 +87,24 @@ export class RatesService {
     return rows;
   }
 
-  /**
-   * A new rate (FR-1106). A change of more than `rate_guard_percent` is refused until the
-   * user confirms: a typo of 13,100 instead of 1,310 would otherwise quietly value every
-   * new document at a tenth of its worth, and nothing already stored would be wrong — only
-   * everything written afterwards.
-   */
+  /** A new rate (FR-1106), kept as append-only history so stored amounts keep their own rate. */
   async set(
     context: RequestContext,
-    input: { rate_iqd_per_usd: string; note?: string | null; confirm?: boolean },
+    input: { rate_iqd_per_usd: string; note?: string | null },
   ): Promise<CurrentRate> {
     const rate = formatRate(input.rate_iqd_per_usd);
     if (Number(rate) <= 0) {
       throw ApiError.validation([
-        { path: 'rate_iqd_per_usd', code: 'INVALID', message_key: 'errors:field.required', params: {} },
+        {
+          path: 'rate_iqd_per_usd',
+          code: 'INVALID',
+          message_key: 'errors:field.required',
+          params: {},
+        },
       ]);
     }
 
     const previous = await this.current();
-    if (previous && !input.confirm) {
-      const guard = await this.settings.get('rate_guard_percent');
-      const before = Number(previous.rate_iqd_per_usd);
-      const change = Math.abs(Number(rate) - before) / before;
-      if (change * 100 > guard) {
-        throw new ApiError('RATE_GUARD', {
-          previous: previous.rate_iqd_per_usd,
-          next: rate,
-          percent: Math.round(change * 100),
-        });
-      }
-    }
 
     await this.database.transaction(async (tx) => {
       await tx.query(

@@ -104,6 +104,12 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
     implies: ['customers.view', 'fields.see_customer_balances'],
     labelKey: 'permissions.customers.opening_balance',
   },
+  {
+    key: 'customers.set_rate',
+    page: 'customers',
+    implies: ['customers.view'],
+    labelKey: 'permissions.customers.set_rate',
+  },
 
   // Companies
   { key: 'companies.view', page: 'companies', implies: [], labelKey: 'permissions.companies.view' },

@@ -79,5 +79,10 @@
   "document_rate_purchase": "نرخی ئاڵوگۆڕی ئەم کڕینە",
   "remaining": "ماوە",
   "companies": "کۆمپانیاکان",
-  "purchases": "کڕینەکان"
+  "purchases": "کڕینەکان",
+  "system_rate": "نرخی سیستەم",
+  "customer_rate": "نرخی زبوون",
+  "order_rate": "نرخی ئەم داواکارییە",
+  "item": "کاڵا",
+  "amount": "بڕ"
 }

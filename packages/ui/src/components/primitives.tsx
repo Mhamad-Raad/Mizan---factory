@@ -210,6 +210,69 @@ export function Toggle({ label, hint, checked, disabled, onChange }: ToggleProps
   );
 }
 
+export interface CheckboxProps {
+  label: string;
+  hint?: string;
+  checked: boolean;
+  /** A group that is partly granted, as a permission extra can be (FR-204). */
+  indeterminate?: boolean;
+  disabled?: boolean;
+  /**
+   * The label still names the box for a screen reader, but the eye reads it from the column
+   * heading instead — a permission matrix would otherwise repeat "See orders" in every cell.
+   */
+  labelHidden?: boolean;
+  /** Shown on hover and read after the label: what this choice drags in with it. */
+  title?: string;
+  onChange: (next: boolean) => void;
+}
+
+/**
+ * A checkbox, for the many small choices a switch is too heavy for.
+ *
+ * `Toggle` is a row: a label at one end, a switch at the other, the width of the form. That is
+ * right for a setting somebody changes once — "allow selling below stock" — and wrong for
+ * forty-eight permissions, where the label belongs *beside* the box and a dozen of them belong
+ * on a screen at once. The target is still 44 px tall (NFR-10): the label is part of it, so a
+ * thumb has the whole row even though the box is small.
+ */
+export function Checkbox({
+  label,
+  hint,
+  checked,
+  indeterminate,
+  disabled,
+  labelHidden,
+  title,
+  onChange,
+}: CheckboxProps) {
+  return (
+    <label
+      className={`mz-check${disabled ? ' mz-check--disabled' : ''}${labelHidden ? ' mz-check--bare' : ''}`}
+      title={title}
+    >
+      <input
+        type="checkbox"
+        className="mz-check__box"
+        checked={checked}
+        disabled={disabled}
+        aria-label={labelHidden ? label : undefined}
+        ref={(node) => {
+          // `indeterminate` is a property, never an attribute: there is no way to set it in JSX.
+          if (node) node.indeterminate = indeterminate === true && !checked;
+        }}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      {labelHidden ? null : (
+        <span className="mz-check__body">
+          <span>{label}</span>
+          {hint ? <span className="mz-field__hint">{hint}</span> : null}
+        </span>
+      )}
+    </label>
+  );
+}
+
 export type ChipTone = 'neutral' | 'success' | 'warning' | 'danger' | 'primary';
 
 export interface ChipProps {
@@ -363,6 +426,112 @@ export function BottomSheet({ title, open, onClose, closeLabel, children }: Bott
   );
 }
 
+export interface MenuItem {
+  label: string;
+  /** The current choice, marked for the eye and for a screen reader. */
+  current?: boolean;
+  /** For a language row: the item's own language, so it is read in the right voice. */
+  lang?: string;
+  onSelect: () => void;
+}
+
+/**
+ * A small menu hung off a button — the language switch and the account menu in the app bar.
+ *
+ * Deliberately plain: a button that owns `aria-expanded`, a list of `role="menuitem"` buttons,
+ * and the two ways anybody expects to dismiss it (Escape, or a click anywhere else). No
+ * library, no portal, no focus trap: a menu of three rows is not a dialog, and the rows are
+ * ordinary buttons, so the keyboard already works.
+ */
+export function Menu({
+  label,
+  icon,
+  items,
+  align = 'end',
+  variant = 'icon',
+}: {
+  label: string;
+  icon: IconName;
+  items: readonly MenuItem[];
+  align?: 'start' | 'end';
+  /** `icon` is the app-bar dot; `button` is a labelled trigger for a toolbar (e.g. Filter). */
+  variant?: 'icon' | 'button';
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const activeCount = items.filter((item) => item.current).length;
+
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: MouseEvent | KeyboardEvent): void => {
+      if (event instanceof KeyboardEvent) {
+        if (event.key === 'Escape') setOpen(false);
+        return;
+      }
+      if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', dismiss);
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('keydown', dismiss);
+    };
+  }, [open]);
+
+  return (
+    <div className="mz-menu" ref={root}>
+      {variant === 'button' ? (
+        <button
+          type="button"
+          className="mz-button mz-button--secondary mz-menu__trigger"
+          aria-label={label}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          onClick={() => setOpen((current) => !current)}
+        >
+          <Icon name={icon} size={18} />
+          {label}
+          {activeCount > 0 ? <span className="mz-menu__count">{activeCount}</span> : null}
+          <Icon name="chevron" size={16} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="mz-icon-button"
+          aria-label={label}
+          title={label}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          onClick={() => setOpen((current) => !current)}
+        >
+          <Icon name={icon} size={22} />
+        </button>
+      )}
+      {open ? (
+        <div className={`mz-menu__list mz-menu__list--${align}`} role="menu" aria-label={label}>
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              lang={item.lang}
+              className="mz-menu__item"
+              aria-current={item.current ? 'true' : undefined}
+              onClick={() => {
+                setOpen(false);
+                item.onSelect();
+              }}
+            >
+              {item.current ? <Icon name="check" size={16} /> : <span className="mz-menu__gap" />}
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export interface ToastProps {
   message: string;
   actionLabel?: string;
@@ -404,7 +573,9 @@ export function NumberField({ label, hint, error, unit, decimals = 0, onChange, 
   return (
     <Field label={label} hint={hint} error={error}>
       {(id) => (
-        <div className="mz-number">
+        // Numbers read left-to-right in every language, so the field is an LTR island: the digits
+        // start at the left and the unit sits at the right, even on an Arabic or Kurdish page.
+        <div className="mz-number" dir="ltr">
           <input
             id={id}
             className="mz-field__control"

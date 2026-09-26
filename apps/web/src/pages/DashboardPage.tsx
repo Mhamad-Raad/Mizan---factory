@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
 import { useFormatter } from '../lib/store.js';
@@ -41,24 +41,23 @@ export function DashboardPage() {
   const dashboard = useQuery({
     queryKey: ['dashboard'],
     queryFn: () =>
-      apiRequest<{ date: string; tiles: Tile[]; rate: { rate_iqd_per_usd: string; is_stale: boolean } | null }>(
+      apiRequest<{ date: string; tiles: Tile[]; rate: { rate_iqd_per_usd: string } | null }>(
         '/dashboard',
       ),
   });
 
   const tiles = dashboard.data?.tiles ?? [];
 
-  return (
-    <AppShell title={t('dashboard:title')}>
-      <div className="mz-stack">
-        {/* Proposed — not requested (FR-1106): a rate nobody has touched skews every dollar. */}
-        {dashboard.data?.rate?.is_stale ? (
-          <div className="mz-warning" role="status">
-            {t('settings:rate_stale', { rate: formatter.rate(dashboard.data.rate.rate_iqd_per_usd) })}
-          </div>
-        ) : null}
+  usePageTitle(t('dashboard:title'));
 
-        <QueryStates query={dashboard} isEmpty={tiles.length === 0} emptyTitle={t('dashboard:empty')}>
+  return (
+    <>
+      <div className="mz-stack">
+        <QueryStates
+          query={dashboard}
+          isEmpty={tiles.length === 0}
+          emptyTitle={t('dashboard:empty')}
+        >
           <div className="mz-tiles">
             {tiles.map((tile) => (
               <Card key={tile.key}>
@@ -70,13 +69,22 @@ export function DashboardPage() {
                     </span>
                   ) : null}
                   {tile.amount_iqd !== undefined ? (
-                    <DualAmount amount_iqd={tile.amount_iqd} amount_usd_cents={tile.amount_usd_cents ?? 0} />
+                    <DualAmount
+                      amount_iqd={tile.amount_iqd}
+                      amount_usd_cents={tile.amount_usd_cents ?? 0}
+                    />
                   ) : null}
                   {tile.cost ? (
-                    <DualAmount amount_iqd={tile.cost.amount_iqd} amount_usd_cents={tile.cost.amount_usd_cents} />
+                    <DualAmount
+                      amount_iqd={tile.cost.amount_iqd}
+                      amount_usd_cents={tile.cost.amount_usd_cents}
+                    />
                   ) : null}
                   {tile.owed ? (
-                    <DualAmount amount_iqd={tile.owed.amount_iqd} amount_usd_cents={tile.owed.amount_usd_cents} />
+                    <DualAmount
+                      amount_iqd={tile.owed.amount_iqd}
+                      amount_usd_cents={tile.owed.amount_usd_cents}
+                    />
                   ) : null}
                   {/* A balance is a pair: the dinars owed and the dollars owed, never a sum
                       of the two (rule 1). */}
@@ -92,6 +100,6 @@ export function DashboardPage() {
           </div>
         </QueryStates>
       </div>
-    </AppShell>
+    </>
   );
 }

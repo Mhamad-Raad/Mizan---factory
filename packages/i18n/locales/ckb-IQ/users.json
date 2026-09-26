@@ -20,5 +20,12 @@
   "empty": "هێشتا کارمەند نییە — یەکێک زیاد بکە",
   "cannot_change_own_role": "ناتوانیت ڕۆڵی خۆت بگۆڕیت",
   "cannot_deactivate_self": "ناتوانیت هەژماری خۆت ناچالاک بکەیت",
-  "sessions_ended": "دانیشتنەکانی کۆتایی پێهات"
+  "sessions_ended": "دانیشتنەکانی کۆتایی پێهات",
+  "must_change_password": "دەبێت وشەی نهێنی بگۆڕێت",
+  "employee_count": "{{count}} کارمەند",
+  "account": "هەژمار",
+  "saved": "پاشەکەوتکرا",
+  "what_changed": "چی گۆڕا",
+  "no_details": "وردەکاری نییە",
+  "record": "تۆمار"
 }

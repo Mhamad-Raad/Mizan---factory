@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@mizan/ui';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { usePermission } from '../lib/store.js';
 
 /** One card per report, with the one line that says what it contains (FR-1001). */
@@ -36,8 +36,10 @@ export function ReportsPage() {
     return true;
   });
 
+  usePageTitle(t('reports:title'));
+
   return (
-    <AppShell title={t('reports:title')}>
+    <>
       <div className="mz-stack">
         <p className="mz-caption">{t('reports:hub_hint')}</p>
         {allowed.map((report) => (
@@ -52,6 +54,6 @@ export function ReportsPage() {
           </Card>
         ))}
       </div>
-    </AppShell>
+    </>
   );
 }

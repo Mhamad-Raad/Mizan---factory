@@ -22,7 +22,6 @@
   "rate_history": "سجل أسعار الصرف",
   "rate_saved": "تم حفظ السعر",
   "rate_applies_to_new": "السعر الجديد يُطبَّق على ما تسجله من الآن؛ والقيود المحفوظة تبقى بسعرها.",
-  "rate_guard": "هذا يبعد {{percent}}% عن {{previous}}. هل تريد الحفظ على أي حال؟",
   "tab_overview": "نظرة عامة",
   "tab_purchases": "المشتريات",
   "tab_accounting": "الحساب",

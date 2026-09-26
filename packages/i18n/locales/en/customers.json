@@ -59,5 +59,11 @@
   "sheet.credit": "Record a credit",
   "sheet.refund": "Record a refund",
   "sheet.adjustment": "Adjust the balance",
-  "sheet.opening": "Record the opening balance"
+  "sheet.opening": "Record the opening balance",
+  "set_rate": "Set rate",
+  "rate_own": "Customer's own rate",
+  "rate_is_global": "Using the global rate",
+  "rate_saved": "Rate saved",
+  "rate_label": "Customer rate",
+  "rate_hint": "Applies to new orders; existing orders keep the rate they were saved with."
 }

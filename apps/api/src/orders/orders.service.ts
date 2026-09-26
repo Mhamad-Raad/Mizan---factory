@@ -102,7 +102,10 @@ export class OrdersService {
     return { userId: context.userId, viewAll: can(context, 'customers.view_all') };
   }
 
-  async list(context: RequestContext, filters: OrderFilters): Promise<{ items: OrderDto[]; total: number }> {
+  async list(
+    context: RequestContext,
+    filters: OrderFilters,
+  ): Promise<{ items: OrderDto[]; total: number }> {
     const { rows, total } = await this.orders.list(filters, this.scopeOf(context));
     return { items: rows.map((row) => toOrderDto(row, [])), total };
   }
@@ -122,18 +125,30 @@ export class OrdersService {
 
   async create(context: RequestContext, input: CreateOrderInput): Promise<OrderDto> {
     this.period.assertNotFuture(input.order_date, 'order_date');
-    await this.period.assertNotLocked(input.order_date);
     if (input.lines.length === 0) {
       throw ApiError.validation([
-        { path: 'lines', code: 'REQUIRED', message_key: 'errors:field.required', params: { field: 'lines' } },
+        {
+          path: 'lines',
+          code: 'REQUIRED',
+          message_key: 'errors:field.required',
+          params: { field: 'lines' },
+        },
       ]);
     }
 
-    const customer = await this.customers.findById(input.customer_id, this.customersService.scopeOf(context));
+    const customer = await this.customers.findById(
+      input.customer_id,
+      this.customersService.scopeOf(context),
+    );
     if (!customer) throw ApiError.notFound();
     if (!customer.is_active) {
       throw ApiError.validation([
-        { path: 'customer_id', code: 'INACTIVE', message_key: 'errors:customer_inactive', params: {} },
+        {
+          path: 'customer_id',
+          code: 'INACTIVE',
+          message_key: 'errors:customer_inactive',
+          params: {},
+        },
       ]);
     }
     // The walk-in customer is a till, not a debtor: it takes cash orders only (FR-501, A-33).
@@ -158,7 +173,7 @@ export class OrdersService {
       ]);
     }
 
-    const { rate, rateSource } = await this.rateFor(input.rate_iqd_per_usd);
+    const { rate, rateSource } = await this.rateFor(input.rate_iqd_per_usd, customer.id);
     const actingUserId = await this.actingUser(context, input.acting_user_id);
 
     const created = await this.database.transaction(async (tx) => {
@@ -252,7 +267,11 @@ export class OrdersService {
     });
 
     const dto = await this.get(context, created.id);
-    return { ...dto, stock_warnings: created.warnings, credit_limit_warning: created.creditWarning };
+    return {
+      ...dto,
+      stock_warnings: created.warnings,
+      credit_limit_warning: created.creditWarning,
+    };
   }
 
   /**
@@ -267,15 +286,16 @@ export class OrdersService {
     input: CreateOrderInput & { version: number },
   ): Promise<OrderDto> {
     this.period.assertNotFuture(input.order_date, 'order_date');
-    await this.period.assertNotLocked(input.order_date);
 
     const existing = await this.requireOrder(context, id);
     if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { order_id: id });
-    await this.period.assertNotLocked(existing.order_date);
     await this.assertMayEdit(context, existing);
 
-    const { rate, rateSource } = await this.rateFor(input.rate_iqd_per_usd);
-    const actingUserId = await this.actingUser(context, input.acting_user_id ?? existing.acting_user_id);
+    const { rate, rateSource } = await this.rateFor(input.rate_iqd_per_usd, existing.customer_id);
+    const actingUserId = await this.actingUser(
+      context,
+      input.acting_user_id ?? existing.acting_user_id,
+    );
 
     await this.database.transaction(async (tx) => {
       const order = await this.orders.lock(id, tx);
@@ -299,13 +319,6 @@ export class OrdersService {
       if (!customerRow) throw ApiError.notFound();
       const locked = await this.ledger.lockOwner(tx, order.customer_id);
       if (!locked) throw ApiError.notFound();
-
-      if (await this.orders.hasManualPayment(id, tx)) {
-        const allowed = await this.settings.get('allow_edit_after_payment');
-        if (!allowed) {
-          throw new ApiError('EDIT_WINDOW_CLOSED', { reason: 'payment_linked' });
-        }
-      }
 
       const oldLines = await this.orders.linesOf(id, tx);
       const oldMonth = firstOfMonth(order.order_date);
@@ -420,7 +433,6 @@ export class OrdersService {
   ): Promise<OrderDto> {
     const existing = await this.requireOrder(context, id);
     if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { order_id: id });
-    await this.period.assertNotLocked(existing.order_date);
 
     if (input.undo) {
       // The 8-second undo of FR-610: the creator's own order, straight after saving it, and
@@ -507,7 +519,12 @@ export class OrdersService {
     if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { order_id: id });
     if (!input.note?.trim()) {
       throw ApiError.validation([
-        { path: 'note', code: 'REQUIRED', message_key: 'errors:field.required', params: { field: 'note' } },
+        {
+          path: 'note',
+          code: 'REQUIRED',
+          message_key: 'errors:field.required',
+          params: { field: 'note' },
+        },
       ]);
     }
     if (existing.payment_type === input.to) {
@@ -528,7 +545,6 @@ export class OrdersService {
 
     const entryDate = input.entry_date ?? this.period.today();
     this.period.assertNotFuture(entryDate, 'entry_date');
-    await this.period.assertNotLocked(entryDate);
 
     await this.database.transaction(async (tx) => {
       const order = await this.orders.lock(id, tx);
@@ -653,10 +669,14 @@ export class OrdersService {
     );
   }
 
-  async historyOf(context: RequestContext, id: string, options: { cursor?: string; limit?: number }) {
+  async historyOf(
+    context: RequestContext,
+    id: string,
+    options: { cursor?: string; limit?: number },
+  ) {
     const order = await this.requireOrder(context, id);
     const [audit, paymentTypes, entries] = await Promise.all([
-      this.history.list({ entity_type: 'order', entity_id: id, ...options }),
+      this.history.list({ about_order: id, ...options }),
       this.orders.paymentTypeHistory(id),
       this.ledger.entriesFor(this.database, order.customer_id),
     ]);
@@ -714,16 +734,33 @@ export class OrdersService {
 
   // ───────────────────────────── the pieces the writes share ─────────────────────────────
 
-  /** The rate for this document: the one typed per deal, else the global rate (2.3.3). */
-  private async rateFor(typed?: string | null): Promise<{ rate: Rate; rateSource: RateSource }> {
+  /**
+   * The rate for this document (2.3.3): the one typed for this deal, else the customer's own
+   * rate when they have one, else the global rate. The customer side keeps only `global` or
+   * `manual` (schema), so the customer's own rate is stored as a `manual` rate for the order —
+   * a specific rate applied to this deal, snapshotted so a later rate change never moves it.
+   */
+  private async rateFor(
+    typed?: string | null,
+    customerId?: string | null,
+  ): Promise<{ rate: Rate; rateSource: RateSource }> {
     if (typed) {
       const rate = formatRate(typed);
       if (Number(rate) <= 0) {
         throw ApiError.validation([
-          { path: 'rate_iqd_per_usd', code: 'INVALID', message_key: 'errors:field.required', params: {} },
+          {
+            path: 'rate_iqd_per_usd',
+            code: 'INVALID',
+            message_key: 'errors:field.required',
+            params: {},
+          },
         ]);
       }
       return { rate, rateSource: 'manual' };
+    }
+    if (customerId) {
+      const own = await this.customers.currentRate(customerId);
+      if (own) return { rate: formatRate(own.rate), rateSource: 'manual' };
     }
     return { rate: await this.rates.requireCurrent(), rateSource: 'global' };
   }
@@ -738,29 +775,26 @@ export class OrdersService {
     );
     if (!rowCount) {
       throw ApiError.validation([
-        { path: 'acting_user_id', code: 'NOT_FOUND', message_key: 'errors:field.required', params: {} },
+        {
+          path: 'acting_user_id',
+          code: 'NOT_FOUND',
+          message_key: 'errors:field.required',
+          params: {},
+        },
       ]);
     }
     return requested;
   }
 
   /**
-   * Who may edit (FR-610): the creator, an admin, or a holder of `orders.edit`; and only while
-   * the order's own window is open — by default until the period is locked, or within
-   * `order_edit_window_days` when the admin set one.
+   * Who may edit (FR-610): the creator, an admin, or a holder of `orders.edit`.
    */
   private async assertMayEdit(context: RequestContext, order: OrderListRow): Promise<void> {
     const mayEdit =
-      context.role === 'admin' || order.created_by === context.userId || can(context, 'orders.edit');
+      context.role === 'admin' ||
+      order.created_by === context.userId ||
+      can(context, 'orders.edit');
     if (!mayEdit) throw ApiError.permissionDenied('orders.edit');
-
-    const windowDays = await this.settings.get('order_edit_window_days');
-    if (windowDays !== null) {
-      const days = daysBetween(order.order_date, this.period.today());
-      if (days > windowDays) {
-        throw new ApiError('EDIT_WINDOW_CLOSED', { window_days: windowDays, order_date: order.order_date });
-      }
-    }
   }
 
   /**
@@ -782,7 +816,12 @@ export class OrdersService {
       const item = await this.items.findById(input.item_id, tx);
       if (!item) {
         throw ApiError.validation([
-          { path: `lines.${index}.item_id`, code: 'NOT_FOUND', message_key: 'errors:field.required', params: {} },
+          {
+            path: `lines.${index}.item_id`,
+            code: 'NOT_FOUND',
+            message_key: 'errors:field.required',
+            params: {},
+          },
         ]);
       }
       if (!item.is_active) {
@@ -878,7 +917,8 @@ export class OrdersService {
       const cost =
         previous && carryOver?.monthUnchanged
           ? {
-              cost_unit_iqd: previous.cost_unit_iqd === null ? null : Number(previous.cost_unit_iqd),
+              cost_unit_iqd:
+                previous.cost_unit_iqd === null ? null : Number(previous.cost_unit_iqd),
               cost_unit_usd_cents:
                 previous.cost_unit_usd_cents === null ? null : Number(previous.cost_unit_usd_cents),
               cost_month_price_id: previous.cost_month_price_id,
@@ -935,7 +975,10 @@ export class OrdersService {
       currency: input.currency,
       rate,
       rate_source: rateSource,
-      other_amount: input.other_amount === undefined || input.other_amount === null ? undefined : Math.abs(input.other_amount),
+      other_amount:
+        input.other_amount === undefined || input.other_amount === null
+          ? undefined
+          : Math.abs(input.other_amount),
     });
 
     const gross = documentTotals(lines);
@@ -1000,7 +1043,9 @@ export class OrdersService {
     },
   ): Promise<OrderDto['credit_limit_warning']> {
     const settlementAmount =
-      customer.settlement_currency === 'IQD' ? input.totals.total_iqd : input.totals.total_usd_cents;
+      customer.settlement_currency === 'IQD'
+        ? input.totals.total_iqd
+        : input.totals.total_usd_cents;
 
     // The entry copies the order's two totals exactly as stored — never a conversion of one
     // of them — together with the order's rate snapshot (FR-612, 2.3.4).
@@ -1036,7 +1081,9 @@ export class OrdersService {
         // Same currency and no rounded amount handed over: the settlement is the exact
         // negation of the order entry, so the order closes at zero in *both* columns.
         otherSideFallback:
-          customer.settlement_currency === 'IQD' ? input.totals.total_usd_cents : input.totals.total_iqd,
+          customer.settlement_currency === 'IQD'
+            ? input.totals.total_usd_cents
+            : input.totals.total_iqd,
       });
 
       await this.ledger.write(
@@ -1061,7 +1108,11 @@ export class OrdersService {
           ? Number(input.customer.credit_limit_iqd)
           : Number(input.customer.credit_limit_usd_cents);
       if (orderEntry.balance.after > limit) {
-        warning = { limit, balance_after: orderEntry.balance.after, currency: customer.settlement_currency };
+        warning = {
+          limit,
+          balance_after: orderEntry.balance.after,
+          currency: customer.settlement_currency,
+        };
       }
     }
 
@@ -1146,20 +1197,19 @@ export class OrdersService {
   }
 }
 
-function pricedQuantityOf(line: Pick<NewOrderLine, 'priced_measure' | 'qty_count' | 'qty_kg'>): string {
+function pricedQuantityOf(
+  line: Pick<NewOrderLine, 'priced_measure' | 'qty_count' | 'qty_kg'>,
+): string {
   return line.priced_measure === 'count' ? String(line.qty_count ?? 0) : String(line.qty_kg ?? '0');
 }
 
 function remainingOf(entries: readonly LedgerEntry[], orderId: string, currency: Currency): number {
   return entries
     .filter((entry) => entry.refs.order_id === orderId)
-    .reduce((total, entry) => total + (currency === 'IQD' ? entry.amount_iqd : entry.amount_usd_cents), 0);
-}
-
-function daysBetween(from: string, to: string): number {
-  const a = Date.parse(`${from}T00:00:00Z`);
-  const b = Date.parse(`${to}T00:00:00Z`);
-  return Math.round((b - a) / 86_400_000);
+    .reduce(
+      (total, entry) => total + (currency === 'IQD' ? entry.amount_iqd : entry.amount_usd_cents),
+      0,
+    );
 }
 
 function lineSummary(line: PreparedLine) {
@@ -1212,7 +1262,9 @@ function toOrderLineDto(line: OrderLineRow, orderMonth: string): OrderLineDto {
     rate_source: line.rate_source,
     note: line.note,
     cost:
-      line.cost_unit_iqd === null || line.cost_unit_usd_cents === null || line.cost_source === 'none'
+      line.cost_unit_iqd === null ||
+      line.cost_unit_usd_cents === null ||
+      line.cost_source === 'none'
         ? null
         : {
             unit_iqd: Number(line.cost_unit_iqd),
@@ -1225,7 +1277,8 @@ function toOrderLineDto(line: OrderLineRow, orderMonth: string): OrderLineDto {
 
 function toOrderDto(row: OrderListRow, lines: readonly OrderLineRow[]): OrderDto {
   const remaining = Number(row.remaining ?? 0);
-  const total = row.settlement_currency === 'IQD' ? Number(row.total_iqd) : Number(row.total_usd_cents);
+  const total =
+    row.settlement_currency === 'IQD' ? Number(row.total_iqd) : Number(row.total_usd_cents);
 
   return {
     id: row.id,
@@ -1247,7 +1300,9 @@ function toOrderDto(row: OrderListRow, lines: readonly OrderLineRow[]): OrderDto
     total_usd_cents: Number(row.total_usd_cents),
     // The view derives the status; this repeats the kernel's rule for the rows a list joined
     // without it, and the two agree by construction (2.4.3).
-    status: (row.derived_status as OrderDto['status']) ?? orderStatus({ voided: row.status === 'void', total, remaining }),
+    status:
+      (row.derived_status as OrderDto['status']) ??
+      orderStatus({ voided: row.status === 'void', total, remaining }),
     doc_status: row.status,
     void_reason: row.void_reason,
     voided_by_name: row.voided_by_name,

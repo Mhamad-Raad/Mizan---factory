@@ -137,7 +137,10 @@ export class CompaniesService {
     private readonly history: HistoryRepository,
   ) {}
 
-  async list(context: RequestContext, filters: CompanyFilters): Promise<{ items: CompanyDto[]; total: number }> {
+  async list(
+    context: RequestContext,
+    filters: CompanyFilters,
+  ): Promise<{ items: CompanyDto[]; total: number }> {
     const { rows, total } = await this.companies.list(filters);
     const globalRate = await this.rates.current();
     return {
@@ -167,7 +170,11 @@ export class CompaniesService {
     ]);
 
     const rate = companyRate
-      ? { rate_iqd_per_usd: formatRate(companyRate.rate), since: companyRate.since.toISOString(), is_company_rate: true }
+      ? {
+          rate_iqd_per_usd: formatRate(companyRate.rate),
+          since: companyRate.since.toISOString(),
+          is_company_rate: true,
+        }
       : globalRate
         ? {
             rate_iqd_per_usd: globalRate.rate_iqd_per_usd,
@@ -195,9 +202,10 @@ export class CompaniesService {
 
   private async assigneeName(db: Db, userId: string | null): Promise<string | null> {
     if (!userId) return null;
-    const { rows } = await db.query<{ display_name: string }>('SELECT display_name FROM users WHERE id = $1', [
-      userId,
-    ]);
+    const { rows } = await db.query<{ display_name: string }>(
+      'SELECT display_name FROM users WHERE id = $1',
+      [userId],
+    );
     return rows[0]?.display_name ?? null;
   }
 
@@ -353,7 +361,13 @@ export class CompaniesService {
         ]);
       }
 
-      const row = await this.companies.update(id, input.version, { is_active: isActive }, context.userId, tx);
+      const row = await this.companies.update(
+        id,
+        input.version,
+        { is_active: isActive },
+        context.userId,
+        tx,
+      );
       if (!row) throw await this.versionConflict(id);
 
       await this.audit.record(
@@ -422,7 +436,12 @@ export class CompaniesService {
         );
         if (!rowCount) {
           throw ApiError.validation([
-            { path: 'user_id', code: 'NOT_FOUND', message_key: 'errors:field.required', params: {} },
+            {
+              path: 'user_id',
+              code: 'NOT_FOUND',
+              message_key: 'errors:field.required',
+              params: {},
+            },
           ]);
         }
       }
@@ -464,7 +483,9 @@ export class CompaniesService {
       this.companies.rateHistory(id),
     ]);
     return {
-      current: current ? { rate_iqd_per_usd: formatRate(current.rate), since: current.since.toISOString() } : null,
+      current: current
+        ? { rate_iqd_per_usd: formatRate(current.rate), since: current.since.toISOString() }
+        : null,
       items: history.map((row) => ({
         id: row.id,
         rate_iqd_per_usd: formatRate(row.rate_iqd_per_usd),
@@ -477,35 +498,27 @@ export class CompaniesService {
 
   /**
    * A new rate takes effect immediately for new documents and never touches a stored one
-   * (FR-703). A change beyond ±`rate_guard_percent` asks for confirmation: 13,100 instead of
-   * 1,310 would quietly value every later purchase at a tenth of its worth.
+   * (FR-703).
    */
   async setRate(
     context: RequestContext,
     id: string,
-    input: { rate_iqd_per_usd: string; note?: string | null; confirm?: boolean },
+    input: { rate_iqd_per_usd: string; note?: string | null },
   ): Promise<{ rate_iqd_per_usd: Rate; since: string }> {
     const company = await this.requireCompany(id);
     const rate = formatRate(input.rate_iqd_per_usd);
     if (Number(rate) <= 0) {
       throw ApiError.validation([
-        { path: 'rate_iqd_per_usd', code: 'INVALID', message_key: 'errors:field.required', params: {} },
+        {
+          path: 'rate_iqd_per_usd',
+          code: 'INVALID',
+          message_key: 'errors:field.required',
+          params: {},
+        },
       ]);
     }
 
     const previous = await this.companies.currentRate(id);
-    if (previous && !input.confirm) {
-      const guard = await this.settings.get('rate_guard_percent');
-      const before = Number(formatRate(previous.rate));
-      const change = Math.abs(Number(rate) - before) / before;
-      if (change * 100 > guard) {
-        throw new ApiError('RATE_GUARD', {
-          previous: formatRate(previous.rate),
-          next: rate,
-          percent: Math.round(change * 100),
-        });
-      }
-    }
 
     await this.database.transaction(async (tx) => {
       await this.companies.insertRate(
@@ -584,12 +597,16 @@ export class CompaniesService {
     const newestFirst = [...matching].reverse();
     const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
     const page = newestFirst.slice(0, limit);
-    const names = await this.userNames(page.flatMap((group) => group.rows.map((line) => line.entry)));
+    const names = await this.userNames(
+      page.flatMap((group) => group.rows.map((line) => line.entry)),
+    );
 
     return {
       company: { id: row.id, name: row.name, settlement_currency: row.settlement_currency },
       balance: balanceOf(entries, row.settlement_currency),
-      balance_as_of: options.as_of ? balanceAsOf(entries, row.settlement_currency, options.as_of) : null,
+      balance_as_of: options.as_of
+        ? balanceAsOf(entries, row.settlement_currency, options.as_of)
+        : null,
       items: page.map((group) => toGroupDto(group, names)),
       total: matching.length,
       has_more: newestFirst.length > page.length,
@@ -625,7 +642,9 @@ export class CompaniesService {
       purchases.map((purchase) => ({
         id: purchase.id,
         total:
-          row.settlement_currency === 'IQD' ? Number(purchase.total_iqd) : Number(purchase.total_usd_cents),
+          row.settlement_currency === 'IQD'
+            ? Number(purchase.total_iqd)
+            : Number(purchase.total_usd_cents),
         purchase_date: purchase.purchase_date,
         voided: purchase.status === 'void',
         number: Number(purchase.number),
@@ -662,9 +681,9 @@ export class CompaniesService {
   }
 
   private async userNames(entries: readonly LedgerEntry[]): Promise<Map<string, string>> {
-    const ids = [...new Set(entries.flatMap((entry) => [entry.performed_by_user_id, entry.created_by]))].filter(
-      (id): id is string => Boolean(id),
-    );
+    const ids = [
+      ...new Set(entries.flatMap((entry) => [entry.performed_by_user_id, entry.created_by])),
+    ].filter((id): id is string => Boolean(id));
     if (ids.length === 0) return new Map();
     const { rows } = await this.database.query<{ id: string; display_name: string }>(
       'SELECT id, display_name FROM users WHERE id = ANY($1::uuid[])',
@@ -686,7 +705,6 @@ export class CompaniesService {
     input: CompanyPaymentInput,
   ): Promise<CompanyWriteResultDto[]> {
     this.period.assertNotFuture(input.entry_date, 'entry_date');
-    await this.period.assertNotLocked(input.entry_date);
     await this.requireCompany(id);
 
     const { rate, source } = await this.rateFor(id);
@@ -735,7 +753,12 @@ export class CompaniesService {
           : balanceOf(await this.ledger.entriesFor(tx, id), account.settlement_currency);
         if (remaining <= 0) {
           throw ApiError.validation([
-            { path: 'settle_in_full', code: 'NOTHING_OWED', message_key: 'errors:nothing_owed', params: {} },
+            {
+              path: 'settle_in_full',
+              code: 'NOTHING_OWED',
+              message_key: 'errors:nothing_owed',
+              params: {},
+            },
           ]);
         }
 
@@ -831,10 +854,14 @@ export class CompaniesService {
     input: AdjustmentInput,
   ): Promise<CompanyWriteResultDto> {
     this.period.assertNotFuture(input.entry_date, 'entry_date');
-    await this.period.assertNotLocked(input.entry_date);
     if (!input.note?.trim() || input.note.trim().length < 3) {
       throw ApiError.validation([
-        { path: 'note', code: 'REQUIRED', message_key: 'errors:note_required_adjustment', params: {} },
+        {
+          path: 'note',
+          code: 'REQUIRED',
+          message_key: 'errors:note_required_adjustment',
+          params: {},
+        },
       ]);
     }
     if ((input.new_balance ?? null) === null && (input.delta ?? null) === null) {
@@ -866,7 +893,12 @@ export class CompaniesService {
 
       if (delta === 0) {
         throw ApiError.validation([
-          { path: 'delta', code: 'UNCHANGED', message_key: 'errors:adjustment_unchanged', params: {} },
+          {
+            path: 'delta',
+            code: 'UNCHANGED',
+            message_key: 'errors:adjustment_unchanged',
+            params: {},
+          },
         ]);
       }
 
@@ -907,10 +939,14 @@ export class CompaniesService {
     input: CompanyEntryInput,
   ): Promise<CompanyWriteResultDto> {
     this.period.assertNotFuture(input.entry_date, 'entry_date');
-    await this.period.assertNotLocked(input.entry_date);
     if (!input.note?.trim()) {
       throw ApiError.validation([
-        { path: 'note', code: 'REQUIRED', message_key: 'errors:field.required', params: { field: 'note' } },
+        {
+          path: 'note',
+          code: 'REQUIRED',
+          message_key: 'errors:field.required',
+          params: { field: 'note' },
+        },
       ]);
     }
     await this.requireCompany(id);
@@ -963,7 +999,12 @@ export class CompaniesService {
   ): Promise<CompanyWriteResultDto> {
     if (!input.note?.trim()) {
       throw ApiError.validation([
-        { path: 'note', code: 'REQUIRED', message_key: 'errors:field.required', params: { field: 'note' } },
+        {
+          path: 'note',
+          code: 'REQUIRED',
+          message_key: 'errors:field.required',
+          params: { field: 'note' },
+        },
       ]);
     }
     await this.requireCompany(id);
@@ -974,9 +1015,8 @@ export class CompaniesService {
       const target = entries.find((entry) => entry.id === entryId);
       if (!target) throw ApiError.notFound();
 
-      await this.period.assertNotLocked(target.entry_date);
-
-      const ownSameDay = target.created_by === context.userId && target.entry_date === this.period.today();
+      const ownSameDay =
+        target.created_by === context.userId && target.entry_date === this.period.today();
       if (!ownSameDay && context.role !== 'admin') throw ApiError.permissionDenied('admin');
 
       const result = await this.ledger.reverse(context, tx, account, entryId, {
@@ -1019,7 +1059,8 @@ export class CompaniesService {
       }
 
       const rate = input.rebase_rate ?? (await this.rateFor(id, tx)).rate;
-      const worthInNewCurrency = balanceOld === 0 ? 0 : convert(balanceOld, before.settlement_currency, rate);
+      const worthInNewCurrency =
+        balanceOld === 0 ? 0 : convert(balanceOld, before.settlement_currency, rate);
       const delta = worthInNewCurrency - sumNewColumn;
 
       const money: MoneyPair = {
@@ -1064,7 +1105,11 @@ export class CompaniesService {
             settlement_currency: { old: before.settlement_currency, new: input.currency },
             balance: {
               old: { amount: balanceOld, currency: before.settlement_currency },
-              new: { amount: sumNewColumn + delta, currency: input.currency, rate: formatRate(rate) },
+              new: {
+                amount: sumNewColumn + delta,
+                currency: input.currency,
+                rate: formatRate(rate),
+              },
             },
           },
           note: input.note,
@@ -1115,7 +1160,8 @@ export class CompaniesService {
           .filter((entry) => entry.entry_date < (range.from as string))
           .reduce(
             (total, entry) =>
-              total + (row.settlement_currency === 'IQD' ? entry.amount_iqd : entry.amount_usd_cents),
+              total +
+              (row.settlement_currency === 'IQD' ? entry.amount_iqd : entry.amount_usd_cents),
             0,
           )
       : 0;
@@ -1168,7 +1214,9 @@ export class CompaniesService {
       rate_iqd_per_usd: entry.rate_iqd_per_usd,
       method: entry.method ?? null,
       note: entry.note,
-      performed_by_name: entry.performed_by_user_id ? names.get(entry.performed_by_user_id) ?? null : null,
+      performed_by_name: entry.performed_by_user_id
+        ? (names.get(entry.performed_by_user_id) ?? null)
+        : null,
       balance_after: group.anchor.balance_after,
       is_cancelled: entries.some((candidate) => candidate.reverses_entry_id === entry.id),
       company: {
@@ -1188,7 +1236,11 @@ export class CompaniesService {
     return account;
   }
 
-  private async assertPurchaseOfCompany(tx: Db, purchaseId: string, companyId: string): Promise<void> {
+  private async assertPurchaseOfCompany(
+    tx: Db,
+    purchaseId: string,
+    companyId: string,
+  ): Promise<void> {
     const { rows } = await tx.query<{ company_id: string | null; status: string }>(
       `SELECT company_id, status::text AS status FROM purchases WHERE id = $1 AND deleted_at IS NULL`,
       [purchaseId],
@@ -1270,7 +1322,10 @@ export class CompaniesService {
 
   private async versionConflict(id: string): Promise<ApiError> {
     const current = await this.companies.findById(id);
-    return new ApiError('VERSION_CONFLICT', { entity: 'company', version: current?.version ?? null });
+    return new ApiError('VERSION_CONFLICT', {
+      entity: 'company',
+      version: current?.version ?? null,
+    });
   }
 
   /** Whether the caller may see any company money at all (FR-704). */
@@ -1363,7 +1418,9 @@ function toGroupDto(group: LedgerGroup, names: Map<string, string>): LedgerGroup
     note: entry.note,
     purchase_id: (entry.refs.purchase_id as string | null) ?? null,
     performed_by_user_id: entry.performed_by_user_id,
-    performed_by_name: entry.performed_by_user_id ? names.get(entry.performed_by_user_id) ?? null : null,
+    performed_by_name: entry.performed_by_user_id
+      ? (names.get(entry.performed_by_user_id) ?? null)
+      : null,
     voucher_number: entry.voucher_number ?? null,
     method: entry.method ?? null,
     hidden_by_default: group.hidden_by_default,
@@ -1378,7 +1435,7 @@ function toGroupDto(group: LedgerGroup, names: Map<string, string>): LedgerGroup
       balance_after: row.balance_after,
       created_at: row.entry.created_at.toISOString(),
       performed_by_name: row.entry.performed_by_user_id
-        ? names.get(row.entry.performed_by_user_id) ?? null
+        ? (names.get(row.entry.performed_by_user_id) ?? null)
         : null,
     })),
   };
@@ -1407,7 +1464,9 @@ function toCompanyDtoFromListRow(row: CompanyListRow, globalRate: Rate | null): 
     assigned_user_name: row.assigned_user_name,
     is_active: row.is_active,
     rate,
-    balance: rate ? toBalance(Number(row.balance), row.settlement_currency, rate.rate_iqd_per_usd) : null,
+    balance: rate
+      ? toBalance(Number(row.balance), row.settlement_currency, rate.rate_iqd_per_usd)
+      : null,
     version: row.version,
   };
 }

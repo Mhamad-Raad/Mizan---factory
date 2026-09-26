@@ -2,14 +2,25 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, DateField, NumberField, Tabs, TextField, Toast } from '@mizan/ui';
+import {
+  BottomSheet,
+  Button,
+  Card,
+  Chip,
+  DateField,
+  NumberField,
+  Tabs,
+  TextField,
+  Toast,
+} from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { MonthPriceEditor } from '../components/MonthPriceEditor.js';
 import { QueryStates } from '../components/states.js';
 import { useFormatter, usePermission } from '../lib/store.js';
+import { useIsWide } from '../lib/wide.js';
 import type { ItemRow } from './MaterialsPage.js';
 
 interface MonthPrice {
@@ -53,9 +64,12 @@ export function MaterialDetailPage() {
   const queryClient = useQueryClient();
   const maySetPrices = usePermission('materials.set_prices');
   const mayRecordStock = usePermission('materials.opening_stock');
+  const wide = useIsWide();
 
   const [tab, setTab] = useState<Tab>('overview');
-  const [priceSheet, setPriceSheet] = useState<{ month: string; existing?: MonthPrice } | null>(null);
+  const [priceSheet, setPriceSheet] = useState<{ month: string; existing?: MonthPrice } | null>(
+    null,
+  );
   const [stockSheet, setStockSheet] = useState<'opening' | 'adjustment' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -67,7 +81,7 @@ export function MaterialDetailPage() {
   const rate = useQuery({
     queryKey: ['global-rate'],
     queryFn: () =>
-      apiRequest<{ current: { rate_iqd_per_usd: string; is_stale: boolean } | null }>('/settings/global-rates'),
+      apiRequest<{ current: { rate_iqd_per_usd: string } | null }>('/settings/global-rates'),
   });
 
   const prices = useQuery({
@@ -85,9 +99,15 @@ export function MaterialDetailPage() {
   const history = useQuery({
     queryKey: ['items', id, 'history'],
     queryFn: () =>
-      apiRequest<{ items: { id: string; action: string; occurred_at: string; actor_display_name: string | null; note: string | null }[] }>(
-        `/items/${id}/history`,
-      ),
+      apiRequest<{
+        items: {
+          id: string;
+          action: string;
+          occurred_at: string;
+          actor_display_name: string | null;
+          note: string | null;
+        }[];
+      }>(`/items/${id}/history`),
     enabled: tab === 'history',
   });
 
@@ -107,11 +127,14 @@ export function MaterialDetailPage() {
 
   const recordStock = useMutation({
     mutationFn: (input: { kind: 'opening' | 'adjustment'; body: unknown }) =>
-      apiRequest(`/items/${id}/${input.kind === 'opening' ? 'opening-stock' : 'stock-adjustments'}`, {
-        method: 'POST',
-        body: input.body,
-        idempotencyKey: newIdempotencyKey(),
-      }),
+      apiRequest(
+        `/items/${id}/${input.kind === 'opening' ? 'opening-stock' : 'stock-adjustments'}`,
+        {
+          method: 'POST',
+          body: input.body,
+          idempotencyKey: newIdempotencyKey(),
+        },
+      ),
     onSuccess: async () => {
       setStockSheet(null);
       setToast(t('materials:stock_recorded'));
@@ -134,8 +157,20 @@ export function MaterialDetailPage() {
   const currentRate = rate.data?.current?.rate_iqd_per_usd ?? '1310.0000';
   const thisMonth = `${formatter.today().slice(0, 7)}-01`;
 
+  // A movement can carry kg, a count, or both — kept exactly as the phone card showed them.
+  const movementQty = (movement: Movement) => {
+    const parts: string[] = [];
+    if (movement.qty_kg !== null) {
+      parts.push(`${formatter.number(movement.qty_kg, 3)} ${t('common:kg_symbol')}`);
+    }
+    if (movement.qty_count !== null) parts.push(formatter.number(movement.qty_count));
+    return parts.length > 0 ? parts.join(' · ') : '—';
+  };
+
+  usePageTitle(item.data?.name ?? t('materials:title'));
+
   return (
-    <AppShell title={item.data?.name ?? t('materials:title')}>
+    <>
       <div className="mz-stack">
         <QueryStates query={item}>
           {item.data ? (
@@ -143,13 +178,17 @@ export function MaterialDetailPage() {
               <Card>
                 <div className="mz-row mz-row--between">
                   <div>
-                    <h2 className="mz-title"><bdi>{item.data.name}</bdi></h2>
+                    <h2 className="mz-title">
+                      <bdi>{item.data.name}</bdi>
+                    </h2>
                     <span className="mz-caption">
                       {t(`glossary:${item.data.pricing_unit}`)}
                       {item.data.code ? ` · ${item.data.code}` : ''}
                     </span>
                   </div>
-                  {!item.data.is_active ? <Chip icon="close">{t('common:deactivated')}</Chip> : null}
+                  {!item.data.is_active ? (
+                    <Chip icon="close">{t('common:deactivated')}</Chip>
+                  ) : null}
                 </div>
 
                 <p className="mz-title" data-tabular style={{ marginBlockStart: 'var(--space-3)' }}>
@@ -170,9 +209,11 @@ export function MaterialDetailPage() {
                       : '—'}
                 </span>
                 <span className="mz-caption" style={{ display: 'block' }}>
-                  {t('glossary:date_bought')}: {item.data.first_bought_on ? formatter.date(item.data.first_bought_on) : '—'}
+                  {t('glossary:date_bought')}:{' '}
+                  {item.data.first_bought_on ? formatter.date(item.data.first_bought_on) : '—'}
                   {' · '}
-                  {t('glossary:date_sold')}: {item.data.last_sold_on ? formatter.date(item.data.last_sold_on) : '—'}
+                  {t('glossary:date_sold')}:{' '}
+                  {item.data.last_sold_on ? formatter.date(item.data.last_sold_on) : '—'}
                 </span>
               </Card>
 
@@ -197,7 +238,10 @@ export function MaterialDetailPage() {
                         {t('damages:of_material')}
                       </Link>
                       <Can permission="damages.create">
-                        <Link to={`/damages/new?item=${id}`} className="mz-button mz-button--secondary">
+                        <Link
+                          to={`/damages/new?item=${id}`}
+                          className="mz-button mz-button--secondary"
+                        >
                           {t('damages:record')}
                         </Link>
                       </Can>
@@ -205,7 +249,10 @@ export function MaterialDetailPage() {
                   </Can>
                   <Card>
                     <h3 className="mz-heading">{t('materials:this_month_prices')}</h3>
-                    <div className="mz-row mz-row--between" style={{ marginBlockStart: 'var(--space-2)' }}>
+                    <div
+                      className="mz-row mz-row--between"
+                      style={{ marginBlockStart: 'var(--space-2)' }}
+                    >
                       <span>{t('glossary:sale_price')}</span>
                       {item.data.sale ? (
                         <DualAmount
@@ -218,11 +265,16 @@ export function MaterialDetailPage() {
                     </div>
                     {item.data.sale && item.data.sale.source === 'fallback' ? (
                       <span className="mz-caption">
-                        {t('materials:price_from', { month: formatter.month(item.data.sale.from_month.slice(0, 7)) })}
+                        {t('materials:price_from', {
+                          month: formatter.month(item.data.sale.from_month.slice(0, 7)),
+                        })}
                       </span>
                     ) : null}
                     {item.data.bought ? (
-                      <div className="mz-row mz-row--between" style={{ marginBlockStart: 'var(--space-2)' }}>
+                      <div
+                        className="mz-row mz-row--between"
+                        style={{ marginBlockStart: 'var(--space-2)' }}
+                      >
                         <span>{t('glossary:bought_price')}</span>
                         <DualAmount
                           amount_iqd={item.data.bought.amount_iqd}
@@ -245,7 +297,9 @@ export function MaterialDetailPage() {
                   {item.data.notes ? (
                     <Card>
                       <h3 className="mz-heading">{t('glossary:notes')}</h3>
-                      <p><bdi>{item.data.notes}</bdi></p>
+                      <p>
+                        <bdi>{item.data.notes}</bdi>
+                      </p>
                     </Card>
                   ) : null}
 
@@ -293,7 +347,10 @@ export function MaterialDetailPage() {
                         <strong>{formatter.month(row.month.slice(0, 7))}</strong>
                         <span>
                           {row.sale ? (
-                            <DualAmount amount_iqd={row.sale.amount_iqd} amount_usd_cents={row.sale.amount_usd_cents} />
+                            <DualAmount
+                              amount_iqd={row.sale.amount_iqd}
+                              amount_usd_cents={row.sale.amount_usd_cents}
+                            />
                           ) : (
                             '—'
                           )}
@@ -314,7 +371,10 @@ export function MaterialDetailPage() {
                             {row.bought ? t('glossary:bought_price') : ''}
                           </span>
                           {maySetPrices ? (
-                            <Button variant="ghost" onClick={() => setPriceSheet({ month: row.month, existing: row })}>
+                            <Button
+                              variant="ghost"
+                              onClick={() => setPriceSheet({ month: row.month, existing: row })}
+                            >
                               {t('common:edit')}
                             </Button>
                           ) : null}
@@ -331,28 +391,69 @@ export function MaterialDetailPage() {
                   isEmpty={(movements.data?.items.length ?? 0) === 0}
                   emptyTitle={t('materials:no_movements')}
                 >
-                  <Card>
-                    <ul className="mz-list">
-                      {(movements.data?.items ?? []).map((movement) => (
-                        <li key={movement.id} className="mz-list__item">
-                          <span className="mz-list__body">
-                            <span className="mz-list__title">{t(`materials:movement.${movement.movement_type}`)}</span>
-                            <span className="mz-caption">
-                              {formatter.date(movement.entry_date)}
-                              {movement.performed_by ? ` · ${movement.performed_by}` : ''}
-                              {movement.note ? ` · ${movement.note}` : ''}
+                  {wide ? (
+                    <div className="mz-table-wrap">
+                      <table className="mz-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">{t('common:type')}</th>
+                            <th scope="col">{t('common:date')}</th>
+                            <th scope="col" className="mz-table__secondary">
+                              {t('common:done_by')}
+                            </th>
+                            <th scope="col" className="mz-table__secondary">
+                              {t('common:note')}
+                            </th>
+                            <th scope="col" data-numeric="true">
+                              {t('glossary:quantity')}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(movements.data?.items ?? []).map((movement) => (
+                            <tr
+                              key={movement.id}
+                              style={{ cursor: 'default', opacity: movement.is_live ? 1 : 0.5 }}
+                            >
+                              <td>{t(`materials:movement.${movement.movement_type}`)}</td>
+                              <td data-tabular>{formatter.date(movement.entry_date)}</td>
+                              <td className="mz-table__secondary">
+                                {movement.performed_by ? <bdi>{movement.performed_by}</bdi> : '—'}
+                              </td>
+                              <td className="mz-table__secondary">
+                                {movement.note ? <bdi>{movement.note}</bdi> : '—'}
+                              </td>
+                              <td data-numeric="true" data-tabular>
+                                {movementQty(movement)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <Card>
+                      <ul className="mz-list">
+                        {(movements.data?.items ?? []).map((movement) => (
+                          <li key={movement.id} className="mz-list__item">
+                            <span className="mz-list__body">
+                              <span className="mz-list__title">
+                                {t(`materials:movement.${movement.movement_type}`)}
+                              </span>
+                              <span className="mz-caption">
+                                {formatter.date(movement.entry_date)}
+                                {movement.performed_by ? ` · ${movement.performed_by}` : ''}
+                                {movement.note ? ` · ${movement.note}` : ''}
+                              </span>
                             </span>
-                          </span>
-                          <span data-tabular style={{ opacity: movement.is_live ? 1 : 0.5 }}>
-                            {movement.qty_kg !== null
-                              ? `${formatter.number(movement.qty_kg, 3)} ${t('common:kg_symbol')}`
-                              : null}
-                            {movement.qty_count !== null ? ` ${formatter.number(movement.qty_count)}` : null}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </Card>
+                            <span data-tabular style={{ opacity: movement.is_live ? 1 : 0.5 }}>
+                              {movementQty(movement)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </Card>
+                  )}
                 </QueryStates>
               ) : null}
 
@@ -362,22 +463,63 @@ export function MaterialDetailPage() {
                   isEmpty={(history.data?.items.length ?? 0) === 0}
                   emptyTitle={t('history:empty')}
                 >
-                  <Card>
-                    <ul className="mz-list">
-                      {(history.data?.items ?? []).map((entry) => (
-                        <li key={entry.id} className="mz-list__item">
-                          <span className="mz-list__body">
-                            <span className="mz-list__title">{t(`history:action.${entry.action}`)}</span>
-                            <span className="mz-caption">
-                              {formatter.timestamp(new Date(entry.occurred_at))}
-                              {entry.actor_display_name ? ` · ${entry.actor_display_name}` : ''}
-                              {entry.note ? ` · ${entry.note}` : ''}
+                  {wide ? (
+                    <div className="mz-table-wrap">
+                      <table className="mz-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">{t('common:activity')}</th>
+                            <th scope="col">{t('common:date')}</th>
+                            <th scope="col" className="mz-table__secondary">
+                              {t('common:done_by')}
+                            </th>
+                            <th scope="col" className="mz-table__secondary">
+                              {t('common:note')}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(history.data?.items ?? []).map((entry) => (
+                            <tr key={entry.id} style={{ cursor: 'default' }}>
+                              <td>{t(`history:action.${entry.action}`)}</td>
+                              <td data-tabular>
+                                {formatter.timestamp(new Date(entry.occurred_at))}
+                              </td>
+                              <td className="mz-table__secondary">
+                                {entry.actor_display_name ? (
+                                  <bdi>{entry.actor_display_name}</bdi>
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                              <td className="mz-table__secondary">
+                                {entry.note ? <bdi>{entry.note}</bdi> : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <Card>
+                      <ul className="mz-list">
+                        {(history.data?.items ?? []).map((entry) => (
+                          <li key={entry.id} className="mz-list__item">
+                            <span className="mz-list__body">
+                              <span className="mz-list__title">
+                                {t(`history:action.${entry.action}`)}
+                              </span>
+                              <span className="mz-caption">
+                                {formatter.timestamp(new Date(entry.occurred_at))}
+                                {entry.actor_display_name ? ` · ${entry.actor_display_name}` : ''}
+                                {entry.note ? ` · ${entry.note}` : ''}
+                              </span>
                             </span>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </Card>
+                          </li>
+                        ))}
+                      </ul>
+                    </Card>
+                  )}
                 </QueryStates>
               ) : null}
             </>
@@ -428,16 +570,22 @@ export function MaterialDetailPage() {
           />
         ) : null}
 
-        {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
+        {toast ? (
+          <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} />
+        ) : null}
         <Button variant="ghost" onClick={() => navigate('/materials')}>
           {t('common:back')}
         </Button>
       </div>
-    </AppShell>
+    </>
   );
 }
 
-function toMoneyBody(value: { amount: number | null; currency: 'IQD' | 'USD'; other_amount?: number | null }) {
+function toMoneyBody(value: {
+  amount: number | null;
+  currency: 'IQD' | 'USD';
+  other_amount?: number | null;
+}) {
   return value.amount === null
     ? null
     : { amount: value.amount, currency: value.currency, other_amount: value.other_amount ?? null };
@@ -474,7 +622,12 @@ function StockSheet({
       closeLabel={t('common:close')}
     >
       <div className="mz-stack">
-        <DateField label={t('common:date')} value={date} max={formatter.today()} onChange={(event) => setDate(event.target.value)} />
+        <DateField
+          label={t('common:date')}
+          value={date}
+          max={formatter.today()}
+          onChange={(event) => setDate(event.target.value)}
+        />
         <div className="mz-grid-2">
           <NumberField
             label={t('glossary:count')}

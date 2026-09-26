@@ -8,7 +8,6 @@
   "old_value": "كان",
   "new_value": "أصبح",
   "request_id": "المرجع",
-  "signed_in_with_pin": "سجّل الدخول برمز PIN",
   "action.create": "أنشأ",
   "action.update": "عدّل",
   "action.void": "أبطل",
@@ -93,5 +92,11 @@
   "field.return_status": "حالة الإرجاع",
   "field.notes": "ملاحظات",
   "entity.session": "جلسة",
-  "entity.settings": "الإعدادات"
+  "entity.settings": "الإعدادات",
+  "action_column": "نوع الإجراء",
+  "field.device_label": "اسم الجهاز",
+  "field.device_ticket_id": "تذكرة الجهاز",
+  "field.session_id": "الجلسة",
+  "field.locked_until": "مقفل حتى",
+  "field.reason": "السبب"
 }

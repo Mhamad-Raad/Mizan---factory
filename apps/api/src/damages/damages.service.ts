@@ -157,14 +157,19 @@ export class DamagesService {
     private readonly history: HistoryRepository,
   ) {}
 
-  async list(filters: DamageFilters): Promise<{ items: DamageDto[]; total: number; totals: DamageTotals }> {
+  async list(
+    filters: DamageFilters,
+  ): Promise<{ items: DamageDto[]; total: number; totals: DamageTotals }> {
     const { rows, total, totals } = await this.damages.list(filters);
     return { items: rows.map(toDamageDto), total, totals };
   }
 
   async get(id: string): Promise<DamageDetailDto> {
     const row = await this.requireDamage(id);
-    const [prefill, credits] = await Promise.all([this.creditPrefill(row), this.damages.creditsFor(id)]);
+    const [prefill, credits] = await Promise.all([
+      this.creditPrefill(row),
+      this.damages.creditsFor(id),
+    ]);
     return {
       ...toDamageDto(row),
       credit_prefill: prefill,
@@ -176,7 +181,10 @@ export class DamagesService {
         entry_date: credit.entry_date,
         settlement_currency: credit.settlement_currency,
         note: credit.note,
-        cost: { amount_iqd: Number(credit.amount_iqd), amount_usd_cents: Number(credit.amount_usd_cents) },
+        cost: {
+          amount_iqd: Number(credit.amount_iqd),
+          amount_usd_cents: Number(credit.amount_usd_cents),
+        },
       })),
     };
   }
@@ -191,7 +199,6 @@ export class DamagesService {
 
   async create(context: RequestContext, input: CreateDamageInput): Promise<DamageDetailDto> {
     this.period.assertNotFuture(input.damage_date, 'damage_date');
-    await this.period.assertNotLocked(input.damage_date);
 
     const attribution = input.attribution ?? 'none';
     const item = await this.items.findById(input.item_id);
@@ -260,7 +267,11 @@ export class DamagesService {
             stock_effect: { old: null, new: stockEffect },
             est_value: {
               old: null,
-              new: { iqd: value.est_value_iqd, usd_cents: value.est_value_usd_cents, source: value.est_value_source },
+              new: {
+                iqd: value.est_value_iqd,
+                usd_cents: value.est_value_usd_cents,
+                source: value.est_value_source,
+              },
             },
           },
           note: input.reason?.trim() || input.notes?.trim() || null,
@@ -286,14 +297,16 @@ export class DamagesService {
    * change to the quantity or to the attribution rewrites the stock story by reversing what is
    * live and writing what is true now, exactly as an order or a purchase edit does (2.5.3).
    */
-  async update(context: RequestContext, id: string, input: UpdateDamageInput): Promise<DamageDetailDto> {
+  async update(
+    context: RequestContext,
+    id: string,
+    input: UpdateDamageInput,
+  ): Promise<DamageDetailDto> {
     const existing = await this.requireDamage(id);
     if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { damage_id: id });
-    await this.period.assertNotLocked(existing.damage_date);
 
     const damageDate = input.damage_date ?? existing.damage_date;
     this.period.assertNotFuture(damageDate, 'damage_date');
-    await this.period.assertNotLocked(damageDate);
 
     const attribution = input.attribution ?? existing.attribution;
     const pricedMeasure: Measure = existing.pricing_unit === 'per_piece' ? 'count' : 'kg';
@@ -303,15 +316,20 @@ export class DamagesService {
         : this.quantityOf(input, pricedMeasure);
     const links = await this.resolveLinks(attribution, {
       order_id: input.order_id ?? (attribution === existing.attribution ? existing.order_id : null),
-      company_id: input.company_id ?? (attribution === existing.attribution ? existing.company_id : null),
-      purchase_id: input.purchase_id ?? (attribution === existing.attribution ? existing.purchase_id : null),
+      company_id:
+        input.company_id ?? (attribution === existing.attribution ? existing.company_id : null),
+      purchase_id:
+        input.purchase_id ?? (attribution === existing.attribution ? existing.purchase_id : null),
     });
     const isReturnable = input.is_returnable ?? existing.is_returnable;
 
     // A record already returned or credited is not re-opened by an edit: that is a void and a
     // new record, because the supplier has the goods and the ledger has the credit.
     if (existing.return_status !== 'pending' && existing.return_status !== 'not_returnable') {
-      throw new ApiError('EDIT_WINDOW_CLOSED', { reason: 'return_recorded', return_status: existing.return_status });
+      throw new ApiError('EDIT_WINDOW_CLOSED', {
+        reason: 'return_recorded',
+        return_status: existing.return_status,
+      });
     }
 
     const quantityChanged =
@@ -350,7 +368,10 @@ export class DamagesService {
           qty_count: quantity.qty_count,
           qty_kg: quantity.qty_kg,
           damage_date: damageDate,
-          acting_user_id: await this.actingUser(context, input.acting_user_id ?? record.acting_user_id),
+          acting_user_id: await this.actingUser(
+            context,
+            input.acting_user_id ?? record.acting_user_id,
+          ),
           reason: input.reason === undefined ? record.reason : input.reason?.trim() || null,
           attribution,
           order_id: links.order_id,
@@ -359,8 +380,14 @@ export class DamagesService {
           is_returnable: isReturnable,
           // The flag and the status move together, and a record that was returnable and is now
           // not becomes `not_returnable` rather than a pending return nobody expects (FR-803).
-          return_status: isReturnable === existing.is_returnable ? record.return_status : initialReturnStatus(isReturnable),
-          stock_effect: stockEffect === 'none' && record.stock_effect === 'returned_in' ? 'returned_in' : stockEffect,
+          return_status:
+            isReturnable === existing.is_returnable
+              ? record.return_status
+              : initialReturnStatus(isReturnable),
+          stock_effect:
+            stockEffect === 'none' && record.stock_effect === 'returned_in'
+              ? 'returned_in'
+              : stockEffect,
           est_value_iqd: value.est_value_iqd,
           est_value_usd_cents: value.est_value_usd_cents,
           est_value_source: value.est_value_source,
@@ -393,7 +420,8 @@ export class DamagesService {
             est_value: {
               old: {
                 iqd: record.est_value_iqd === null ? null : Number(record.est_value_iqd),
-                usd_cents: record.est_value_usd_cents === null ? null : Number(record.est_value_usd_cents),
+                usd_cents:
+                  record.est_value_usd_cents === null ? null : Number(record.est_value_usd_cents),
               },
               new: { iqd: value.est_value_iqd, usd_cents: value.est_value_usd_cents },
             },
@@ -415,10 +443,13 @@ export class DamagesService {
   }
 
   /** A void (FR-804): every live movement is reversed and the record keeps its reason. */
-  async void(context: RequestContext, id: string, input: { reason: string; version?: number }): Promise<DamageDetailDto> {
+  async void(
+    context: RequestContext,
+    id: string,
+    input: { reason: string; version?: number },
+  ): Promise<DamageDetailDto> {
     const existing = await this.requireDamage(id);
     if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { damage_id: id });
-    await this.period.assertNotLocked(existing.damage_date);
 
     await this.database.transaction(async (tx) => {
       const record = await this.damages.lock(id, tx);
@@ -434,7 +465,12 @@ export class DamagesService {
       const updated = await this.damages.update(
         id,
         input.version ?? record.version,
-        { status: 'void', void_reason: input.reason, voided_by: context.userId, voided_at: new Date() },
+        {
+          status: 'void',
+          void_reason: input.reason,
+          voided_by: context.userId,
+          voided_at: new Date(),
+        },
         context.userId,
         tx,
       );
@@ -468,19 +504,28 @@ export class DamagesService {
    * on, so the accounting tab, the purchase and the damage record all tell the same story. It
    * does **not** touch stock: the damage record already took the goods out (A-31).
    */
-  async markReturn(context: RequestContext, id: string, input: ReturnDamageInput): Promise<DamageDetailDto> {
+  async markReturn(
+    context: RequestContext,
+    id: string,
+    input: ReturnDamageInput,
+  ): Promise<DamageDetailDto> {
     const existing = await this.requireDamage(id);
     if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { damage_id: id });
-    await this.period.assertNotLocked(existing.damage_date);
 
     const withCredit = Boolean(input.credit);
     if (withCredit) {
       if (existing.attribution !== 'company' || !existing.company_id) {
         throw ApiError.validation([
-          { path: 'credit', code: 'NOT_A_COMPANY_RETURN', message_key: 'errors:credit_needs_company', params: {} },
+          {
+            path: 'credit',
+            code: 'NOT_A_COMPANY_RETURN',
+            message_key: 'errors:credit_needs_company',
+            params: {},
+          },
         ]);
       }
-      if (!can(context, 'companies.record_credit')) throw ApiError.permissionDenied('companies.record_credit');
+      if (!can(context, 'companies.record_credit'))
+        throw ApiError.permissionDenied('companies.record_credit');
     }
 
     const action = withCredit ? 'credited' : input.status;
@@ -511,7 +556,10 @@ export class DamagesService {
         currency: input.credit.currency,
         other_amount: input.credit.other_amount ?? null,
         entry_date: this.period.today(),
-        note: input.credit.note?.trim() || input.note?.trim() || `returned on damage #${existing.number}`,
+        note:
+          input.credit.note?.trim() ||
+          input.note?.trim() ||
+          `returned on damage #${existing.number}`,
         purchase_id: existing.purchase_id,
         damage_id: id,
       });
@@ -557,10 +605,13 @@ export class DamagesService {
    * back in, explicitly and once. It is the only way `stock_effect` becomes `returned_in`, and
    * it exists only where the damage never left stock in the first place (A-30).
    */
-  async returnToStock(context: RequestContext, id: string, input: { note?: string | null }): Promise<DamageDetailDto> {
+  async returnToStock(
+    context: RequestContext,
+    id: string,
+    input: { note?: string | null },
+  ): Promise<DamageDetailDto> {
     const existing = await this.requireDamage(id);
     if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { damage_id: id });
-    await this.period.assertNotLocked(existing.damage_date);
 
     if (existing.attribution !== 'customer_order') {
       throw ApiError.validation([
@@ -574,7 +625,12 @@ export class DamagesService {
     }
     if (existing.stock_effect === 'returned_in') {
       throw ApiError.validation([
-        { path: 'stock_effect', code: 'ALREADY_RETURNED', message_key: 'errors:already_returned_to_stock', params: {} },
+        {
+          path: 'stock_effect',
+          code: 'ALREADY_RETURNED',
+          message_key: 'errors:already_returned_to_stock',
+          params: {},
+        },
       ]);
     }
 
@@ -670,7 +726,12 @@ export class DamagesService {
       const orderId = input.order_id ?? null;
       if (!orderId) {
         throw ApiError.validation([
-          { path: 'order_id', code: 'REQUIRED', message_key: 'errors:field.required', params: { field: 'order_id' } },
+          {
+            path: 'order_id',
+            code: 'REQUIRED',
+            message_key: 'errors:field.required',
+            params: { field: 'order_id' },
+          },
         ]);
       }
       const { rows } = await this.database.query<{ status: string }>(
@@ -705,7 +766,12 @@ export class DamagesService {
       );
       if (!rows[0]) {
         throw ApiError.validation([
-          { path: 'company_id', code: 'NOT_FOUND', message_key: 'errors:field.required', params: {} },
+          {
+            path: 'company_id',
+            code: 'NOT_FOUND',
+            message_key: 'errors:field.required',
+            params: {},
+          },
         ]);
       }
 
@@ -718,7 +784,12 @@ export class DamagesService {
         const row = purchase.rows[0];
         if (!row || row.company_id !== companyId) {
           throw ApiError.validation([
-            { path: 'purchase_id', code: 'NOT_FOUND', message_key: 'errors:field.required', params: {} },
+            {
+              path: 'purchase_id',
+              code: 'NOT_FOUND',
+              message_key: 'errors:field.required',
+              params: {},
+            },
           ]);
         }
         if (row.status === 'void') throw new ApiError('DOCUMENT_VOID', { purchase_id: purchaseId });
@@ -739,7 +810,12 @@ export class DamagesService {
     );
     if (!rowCount) {
       throw ApiError.validation([
-        { path: 'acting_user_id', code: 'NOT_FOUND', message_key: 'errors:field.required', params: {} },
+        {
+          path: 'acting_user_id',
+          code: 'NOT_FOUND',
+          message_key: 'errors:field.required',
+          params: {},
+        },
       ]);
     }
     return requested;
@@ -775,7 +851,9 @@ export class DamagesService {
   private async creditPrefill(row: DamageListRow): Promise<DamageDetailDto['credit_prefill']> {
     if (row.attribution !== 'company' || !row.company_id) return null;
 
-    const line = row.purchase_id ? await this.damages.purchaseLineFor(row.purchase_id, row.item_id) : null;
+    const line = row.purchase_id
+      ? await this.damages.purchaseLineFor(row.purchase_id, row.item_id)
+      : null;
     const prices = await this.items.pricesUpTo(row.item_id, firstOfMonth(row.damage_date));
     const price = damageCreditPrice({
       purchase_line: line,
@@ -808,7 +886,10 @@ export class DamagesService {
 
   private async versionConflict(id: string): Promise<ApiError> {
     const current = await this.damages.findById(id);
-    return new ApiError('VERSION_CONFLICT', { entity: 'damage', version: current?.version ?? null });
+    return new ApiError('VERSION_CONFLICT', {
+      entity: 'damage',
+      version: current?.version ?? null,
+    });
   }
 }
 
@@ -854,7 +935,8 @@ function toDamageDto(row: DamageListRow): DamageDto {
     created_at: row.created_at.toISOString(),
     cost: {
       est_value_iqd: row.est_value_iqd === null ? null : Number(row.est_value_iqd),
-      est_value_usd_cents: row.est_value_usd_cents === null ? null : Number(row.est_value_usd_cents),
+      est_value_usd_cents:
+        row.est_value_usd_cents === null ? null : Number(row.est_value_usd_cents),
       est_value_source: row.est_value_source,
     },
   };

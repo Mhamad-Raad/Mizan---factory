@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, EmptyState, TextField } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { useDebouncedValue } from '../lib/debounce.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { QueryStates } from '../components/states.js';
 
 interface Hit {
@@ -44,8 +44,10 @@ export function SearchPage() {
 
   const hits = search.data?.hits ?? [];
 
+  usePageTitle(t('search:title'));
+
   return (
-    <AppShell title={t('search:title')}>
+    <>
       <div className="mz-stack">
         <TextField
           label={t('search:title')}
@@ -91,6 +93,6 @@ export function SearchPage() {
           </QueryStates>
         )}
       </div>
-    </AppShell>
+    </>
   );
 }

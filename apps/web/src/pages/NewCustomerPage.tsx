@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, SegmentedControl, TextField } from '@mizan/ui';
 import { apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { usePermission } from '../lib/store.js';
@@ -84,8 +84,10 @@ export function NewCustomerPage() {
 
   const matches = duplicates.data?.duplicates ?? [];
 
+  usePageTitle(t('customers:new_customer'));
+
   return (
-    <AppShell title={t('customers:new_customer')}>
+    <>
       <div className="mz-stack">
         <TextField
           label={t('customers:name')}
@@ -185,6 +187,6 @@ export function NewCustomerPage() {
           {t('glossary:cancel')}
         </Button>
       </div>
-    </AppShell>
+    </>
   );
 }

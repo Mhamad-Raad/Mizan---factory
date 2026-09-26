@@ -3,11 +3,12 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Card, SegmentedControl, TextField } from '@mizan/ui';
+import { Button, Card, SegmentedControl, StickyFooter, TextField } from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
+import { PermissionEditor } from '../components/PermissionEditor.js';
+import type { PermissionSelection } from '../components/PermissionEditor.js';
 
-type PresetKey = 'sales' | 'warehouse' | 'accountant' | 'none';
 
 export function NewUserPage() {
   const { t } = useTranslation();
@@ -18,7 +19,13 @@ export function NewUserPage() {
   const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'employee' | 'admin'>('employee');
-  const [preset, setPreset] = useState<PresetKey>('sales');
+  /**
+   * What the new employee may do, chosen here rather than on a second visit — and **nothing is
+   * chosen to begin with**. A preset only ticks boxes when the admin asks it to, so an account
+   * is never created with permissions nobody decided on, and "none of them yet" is a valid
+   * answer. It is the same editor the Permissions tab uses, so the two cannot drift apart.
+   */
+  const [permissions, setPermissions] = useState<PermissionSelection>({ keys: [], preset: 'none' });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
@@ -38,7 +45,8 @@ export function NewUserPage() {
           username,
           phone: phone || null,
           role,
-          preset_key: preset === 'none' ? null : preset,
+          preset_key: permissions.preset === 'none' ? null : permissions.preset,
+          keys: role === 'employee' ? permissions.keys : undefined,
         },
       });
       await queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -56,9 +64,11 @@ export function NewUserPage() {
     }
   };
 
+  usePageTitle(t('users:new_user'));
+
   if (temporaryPassword) {
     return (
-      <AppShell title={t('users:new_user')}>
+      <>
         <Card>
           <div className="mz-stack">
             <h2 className="mz-heading">{t('auth:temporary_password')}</h2>
@@ -75,67 +85,76 @@ export function NewUserPage() {
             <Button onClick={() => navigate('/users')}>{t('users:title')}</Button>
           </div>
         </Card>
-      </AppShell>
+      </>
     );
   }
 
   return (
-    <AppShell title={t('users:new_user')}>
-      <Card>
-        <form className="mz-stack" onSubmit={submit} noValidate>
-          <TextField
-            label={t('users:display_name')}
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-            error={fieldErrors.display_name}
-            required
-          />
-          <TextField
-            label={t('users:username')}
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            error={fieldErrors.username}
-            autoCapitalize="none"
-            autoCorrect="off"
-            dir="ltr"
-            required
-          />
-          <TextField
-            label={t('users:phone')}
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
-            error={fieldErrors.phone}
-            type="tel"
-            inputMode="tel"
-          />
-          <SegmentedControl
-            label={t('users:role')}
-            value={role}
-            onChange={setRole}
-            options={[
-              { value: 'employee', label: t('glossary:employee') },
-              { value: 'admin', label: t('glossary:admin') },
-            ]}
-          />
-          {role === 'employee' ? (
-            <SegmentedControl
-              label={t('glossary:preset')}
-              value={preset}
-              onChange={setPreset}
-              options={[
-                { value: 'sales', label: t('permissions:preset.sales') },
-                { value: 'warehouse', label: t('permissions:preset.warehouse') },
-                { value: 'accountant', label: t('permissions:preset.accountant') },
-                { value: 'none', label: t('permissions:preset.none') },
-              ]}
-            />
-          ) : null}
+    <>
+      <form className="mz-stack" onSubmit={submit} noValidate>
+        <Card>
+          <div className="mz-stack">
+            <h2 className="mz-heading">{t('users:new_user')}</h2>
+            {/* Three short fields and a choice: two columns on anything but a phone. */}
+            <div className="mz-form-grid">
+              <TextField
+                label={t('users:display_name')}
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                error={fieldErrors.display_name}
+                required
+              />
+              <TextField
+                label={t('users:username')}
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                error={fieldErrors.username}
+                autoCapitalize="none"
+                autoCorrect="off"
+                dir="ltr"
+                required
+              />
+              <TextField
+                label={t('users:phone')}
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                error={fieldErrors.phone}
+                type="tel"
+                inputMode="tel"
+              />
+              <SegmentedControl
+                label={t('users:role')}
+                value={role}
+                onChange={setRole}
+                options={[
+                  { value: 'employee', label: t('glossary:employee') },
+                  { value: 'admin', label: t('glossary:admin') },
+                ]}
+              />
+            </div>
+          </div>
+        </Card>
 
+        {role === 'employee' ? (
+          <Card>
+            <div className="mz-stack">
+              <h2 className="mz-heading">{t('glossary:permissions')}</h2>
+              <PermissionEditor value={permissions} onChange={setPermissions} />
+            </div>
+          </Card>
+        ) : (
+          <Card>
+            {/* An admin holds every key, so there is nothing to choose (FR-105). */}
+            <p className="mz-muted">{t('permissions:admin_holds_all')}</p>
+          </Card>
+        )}
+
+        <StickyFooter>
           <Button type="submit" block loading={busy} disabled={!displayName || !username}>
             {t('users:create')}
           </Button>
-        </form>
-      </Card>
-    </AppShell>
+        </StickyFooter>
+      </form>
+    </>
   );
 }

@@ -50,7 +50,11 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
   beforeEach(async () => {
     await resetDatabase();
 
-    const adminUser = await seedUser({ username: 'admin.damages', role: 'admin', displayName: 'Dara' });
+    const adminUser = await seedUser({
+      username: 'admin.damages',
+      role: 'admin',
+      displayName: 'Dara',
+    });
     const warehouseUser = await seedUser({
       username: 'hemin',
       displayName: 'Hemin',
@@ -93,10 +97,16 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     accountant = await signIn(ctx.http, accountantUser);
     noMoney = await signIn(ctx.http, plainUser);
 
-    await as(ctx.http, admin).post('/api/v1/settings/global-rates').send({ rate_iqd_per_usd: '1300' }).expect(201);
+    await as(ctx.http, admin)
+      .post('/api/v1/settings/global-rates')
+      .send({ rate_iqd_per_usd: '1300' })
+      .expect(201);
 
     copper = await createMaterial('Copper wire 2 mm', 'per_kg', { sale: 850, bought: 700 });
-    plates = await createMaterial('Steel plate 10 mm', 'per_piece', { sale: 18_000, bought: 15_000 });
+    plates = await createMaterial('Steel plate 10 mm', 'per_piece', {
+      sale: 18_000,
+      bought: 15_000,
+    });
 
     // A supplier with its own rate, a purchase that brought the copper in, and a customer
     // order that took some of it away again — the three things damage can be attributed to.
@@ -146,7 +156,10 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     pricingUnit: 'per_kg' | 'per_piece',
     prices: { sale: number; bought: number },
   ): Promise<string> {
-    const created = await as(ctx.http, admin).post('/api/v1/items').send({ name, pricing_unit: pricingUnit }).expect(201);
+    const created = await as(ctx.http, admin)
+      .post('/api/v1/items')
+      .send({ name, pricing_unit: pricingUnit })
+      .expect(201);
     const id = created.body.id as string;
     await as(ctx.http, admin)
       .put(`/api/v1/items/${id}/prices/${new Date().toISOString().slice(0, 7)}`)
@@ -241,7 +254,11 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
 
       const movements = await movementsOf(copper);
       const damageOut = movements.find((movement) => movement.movement_type === 'damage_out');
-      expect(damageOut).toMatchObject({ qty_kg: '-4.000', ref_type: 'damage', ref_id: response.body.id });
+      expect(damageOut).toMatchObject({
+        qty_kg: '-4.000',
+        ref_type: 'damage',
+        ref_id: response.body.id,
+      });
     });
 
     it('leaves stock alone when the goods had already been sold (customer order)', async () => {
@@ -291,7 +308,10 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
         qty_kg: null,
       }).expect(201);
 
-      expect(response.body.cost).toMatchObject({ est_value_iqd: 7_500, est_value_source: 'fallback' });
+      expect(response.body.cost).toMatchObject({
+        est_value_iqd: 7_500,
+        est_value_source: 'fallback',
+      });
     });
 
     it('records the value as unknown rather than zero when no month has a bought price', async () => {
@@ -300,7 +320,10 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
         .send({ name: 'Offcuts', pricing_unit: 'per_kg' })
         .expect(201);
 
-      const response = await recordDamage(warehouse, { item_id: unpriced.body.id, qty_kg: '12.000' }).expect(201);
+      const response = await recordDamage(warehouse, {
+        item_id: unpriced.body.id,
+        qty_kg: '12.000',
+      }).expect(201);
       expect(response.body.cost).toEqual({
         est_value_iqd: null,
         est_value_usd_cents: null,
@@ -319,7 +342,7 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
       });
     });
 
-    it('refuses a future date and a date inside a locked period', async () => {
+    it('refuses a future date', async () => {
       // Tomorrow counted from the **Baghdad** day, not from the process clock: at 01:00
       // Baghdad time "now + 24 h" in UTC is still today here, and the API was right to accept
       // it (the recurring lesson of the I3 review, this time in a test).
@@ -328,11 +351,6 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
       const tomorrowInBaghdad = tomorrow.toISOString().slice(0, 10);
       const future = await recordDamage(warehouse, { damage_date: tomorrowInBaghdad }).expect(422);
       expect(future.body.error.fields[0]).toMatchObject({ code: 'FUTURE_DATE' });
-
-      await as(ctx.http, admin).patch('/api/v1/settings').send({ locked_through: today() }).expect(200);
-      const locked = await recordDamage(warehouse, {}).expect(409);
-      expect(locked.body.error.code).toBe('PERIOD_LOCKED');
-      await as(ctx.http, admin).patch('/api/v1/settings').send({ locked_through: null }).expect(200);
     });
   });
 
@@ -344,7 +362,10 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
       expect(noOrder.body.error.fields[0]).toMatchObject({ path: 'order_id', code: 'REQUIRED' });
 
       const noCompany = await recordDamage(warehouse, { attribution: 'company' }).expect(422);
-      expect(noCompany.body.error.fields[0]).toMatchObject({ path: 'company_id', code: 'REQUIRED' });
+      expect(noCompany.body.error.fields[0]).toMatchObject({
+        path: 'company_id',
+        code: 'REQUIRED',
+      });
     });
 
     it('refuses a purchase that belongs to another company', async () => {
@@ -358,7 +379,10 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
         company_id: other.body.id,
         purchase_id: purchase,
       }).expect(422);
-      expect(response.body.error.fields[0]).toMatchObject({ path: 'purchase_id', code: 'NOT_FOUND' });
+      expect(response.body.error.fields[0]).toMatchObject({
+        path: 'purchase_id',
+        code: 'NOT_FOUND',
+      });
     });
 
     it('keeps the attribution and its links consistent at the database level (2.2.5)', async () => {
@@ -405,7 +429,11 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
       const movements = await movementsOf(copper);
       const damageRows = movements.filter((movement) => movement.ref_id === created.body.id);
       // The old 4 kg out, its reversal, and the new 6 kg out: the ledger tells the whole story.
-      expect(damageRows.map((row) => row.movement_type)).toEqual(['damage_out', 'reversal', 'damage_out']);
+      expect(damageRows.map((row) => row.movement_type)).toEqual([
+        'damage_out',
+        'reversal',
+        'damage_out',
+      ]);
       expect(Number((await stockOf(copper)).qty_kg)).toBe(Number(before.qty_kg) - 2);
 
       const rows = await auditRows({ entityId: created.body.id, action: 'update' });
@@ -498,7 +526,10 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     });
 
     it('refuses "return to stock" for goods that were never sold', async () => {
-      const created = await recordDamage(warehouse, { attribution: 'company', company_id: alNoor }).expect(201);
+      const created = await recordDamage(warehouse, {
+        attribution: 'company',
+        company_id: alNoor,
+      }).expect(201);
       const response = await as(ctx.http, warehouse)
         .post(`/api/v1/damages/${created.body.id}/return-to-stock`)
         .send({})
@@ -518,7 +549,9 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
         is_returnable: true,
       }).expect(201);
 
-      const detail = await as(ctx.http, accountant).get(`/api/v1/damages/${created.body.id}`).expect(200);
+      const detail = await as(ctx.http, accountant)
+        .get(`/api/v1/damages/${created.body.id}`)
+        .expect(200);
       // 4 kg × 5,900 د.ع on the purchase line = 23,600 د.ع ≈ 18.02 $ at the company's 1,310.
       expect(detail.body.credit_prefill).toMatchObject({
         amount_iqd: 23_600,
@@ -556,16 +589,32 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
              FROM company_ledger WHERE damage_id = $1`,
           [created.body.id],
         );
-        return rows[0] as { entry_type: string; amount_iqd: string; purchase_id: string; damage_id: string };
+        return rows[0] as {
+          entry_type: string;
+          amount_iqd: string;
+          purchase_id: string;
+          damage_id: string;
+        };
       });
-      expect(entry).toMatchObject({ entry_type: 'credit', amount_iqd: '-23600', purchase_id: purchase });
+      expect(entry).toMatchObject({
+        entry_type: 'credit',
+        amount_iqd: '-23600',
+        purchase_id: purchase,
+      });
 
       // The record's own page shows the credit that came from it.
-      const detail = await as(ctx.http, accountant).get(`/api/v1/damages/${created.body.id}`).expect(200);
-      expect(detail.body.credits[0]).toMatchObject({ side: 'company', cost: { amount_iqd: -23_600 } });
+      const detail = await as(ctx.http, accountant)
+        .get(`/api/v1/damages/${created.body.id}`)
+        .expect(200);
+      expect(detail.body.credits[0]).toMatchObject({
+        side: 'company',
+        cost: { amount_iqd: -23_600 },
+      });
 
       const rows = await auditRows({ entityId: created.body.id, action: 'status_change' });
-      expect(rows[0]?.changes).toEqual({ return_status: { old: 'pending', new: 'returned_credited' } });
+      expect(rows[0]?.changes).toEqual({
+        return_status: { old: 'pending', new: 'returned_credited' },
+      });
     });
 
     it('records a plain return, then a credit from the record already returned', async () => {
@@ -624,7 +673,10 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     });
 
     it('refuses a credit on a record that names no company', async () => {
-      const created = await recordDamage(warehouse, { attribution: 'us', is_returnable: true }).expect(201);
+      const created = await recordDamage(warehouse, {
+        attribution: 'us',
+        is_returnable: true,
+      }).expect(201);
       const response = await as(ctx.http, accountant)
         .post(`/api/v1/damages/${created.body.id}/return`)
         .send({ status: 'returned', credit: { amount: 1_000, currency: 'IQD' } })
@@ -693,12 +745,17 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
         .expect(201);
 
       expect(await customerBalance()).toBe(owedBefore - 2_800);
-      const detail = await as(ctx.http, accountant).get(`/api/v1/damages/${created.body.id}`).expect(200);
+      const detail = await as(ctx.http, accountant)
+        .get(`/api/v1/damages/${created.body.id}`)
+        .expect(200);
       expect(detail.body.credited).toBe(true);
-      expect(detail.body.credits[0]).toMatchObject({ side: 'customer', owner_name: 'Kawa Trading' });
+      expect(detail.body.credits[0]).toMatchObject({
+        side: 'customer',
+        owner_name: 'Kawa Trading',
+      });
     });
 
-    it('refuses a credit that names another customer\'s damage record', async () => {
+    it("refuses a credit that names another customer's damage record", async () => {
       const created = await recordDamage(warehouse, {
         attribution: 'customer_order',
         order_id: order,
@@ -764,7 +821,9 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
 
       // The record carries kilos, which are no longer the measure it is priced in. It must
       // still read — the review found this answering 500 from the kernel throwing.
-      const reread = await as(ctx.http, accountant).get(`/api/v1/damages/${created.body.id}`).expect(200);
+      const reread = await as(ctx.http, accountant)
+        .get(`/api/v1/damages/${created.body.id}`)
+        .expect(200);
       expect(reread.body.qty_kg).toBe('4.000');
       expect(reread.body.credit_prefill).toBeNull();
 
@@ -786,9 +845,18 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
 
   describe('the list, its filters and its period totals (FR-801, FR-807)', () => {
     beforeEach(async () => {
-      await recordDamage(warehouse, { attribution: 'company', company_id: alNoor, is_returnable: true }).expect(201);
+      await recordDamage(warehouse, {
+        attribution: 'company',
+        company_id: alNoor,
+        is_returnable: true,
+      }).expect(201);
       await recordDamage(warehouse, { attribution: 'customer_order', order_id: order }).expect(201);
-      await recordDamage(admin, { item_id: plates, qty_count: 2, qty_kg: null, attribution: 'us' }).expect(201);
+      await recordDamage(admin, {
+        item_id: plates,
+        qty_count: 2,
+        qty_kg: null,
+        attribution: 'us',
+      }).expect(201);
     });
 
     it('totals the quantities and the value over the whole filter, not the page', async () => {
@@ -801,13 +869,19 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     });
 
     it('filters by material, attribution, return status and employee', async () => {
-      const byItem = await as(ctx.http, accountant).get(`/api/v1/damages?item_id=${plates}`).expect(200);
+      const byItem = await as(ctx.http, accountant)
+        .get(`/api/v1/damages?item_id=${plates}`)
+        .expect(200);
       expect(byItem.body.total).toBe(1);
 
-      const byAttribution = await as(ctx.http, accountant).get('/api/v1/damages?attribution=company').expect(200);
+      const byAttribution = await as(ctx.http, accountant)
+        .get('/api/v1/damages?attribution=company')
+        .expect(200);
       expect(byAttribution.body.total).toBe(1);
 
-      const pending = await as(ctx.http, accountant).get('/api/v1/damages?return_status=pending').expect(200);
+      const pending = await as(ctx.http, accountant)
+        .get('/api/v1/damages?return_status=pending')
+        .expect(200);
       expect(pending.body.total).toBe(1);
 
       const byEmployee = await as(ctx.http, accountant)
@@ -817,21 +891,31 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     });
 
     it('lists what a purchase and an order have had damaged, for the links on their pages', async () => {
-      const ofOrder = await as(ctx.http, accountant).get(`/api/v1/damages?order_id=${order}`).expect(200);
+      const ofOrder = await as(ctx.http, accountant)
+        .get(`/api/v1/damages?order_id=${order}`)
+        .expect(200);
       expect(ofOrder.body.total).toBe(1);
 
-      const ofCompany = await as(ctx.http, accountant).get(`/api/v1/damages?company_id=${alNoor}`).expect(200);
+      const ofCompany = await as(ctx.http, accountant)
+        .get(`/api/v1/damages?company_id=${alNoor}`)
+        .expect(200);
       expect(ofCompany.body.total).toBe(1);
     });
 
     it('hides voided records unless they are asked for', async () => {
       const list = await as(ctx.http, accountant).get('/api/v1/damages').expect(200);
       const first = list.body.items[0];
-      await as(ctx.http, admin).post(`/api/v1/damages/${first.id}/void`).send({ reason: 'duplicate' }).expect(200);
+      await as(ctx.http, admin)
+        .post(`/api/v1/damages/${first.id}/void`)
+        .send({ reason: 'duplicate' })
+        .expect(200);
 
-      expect((await as(ctx.http, accountant).get('/api/v1/damages').expect(200)).body.total).toBe(2);
+      expect((await as(ctx.http, accountant).get('/api/v1/damages').expect(200)).body.total).toBe(
+        2,
+      );
       expect(
-        (await as(ctx.http, accountant).get('/api/v1/damages?include_void=true').expect(200)).body.total,
+        (await as(ctx.http, accountant).get('/api/v1/damages?include_void=true').expect(200)).body
+          .total,
       ).toBe(3);
     });
 

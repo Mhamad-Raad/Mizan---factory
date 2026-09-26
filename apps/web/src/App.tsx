@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Button, ErrorState, Skeleton } from '@mizan/ui';
+import { AppShell } from './components/AppShell.js';
 import { RouteBoundary } from './components/RouteBoundary.js';
 import { loadTwice } from './lib/chunk.js';
 import { ApiError, apiRequest } from './lib/api.js';
@@ -39,17 +40,26 @@ function chunk<
 }
 
 const MaterialsPage = chunk(() => import('./pages/MaterialsPage.js'), 'MaterialsPage');
-const MaterialDetailPage = chunk(() => import('./pages/MaterialDetailPage.js'), 'MaterialDetailPage');
+const MaterialDetailPage = chunk(
+  () => import('./pages/MaterialDetailPage.js'),
+  'MaterialDetailPage',
+);
 const NewMaterialPage = chunk(() => import('./pages/NewMaterialPage.js'), 'NewMaterialPage');
 const CustomersPage = chunk(() => import('./pages/CustomersPage.js'), 'CustomersPage');
-const CustomerDetailPage = chunk(() => import('./pages/CustomerDetailPage.js'), 'CustomerDetailPage');
+const CustomerDetailPage = chunk(
+  () => import('./pages/CustomerDetailPage.js'),
+  'CustomerDetailPage',
+);
 const NewCustomerPage = chunk(() => import('./pages/NewCustomerPage.js'), 'NewCustomerPage');
 const CompaniesPage = chunk(() => import('./pages/CompaniesPage.js'), 'CompaniesPage');
 const CompanyDetailPage = chunk(() => import('./pages/CompanyDetailPage.js'), 'CompanyDetailPage');
 const NewCompanyPage = chunk(() => import('./pages/NewCompanyPage.js'), 'NewCompanyPage');
 const PurchasesPage = chunk(() => import('./pages/PurchasesPage.js'), 'PurchasesPage');
 const PurchaseFormPage = chunk(() => import('./pages/PurchaseFormPage.js'), 'PurchaseFormPage');
-const PurchaseDetailPage = chunk(() => import('./pages/PurchaseDetailPage.js'), 'PurchaseDetailPage');
+const PurchaseDetailPage = chunk(
+  () => import('./pages/PurchaseDetailPage.js'),
+  'PurchaseDetailPage',
+);
 const DamagesPage = chunk(() => import('./pages/DamagesPage.js'), 'DamagesPage');
 const DamageFormPage = chunk(() => import('./pages/DamageFormPage.js'), 'DamageFormPage');
 const DamageDetailPage = chunk(() => import('./pages/DamageDetailPage.js'), 'DamageDetailPage');
@@ -102,13 +112,6 @@ interface MeResponse {
   is_locked: boolean;
 }
 
-/** The three keys of the PIN policy every signed-in user may read (D-038). */
-interface PolicyResponse {
-  pin_min_length_shared: number;
-  pin_min_length_personal: number;
-  allow_pin_switch_on_shared: boolean;
-}
-
 export function App() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -118,7 +121,6 @@ export function App() {
   const setSession = useApp((state) => state.setSession);
   const clearSession = useApp((state) => state.clearSession);
   const setOnline = useApp((state) => state.setOnline);
-  const setPreference = useApp((state) => state.setPreference);
 
   /** The offline indicator of FR-1305; reads fall back to what was already loaded. */
   useEffect(() => {
@@ -155,35 +157,6 @@ export function App() {
     if (isLocked && location.pathname !== '/lock') navigate('/lock', { replace: true });
   }, [isLocked, location.pathname, navigate]);
 
-  /**
-   * The PIN policy, fetched while the session is *unlocked* and kept in this browser's
-   * preferences, because the lock screen needs it when `GET /settings` would answer 423
-   * (FR-106, D-038).
-   */
-  const policy = useQuery({
-    queryKey: ['settings', 'pin-policy'],
-    queryFn: () => apiRequest<PolicyResponse>('/settings'),
-    enabled: Boolean(me.data) && !me.data?.is_locked,
-    staleTime: 5 * 60_000,
-  });
-
-  useEffect(() => {
-    if (!policy.data) return;
-    const next = {
-      shared: policy.data.pin_min_length_shared,
-      personal: policy.data.pin_min_length_personal,
-      switchOnShared: policy.data.allow_pin_switch_on_shared,
-    };
-    const current = useApp.getState().preferences.pinPolicy;
-    if (
-      current.shared !== next.shared ||
-      current.personal !== next.personal ||
-      current.switchOnShared !== next.switchOnShared
-    ) {
-      setPreference('pinPolicy', next);
-    }
-  }, [policy.data, setPreference]);
-
   if (me.isPending) {
     return (
       <main className="mz-main">
@@ -212,6 +185,19 @@ export function App() {
     );
   }
 
+  /*
+   * A locked session is standing outside the door, so it gets the door and nothing else: the
+   * lock screen is not a page within the shell, and rendering it inside one would put a second
+   * application frame around it.
+   */
+  if (isLocked || location.pathname === '/lock') {
+    return (
+      <Routes>
+        <Route path="*" element={<LockPage />} />
+      </Routes>
+    );
+  }
+
   return (
     /*
      * A route's chunk may still be arriving: the skeleton is the same one the shell shows
@@ -225,71 +211,70 @@ export function App() {
      * says "loading"; when the chunk is already in memory, which is every visit after the
      * first, nothing suspends and no skeleton is seen at all.
      */
-    <RouteBoundary resetKey={routeKey(location.pathname)} onLeave={() => navigate('/')}>
-        <Suspense
-          key={routeKey(location.pathname)}
-          fallback={
-          <main className="mz-main">
-            <Skeleton lines={6} />
-          </main>
-        }
-      >
-        <Routes>
-          <Route path="/lock" element={<LockPage />} />
-          <Route path="/login" element={<Navigate to="/" replace />} />
-          <Route path="/orders" element={<OrdersPage />} />
-          <Route path="/orders/new" element={<OrderFormPage mode="create" />} />
-          <Route path="/orders/:id" element={<OrderDetailPage />} />
-          <Route path="/orders/:id/edit" element={<OrderFormPage mode="edit" />} />
-          <Route path="/materials" element={<MaterialsPage />} />
-          <Route path="/materials/new" element={<NewMaterialPage />} />
-          <Route path="/materials/:id" element={<MaterialDetailPage />} />
-          <Route path="/customers" element={<CustomersPage />} />
-          <Route path="/customers/new" element={<NewCustomerPage />} />
-          <Route path="/customers/:id" element={<CustomerDetailPage />} />
-          <Route path="/companies" element={<CompaniesPage />} />
-          <Route path="/companies/new" element={<NewCompanyPage />} />
-          <Route path="/companies/:id" element={<CompanyDetailPage />} />
-          <Route path="/purchases" element={<PurchasesPage />} />
-          <Route path="/purchases/new" element={<PurchaseFormPage mode="create" />} />
-          <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
-          <Route path="/purchases/:id/edit" element={<PurchaseFormPage mode="edit" />} />
-          <Route path="/damages" element={<DamagesPage />} />
-          <Route path="/damages/new" element={<DamageFormPage mode="create" />} />
-          <Route path="/damages/:id" element={<DamageDetailPage />} />
-          <Route path="/damages/:id/edit" element={<DamageFormPage mode="edit" />} />
-          <Route path="/users" element={<UsersPage />} />
-          <Route path="/users/new" element={<NewUserPage />} />
-          <Route path="/users/:id" element={<UserDetailPage />} />
-          <Route path="/history" element={<HistoryPage />} />
-          <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/reports/:name" element={<ReportPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/search" element={<SearchPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          {/* A test fixture with a URL, deliberately not in the navigation (spec 3.7.1). */}
-          <Route path="/font-check" element={<FontCheckPage />} />
-          {/* Go-live import (FR-1312, Proposed — not requested); the API is admin-only. */}
-          <Route path="/import" element={<ImportPage />} />
-          {/* The home route sends each user to the first page they may open (spec 2.10.1). */}
-          <Route
-            path="/"
-            element={<Navigate to={landingFor(user, me.data?.permissions ?? [])} replace />}
-          />
-          <Route
-            path="*"
-            element={
-              <main className="mz-main">
-                <ErrorState
-                  title={t('common:not_found_title')}
-                  body={t('common:not_found_body')}
-                  action={<Button onClick={() => navigate('/')}>{t('common:back')}</Button>}
-                />
-              </main>
-            }
-          />
-        </Routes>
-      </Suspense>
-    </RouteBoundary>
+    <AppShell>
+      <RouteBoundary resetKey={routeKey(location.pathname)} onLeave={() => navigate('/')}>
+        {/*
+         * The fallback is the *content* of a screen, not a screen: the shell around it —
+         * sidebar, header, navigation — is rendered by the layout above and stays put while a
+         * chunk or a query arrives. Before this, every tab took the whole window down.
+         */}
+        <Suspense key={routeKey(location.pathname)} fallback={<Skeleton lines={6} />}>
+          <Routes>
+            <Route path="/login" element={<Navigate to="/" replace />} />
+            <Route path="/orders" element={<OrdersPage />} />
+            <Route path="/orders/new" element={<OrderFormPage mode="create" />} />
+            <Route path="/orders/:id" element={<OrderDetailPage />} />
+            <Route path="/orders/:id/edit" element={<OrderFormPage mode="edit" />} />
+            <Route path="/materials" element={<MaterialsPage />} />
+            <Route path="/materials/new" element={<NewMaterialPage />} />
+            <Route path="/materials/:id" element={<MaterialDetailPage />} />
+            <Route path="/customers" element={<CustomersPage />} />
+            <Route path="/customers/new" element={<NewCustomerPage />} />
+            <Route path="/customers/:id" element={<CustomerDetailPage />} />
+            <Route path="/companies" element={<CompaniesPage />} />
+            <Route path="/companies/new" element={<NewCompanyPage />} />
+            <Route path="/companies/:id" element={<CompanyDetailPage />} />
+            <Route path="/purchases" element={<PurchasesPage />} />
+            <Route path="/purchases/new" element={<PurchaseFormPage mode="create" />} />
+            <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
+            <Route path="/purchases/:id/edit" element={<PurchaseFormPage mode="edit" />} />
+            <Route path="/damages" element={<DamagesPage />} />
+            <Route path="/damages/new" element={<DamageFormPage mode="create" />} />
+            <Route path="/damages/:id" element={<DamageDetailPage />} />
+            <Route path="/damages/:id/edit" element={<DamageFormPage mode="edit" />} />
+            <Route path="/users" element={<UsersPage />} />
+            <Route path="/users/new" element={<NewUserPage />} />
+            <Route path="/users/:id" element={<UserDetailPage />} />
+            <Route path="/history" element={<HistoryPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/reports/:name" element={<ReportPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            {/* A test fixture with a URL, deliberately not in the navigation (spec 3.7.1). */}
+            <Route path="/font-check" element={<FontCheckPage />} />
+            {/* Go-live import (FR-1312, Proposed — not requested); the API is admin-only. */}
+            <Route path="/import" element={<ImportPage />} />
+            {/* The home route sends each user to the first page they may open (spec 2.10.1). */}
+            <Route
+              path="/"
+              element={<Navigate to={landingFor(user, me.data?.permissions ?? [])} replace />}
+            />
+            <Route
+              path="*"
+              element={
+                <main className="mz-main">
+                  <ErrorState
+                    title={t('common:not_found_title')}
+                    body={t('common:not_found_body')}
+                    action={<Button onClick={() => navigate('/')}>{t('common:back')}</Button>}
+                  />
+                </main>
+              }
+            />
+          </Routes>
+        </Suspense>
+      </RouteBoundary>
+    </AppShell>
   );
 }

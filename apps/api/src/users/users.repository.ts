@@ -5,7 +5,7 @@ import type { Db } from '../database/pool.js';
 import type { DirectoryEntryDto, UserRole, UserRow } from './user.types.js';
 
 const COLUMNS = `id, username::text AS username, phone, display_name, role, password_hash,
-                 must_change_password, pin_hash, pin_length, preset_key, preset_version,
+                 must_change_password, preset_key, preset_version,
                  is_active, last_login_at, failed_login_count, locked_until,
                  created_at, updated_at, deleted_at, version`;
 
@@ -165,8 +165,6 @@ export class UsersRepository {
         | 'is_active'
         | 'must_change_password'
         | 'password_hash'
-        | 'pin_hash'
-        | 'pin_length'
       >
     >,
     updatedBy: string,
@@ -216,15 +214,19 @@ export class UsersRepository {
   }
 
   /** The whole set is replaced at once, inside the caller's transaction (spec 2.6.5). */
-  async replacePermissions(userId: string, keys: readonly string[], grantedBy: string, tx: Db): Promise<void> {
+  async replacePermissions(
+    userId: string,
+    keys: readonly string[],
+    grantedBy: string,
+    tx: Db,
+  ): Promise<void> {
     await tx.query('DELETE FROM user_permissions WHERE user_id = $1', [userId]);
     if (keys.length === 0) return;
     const placeholders = keys.map((_, index) => `($1, $${index + 3}, $2)`).join(', ');
-    await tx.query(`INSERT INTO user_permissions (user_id, permission_key, granted_by) VALUES ${placeholders}`, [
-      userId,
-      grantedBy,
-      ...keys,
-    ]);
+    await tx.query(
+      `INSERT INTO user_permissions (user_id, permission_key, granted_by) VALUES ${placeholders}`,
+      [userId, grantedBy, ...keys],
+    );
   }
 
   async recordLoginAttempt(
@@ -237,14 +239,50 @@ export class UsersRepository {
     );
   }
 
-  async recentFailures(username: string, withinMinutes: number): Promise<number> {
-    const { rows } = await this.database.query<{ count: string }>(
-      `SELECT count(*)::text AS count FROM login_attempts
-        WHERE username_attempted = $1 AND succeeded = false
-          AND attempted_at > now() - make_interval(mins => $2::int)`,
-      [username, withinMinutes],
+  /**
+   * Where a username stands in the sign-in throttle (2.8, FR-101), read from its attempts.
+   *
+   * `recent` counts the failures in the last `windowMinutes` since its last successful sign-in.
+   * `lastFailureAt` and `run` describe the latest failure and how many failures fell in the
+   * window that ends there: a run of the limit means a lockout that ends a fixed time after
+   * that failure. Attempts refused *during* a lockout are never written here, so knocking on a
+   * locked door cannot move the time it opens.
+   */
+  async failureState(
+    username: string,
+    windowMinutes: number,
+    lookbackMinutes: number,
+  ): Promise<{ recent: number; run: number; lastFailureAt: Date | null }> {
+    const { rows } = await this.database.query<{
+      recent: number;
+      run: number;
+      last_failure_at: Date | null;
+    }>(
+      `WITH last_success AS (
+         SELECT coalesce(max(attempted_at), '-infinity') AS at FROM login_attempts
+          WHERE username_attempted = $1 AND succeeded
+       ),
+       failures AS (
+         SELECT attempted_at FROM login_attempts, last_success
+          WHERE username_attempted = $1 AND NOT succeeded
+            AND attempted_at > last_success.at
+            AND attempted_at > now() - make_interval(mins => $3::int)
+       ),
+       latest AS (SELECT max(attempted_at) AS at FROM failures)
+       SELECT
+         (SELECT count(*) FROM failures
+           WHERE attempted_at > now() - make_interval(mins => $2::int))::int AS recent,
+         (SELECT count(*) FROM failures, latest
+           WHERE attempted_at > latest.at - make_interval(mins => $2::int))::int AS run,
+         (SELECT at FROM latest) AS last_failure_at`,
+      [username, windowMinutes, lookbackMinutes],
     );
-    return Number(rows[0]?.count ?? 0);
+    const row = rows[0];
+    return {
+      recent: row?.recent ?? 0,
+      run: row?.run ?? 0,
+      lastFailureAt: row?.last_failure_at ?? null,
+    };
   }
 
   async markSignedIn(id: string, tx?: Db): Promise<void> {

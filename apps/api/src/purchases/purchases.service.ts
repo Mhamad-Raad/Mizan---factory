@@ -44,6 +44,9 @@ export interface PurchaseLineInput {
   qty_kg?: string | null;
   /** Omitted: the month's bought price applies. Given: an override, logged (FR-408). */
   unit_price?: { amount: number; currency: Currency; other_amount?: number | null } | null;
+  /** The line's total entered directly. Authoritative when present; the unit price is derived
+      from it for the record. This is the simplified "how much did you add, total" path. */
+  total?: { amount: number; currency: Currency; other_amount?: number | null } | null;
   note?: string | null;
 }
 
@@ -167,10 +170,14 @@ export class PurchasesService {
 
   async create(context: RequestContext, input: CreatePurchaseInput): Promise<PurchaseDto> {
     this.period.assertNotFuture(input.purchase_date, 'purchase_date');
-    await this.period.assertNotLocked(input.purchase_date);
     if (input.lines.length === 0) {
       throw ApiError.validation([
-        { path: 'lines', code: 'REQUIRED', message_key: 'errors:field.required', params: { field: 'lines' } },
+        {
+          path: 'lines',
+          code: 'REQUIRED',
+          message_key: 'errors:field.required',
+          params: { field: 'lines' },
+        },
       ]);
     }
 
@@ -178,11 +185,19 @@ export class PurchasesService {
     if (input.company_id && !company) throw ApiError.notFound();
     if (company && !company.is_active) {
       throw ApiError.validation([
-        { path: 'company_id', code: 'INACTIVE', message_key: 'errors:company_inactive', params: {} },
+        {
+          path: 'company_id',
+          code: 'INACTIVE',
+          message_key: 'errors:company_inactive',
+          params: {},
+        },
       ]);
     }
 
-    const { rate, rateSource } = await this.rateFor(input.company_id ?? null, input.rate_iqd_per_usd);
+    const { rate, rateSource } = await this.rateFor(
+      input.company_id ?? null,
+      input.rate_iqd_per_usd,
+    );
     const actingUserId = await this.actingUser(context, input.acting_user_id);
 
     const created = await this.database.transaction(async (tx) => {
@@ -220,7 +235,12 @@ export class PurchasesService {
         tx,
       );
 
-      const insertedLines = await this.purchases.insertLines(purchase.id, lines, context.userId, tx);
+      const insertedLines = await this.purchases.insertLines(
+        purchase.id,
+        lines,
+        context.userId,
+        tx,
+      );
       await this.writeStockIn(tx, context, input.purchase_date, insertedLines, lines);
 
       if (account) {
@@ -245,7 +265,10 @@ export class PurchasesService {
             purchase_date: { old: null, new: input.purchase_date },
             rate_iqd_per_usd: { old: null, new: rate },
             lines: { old: null, new: lines.map(lineSummary) },
-            purchase_total: { old: null, new: { iqd: totals.total_iqd, usd_cents: totals.total_usd_cents } },
+            purchase_total: {
+              old: null,
+              new: { iqd: totals.total_iqd, usd_cents: totals.total_usd_cents },
+            },
           },
           note: input.notes?.trim() || null,
           related: {
@@ -274,36 +297,39 @@ export class PurchasesService {
     input: CreatePurchaseInput & { version: number },
   ): Promise<PurchaseDto> {
     this.period.assertNotFuture(input.purchase_date, 'purchase_date');
-    await this.period.assertNotLocked(input.purchase_date);
 
     const existing = await this.requirePurchase(id);
     if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { purchase_id: id });
-    await this.period.assertNotLocked(existing.purchase_date);
     await this.assertMayEdit(context, existing);
 
     if ((input.company_id ?? null) !== existing.company_id) {
       // Moving a purchase to another company would move a debt between two balances: that is a
       // void and a new purchase, not an edit (the same rule as orders, REVIEW-I1 finding 11).
       throw ApiError.validation([
-        { path: 'company_id', code: 'IMMUTABLE', message_key: 'errors:purchase_company_immutable', params: {} },
+        {
+          path: 'company_id',
+          code: 'IMMUTABLE',
+          message_key: 'errors:purchase_company_immutable',
+          params: {},
+        },
       ]);
     }
 
     const { rate, rateSource } = await this.rateFor(existing.company_id, input.rate_iqd_per_usd);
-    const actingUserId = await this.actingUser(context, input.acting_user_id ?? existing.acting_user_id);
+    const actingUserId = await this.actingUser(
+      context,
+      input.acting_user_id ?? existing.acting_user_id,
+    );
 
     await this.database.transaction(async (tx) => {
       const purchase = await this.purchases.lock(id, tx);
       if (!purchase) throw ApiError.notFound();
       if (purchase.version !== input.version) throw await this.versionConflict(id);
 
-      const account = purchase.company_id ? await this.ledger.lockOwner(tx, purchase.company_id) : null;
+      const account = purchase.company_id
+        ? await this.ledger.lockOwner(tx, purchase.company_id)
+        : null;
       if (purchase.company_id && !account) throw ApiError.notFound();
-
-      if (await this.purchases.hasLinkedMoney(id, tx)) {
-        const allowed = await this.settings.get('allow_edit_after_payment');
-        if (!allowed) throw new ApiError('EDIT_WINDOW_CLOSED', { reason: 'payment_linked' });
-      }
 
       const oldLines = await this.purchases.linesOf(id, tx);
 
@@ -399,7 +425,6 @@ export class PurchasesService {
   ): Promise<PurchaseDto> {
     const existing = await this.requirePurchase(id);
     if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { purchase_id: id });
-    await this.period.assertNotLocked(existing.purchase_date);
 
     if (input.undo) {
       const age = Date.now() - existing.created_at.getTime();
@@ -415,7 +440,9 @@ export class PurchasesService {
       if (!purchase) throw ApiError.notFound();
       if (purchase.status === 'void') throw new ApiError('DOCUMENT_VOID', { purchase_id: id });
 
-      const account = purchase.company_id ? await this.ledger.lockOwner(tx, purchase.company_id) : null;
+      const account = purchase.company_id
+        ? await this.ledger.lockOwner(tx, purchase.company_id)
+        : null;
       const lines = await this.purchases.linesOf(id, tx);
 
       await this.stock.reverseLiveForRef(
@@ -435,7 +462,12 @@ export class PurchasesService {
       const updated = await this.purchases.updatePurchase(
         id,
         input.version ?? purchase.version,
-        { status: 'void', void_reason: input.reason, voided_by: context.userId, voided_at: new Date() },
+        {
+          status: 'void',
+          void_reason: input.reason,
+          voided_by: context.userId,
+          voided_at: new Date(),
+        },
         context.userId,
         tx,
       );
@@ -463,7 +495,9 @@ export class PurchasesService {
     const purchase = await this.requirePurchase(id);
     const [audit, entries] = await Promise.all([
       this.history.list({ entity_type: 'purchase', entity_id: id, ...options }),
-      purchase.company_id ? this.ledger.entriesFor(this.database, purchase.company_id) : Promise.resolve([]),
+      purchase.company_id
+        ? this.ledger.entriesFor(this.database, purchase.company_id)
+        : Promise.resolve([]),
     ]);
 
     return {
@@ -502,7 +536,12 @@ export class PurchasesService {
   async balanceOf(id: string): Promise<{
     purchase_id: string;
     settlement_currency: Currency | null;
-    cost: { total: number | null; linked: number | null; allocated: number | null; remaining: number | null };
+    cost: {
+      total: number | null;
+      linked: number | null;
+      allocated: number | null;
+      remaining: number | null;
+    };
   }> {
     const purchase = await this.requirePurchase(id);
     if (!purchase.company_id || !purchase.settlement_currency) {
@@ -558,7 +597,12 @@ export class PurchasesService {
       const rate = formatRate(typed);
       if (Number(rate) <= 0) {
         throw ApiError.validation([
-          { path: 'rate_iqd_per_usd', code: 'INVALID', message_key: 'errors:field.required', params: {} },
+          {
+            path: 'rate_iqd_per_usd',
+            code: 'INVALID',
+            message_key: 'errors:field.required',
+            params: {},
+          },
         ]);
       }
       return { rate, rateSource: 'manual' };
@@ -580,28 +624,24 @@ export class PurchasesService {
     );
     if (!rowCount) {
       throw ApiError.validation([
-        { path: 'acting_user_id', code: 'NOT_FOUND', message_key: 'errors:field.required', params: {} },
+        {
+          path: 'acting_user_id',
+          code: 'NOT_FOUND',
+          message_key: 'errors:field.required',
+          params: {},
+        },
       ]);
     }
     return requested;
   }
 
-  /** Creator, admin, or `purchases.edit`; and only inside the window (FR-405). */
+  /** Creator, admin, or `purchases.edit` (FR-405). */
   private async assertMayEdit(context: RequestContext, purchase: PurchaseListRow): Promise<void> {
     const mayEdit =
-      context.role === 'admin' || purchase.created_by === context.userId || can(context, 'purchases.edit');
+      context.role === 'admin' ||
+      purchase.created_by === context.userId ||
+      can(context, 'purchases.edit');
     if (!mayEdit) throw ApiError.permissionDenied('purchases.edit');
-
-    const windowDays = await this.settings.get('purchase_edit_window_days');
-    if (windowDays !== null) {
-      const days = daysBetween(purchase.purchase_date, this.period.today());
-      if (days > windowDays) {
-        throw new ApiError('EDIT_WINDOW_CLOSED', {
-          window_days: windowDays,
-          purchase_date: purchase.purchase_date,
-        });
-      }
-    }
   }
 
   /**
@@ -623,7 +663,12 @@ export class PurchasesService {
       const item = await this.items.findById(input.item_id, tx);
       if (!item) {
         throw ApiError.validation([
-          { path: `lines.${index}.item_id`, code: 'NOT_FOUND', message_key: 'errors:field.required', params: {} },
+          {
+            path: `lines.${index}.item_id`,
+            code: 'NOT_FOUND',
+            message_key: 'errors:field.required',
+            params: {},
+          },
         ]);
       }
       if (!item.is_active) {
@@ -661,57 +706,92 @@ export class PurchasesService {
       let priceSource: 'month' | 'override';
       let monthPriceId: string | null;
       let priceFromMonth: string | null;
-      let bothTyped = false;
+      let lineTotalIqd: number;
+      let lineTotalUsdCents: number;
+      let lineRate: Rate = rate;
+      let lineRateSource: RateSource = rateSource;
 
-      if (input.unit_price) {
+      if (input.total) {
+        // The simplest purchase (spec: "how much did you add, total"): the user gives the total
+        // and it is stored as typed. The entered side is exact and the other is converted at the
+        // rate; the unit price is derived from the total for the record and is never multiplied
+        // back (2.3.4).
         const pair = completePair({
-          amount: input.unit_price.amount,
-          currency: input.unit_price.currency,
+          amount: input.total.amount,
+          currency: input.total.currency,
           rate,
           rate_source: rateSource,
-          other_amount: input.unit_price.other_amount ?? undefined,
+          other_amount: input.total.other_amount ?? undefined,
         });
-        unitPriceIqd = pair.amount_iqd;
-        unitPriceUsdCents = pair.amount_usd_cents;
-        enteredCurrency = input.unit_price.currency;
+        lineTotalIqd = pair.amount_iqd;
+        lineTotalUsdCents = pair.amount_usd_cents;
+        const quantity = Number(pricedQuantity);
+        unitPriceIqd = Math.round(lineTotalIqd / quantity);
+        unitPriceUsdCents = Math.round(lineTotalUsdCents / quantity);
+        enteredCurrency = input.total.currency;
         priceSource = 'override';
         monthPriceId = boughtSelection.row?.id ?? null;
         priceFromMonth = null;
-        bothTyped = input.unit_price.other_amount !== undefined && input.unit_price.other_amount !== null;
-      } else {
-        // The month price is taken in the currency it was typed in, and the *other* side is
-        // calculated at the purchase's rate — which is what values a USD-settled company's
-        // purchase at that company's rate even when the price was typed in dinars (2.3.3).
-        const defaulted = defaultLinePrice(boughtSelection, rate);
-        if (!defaulted) {
-          throw ApiError.validation([
-            {
-              path: `lines.${index}.unit_price`,
-              code: 'PRICE_REQUIRED',
-              message_key: 'errors:price_required',
-              params: { item: item.name },
-            },
-          ]);
+        if (input.total.other_amount !== undefined && input.total.other_amount !== null) {
+          lineRateSource = 'manual';
         }
-        unitPriceIqd = defaulted.unit_price_iqd;
-        unitPriceUsdCents = defaulted.unit_price_usd_cents;
-        enteredCurrency = defaulted.price_entered_currency;
-        priceSource = 'month';
-        monthPriceId = defaulted.month_price_id;
-        priceFromMonth = defaulted.carried_forward ? defaulted.from_month : null;
-      }
+      } else {
+        let bothTyped = false;
+        if (input.unit_price) {
+          const pair = completePair({
+            amount: input.unit_price.amount,
+            currency: input.unit_price.currency,
+            rate,
+            rate_source: rateSource,
+            other_amount: input.unit_price.other_amount ?? undefined,
+          });
+          unitPriceIqd = pair.amount_iqd;
+          unitPriceUsdCents = pair.amount_usd_cents;
+          enteredCurrency = input.unit_price.currency;
+          priceSource = 'override';
+          monthPriceId = boughtSelection.row?.id ?? null;
+          priceFromMonth = null;
+          bothTyped =
+            input.unit_price.other_amount !== undefined && input.unit_price.other_amount !== null;
+        } else {
+          // The month price is taken in the currency it was typed in, and the *other* side is
+          // calculated at the purchase's rate — which is what values a USD-settled company's
+          // purchase at that company's rate even when the price was typed in dinars (2.3.3).
+          const defaulted = defaultLinePrice(boughtSelection, rate);
+          if (!defaulted) {
+            throw ApiError.validation([
+              {
+                path: `lines.${index}.unit_price`,
+                code: 'PRICE_REQUIRED',
+                message_key: 'errors:price_required',
+                params: { item: item.name },
+              },
+            ]);
+          }
+          unitPriceIqd = defaulted.unit_price_iqd;
+          unitPriceUsdCents = defaulted.unit_price_usd_cents;
+          enteredCurrency = defaulted.price_entered_currency;
+          priceSource = 'month';
+          monthPriceId = defaulted.month_price_id;
+          priceFromMonth = defaulted.carried_forward ? defaulted.from_month : null;
+        }
 
-      const totals = computeLineTotals({
-        priced_measure: pricedMeasure,
-        qty_count: qtyCount,
-        qty_kg: qtyKg,
-        unit_price_iqd: unitPriceIqd,
-        unit_price_usd_cents: unitPriceUsdCents,
-        price_entered_currency: enteredCurrency,
-        both_prices_typed: bothTyped,
-        document_rate: rate,
-        document_rate_source: rateSource,
-      });
+        const totals = computeLineTotals({
+          priced_measure: pricedMeasure,
+          qty_count: qtyCount,
+          qty_kg: qtyKg,
+          unit_price_iqd: unitPriceIqd,
+          unit_price_usd_cents: unitPriceUsdCents,
+          price_entered_currency: enteredCurrency,
+          both_prices_typed: bothTyped,
+          document_rate: rate,
+          document_rate_source: rateSource,
+        });
+        lineTotalIqd = totals.line_total_iqd;
+        lineTotalUsdCents = totals.line_total_usd_cents;
+        lineRate = totals.rate_iqd_per_usd;
+        lineRateSource = totals.rate_source;
+      }
 
       prepared.push({
         line_no: index + 1,
@@ -725,10 +805,10 @@ export class PurchasesService {
         price_entered_currency: enteredCurrency,
         price_source: priceSource,
         month_price_id: monthPriceId,
-        rate_iqd_per_usd: totals.rate_iqd_per_usd,
-        rate_source: totals.rate_source,
-        line_total_iqd: totals.line_total_iqd,
-        line_total_usd_cents: totals.line_total_usd_cents,
+        rate_iqd_per_usd: lineRate,
+        rate_source: lineRateSource,
+        line_total_iqd: lineTotalIqd,
+        line_total_usd_cents: lineTotalUsdCents,
         note: input.note?.trim() || null,
         price_from_month: priceFromMonth,
       });
@@ -759,7 +839,9 @@ export class PurchasesService {
       rate,
       rate_source: rateSource,
       other_amount:
-        input.other_amount === undefined || input.other_amount === null ? undefined : Math.abs(input.other_amount),
+        input.other_amount === undefined || input.other_amount === null
+          ? undefined
+          : Math.abs(input.other_amount),
     });
 
     const gross = documentTotals(lines);
@@ -841,7 +923,10 @@ export class PurchasesService {
 
   private async versionConflict(id: string): Promise<ApiError> {
     const current = await this.purchases.findById(id);
-    return new ApiError('VERSION_CONFLICT', { entity: 'purchase', version: current?.version ?? null });
+    return new ApiError('VERSION_CONFLICT', {
+      entity: 'purchase',
+      version: current?.version ?? null,
+    });
   }
 }
 
@@ -854,12 +939,6 @@ function duplicateItems(lines: readonly PreparedLine[]): { item_id: string; item
     else seen.set(line.item_id, line.item_name);
   }
   return [...duplicates].map(([item_id, item_name]) => ({ item_id, item_name }));
-}
-
-function daysBetween(from: string, to: string): number {
-  const a = Date.parse(`${from}T00:00:00Z`);
-  const b = Date.parse(`${to}T00:00:00Z`);
-  return Math.round((b - a) / 86_400_000);
 }
 
 function lineSummary(line: PreparedLine) {

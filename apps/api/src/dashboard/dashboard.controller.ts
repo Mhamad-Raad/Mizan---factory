@@ -6,7 +6,6 @@ import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { Database } from '../database/pool.js';
 import { RatesService } from '../rates/rates.service.js';
 import { PeriodService } from '../settings/period.service.js';
-import { SettingsService } from '../settings/settings.service.js';
 
 export interface DashboardTile {
   key: string;
@@ -47,7 +46,6 @@ export class DashboardController {
     private readonly database: Database,
     private readonly period: PeriodService,
     private readonly rates: RatesService,
-    private readonly settings: SettingsService,
   ) {}
 
   @Get()
@@ -55,7 +53,7 @@ export class DashboardController {
   async tiles(@Req() request: RequestWithContext): Promise<{
     date: string;
     tiles: DashboardTile[];
-    rate: { rate_iqd_per_usd: string; is_stale: boolean } | null;
+    rate: { rate_iqd_per_usd: string } | null;
   }> {
     const context = contextOf(request);
     const today = this.period.today();
@@ -75,23 +73,13 @@ export class DashboardController {
     // Everyone's own recent actions, which needs no permission: it is their own trail (1.5.2).
     asking.push(this.myActionsTile(context.userId, today));
 
-    const [groups, current, staleDays] = await Promise.all([
-      Promise.all(asking),
-      this.rates.current(),
-      this.settings.get('rate_stale_days'),
-    ]);
+    const [groups, current] = await Promise.all([Promise.all(asking), this.rates.current()]);
     const tiles = groups.flat();
 
     return {
       date: today,
       tiles,
-      rate: current
-        ? {
-            rate_iqd_per_usd: current.rate_iqd_per_usd,
-            // Proposed — not requested (FR-1106): a forgotten rate skews every dollar figure.
-            is_stale: daysSince(current.effective_from) > staleDays,
-          }
-        : null,
+      rate: current ? { rate_iqd_per_usd: current.rate_iqd_per_usd } : null,
     };
   }
 
@@ -231,8 +219,4 @@ export class DashboardController {
     );
     return [{ key: 'my_actions_today', count: Number(rows[0]?.count ?? 0) }];
   }
-}
-
-function daysSince(isoDate: string): number {
-  return (Date.now() - Date.parse(isoDate)) / 86_400_000;
 }

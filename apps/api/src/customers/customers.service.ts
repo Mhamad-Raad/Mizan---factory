@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { amountIn, completePair, convert, settleInFull } from '@mizan/money';
+import { amountIn, completePair, convert, formatRate, settleInFull } from '@mizan/money';
 import type { Currency, MoneyPair, Rate } from '@mizan/money';
 import { balanceAsOf, balanceOf } from '@mizan/ledger';
 import type { LedgerEntry, LedgerGroup } from '@mizan/ledger';
@@ -17,7 +17,13 @@ import { PeriodService } from '../settings/period.service.js';
 import { SettingsService } from '../settings/settings.service.js';
 import { CustomersRepository } from './customers.repository.js';
 import type { CustomerFilters, CustomerScope } from './customers.repository.js';
-import type { BalanceDto, CustomerDto, CustomerRow, LedgerGroupDto } from './customer.types.js';
+import type {
+  BalanceDto,
+  CustomerDto,
+  CustomerRateInfo,
+  CustomerRow,
+  LedgerGroupDto,
+} from './customer.types.js';
 
 export interface MoneyInput {
   amount: number;
@@ -111,15 +117,23 @@ export class CustomersService {
     return { userId: context.userId, viewAll: can(context, 'customers.view_all') };
   }
 
-  async list(context: RequestContext, filters: CustomerFilters): Promise<{ items: CustomerDto[]; total: number }> {
+  async list(
+    context: RequestContext,
+    filters: CustomerFilters,
+  ): Promise<{ items: CustomerDto[]; total: number }> {
     const { rows, total } = await this.customers.list(filters, this.scopeOf(context));
-    const rate = await this.rates.current();
+    // The list values balances at the global rate; a customer's own rate is applied on the
+    // detail, where a single per-row lookup is not thousands of them.
+    const globalRate = await this.rates.current();
+    const rateInfo: CustomerRateInfo | null = globalRate
+      ? { rate_iqd_per_usd: globalRate.rate_iqd_per_usd, since: null, is_customer_rate: false }
+      : null;
     return {
       items: rows.map((row) =>
         toCustomerDto(row, {
           assigned_user_name: row.assigned_user_name,
           balance: Number(row.balance),
-          rate: rate?.rate_iqd_per_usd ?? null,
+          rate: rateInfo,
         }),
       ),
       total,
@@ -133,23 +147,31 @@ export class CustomersService {
 
   private async detailOf(row: CustomerRow, tx?: Db): Promise<CustomerDto> {
     const db = tx ?? this.database;
-    const [balance, rate, assignee] = await Promise.all([
+    const [balance, customerRate, globalRate, assignee] = await Promise.all([
       this.customers.balanceOf(row.id, db),
+      this.customers.currentRate(row.id, db),
       this.rates.current(db),
       this.assigneeName(db, row.assigned_user_id),
     ]);
-    return toCustomerDto(row, {
-      assigned_user_name: assignee,
-      balance,
-      rate: rate?.rate_iqd_per_usd ?? null,
-    });
+    // The customer's own rate is authoritative; a customer with none falls back to the global.
+    const rateInfo: CustomerRateInfo | null = customerRate
+      ? {
+          rate_iqd_per_usd: formatRate(customerRate.rate),
+          since: customerRate.since.toISOString(),
+          is_customer_rate: true,
+        }
+      : globalRate
+        ? { rate_iqd_per_usd: globalRate.rate_iqd_per_usd, since: null, is_customer_rate: false }
+        : null;
+    return toCustomerDto(row, { assigned_user_name: assignee, balance, rate: rateInfo });
   }
 
   private async assigneeName(db: Db, userId: string | null): Promise<string | null> {
     if (!userId) return null;
-    const { rows } = await db.query<{ display_name: string }>('SELECT display_name FROM users WHERE id = $1', [
-      userId,
-    ]);
+    const { rows } = await db.query<{ display_name: string }>(
+      'SELECT display_name FROM users WHERE id = $1',
+      [userId],
+    );
     return rows[0]?.display_name ?? null;
   }
 
@@ -166,7 +188,12 @@ export class CustomersService {
    * "ask your admin to assign it to you", which is what stops the directory fragmenting.
    */
   async checkDuplicates(name: string): Promise<{
-    duplicates: { id: string; name: string; assigned_user_name: string | null; assigned_to_me: boolean }[];
+    duplicates: {
+      id: string;
+      name: string;
+      assigned_user_name: string | null;
+      assigned_to_me: boolean;
+    }[];
   }> {
     const rows = await this.customers.findDuplicates(name);
     return {
@@ -186,7 +213,7 @@ export class CustomersService {
     // A customer created by someone who sees only their own is assigned to them, or they
     // could not use the record they just made (FR-501).
     const assignedTo = can(context, 'customers.assign')
-      ? input.assigned_user_id ?? (scope.viewAll ? null : context.userId)
+      ? (input.assigned_user_id ?? (scope.viewAll ? null : context.userId))
       : scope.viewAll
         ? null
         : context.userId;
@@ -251,7 +278,12 @@ export class CustomersService {
       if (!before) throw ApiError.notFound();
       if (before.is_system) {
         throw ApiError.validation([
-          { path: 'id', code: 'SYSTEM_CUSTOMER', message_key: 'errors:system_customer', params: {} },
+          {
+            path: 'id',
+            code: 'SYSTEM_CUSTOMER',
+            message_key: 'errors:system_customer',
+            params: {},
+          },
         ]);
       }
 
@@ -317,7 +349,12 @@ export class CustomersService {
       if (!before) throw ApiError.notFound();
       if (before.is_system) {
         throw ApiError.validation([
-          { path: 'id', code: 'SYSTEM_CUSTOMER', message_key: 'errors:system_customer', params: {} },
+          {
+            path: 'id',
+            code: 'SYSTEM_CUSTOMER',
+            message_key: 'errors:system_customer',
+            params: {},
+          },
         ]);
       }
       if (before.is_active === isActive) return before;
@@ -334,7 +371,13 @@ export class CustomersService {
         ]);
       }
 
-      const row = await this.customers.update(id, input.version, { is_active: isActive }, context.userId, tx);
+      const row = await this.customers.update(
+        id,
+        input.version,
+        { is_active: isActive },
+        context.userId,
+        tx,
+      );
       if (!row) throw await this.versionConflict(id);
 
       await this.audit.record(
@@ -398,7 +441,12 @@ export class CustomersService {
       if (!before) throw ApiError.notFound();
       if (before.is_system) {
         throw ApiError.validation([
-          { path: 'id', code: 'SYSTEM_CUSTOMER', message_key: 'errors:system_customer', params: {} },
+          {
+            path: 'id',
+            code: 'SYSTEM_CUSTOMER',
+            message_key: 'errors:system_customer',
+            params: {},
+          },
         ]);
       }
       if (input.user_id) {
@@ -408,7 +456,12 @@ export class CustomersService {
         );
         if (!rowCount) {
           throw ApiError.validation([
-            { path: 'user_id', code: 'NOT_FOUND', message_key: 'errors:field.required', params: {} },
+            {
+              path: 'user_id',
+              code: 'NOT_FOUND',
+              message_key: 'errors:field.required',
+              params: {},
+            },
           ]);
         }
       }
@@ -574,13 +627,17 @@ export class CustomersService {
     };
     const { groups, entries } = await this.ledger.groupsFor(this.database, customer, options);
 
-    const visible = options.include_undone ? groups : groups.filter((group) => !group.hidden_by_default);
+    const visible = options.include_undone
+      ? groups
+      : groups.filter((group) => !group.hidden_by_default);
     // Newest first on screen; the running balance was computed in posting order (2.4.1), over
     // the whole ledger, so the page returned still carries the figures History recorded.
     const newestFirst = [...visible].reverse();
     const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
     const page = newestFirst.slice(0, limit);
-    const names = await this.userNames(page.flatMap((group) => group.rows.map((line) => line.entry)));
+    const names = await this.userNames(
+      page.flatMap((group) => group.rows.map((line) => line.entry)),
+    );
 
     return {
       customer: {
@@ -604,8 +661,16 @@ export class CustomersService {
    * customer's damage: the record is attributed to one of their orders. Anything else is a
    * mis-typed id, and the alternative to refusing it is a credit on the wrong account.
    */
-  private async assertDamageOfCustomer(tx: Db, damageId: string, customerId: string): Promise<void> {
-    const { rows } = await tx.query<{ status: string; attribution: string; customer_id: string | null }>(
+  private async assertDamageOfCustomer(
+    tx: Db,
+    damageId: string,
+    customerId: string,
+  ): Promise<void> {
+    const { rows } = await tx.query<{
+      status: string;
+      attribution: string;
+      customer_id: string | null;
+    }>(
       `SELECT d.status::text AS status, d.attribution::text AS attribution, o.customer_id
          FROM damages d
          LEFT JOIN orders o ON o.id = d.order_id
@@ -622,9 +687,9 @@ export class CustomersService {
   }
 
   private async userNames(entries: readonly LedgerEntry[]): Promise<Map<string, string>> {
-    const ids = [...new Set(entries.flatMap((entry) => [entry.performed_by_user_id, entry.created_by]))].filter(
-      (id): id is string => Boolean(id),
-    );
+    const ids = [
+      ...new Set(entries.flatMap((entry) => [entry.performed_by_user_id, entry.created_by])),
+    ].filter((id): id is string => Boolean(id));
     if (ids.length === 0) return new Map();
     const { rows } = await this.database.query<{ id: string; display_name: string }>(
       'SELECT id, display_name FROM users WHERE id = ANY($1::uuid[])',
@@ -649,7 +714,6 @@ export class CustomersService {
     options: { authorisedByOrder?: boolean } = {},
   ): Promise<WriteResultDto[]> {
     this.period.assertNotFuture(input.entry_date, 'entry_date');
-    await this.period.assertNotLocked(input.entry_date);
     // The orders module passes `authorisedByOrder` when the order's own scope rule already
     // let this caller through (2.6.4): an employee keeps paying off an order they entered
     // even after its customer was reassigned.
@@ -676,7 +740,10 @@ export class CustomersService {
             currency: part.currency,
             rate,
             rate_source: 'global',
-            other_amount: part.other_amount === undefined || part.other_amount === null ? undefined : -Math.abs(part.other_amount),
+            other_amount:
+              part.other_amount === undefined || part.other_amount === null
+                ? undefined
+                : -Math.abs(part.other_amount),
           });
           results.push(
             await this.writeMoneyRow(context, tx, customer, {
@@ -700,7 +767,12 @@ export class CustomersService {
           : balanceOf(await this.ledger.entriesFor(tx, customer.id), customer.settlement_currency);
         if (remaining <= 0) {
           throw ApiError.validation([
-            { path: 'settle_in_full', code: 'NOTHING_OWED', message_key: 'errors:nothing_owed', params: {} },
+            {
+              path: 'settle_in_full',
+              code: 'NOTHING_OWED',
+              message_key: 'errors:nothing_owed',
+              params: {},
+            },
           ]);
         }
 
@@ -784,7 +856,9 @@ export class CustomersService {
         rate,
         rate_source: 'global',
         other_amount:
-          input.other_amount === undefined || input.other_amount === null ? undefined : -Math.abs(input.other_amount),
+          input.other_amount === undefined || input.other_amount === null
+            ? undefined
+            : -Math.abs(input.other_amount),
       });
 
       results.push(
@@ -816,11 +890,15 @@ export class CustomersService {
     input: LedgerEntryInput,
   ): Promise<WriteResultDto> {
     this.period.assertNotFuture(input.entry_date, 'entry_date');
-    await this.period.assertNotLocked(input.entry_date);
     await this.requireCustomer(context, id);
     if (!input.note?.trim()) {
       throw ApiError.validation([
-        { path: 'note', code: 'REQUIRED', message_key: 'errors:field.required', params: { field: 'note' } },
+        {
+          path: 'note',
+          code: 'REQUIRED',
+          message_key: 'errors:field.required',
+          params: { field: 'note' },
+        },
       ]);
     }
 
@@ -833,8 +911,7 @@ export class CustomersService {
 
       // Signs follow the ledger's convention: positive increases what the customer owes.
       const magnitude = Math.abs(input.amount);
-      const signed =
-        kind === 'credit' ? -magnitude : kind === 'refund' ? magnitude : input.amount;
+      const signed = kind === 'credit' ? -magnitude : kind === 'refund' ? magnitude : input.amount;
 
       const money = completePair({
         amount: signed,
@@ -857,12 +934,17 @@ export class CustomersService {
         order_id: input.order_id ?? null,
         damage_id: input.damage_id ?? null,
         performed_by_user_id: input.performed_by ?? context.userId,
-        method: kind === 'refund' ? input.method ?? 'cash' : null,
+        method: kind === 'refund' ? (input.method ?? 'cash') : null,
         // A refund is money leaving the till, so it gets a voucher like a payment (FR-614).
         voucher: kind === 'refund',
       });
 
-      const [withStatus] = await this.withOrderStatus(tx, [result], input.order_id ?? null, customer);
+      const [withStatus] = await this.withOrderStatus(
+        tx,
+        [result],
+        input.order_id ?? null,
+        customer,
+      );
       return withStatus as WriteResultDto;
     });
   }
@@ -880,7 +962,12 @@ export class CustomersService {
   ): Promise<WriteResultDto> {
     if (!input.note?.trim()) {
       throw ApiError.validation([
-        { path: 'note', code: 'REQUIRED', message_key: 'errors:field.required', params: { field: 'note' } },
+        {
+          path: 'note',
+          code: 'REQUIRED',
+          message_key: 'errors:field.required',
+          params: { field: 'note' },
+        },
       ]);
     }
     await this.requireCustomer(context, id);
@@ -891,9 +978,8 @@ export class CustomersService {
       const target = entries.find((entry) => entry.id === entryId);
       if (!target) throw ApiError.notFound();
 
-      await this.period.assertNotLocked(target.entry_date);
-
-      const ownSameDay = target.created_by === context.userId && target.entry_date === this.period.today();
+      const ownSameDay =
+        target.created_by === context.userId && target.entry_date === this.period.today();
       if (!ownSameDay && context.role !== 'admin') {
         throw ApiError.permissionDenied('admin');
       }
@@ -905,12 +991,21 @@ export class CustomersService {
       });
 
       const orderId = (target.refs.order_id as string | null) ?? null;
-      const [withStatus] = await this.withOrderStatus(tx, [toWriteResult(result)], orderId, customer);
+      const [withStatus] = await this.withOrderStatus(
+        tx,
+        [toWriteResult(result)],
+        orderId,
+        customer,
+      );
       return withStatus as WriteResultDto;
     });
   }
 
-  async historyOf(context: RequestContext, id: string, options: { cursor?: string; limit?: number }) {
+  async historyOf(
+    context: RequestContext,
+    id: string,
+    options: { cursor?: string; limit?: number },
+  ) {
     await this.requireCustomer(context, id);
     return this.history.list({ entity_type: 'customer', entity_id: id, ...options });
   }
@@ -1028,7 +1123,9 @@ export class CustomersService {
       rate_iqd_per_usd: entry.rate_iqd_per_usd,
       method: entry.method ?? null,
       note: entry.note,
-      performed_by_name: entry.performed_by_user_id ? names.get(entry.performed_by_user_id) ?? null : null,
+      performed_by_name: entry.performed_by_user_id
+        ? (names.get(entry.performed_by_user_id) ?? null)
+        : null,
       balance_after: group.anchor.balance_after,
       is_cancelled: entries.some((candidate) => candidate.reverses_entry_id === entry.id),
       customer: {
@@ -1167,7 +1264,72 @@ export class CustomersService {
 
   private async versionConflict(id: string): Promise<ApiError> {
     const current = await this.customers.findByIdUnscoped(id);
-    return new ApiError('VERSION_CONFLICT', { entity: 'customer', version: current?.version ?? null });
+    return new ApiError('VERSION_CONFLICT', {
+      entity: 'customer',
+      version: current?.version ?? null,
+    });
+  }
+
+  // ─────────────────────────────── rates ───────────────────────────────
+
+  /** The customer's rate history — the current rate and every rate before it. */
+  async rateHistoryOf(context: RequestContext, id: string) {
+    await this.requireCustomer(context, id);
+    const [current, history] = await Promise.all([
+      this.customers.currentRate(id),
+      this.customers.rateHistory(id),
+    ]);
+    return {
+      current: current
+        ? { rate_iqd_per_usd: formatRate(current.rate), since: current.since.toISOString() }
+        : null,
+      items: history.map((row) => ({
+        id: row.id,
+        rate_iqd_per_usd: formatRate(row.rate_iqd_per_usd),
+        effective_from: row.effective_from.toISOString(),
+        note: row.note,
+        created_by_name: row.created_by_name,
+      })),
+    };
+  }
+
+  /** Give the customer its own IQD-per-USD rate (append-only, like a company's — never edited). */
+  async setRate(
+    context: RequestContext,
+    id: string,
+    input: { rate_iqd_per_usd: string; note?: string | null },
+  ): Promise<{ rate_iqd_per_usd: Rate; since: string }> {
+    const row = await this.requireCustomer(context, id);
+    const rate = formatRate(input.rate_iqd_per_usd);
+    if (Number(rate) <= 0) {
+      throw ApiError.validation([
+        { path: 'rate_iqd_per_usd', code: 'INVALID', message_key: 'errors:field.required', params: {} },
+      ]);
+    }
+
+    const previous = await this.customers.currentRate(id);
+    return this.database.transaction(async (tx) => {
+      await this.customers.insertRate(
+        { customer_id: id, rate, note: input.note?.trim() || null, created_by: context.userId },
+        tx,
+      );
+      await this.audit.record(
+        context,
+        {
+          action: 'rate_change',
+          entity_type: 'customer',
+          entity_id: id,
+          entity_label: `Customer: ${row.name}`,
+          changes: {
+            rate_iqd_per_usd: { old: previous ? formatRate(previous.rate) : null, new: rate },
+          },
+          note: input.note?.trim() || null,
+          related: { customer_id: id },
+        },
+        tx,
+      );
+      return { rate_iqd_per_usd: rate, since: new Date().toISOString() };
+    });
   }
 }
 
@@ -1207,7 +1369,9 @@ function toGroupDto(group: LedgerGroup, names: Map<string, string>): LedgerGroup
     note: entry.note,
     order_id: group.order_id,
     performed_by_user_id: entry.performed_by_user_id,
-    performed_by_name: entry.performed_by_user_id ? names.get(entry.performed_by_user_id) ?? null : null,
+    performed_by_name: entry.performed_by_user_id
+      ? (names.get(entry.performed_by_user_id) ?? null)
+      : null,
     voucher_number: entry.voucher_number ?? null,
     method: entry.method ?? null,
     received_currency: group.received_currency,
@@ -1223,7 +1387,7 @@ function toGroupDto(group: LedgerGroup, names: Map<string, string>): LedgerGroup
       balance_after: row.balance_after,
       created_at: row.entry.created_at.toISOString(),
       performed_by_name: row.entry.performed_by_user_id
-        ? names.get(row.entry.performed_by_user_id) ?? null
+        ? (names.get(row.entry.performed_by_user_id) ?? null)
         : null,
     })),
   };
@@ -1231,24 +1395,34 @@ function toGroupDto(group: LedgerGroup, names: Map<string, string>): LedgerGroup
 
 function toCustomerDto(
   row: CustomerRow,
-  extra: { assigned_user_name: string | null; balance: number; rate: Rate | null },
+  extra: {
+    assigned_user_name: string | null;
+    balance: number;
+    rate: CustomerRateInfo | null;
+  },
 ): CustomerDto {
+  const rateValue = extra.rate?.rate_iqd_per_usd ?? null;
   const balance: BalanceDto | null =
-    extra.rate === null
+    rateValue === null
       ? null
       : {
-          // The settlement currency carries the fact; the other side is today's conversion,
-          // which is why the client renders it with "≈" (spec 2.3.6).
+          // The settlement currency carries the fact; the other side is a conversion at the
+          // customer's own rate (or the global one), which the client renders with "≈".
           amount_iqd:
-            row.settlement_currency === 'IQD' ? extra.balance : convert(extra.balance, 'USD', extra.rate),
+            row.settlement_currency === 'IQD'
+              ? extra.balance
+              : convert(extra.balance, 'USD', rateValue),
           amount_usd_cents:
-            row.settlement_currency === 'USD' ? extra.balance : convert(extra.balance, 'IQD', extra.rate),
+            row.settlement_currency === 'USD'
+              ? extra.balance
+              : convert(extra.balance, 'IQD', rateValue),
           currency: row.settlement_currency,
-          rate_iqd_per_usd: extra.rate,
+          rate_iqd_per_usd: rateValue,
           kind: 'derived',
         };
 
   return {
+    rate: extra.rate,
     id: row.id,
     name: row.name,
     phone: row.phone,

@@ -36,11 +36,20 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
 
   beforeEach(async () => {
     await resetDatabase();
-    const adminUser = await seedUser({ username: 'admin.materials', role: 'admin', displayName: 'Dara' });
+    const adminUser = await seedUser({
+      username: 'admin.materials',
+      role: 'admin',
+      displayName: 'Dara',
+    });
     const warehouseUser = await seedUser({
       username: 'warehouse',
       displayName: 'Sara',
-      permissions: ['materials.create', 'materials.edit', 'materials.set_prices', 'materials.opening_stock'],
+      permissions: [
+        'materials.create',
+        'materials.edit',
+        'materials.set_prices',
+        'materials.opening_stock',
+      ],
     });
     const salesUser = await seedUser({
       username: 'sales.materials',
@@ -53,7 +62,10 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
     sales = await signIn(ctx.http, salesUser);
 
     // Step 1 of the demo script: the global rate, without which no amount can be stored.
-    await as(ctx.http, admin).post('/api/v1/settings/global-rates').send({ rate_iqd_per_usd: '1310' }).expect(201);
+    await as(ctx.http, admin)
+      .post('/api/v1/settings/global-rates')
+      .send({ rate_iqd_per_usd: '1310' })
+      .expect(201);
   });
 
   async function createMaterial(
@@ -92,7 +104,10 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
 
       const audit = await auditRows({ action: 'create', entityId: response.body.id });
       expect(audit).toHaveLength(1);
-      expect(audit[0]).toMatchObject({ entity_type: 'item', entity_label: 'Material: Steel sheet 1.2 mm' });
+      expect(audit[0]).toMatchObject({
+        entity_type: 'item',
+        entity_label: 'Material: Steel sheet 1.2 mm',
+      });
     });
 
     it('refuses a name that already exists, whichever keyboard typed it (FR-301, FR-1205)', async () => {
@@ -127,7 +142,9 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
       expect(changed.body.pricing_unit).toBe('per_piece');
 
       const audit = await auditRows({ action: 'update', entityId: material.id });
-      expect(audit.at(-1)?.changes).toMatchObject({ pricing_unit: { old: 'per_kg', new: 'per_piece' } });
+      expect(audit.at(-1)?.changes).toMatchObject({
+        pricing_unit: { old: 'per_kg', new: 'per_piece' },
+      });
     });
 
     it('refuses a stale version rather than overwriting another edit (spec 2.9.5)', async () => {
@@ -154,7 +171,9 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
       const list = await as(ctx.http, sales).get('/api/v1/items').expect(200);
       expect(list.body.items).toHaveLength(0);
 
-      const withInactive = await as(ctx.http, sales).get('/api/v1/items?include_inactive=true').expect(200);
+      const withInactive = await as(ctx.http, sales)
+        .get('/api/v1/items?include_inactive=true')
+        .expect(200);
       expect(withInactive.body.items[0]).toMatchObject({ id: material.id, is_active: false });
     });
 
@@ -206,10 +225,15 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
       const material = await createMaterial(warehouse);
       await as(ctx.http, warehouse)
         .put(`/api/v1/items/${material.id}/prices/2026-09`)
-        .send({ bought: { amount: 5_200, currency: 'IQD' }, sale: { amount: 6_500, currency: 'IQD' } })
+        .send({
+          bought: { amount: 5_200, currency: 'IQD' },
+          sale: { amount: 6_500, currency: 'IQD' },
+        })
         .expect(200);
 
-      const current = await as(ctx.http, warehouse).get(`/api/v1/items/${material.id}/prices`).expect(200);
+      const current = await as(ctx.http, warehouse)
+        .get(`/api/v1/items/${material.id}/prices`)
+        .expect(200);
       const updated = await as(ctx.http, warehouse)
         .put(`/api/v1/items/${material.id}/prices/2026-09`)
         .send({ sale: { amount: 6_800, currency: 'IQD' }, version: current.body.items[0].version })
@@ -227,15 +251,25 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
         .expect(200);
 
       const detail = await as(ctx.http, warehouse).get(`/api/v1/items/${material.id}`).expect(200);
-      expect(detail.body.sale).toMatchObject({ amount_iqd: 6_200, from_month: '2026-01-01', source: 'fallback' });
+      expect(detail.body.sale).toMatchObject({
+        amount_iqd: 6_200,
+        from_month: '2026-01-01',
+        source: 'fallback',
+      });
     });
 
     it('copies one month to another for every material, logging each one', async () => {
       const copper = await createMaterial(warehouse, { name: 'Copper wire 2 mm' });
-      const steel = await createMaterial(warehouse, { name: 'Steel sheet', pricing_unit: 'per_piece' });
+      const steel = await createMaterial(warehouse, {
+        name: 'Steel sheet',
+        pricing_unit: 'per_piece',
+      });
       await as(ctx.http, warehouse)
         .put(`/api/v1/items/${copper.id}/prices/2026-08`)
-        .send({ sale: { amount: 6_200, currency: 'IQD' }, bought: { amount: 5_000, currency: 'IQD' } })
+        .send({
+          sale: { amount: 6_200, currency: 'IQD' },
+          bought: { amount: 5_000, currency: 'IQD' },
+        })
         .expect(200);
 
       const result = await as(ctx.http, warehouse)
@@ -246,8 +280,13 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
       // Copper had August prices, steel had none: one copied, one skipped.
       expect(result.body).toEqual({ copied: 1, skipped: 1 });
 
-      const prices = await as(ctx.http, warehouse).get(`/api/v1/items/${copper.id}/prices`).expect(200);
-      expect(prices.body.items.map((row: { month: string }) => row.month)).toEqual(['2026-09-01', '2026-08-01']);
+      const prices = await as(ctx.http, warehouse)
+        .get(`/api/v1/items/${copper.id}/prices`)
+        .expect(200);
+      expect(prices.body.items.map((row: { month: string }) => row.month)).toEqual([
+        '2026-09-01',
+        '2026-08-01',
+      ]);
       expect(await auditRows({ action: 'price_change', entityId: steel.id })).toHaveLength(0);
     });
 
@@ -255,14 +294,19 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
       const material = await createMaterial(warehouse);
       await as(ctx.http, warehouse)
         .put(`/api/v1/items/${material.id}/prices/2026-09`)
-        .send({ bought: { amount: 5_200, currency: 'IQD' }, sale: { amount: 6_500, currency: 'IQD' } })
+        .send({
+          bought: { amount: 5_200, currency: 'IQD' },
+          sale: { amount: 6_500, currency: 'IQD' },
+        })
         .expect(200);
 
       const detail = await as(ctx.http, sales).get(`/api/v1/items/${material.id}`).expect(200);
       expect(detail.body.sale.amount_iqd).toBe(6_500);
       expect('bought' in detail.body).toBe(false);
 
-      const prices = await as(ctx.http, sales).get(`/api/v1/items/${material.id}/prices`).expect(200);
+      const prices = await as(ctx.http, sales)
+        .get(`/api/v1/items/${material.id}/prices`)
+        .expect(200);
       expect('bought' in prices.body.items[0]).toBe(false);
 
       const list = await as(ctx.http, sales).get('/api/v1/items').expect(200);
@@ -273,23 +317,6 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
         .put(`/api/v1/items/${material.id}/prices/2026-09`)
         .send({ sale: { amount: 1, currency: 'IQD' } })
         .expect(403);
-    });
-
-    it('refuses a price edit for a month the period lock has closed (FR-1109)', async () => {
-      const material = await createMaterial(warehouse);
-      await as(ctx.http, admin).patch('/api/v1/settings').send({ locked_through: '2026-08-31' }).expect(200);
-
-      const refused = await as(ctx.http, warehouse)
-        .put(`/api/v1/items/${material.id}/prices/2026-08`)
-        .send({ sale: { amount: 6_200, currency: 'IQD' } })
-        .expect(409);
-      expect(refused.body.error.code).toBe('PERIOD_LOCKED');
-
-      // September has not ended, so its prices are still open.
-      await as(ctx.http, warehouse)
-        .put(`/api/v1/items/${material.id}/prices/2026-09`)
-        .send({ sale: { amount: 6_500, currency: 'IQD' } })
-        .expect(200);
     });
   });
 
@@ -314,7 +341,9 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
       });
       expect(after.body.first_bought_on).toBe('2026-09-01');
 
-      const movements = await as(ctx.http, warehouse).get(`/api/v1/items/${material.id}/movements`).expect(200);
+      const movements = await as(ctx.http, warehouse)
+        .get(`/api/v1/items/${material.id}/movements`)
+        .expect(200);
       expect(movements.body.items[0]).toMatchObject({
         movement_type: 'opening',
         qty_kg: '240.500',
@@ -340,12 +369,17 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
         .expect(201);
 
       expect(corrected.body.stock.stock_kg).toBe('240.000');
-      const movements = await as(ctx.http, warehouse).get(`/api/v1/items/${material.id}/movements`).expect(200);
+      const movements = await as(ctx.http, warehouse)
+        .get(`/api/v1/items/${material.id}/movements`)
+        .expect(200);
       expect(movements.body.total).toBe(2);
     });
 
     it('shows the other measure as incomplete once a movement did not carry it (FR-303)', async () => {
-      const material = await createMaterial(warehouse, { name: 'Steel sheet', pricing_unit: 'per_piece' });
+      const material = await createMaterial(warehouse, {
+        name: 'Steel sheet',
+        pricing_unit: 'per_piece',
+      });
       await as(ctx.http, warehouse)
         .post(`/api/v1/items/${material.id}/opening-stock`)
         .send({ entry_date: '2026-09-01', qty_count: 40, qty_kg: '96.000', note: 'go-live' })
@@ -364,15 +398,8 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
       });
     });
 
-    it('refuses an opening entry in a locked period and one dated in the future', async () => {
+    it('refuses an opening entry dated in the future', async () => {
       const material = await createMaterial(warehouse);
-      await as(ctx.http, admin).patch('/api/v1/settings').send({ locked_through: '2026-09-30' }).expect(200);
-
-      const locked = await as(ctx.http, warehouse)
-        .post(`/api/v1/items/${material.id}/opening-stock`)
-        .send({ entry_date: '2026-09-01', qty_kg: '1.000', note: 'late' })
-        .expect(409);
-      expect(locked.body.error.code).toBe('PERIOD_LOCKED');
 
       const future = await as(ctx.http, warehouse)
         .post(`/api/v1/items/${material.id}/opening-stock`)
@@ -394,7 +421,9 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
         await expect(client.query('UPDATE stock_ledger SET qty_kg = 999')).rejects.toThrow(
           /permission denied/i,
         );
-        await expect(client.query('DELETE FROM stock_ledger')).rejects.toThrow(/permission denied/i);
+        await expect(client.query('DELETE FROM stock_ledger')).rejects.toThrow(
+          /permission denied/i,
+        );
       } finally {
         await client.end();
       }
@@ -414,20 +443,16 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
       const history = await as(ctx.http, sales).get('/api/v1/settings/global-rates').expect(200);
       expect(history.body.current.rate_iqd_per_usd).toBe('1320.0000');
       expect(history.body.items).toHaveLength(2);
-      expect(history.body.items[0]).toMatchObject({ note: 'market moved', created_by_name: 'Dara' });
+      expect(history.body.items[0]).toMatchObject({
+        note: 'market moved',
+        created_by_name: 'Dara',
+      });
     });
 
-    it('asks for confirmation before a change beyond the guard, then accepts it', async () => {
-      const guarded = await as(ctx.http, admin)
-        .post('/api/v1/settings/global-rates')
-        .send({ rate_iqd_per_usd: '13100' })
-        .expect(422);
-      expect(guarded.body.error.code).toBe('RATE_GUARD');
-      expect(guarded.body.error.params).toMatchObject({ previous: '1310.0000', next: '13100.0000' });
-
+    it('accepts a rate change directly, with no change guard', async () => {
       await as(ctx.http, admin)
         .post('/api/v1/settings/global-rates')
-        .send({ rate_iqd_per_usd: '13100', confirm: true })
+        .send({ rate_iqd_per_usd: '13100' })
         .expect(201);
     });
 

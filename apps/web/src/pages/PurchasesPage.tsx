@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { BottomSheet, Button, Chip, DateField, TextField } from '@mizan/ui';
 import type { Currency, Measure } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
@@ -110,8 +110,10 @@ export function PurchasesPage() {
 
   const rows = purchases.data?.items ?? [];
 
+  usePageTitle(t('purchases:title'));
+
   return (
-    <AppShell title={t('purchases:title')}>
+    <>
       <div className="mz-stack">
         <TextField
           label={t('common:search')}
@@ -248,7 +250,7 @@ export function PurchasesPage() {
           </BottomSheet>
         ) : null}
       </div>
-    </AppShell>
+    </>
   );
 }
 

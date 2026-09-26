@@ -17,23 +17,8 @@ const patchSchema = z
     // Iteration 1: the System card of the Settings page (FR-1107, FR-1109).
     allow_negative_stock: z.boolean().optional(),
     default_customer_currency: z.enum(['IQD', 'USD']).optional(),
-    rate_guard_percent: z.number().int().min(1).max(100).optional(),
     settle_tolerance_iqd: z.number().int().min(0).max(100_000).optional(),
     settle_tolerance_usd_cents: z.number().int().min(0).max(10_000).optional(),
-    order_edit_window_days: z.number().int().min(0).max(365).nullable().optional(),
-    // Iteration 2: the same window for purchases (FR-405).
-    purchase_edit_window_days: z.number().int().min(0).max(365).nullable().optional(),
-    allow_edit_after_payment: z.boolean().optional(),
-    locked_through: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .nullable()
-      .optional(),
-    rate_stale_days: z.number().int().min(1).max(60).optional(),
-    // Iteration 5: the shared-tablet rules (FR-106, 2.8).
-    pin_min_length_shared: z.number().int().min(4).max(6).optional(),
-    pin_min_length_personal: z.number().int().min(4).max(6).optional(),
-    allow_pin_switch_on_shared: z.boolean().optional(),
   })
   // Unknown keys are refused rather than dropped: an admin who types a setting this
   // iteration does not own must be told, not quietly ignored.
@@ -42,8 +27,6 @@ const patchSchema = z
 const rateSchema = z.object({
   rate_iqd_per_usd: z.union([z.string().regex(/^\d+(\.\d{1,4})?$/), z.number().positive()]),
   note: z.string().max(2000).nullish(),
-  /** The ±`rate_guard_percent` guard asks for confirmation rather than refusing outright. */
-  confirm: z.boolean().optional(),
 });
 
 @Controller('settings')
@@ -69,7 +52,10 @@ export class SettingsController {
 
   @Patch()
   @AdminOnly()
-  async update(@Req() request: RequestWithContext, @Body(zodBody(patchSchema)) body: z.infer<typeof patchSchema>) {
+  async update(
+    @Req() request: RequestWithContext,
+    @Body(zodBody(patchSchema)) body: z.infer<typeof patchSchema>,
+  ) {
     return this.settings.update(contextOf(request), body);
   }
 
@@ -80,10 +66,16 @@ export class SettingsController {
    */
   @Get('global-rates')
   @SessionOnly()
-  async rateHistory(@Query(zodBody(z.object({ limit: z.coerce.number().int().positive().max(100).optional() }))) query: {
-    limit?: number;
-  }) {
-    const [current, history] = await Promise.all([this.rates.current(), this.rates.history(query.limit)]);
+  async rateHistory(
+    @Query(zodBody(z.object({ limit: z.coerce.number().int().positive().max(100).optional() })))
+    query: {
+      limit?: number;
+    },
+  ) {
+    const [current, history] = await Promise.all([
+      this.rates.current(),
+      this.rates.history(query.limit),
+    ]);
     return {
       current,
       items: history.map((row) => ({
@@ -100,11 +92,13 @@ export class SettingsController {
   @Post('global-rates')
   @RequirePermission('settings.set_global_rate')
   @HttpCode(201)
-  async setRate(@Req() request: RequestWithContext, @Body(zodBody(rateSchema)) body: z.infer<typeof rateSchema>) {
+  async setRate(
+    @Req() request: RequestWithContext,
+    @Body(zodBody(rateSchema)) body: z.infer<typeof rateSchema>,
+  ) {
     return this.rates.set(contextOf(request), {
       rate_iqd_per_usd: String(body.rate_iqd_per_usd),
       note: body.note ?? null,
-      confirm: body.confirm,
     });
   }
 }

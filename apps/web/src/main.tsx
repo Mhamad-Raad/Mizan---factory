@@ -12,6 +12,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
  * and for every digit. Until I6 the tokens named these fonts and nothing loaded them, so every
  * screen rendered in whatever the device happened to have; `/font-check` is where that shows.
  */
+import '@fontsource-variable/inter/index.css';
+import '@fontsource-variable/vazirmatn/index.css';
 import '@mizan/ui/tokens.css';
 import '@mizan/ui/base.css';
 import { App } from './App.js';

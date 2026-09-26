@@ -79,5 +79,10 @@
   "document_rate_purchase": "سعر الصرف لهذا الشراء",
   "remaining": "المتبقي",
   "companies": "الشركات",
-  "purchases": "المشتريات"
+  "purchases": "المشتريات",
+  "system_rate": "سعر النظام",
+  "customer_rate": "سعر الزبون",
+  "order_rate": "سعر هذا الطلب",
+  "item": "الصنف",
+  "amount": "المبلغ"
 }

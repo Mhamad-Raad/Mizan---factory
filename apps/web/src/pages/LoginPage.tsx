@@ -2,18 +2,18 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, MizanMark, PasswordField, TextField } from '@mizan/ui';
-import { ApiError, NetworkError, apiRequest } from '../lib/api.js';
+import { Button, PasswordField, TextField } from '@mizan/ui';
+import { apiRequest } from '../lib/api.js';
+import { signInError } from '../lib/signInError.js';
+import type { SignInError } from '../lib/signInError.js';
 import { useApp } from '../lib/store.js';
 import type { SessionUser } from '../lib/store.js';
-import { readRecentUsers, rememberUser } from '../lib/preferences.js';
-import { LanguageChips } from '../components/LanguageChips.js';
+import { rememberUser } from '../lib/preferences.js';
+import { Doorway } from '../components/Doorway.js';
 
 interface LoginResponse {
   user: SessionUser;
   permissions: string[];
-  /** The device ticket for this browser, handed over once per password sign-in (FR-106). */
-  device_ticket?: string | null;
 }
 
 /**
@@ -28,7 +28,7 @@ export function LoginPage() {
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SignInError | null>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async (event: FormEvent) => {
@@ -43,10 +43,6 @@ export function LoginPage() {
           password,
           is_shared_device: preferences.sharedDevice,
           device_label: preferences.deviceLabel ?? null,
-          // The ticket this browser already holds for this name, so the server retires it
-          // rather than leaving one live ticket per sign-in (FR-106).
-          replaces_ticket:
-            readRecentUsers().find((entry) => entry.username === identifier.trim().toLowerCase())?.ticket ?? null,
         },
       });
       setSession({ user: response.user, permissions: response.permissions });
@@ -55,76 +51,52 @@ export function LoginPage() {
         displayName: response.user.display_name,
         lastAt: new Date().toISOString(),
         lang: preferences.lang,
-        // The ticket this browser was just handed: what lets this employee's PIN unlock or
-        // sign in here for the next seven days (FR-106).
-        ticket: response.device_ticket ?? null,
-        hasPin: response.user.has_pin,
       });
       navigate(response.user.must_change_password ? '/change-password' : '/');
     } catch (caught) {
-      if (caught instanceof NetworkError) setError(t('errors:NETWORK'));
-      else if (caught instanceof ApiError) {
-        if (caught.code === 'RATE_LIMITED') {
-          setError(t('auth:locked_out', { minutes: caught.params.minutes as number }));
-        } else if (caught.params.reason === 'deactivated') {
-          setError(t('auth:account_deactivated'));
-        } else {
-          setError(t('auth:invalid_credentials'));
-        }
-      } else setError(t('errors:INTERNAL'));
+      setError(signInError(t, caught));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="mz-app">
-      {/* A plum band with the mark above the form, so a shared tablet's screen says which
-          application this is before a word is read (spec 3.2.5, FR-1311). */}
-      <header className="mz-login-band">
-        <MizanMark size={64} title={t('common:app_name')} />
-        <p className="mz-login-band__name">{t('common:app_name')}</p>
-      </header>
-      <main className="mz-main">
-        <Card>
-          <form className="mz-stack" onSubmit={submit} noValidate>
-            <h2 className="mz-title">{t('auth:sign_in')}</h2>
+    <Doorway subtitle={t('auth:sign_in_subtitle')}>
+      <form className="mz-stack" onSubmit={submit} noValidate>
+        <TextField
+          label={t('auth:username_or_phone')}
+          value={identifier}
+          onChange={(event) => setIdentifier(event.target.value)}
+          autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          required
+        />
+        <PasswordField
+          label={t('auth:password')}
+          showLabel={t('auth:show_password')}
+          hideLabel={t('auth:hide_password')}
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          autoComplete="current-password"
+          required
+        />
 
-            <TextField
-              label={t('auth:username_or_phone')}
-              value={identifier}
-              onChange={(event) => setIdentifier(event.target.value)}
-              autoComplete="username"
-              autoCapitalize="none"
-              autoCorrect="off"
-              required
-            />
-            <PasswordField
-              label={t('auth:password')}
-              showLabel={t('auth:show_password')}
-              hideLabel={t('auth:hide_password')}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete="current-password"
-              required
-            />
+        {error ? (
+          <p className="mz-field__error" role="alert">
+            {error.message}
+          </p>
+        ) : null}
+        {error?.warning ? (
+          <div className="mz-warning" role="status">
+            {error.warning}
+          </div>
+        ) : null}
 
-            {error ? (
-              <p className="mz-field__error" role="alert">
-                {error}
-              </p>
-            ) : null}
-
-            <Button type="submit" block loading={busy} disabled={!identifier || !password}>
-              {t('auth:sign_in')}
-            </Button>
-          </form>
-        </Card>
-
-        <div style={{ marginBlockStart: 'var(--space-4)', display: 'flex', justifyContent: 'center' }}>
-          <LanguageChips />
-        </div>
-      </main>
-    </div>
+        <Button type="submit" block loading={busy} disabled={!identifier || !password}>
+          {t('auth:sign_in')}
+        </Button>
+      </form>
+    </Doorway>
   );
 }

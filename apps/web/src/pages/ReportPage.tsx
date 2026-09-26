@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
 import { FilterChip } from './MaterialsPage.js';
@@ -232,8 +232,10 @@ export function ReportPage({ name }: { name?: ReportName }) {
     return group.key;
   };
 
+  usePageTitle(t(shape.titleKey));
+
   return (
-    <AppShell title={t(shape.titleKey)}>
+    <>
       <div className="mz-stack">
         <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
           {(['today', 'week', 'month', 'quarter'] as DatePreset[]).map((option) => (
@@ -475,6 +477,6 @@ export function ReportPage({ name }: { name?: ReportName }) {
           </BottomSheet>
         ) : null}
       </div>
-    </AppShell>
+    </>
   );
 }

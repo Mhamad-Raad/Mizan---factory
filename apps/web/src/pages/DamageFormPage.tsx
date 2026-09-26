@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, DateField, TextField, Toast, Toggle } from '@mizan/ui';
 import type { Measure } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { DraftBanner } from '../components/DraftBanner.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { PickerSheet } from '../components/PickerSheet.js';
@@ -61,20 +61,22 @@ export function DamageFormPage({ mode }: { mode: 'create' | 'edit' }) {
     enabled: mode === 'edit',
   });
 
+  usePageTitle(mode === 'edit' ? t('damages:edit') : t('damages:record'));
+
   if (mode === 'edit') {
     return (
-      <AppShell title={t('damages:edit')}>
+      <>
         <QueryStates query={existing} skeletonLines={8}>
           {existing.data ? (
             <DamageForm mode="edit" damageId={id} version={existing.data.version} initial={fromDamage(existing.data)} />
           ) : null}
         </QueryStates>
-      </AppShell>
+      </>
     );
   }
 
   return (
-    <AppShell title={t('damages:record')}>
+    <>
       <DamageForm
         mode="create"
         initial={{
@@ -98,7 +100,7 @@ export function DamageFormPage({ mode }: { mode: 'create' | 'edit' }) {
           acting_user_id: '',
         }}
       />
-    </AppShell>
+    </>
   );
 }
 

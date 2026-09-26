@@ -8,8 +8,6 @@ export interface UserRow {
   role: UserRole;
   password_hash: string;
   must_change_password: boolean;
-  pin_hash: string | null;
-  pin_length: number | null;
   preset_key: string | null;
   preset_version: number | null;
   is_active: boolean;
@@ -22,7 +20,7 @@ export interface UserRow {
   version: number;
 }
 
-/** What leaves the API. `password_hash` and `pin_hash` never appear in a response. */
+/** What leaves the API. `password_hash` never appears in a response. */
 export interface UserDto {
   id: string;
   username: string;
@@ -31,7 +29,6 @@ export interface UserDto {
   role: UserRole;
   is_active: boolean;
   must_change_password: boolean;
-  has_pin: boolean;
   preset_key: string | null;
   last_login_at: string | null;
   version: number;
@@ -46,7 +43,6 @@ export function toUserDto(row: UserRow): UserDto {
     role: row.role,
     is_active: row.is_active,
     must_change_password: row.must_change_password,
-    has_pin: row.pin_hash !== null,
     preset_key: row.preset_key,
     last_login_at: row.last_login_at?.toISOString() ?? null,
     version: row.version,

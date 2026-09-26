@@ -68,6 +68,18 @@ export function AuditValue({ value }: { value: unknown }) {
   if (typeof value === 'string') {
     // A business date formats as one; everything else is the text as recorded.
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return <span>{formatter.date(value)}</span>;
+    /*
+     * An identifier is a reference, not a reading: thirty-six characters of UUID took over the
+     * column on the employee's Activity tab. The first eight are enough to tell two apart, and
+     * the whole thing is on the element for whoever needs to quote it.
+     */
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+      return (
+        <span title={value} data-tabular dir="ltr">
+          {value.slice(0, 8)}…
+        </span>
+      );
+    }
     return <span>{value}</span>;
   }
 
@@ -118,7 +130,12 @@ export function AuditDiff({ changes, note }: { changes: Record<string, unknown>;
         const label = t(`history:field.${field}`, { defaultValue: field });
 
         return (
-          <div key={field} className="mz-row mz-row--between" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          /*
+           * Label above value on a narrow screen, label and value at either end of the line on
+           * a wide one. Pushing them apart at 360 px left a hand's width of nothing between
+           * "Device name" and its value, which is what made a phone's History unreadable.
+           */
+          <div key={field} className="mz-diff__row">
             <span className="mz-caption">{label}</span>
             {isPair ? (
               <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>

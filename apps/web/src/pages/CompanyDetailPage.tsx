@@ -16,7 +16,7 @@ import {
 } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
-import { AppShell } from '../components/AppShell.js';
+import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { LedgerList } from '../components/LedgerList.js';
@@ -32,11 +32,18 @@ import type { CompanyRow } from './CompaniesPage.js';
 import type { PurchaseRow } from './PurchasesPage.js';
 
 type Tab = 'overview' | 'accounting' | 'purchases' | 'history';
-type Sheet = 'payment' | 'adjustment' | 'credit' | 'opening' | 'rate' | 'rate_history' | 'currency' | 'assign';
+type Sheet =
+  'payment' | 'adjustment' | 'credit' | 'opening' | 'rate' | 'rate_history' | 'currency' | 'assign';
 type EntryFilter = 'all' | 'payments' | 'adjustments' | 'credits' | 'purchases';
 
 interface Allocation {
-  purchases: { purchase_id: string; total: number; linked: number; allocated: number; remaining: number }[];
+  purchases: {
+    purchase_id: string;
+    total: number;
+    linked: number;
+    allocated: number;
+    remaining: number;
+  }[];
   general: number;
   balance: number;
 }
@@ -115,16 +122,18 @@ export function CompanyDetailPage() {
 
   const breakdown = useQuery({
     queryKey: ['companies', id, 'breakdown'],
-    queryFn: () =>
-      apiRequest<Breakdown>(`/companies/${id}/purchase-breakdown`),
+    queryFn: () => apiRequest<Breakdown>(`/companies/${id}/purchase-breakdown`),
     // The purchases tab needs it too: a purchase's remaining is its oldest-first share, not a
     // sum of what happens to name it (FR-712).
-    enabled: maySeeBalance && (tab === 'accounting' || tab === 'purchases' || tab === 'overview' || sheet === 'payment'),
+    enabled:
+      maySeeBalance &&
+      (tab === 'accounting' || tab === 'purchases' || tab === 'overview' || sheet === 'payment'),
   });
 
   const purchases = useQuery({
     queryKey: ['companies', id, 'purchases'],
-    queryFn: () => apiRequest<{ items: PurchaseRow[]; total: number }>(`/companies/${id}/purchases`),
+    queryFn: () =>
+      apiRequest<{ items: PurchaseRow[]; total: number }>(`/companies/${id}/purchases`),
     enabled: tab === 'purchases' || tab === 'overview',
   });
 
@@ -132,7 +141,13 @@ export function CompanyDetailPage() {
     queryKey: ['companies', id, 'rates'],
     queryFn: () =>
       apiRequest<{
-        items: { id: string; rate_iqd_per_usd: string; effective_from: string; note: string | null; created_by_name: string | null }[];
+        items: {
+          id: string;
+          rate_iqd_per_usd: string;
+          effective_from: string;
+          note: string | null;
+          created_by_name: string | null;
+        }[];
       }>(`/companies/${id}/rates`),
     enabled: sheet === 'rate_history',
   });
@@ -141,7 +156,13 @@ export function CompanyDetailPage() {
     queryKey: ['companies', id, 'history'],
     queryFn: () =>
       apiRequest<{
-        items: { id: string; action: string; occurred_at: string; actor_display_name: string | null; note: string | null }[];
+        items: {
+          id: string;
+          action: string;
+          occurred_at: string;
+          actor_display_name: string | null;
+          note: string | null;
+        }[];
       }>(`/companies/${id}/history`),
     enabled: tab === 'history',
   });
@@ -164,7 +185,8 @@ export function CompanyDetailPage() {
 
   const directory = useQuery({
     queryKey: ['users', 'directory'],
-    queryFn: () => apiRequest<{ id: string; display_name: string; is_active: boolean }[]>('/users/directory'),
+    queryFn: () =>
+      apiRequest<{ id: string; display_name: string; is_active: boolean }[]>('/users/directory'),
     enabled: sheet === 'assign',
   });
 
@@ -179,7 +201,11 @@ export function CompanyDetailPage() {
 
   const payment = useMutation({
     mutationFn: (body: unknown) =>
-      apiRequest(`/companies/${id}/payments`, { method: 'POST', body, idempotencyKey: newIdempotencyKey() }),
+      apiRequest(`/companies/${id}/payments`, {
+        method: 'POST',
+        body,
+        idempotencyKey: newIdempotencyKey(),
+      }),
     onSuccess: async () => {
       setSheet(null);
       setToast(t('companies:payment_recorded'));
@@ -203,7 +229,11 @@ export function CompanyDetailPage() {
 
   const setRate = useMutation({
     mutationFn: (body: unknown) =>
-      apiRequest(`/companies/${id}/rates`, { method: 'POST', body, idempotencyKey: newIdempotencyKey() }),
+      apiRequest(`/companies/${id}/rates`, {
+        method: 'POST',
+        body,
+        idempotencyKey: newIdempotencyKey(),
+      }),
     onSuccess: async () => {
       setSheet(null);
       setToast(t('companies:rate_saved'));
@@ -254,8 +284,10 @@ export function CompanyDetailPage() {
     return row.entry_type === 'purchase';
   });
 
+  usePageTitle(company.data?.name ?? t('companies:title'));
+
   return (
-    <AppShell title={company.data?.name ?? t('companies:title')}>
+    <>
       <div className="mz-stack">
         <QueryStates query={company}>
           {company.data ? (
@@ -263,7 +295,9 @@ export function CompanyDetailPage() {
               <Card>
                 <div className="mz-row mz-row--between">
                   <div>
-                    <h2 className="mz-title"><bdi>{company.data.name}</bdi></h2>
+                    <h2 className="mz-title">
+                      <bdi>{company.data.name}</bdi>
+                    </h2>
                     {company.data.contact_name ? (
                       <span className="mz-caption" style={{ display: 'block' }}>
                         <bdi>{company.data.contact_name}</bdi>
@@ -280,10 +314,15 @@ export function CompanyDetailPage() {
                       </span>
                     ) : null}
                   </div>
-                  {!company.data.is_active ? <Chip icon="close">{t('common:deactivated')}</Chip> : null}
+                  {!company.data.is_active ? (
+                    <Chip icon="close">{t('common:deactivated')}</Chip>
+                  ) : null}
                 </div>
 
-                <div className="mz-row mz-row--between" style={{ marginBlockStart: 'var(--space-3)' }}>
+                <div
+                  className="mz-row mz-row--between"
+                  style={{ marginBlockStart: 'var(--space-3)' }}
+                >
                   <span className="mz-caption">{t('glossary:settlement_currency')}</span>
                   <span>{t(`glossary:${settlement.toLowerCase()}`)}</span>
                 </div>
@@ -291,14 +330,18 @@ export function CompanyDetailPage() {
                 {/* The rate every calculated amount for this company is filled at (2.3.3). */}
                 <div className="mz-row mz-row--between">
                   <span className="mz-caption">
-                    {company.data.rate?.is_company_rate ? t('glossary:company_rate') : t('companies:rate_is_global')}
+                    {company.data.rate?.is_company_rate
+                      ? t('glossary:company_rate')
+                      : t('companies:rate_is_global')}
                   </span>
                   <span>
                     <span data-tabular>{formatter.rate(companyRate)}</span>
                     {company.data.rate ? (
                       <span className="mz-caption">
                         {' '}
-                        {t('companies:rate_since', { date: formatter.date(company.data.rate.since.slice(0, 10)) })}
+                        {t('companies:rate_since', {
+                          date: formatter.date(company.data.rate.since.slice(0, 10)),
+                        })}
                       </span>
                     ) : null}
                   </span>
@@ -322,7 +365,9 @@ export function CompanyDetailPage() {
 
               <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                 {mayRecordPayment ? (
-                  <Button onClick={() => setSheet('payment')}>{t('companies:record_payment')}</Button>
+                  <Button onClick={() => setSheet('payment')}>
+                    {t('companies:record_payment')}
+                  </Button>
                 ) : null}
                 {mayAdjust ? (
                   <Button variant="secondary" onClick={() => setSheet('adjustment')}>
@@ -370,7 +415,9 @@ export function CompanyDetailPage() {
                 onChange={setTab}
                 options={[
                   { value: 'overview', label: t('companies:tab_overview') },
-                  ...(maySeeBalance ? [{ value: 'accounting' as Tab, label: t('companies:tab_accounting') }] : []),
+                  ...(maySeeBalance
+                    ? [{ value: 'accounting' as Tab, label: t('companies:tab_accounting') }]
+                    : []),
                   { value: 'purchases', label: t('companies:tab_purchases') },
                   { value: 'history', label: t('glossary:history') },
                 ]}
@@ -385,7 +432,10 @@ export function CompanyDetailPage() {
                     emptyTitle={t('companies:no_purchases')}
                     emptyAction={
                       <Can permission="purchases.create">
-                        <Link to={`/purchases/new?company=${id}`} className="mz-button mz-button--primary">
+                        <Link
+                          to={`/purchases/new?company=${id}`}
+                          className="mz-button mz-button--primary"
+                        >
                           {t('purchases:add_material')}
                         </Link>
                       </Can>
@@ -409,15 +459,17 @@ export function CompanyDetailPage() {
               {tab === 'accounting' ? (
                 <>
                   <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                    {(['payments', 'adjustments', 'credits', 'purchases'] as EntryFilter[]).map((filter) => (
-                      <FilterChip
-                        key={filter}
-                        active={entryFilter === filter}
-                        onClick={() => setEntryFilter(entryFilter === filter ? 'all' : filter)}
-                      >
-                        {t(`companies:entry.${singularOf(filter)}`)}
-                      </FilterChip>
-                    ))}
+                    {(['payments', 'adjustments', 'credits', 'purchases'] as EntryFilter[]).map(
+                      (filter) => (
+                        <FilterChip
+                          key={filter}
+                          active={entryFilter === filter}
+                          onClick={() => setEntryFilter(entryFilter === filter ? 'all' : filter)}
+                        >
+                          {t(`companies:entry.${singularOf(filter)}`)}
+                        </FilterChip>
+                      ),
+                    )}
                   </div>
 
                   <QueryStates
@@ -440,7 +492,10 @@ export function CompanyDetailPage() {
                               total: formatter.number(ledger.data.total),
                             })}
                           </span>
-                          <Button variant="secondary" onClick={() => setLedgerLimit(ledgerLimit + 100)}>
+                          <Button
+                            variant="secondary"
+                            onClick={() => setLedgerLimit(ledgerLimit + 100)}
+                          >
                             {t('companies:show_more')}
                           </Button>
                         </div>
@@ -465,7 +520,9 @@ export function CompanyDetailPage() {
                                 <span className="mz-list__body">
                                   <span className="mz-list__title">
                                     {t('purchases:number', {
-                                      number: formatter.number(purchaseNumbers.get(row.purchase_id) ?? 0),
+                                      number: formatter.number(
+                                        purchaseNumbers.get(row.purchase_id) ?? 0,
+                                      ),
                                     })}
                                   </span>
                                 </span>
@@ -475,7 +532,8 @@ export function CompanyDetailPage() {
                               </Link>
                             </li>
                           ))}
-                        {breakdown.data && breakdown.data.owing_count > allocation.purchases.length ? (
+                        {breakdown.data &&
+                        breakdown.data.owing_count > allocation.purchases.length ? (
                           <li className="mz-list__item">
                             <span className="mz-list__body">
                               <span className="mz-caption">
@@ -493,7 +551,9 @@ export function CompanyDetailPage() {
                         {allocation.general !== 0 ? (
                           <li className="mz-list__item">
                             <span className="mz-list__body">
-                              <span className="mz-list__title">{t('companies:general_bucket')}</span>
+                              <span className="mz-list__title">
+                                {t('companies:general_bucket')}
+                              </span>
                             </span>
                             <span className="mz-list__end" data-tabular>
                               {formatter.money(allocation.general, settlement)}
@@ -513,7 +573,10 @@ export function CompanyDetailPage() {
                   emptyTitle={t('companies:no_purchases')}
                   emptyAction={
                     <Can permission="purchases.create">
-                      <Link to={`/purchases/new?company=${id}`} className="mz-button mz-button--primary">
+                      <Link
+                        to={`/purchases/new?company=${id}`}
+                        className="mz-button mz-button--primary"
+                      >
                         {t('purchases:add_material')}
                       </Link>
                     </Can>
@@ -543,7 +606,9 @@ export function CompanyDetailPage() {
                       {(history.data?.items ?? []).map((row) => (
                         <li key={row.id} className="mz-list__item">
                           <span className="mz-list__body">
-                            <span className="mz-list__title">{t(`history:action.${row.action}`)}</span>
+                            <span className="mz-list__title">
+                              {t(`history:action.${row.action}`)}
+                            </span>
                             <span className="mz-caption">
                               {formatter.timestamp(new Date(row.occurred_at))}
                               {row.actor_display_name ? ` · ${row.actor_display_name}` : ''}
@@ -596,7 +661,11 @@ export function CompanyDetailPage() {
             settlement_currency={settlement}
             rate={companyRate}
             saving={entry.isPending}
-            error={entry.error instanceof ApiError ? t(entry.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') }) : undefined}
+            error={
+              entry.error instanceof ApiError
+                ? t(entry.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })
+                : undefined
+            }
             onClose={() => setSheet(null)}
             onSave={(body) => entry.mutate({ path: 'adjustments', body })}
           />
@@ -607,7 +676,11 @@ export function CompanyDetailPage() {
             kind={sheet}
             rate={companyRate}
             saving={entry.isPending}
-            error={entry.error instanceof ApiError ? t(entry.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') }) : undefined}
+            error={
+              entry.error instanceof ApiError
+                ? t(entry.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })
+                : undefined
+            }
             onClose={() => setSheet(null)}
             onSave={(body) =>
               entry.mutate({ path: sheet === 'credit' ? 'credits' : 'opening-balance', body })
@@ -619,7 +692,6 @@ export function CompanyDetailPage() {
           <SetRateSheet
             current={company.data?.rate ?? null}
             saving={setRate.isPending}
-            guard={setRate.error instanceof ApiError && setRate.error.code === 'RATE_GUARD' ? setRate.error.params : null}
             onClose={() => setSheet(null)}
             onSave={(body) => setRate.mutate(body)}
           />
@@ -632,7 +704,11 @@ export function CompanyDetailPage() {
             onClose={() => setSheet(null)}
             closeLabel={t('common:close')}
           >
-            <QueryStates query={rates} isEmpty={(rates.data?.items.length ?? 0) === 0} emptyTitle={t('companies:rate_is_global')}>
+            <QueryStates
+              query={rates}
+              isEmpty={(rates.data?.items.length ?? 0) === 0}
+              emptyTitle={t('companies:rate_is_global')}
+            >
               <ul className="mz-list">
                 {(rates.data?.items ?? []).map((row) => (
                   <li key={row.id} className="mz-list__item">
@@ -641,7 +717,9 @@ export function CompanyDetailPage() {
                         {formatter.rate(row.rate_iqd_per_usd)}
                       </span>
                       <span className="mz-caption">
-                        {t('companies:rate_since', { date: formatter.date(row.effective_from.slice(0, 10)) })}
+                        {t('companies:rate_since', {
+                          date: formatter.date(row.effective_from.slice(0, 10)),
+                        })}
                         {row.created_by_name ? ` · ${row.created_by_name}` : ''}
                         {row.note ? ` · ${row.note}` : ''}
                       </span>
@@ -670,10 +748,19 @@ export function CompanyDetailPage() {
         ) : null}
 
         {sheet === 'assign' ? (
-          <BottomSheet title={t('companies:assign')} open onClose={() => setSheet(null)} closeLabel={t('common:close')}>
+          <BottomSheet
+            title={t('companies:assign')}
+            open
+            onClose={() => setSheet(null)}
+            closeLabel={t('common:close')}
+          >
             <ul className="mz-list">
               <li>
-                <button type="button" className="mz-list__item mz-list__item--interactive" onClick={() => assign.mutate(null)}>
+                <button
+                  type="button"
+                  className="mz-list__item mz-list__item--interactive"
+                  onClick={() => assign.mutate(null)}
+                >
                   {t('companies:unassigned')}
                 </button>
               </li>
@@ -705,7 +792,9 @@ export function CompanyDetailPage() {
             )}`}
           >
             <div className="mz-receipt">
-              <strong><bdi>{statementData.data.company.name}</bdi></strong>
+              <strong>
+                <bdi>{statementData.data.company.name}</bdi>
+              </strong>
               <p className="mz-caption">{t('common:statement_window')}</p>
               {statementData.data.has_more ? (
                 <p className="mz-caption">
@@ -725,7 +814,10 @@ export function CompanyDetailPage() {
               <div className="mz-receipt__line">
                 <span>{t('glossary:opening_balance')}</span>
                 <span data-tabular>
-                  {formatter.money(statementData.data.opening_balance, statementData.data.company.settlement_currency)}
+                  {formatter.money(
+                    statementData.data.opening_balance,
+                    statementData.data.company.settlement_currency,
+                  )}
                 </span>
               </div>
               {statementData.data.items.map((row) => (
@@ -735,7 +827,9 @@ export function CompanyDetailPage() {
                   </span>
                   <span data-tabular>
                     {formatter.money(
-                      statementData.data.company.settlement_currency === 'IQD' ? row.amount_iqd : row.amount_usd_cents,
+                      statementData.data.company.settlement_currency === 'IQD'
+                        ? row.amount_iqd
+                        : row.amount_usd_cents,
                       statementData.data.company.settlement_currency,
                     )}
                   </span>
@@ -744,19 +838,24 @@ export function CompanyDetailPage() {
               <div className="mz-receipt__line">
                 <strong>{t('glossary:balance')}</strong>
                 <strong data-tabular>
-                  {formatter.money(statementData.data.closing_balance, statementData.data.company.settlement_currency)}
+                  {formatter.money(
+                    statementData.data.closing_balance,
+                    statementData.data.company.settlement_currency,
+                  )}
                 </strong>
               </div>
             </div>
           </ShareDocumentSheet>
         ) : null}
 
-        {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
+        {toast ? (
+          <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} />
+        ) : null}
         <Button variant="ghost" onClick={() => navigate('/companies')}>
           {t('common:back')}
         </Button>
       </div>
-    </AppShell>
+    </>
   );
 }
 
@@ -803,7 +902,11 @@ function PurchaseListItem({
           ) : null}
         </span>
         <span className="mz-list__end">
-          {purchase.doc_status === 'void' ? <Chip tone="danger" icon="close">{t('glossary:void')}</Chip> : null}
+          {purchase.doc_status === 'void' ? (
+            <Chip tone="danger" icon="close">
+              {t('glossary:void')}
+            </Chip>
+          ) : null}
           {remaining !== null && remaining > 0 ? (
             <span className="mz-caption" data-tabular>
               {t('glossary:remaining')}: {formatter.money(remaining, settlement)}
@@ -840,7 +943,11 @@ function AdjustOwedSheet({
   const { t } = useTranslation();
   const formatter = useFormatter();
   const [mode, setMode] = useState<'new_balance' | 'delta'>('delta');
-  const [amount, setAmount] = useState<MoneyValue>({ amount: null, currency: settlement_currency, other_amount: null });
+  const [amount, setAmount] = useState<MoneyValue>({
+    amount: null,
+    currency: settlement_currency,
+    other_amount: null,
+  });
   const [date, setDate] = useState(formatter.today());
   const [note, setNote] = useState('');
 
@@ -848,7 +955,12 @@ function AdjustOwedSheet({
   const after = typed === null ? balance : mode === 'new_balance' ? typed : balance + typed;
 
   return (
-    <BottomSheet title={t('companies:sheet.adjustment')} open onClose={onClose} closeLabel={t('common:close')}>
+    <BottomSheet
+      title={t('companies:sheet.adjustment')}
+      open
+      onClose={onClose}
+      closeLabel={t('common:close')}
+    >
       <div className="mz-stack">
         <SegmentedControl
           label={t('companies:adjust_mode_hint')}
@@ -861,7 +973,9 @@ function AdjustOwedSheet({
         />
 
         <MoneyInput
-          label={mode === 'new_balance' ? t('companies:adjust_new_balance') : t('companies:adjust_delta')}
+          label={
+            mode === 'new_balance' ? t('companies:adjust_new_balance') : t('companies:adjust_delta')
+          }
           value={amount}
           rate={rate}
           onChange={setAmount}
@@ -929,14 +1043,29 @@ function CompanyEntrySheet({
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const [amount, setAmount] = useState<MoneyValue>({ amount: null, currency: 'IQD', other_amount: null });
+  const [amount, setAmount] = useState<MoneyValue>({
+    amount: null,
+    currency: 'IQD',
+    other_amount: null,
+  });
   const [date, setDate] = useState(formatter.today());
   const [note, setNote] = useState('');
 
   return (
-    <BottomSheet title={t(`companies:sheet.${kind}`)} open onClose={onClose} closeLabel={t('common:close')}>
+    <BottomSheet
+      title={t(`companies:sheet.${kind}`)}
+      open
+      onClose={onClose}
+      closeLabel={t('common:close')}
+    >
       <div className="mz-stack">
-        <MoneyInput label={t('companies:amount')} value={amount} rate={rate} onChange={setAmount} error={error} />
+        <MoneyInput
+          label={t('companies:amount')}
+          value={amount}
+          rate={rate}
+          onChange={setAmount}
+          error={error}
+        />
         <DateField
           label={t('common:date')}
           value={date}
@@ -972,29 +1101,30 @@ function CompanyEntrySheet({
 
 /**
  * The company's own rate (FR-703). It applies from now on; every stored entry keeps the rate
- * it was written with, which the sheet says in so many words. A change beyond the guard asks
- * for a confirmation instead of refusing.
+ * it was written with, which the sheet says in so many words.
  */
 function SetRateSheet({
   current,
   saving,
-  guard,
   onClose,
   onSave,
 }: {
   current: { rate_iqd_per_usd: string; is_company_rate: boolean } | null;
   saving: boolean;
-  guard: Record<string, unknown> | null;
   onClose: () => void;
   onSave: (body: unknown) => void;
 }) {
   const { t } = useTranslation();
-  const formatter = useFormatter();
   const [rate, setRate] = useState(current?.is_company_rate ? current.rate_iqd_per_usd : '');
   const [note, setNote] = useState('');
 
   return (
-    <BottomSheet title={t('companies:set_rate')} open onClose={onClose} closeLabel={t('common:close')}>
+    <BottomSheet
+      title={t('companies:set_rate')}
+      open
+      onClose={onClose}
+      closeLabel={t('common:close')}
+    >
       <div className="mz-stack">
         <NumberField
           label={t('glossary:company_rate')}
@@ -1010,15 +1140,6 @@ function SetRateSheet({
           onChange={(event) => setNote(event.target.value)}
         />
 
-        {guard ? (
-          <div className="mz-warning" role="alert">
-            {t('companies:rate_guard', {
-              percent: formatter.number(Number(guard.percent ?? 0)),
-              previous: formatter.rate(String(guard.previous ?? '')),
-            })}
-          </div>
-        ) : null}
-
         <Button
           block
           loading={saving}
@@ -1027,12 +1148,10 @@ function SetRateSheet({
             onSave({
               rate_iqd_per_usd: rate.trim(),
               note: note.trim() === '' ? null : note.trim(),
-              // The second tap is the confirmation the guard asked for (FR-703).
-              confirm: guard ? true : undefined,
             })
           }
         >
-          {guard ? t('glossary:confirm') : t('common:save')}
+          {t('common:save')}
         </Button>
       </div>
     </BottomSheet>
@@ -1100,7 +1219,11 @@ function SettlementCurrencySheet({
         ) : null}
         <p className="mz-caption">{t('companies:rebase_hint')}</p>
 
-        <TextField label={t('common:note')} value={note} onChange={(event) => setNote(event.target.value)} />
+        <TextField
+          label={t('common:note')}
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+        />
 
         <Button
           block

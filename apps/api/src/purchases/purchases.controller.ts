@@ -20,6 +20,9 @@ const lineSchema = z.object({
   qty_count: z.number().int().positive().nullish(),
   qty_kg: kg.nullish(),
   unit_price: money.nullish(),
+  /** The line's total, entered directly (spec: "how much did you add, total"). When present it
+      is authoritative and the unit price is derived from it; `unit_price` is the older path. */
+  total: money.nullish(),
   note: z.string().max(500).nullish(),
 });
 
@@ -180,6 +183,7 @@ function toCreateInput(body: z.infer<typeof createSchema>) {
       qty_count: line.qty_count ?? null,
       qty_kg: line.qty_kg ?? null,
       unit_price: line.unit_price ?? null,
+      total: line.total ?? null,
       note: line.note ?? null,
     })),
     acting_user_id: body.acting_user_id ?? null,

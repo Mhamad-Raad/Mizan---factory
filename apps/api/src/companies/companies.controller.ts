@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { z } from 'zod';
 import { AdminOnly, RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
@@ -40,7 +52,10 @@ const updateSchema = createSchema
   .partial()
   .extend({ version: z.number().int().positive() });
 
-const statusSchema = z.object({ version: z.number().int().positive(), note: z.string().max(2000).nullish() });
+const statusSchema = z.object({
+  version: z.number().int().positive(),
+  note: z.string().max(2000).nullish(),
+});
 
 const assignSchema = z.object({
   user_id: z.string().uuid().nullable(),
@@ -58,7 +73,6 @@ const currencySchema = z.object({
 const rateSchema = z.object({
   rate_iqd_per_usd: z.union([rate, z.number().positive()]),
   note: z.string().max(2000).nullish(),
-  confirm: z.boolean().optional(),
 });
 
 const paymentSchema = money.extend({
@@ -95,7 +109,10 @@ const adjustmentSchema = z
     path: ['delta'],
   });
 
-const reverseSchema = z.object({ note: z.string().min(1).max(2000), entry_date: isoDate.optional() });
+const reverseSchema = z.object({
+  note: z.string().min(1).max(2000),
+  entry_date: isoDate.optional(),
+});
 
 const ledgerSchema = z.object({
   raw: z.enum(['true', 'false']).optional(),
@@ -103,7 +120,17 @@ const ledgerSchema = z.object({
   include_undone: z.enum(['true', 'false']).optional(),
   as_of: isoDate.optional(),
   // The filters of 2.9.3, and the bound that keeps a fifteen-year account off a phone's plan.
-  type: z.enum(['purchase', 'payment', 'credit', 'adjustment', 'opening', 'settlement_change', 'reversal']).optional(),
+  type: z
+    .enum([
+      'purchase',
+      'payment',
+      'credit',
+      'adjustment',
+      'opening',
+      'settlement_change',
+      'reversal',
+    ])
+    .optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),
   done_by: z.string().uuid().optional(),
@@ -130,7 +157,10 @@ export class CompaniesController {
 
   @Get('companies')
   @RequirePermission('companies.view')
-  async list(@Req() request: RequestWithContext, @Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
+  async list(
+    @Req() request: RequestWithContext,
+    @Query(zodBody(listSchema)) query: z.infer<typeof listSchema>,
+  ) {
     return this.companies.list(contextOf(request), {
       q: query.q,
       assigned_to: query.assigned_to,
@@ -144,7 +174,10 @@ export class CompaniesController {
   @Post('companies')
   @RequirePermission('companies.create')
   @HttpCode(201)
-  async create(@Req() request: RequestWithContext, @Body(zodBody(createSchema)) body: z.infer<typeof createSchema>) {
+  async create(
+    @Req() request: RequestWithContext,
+    @Body(zodBody(createSchema)) body: z.infer<typeof createSchema>,
+  ) {
     return this.companies.create(contextOf(request), {
       name: body.name,
       contact_name: body.contact_name ?? null,
@@ -254,7 +287,6 @@ export class CompaniesController {
     return this.companies.setRate(contextOf(request), id, {
       rate_iqd_per_usd: String(body.rate_iqd_per_usd),
       note: body.note ?? null,
-      confirm: body.confirm,
     });
   }
 

@@ -190,8 +190,13 @@ describe('history depth (FR-902, FR-903)', () => {
       })
       .expect(200);
 
-    const tab = await as(ctx.http, rebaz).get(`/api/v1/orders/${order.body.id}/history`).expect(200);
-    const actions = tab.body.items.map((row: { action: string }) => row.action);
+    const tab = await as(ctx.http, rebaz)
+      .get(`/api/v1/orders/${order.body.id}/history`)
+      .expect(200);
+    // The tab also lists the money entries recorded against the order; its own rows are these.
+    const actions = tab.body.items
+      .filter((row: { entity_type: string }) => row.entity_type === 'order')
+      .map((row: { action: string }) => row.action);
     expect(actions).toEqual(['update', 'create']);
   });
 

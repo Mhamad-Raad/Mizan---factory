@@ -132,14 +132,16 @@ export class SessionService {
   private async touch(session: SessionRow): Promise<void> {
     const now = new Date();
     if (session.is_shared_device && !session.is_locked) {
-      await this.database.query('UPDATE sessions SET last_seen_at = $2, idle_expires_at = $3 WHERE id = $1', [
-        session.id,
-        now,
-        await this.sharedIdleExpiry(now),
-      ]);
+      await this.database.query(
+        'UPDATE sessions SET last_seen_at = $2, idle_expires_at = $3 WHERE id = $1',
+        [session.id, now, await this.sharedIdleExpiry(now)],
+      );
       return;
     }
-    await this.database.query('UPDATE sessions SET last_seen_at = $2 WHERE id = $1', [session.id, now]);
+    await this.database.query('UPDATE sessions SET last_seen_at = $2 WHERE id = $1', [
+      session.id,
+      now,
+    ]);
   }
 
   async lock(sessionId: string): Promise<void> {
@@ -149,27 +151,11 @@ export class SessionService {
     );
   }
 
-  /** The session's own PIN attempts (2.8): five and the password is the only way back in. */
-  async pinFailures(sessionId: string): Promise<number> {
-    const { rows } = await this.database.query<{ pin_failures: number }>(
-      'SELECT pin_failures FROM sessions WHERE id = $1',
-      [sessionId],
-    );
-    return rows[0]?.pin_failures ?? 0;
-  }
-
-  /** Returns the count after this failure, so the caller can say how many are left. */
-  async registerPinFailure(sessionId: string): Promise<number> {
-    const { rows } = await this.database.query<{ pin_failures: number }>(
-      'UPDATE sessions SET pin_failures = least(pin_failures + 1, 5) WHERE id = $1 RETURNING pin_failures',
-      [sessionId],
-    );
-    return rows[0]?.pin_failures ?? 0;
-  }
-
   async unlock(session: SessionRow): Promise<void> {
     const now = new Date();
-    const idle = session.is_shared_device ? await this.sharedIdleExpiry(now) : session.absolute_expires_at;
+    const idle = session.is_shared_device
+      ? await this.sharedIdleExpiry(now)
+      : session.absolute_expires_at;
     await this.database.query(
       `UPDATE sessions
           SET is_locked = false, locked_at = NULL, last_seen_at = $2, idle_expires_at = $3,
@@ -210,7 +196,13 @@ export class SessionService {
     return rows;
   }
 
-  cookieOptions(): { httpOnly: true; secure: boolean; sameSite: 'lax'; path: string; maxAge: number } {
+  cookieOptions(): {
+    httpOnly: true;
+    secure: boolean;
+    sameSite: 'lax';
+    path: string;
+    maxAge: number;
+  } {
     return {
       httpOnly: true,
       // Over http on localhost a Secure cookie is dropped; every other attribute is identical
