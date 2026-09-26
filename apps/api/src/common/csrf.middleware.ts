@@ -19,9 +19,12 @@ export class CsrfMiddleware implements NestMiddleware {
   use(request: RequestWithContext, _response: Response, next: NextFunction): void {
     if (SAFE_METHODS.has(request.method)) return next();
 
-    const origin = request.headers.origin;
-    if (origin && origin !== this.allowedOrigin) {
-      throw new ApiError('PERMISSION_DENIED', { reason: 'origin' });
+    // Where the request says it came from: `Origin`, or — when a browser leaves that out — the
+    // origin of `Referer`. Either one naming another site is refused (security review, 14).
+    // A request carrying neither is left to the token below: non-browser clients send neither.
+    const origin = request.headers.origin ?? originOf(request.headers.referer);
+    if (origin !== undefined && origin !== this.allowedOrigin) {
+      throw new ApiError('PERMISSION_DENIED', { reason: 'origin' }, [], 'errors:request_origin_refused');
     }
 
     const cookie = (request.cookies as Record<string, string> | undefined)?.[CSRF_COOKIE];
@@ -31,8 +34,18 @@ export class CsrfMiddleware implements NestMiddleware {
     if (!hasSession) return next();
 
     if (!cookie || !header || cookie !== header) {
-      throw new ApiError('PERMISSION_DENIED', { reason: 'csrf' });
+      throw new ApiError('PERMISSION_DENIED', { reason: 'csrf' }, [], 'errors:csrf_refused');
     }
     next();
+  }
+}
+
+/** The origin of a Referer URL; `null` (never equal to the allowed origin) when it is not one. */
+function originOf(referer: string | undefined): string | null | undefined {
+  if (!referer) return undefined;
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return null;
   }
 }

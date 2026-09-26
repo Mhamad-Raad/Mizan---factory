@@ -58,5 +58,7 @@
   "paid_back_money_needs_permission": "Recording that a company paid back in money needs the “Pay a company” permission — ask your admin",
   "paid_back_materials_needs_permission": "Recording that a company paid back in materials needs the “Record a supplier credit” permission — ask your admin",
   "credit_needs_permission": "Recording a supplier credit needs the “Record a supplier credit” permission — ask your admin",
-  "PASSWORD_CHANGE_REQUIRED": "Choose your own password before you continue"
+  "PASSWORD_CHANGE_REQUIRED": "Choose your own password before you continue",
+  "request_origin_refused": "This request came from another website, so it was refused — open Mizan directly and try again",
+  "csrf_refused": "Your sign-in changed in another tab — reload the page and try again"
 }

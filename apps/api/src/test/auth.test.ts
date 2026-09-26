@@ -404,6 +404,33 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
         .expect(403);
     });
 
+    it('refuses a write from another site, told by Origin or, without it, by Referer', async () => {
+      const user = await seedUser({ username: 'sara', role: 'admin' });
+      const session = await signIn(ctx.http, user);
+      const lock = () => as(ctx.http, session).post('/api/v1/auth/lock');
+
+      const byOrigin = await lock().set('Origin', 'https://evil.example').expect(403);
+      expect(byOrigin.body.error.message_key).toBe('errors:request_origin_refused');
+      await lock().set('Referer', 'https://evil.example/page').expect(403);
+      await lock().set('Referer', 'not a url').expect(403);
+
+      // The app's own pages pass, and so does a client that sends neither header.
+      await lock().set('Referer', 'http://localhost:5173/orders').expect(204);
+      await as(ctx.http, session).post('/api/v1/auth/unlock').send({ password: user.password }).expect(204);
+      await lock().expect(204);
+    });
+
+    it('says why a forged or stale CSRF token was refused', async () => {
+      const user = await seedUser({ username: 'sara', role: 'admin' });
+      const session = await signIn(ctx.http, user);
+      const refused = await request(ctx.http)
+        .post('/api/v1/auth/lock')
+        .set('Cookie', session.cookies)
+        .set('X-CSRF-Token', 'forged')
+        .expect(403);
+      expect(refused.body.error).toMatchObject({ code: 'PERMISSION_DENIED', message_key: 'errors:csrf_refused' });
+    });
+
     it('allows a safe method without the header', async () => {
       const user = await seedUser({ username: 'sara', role: 'admin' });
       const session = await signIn(ctx.http, user);
