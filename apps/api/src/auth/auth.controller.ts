@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import { z } from 'zod';
 import type { Response } from 'express';
-import { AllowWhenLocked, Public, SessionOnly } from '../common/decorators.js';
+import { AllowBeforePasswordChange, AllowWhenLocked, Public, SessionOnly } from '../common/decorators.js';
 import { CSRF_COOKIE } from '../common/csrf.middleware.js';
 import { ApiError } from '../common/errors.js';
 import { contextOf } from '../common/request-context.js';
@@ -65,6 +65,7 @@ export class AuthController {
 
   @Post('logout')
   @SessionOnly()
+  @AllowBeforePasswordChange()
   @AllowWhenLocked()
   @HttpCode(204)
   async logout(@Req() request: RequestWithContext, @Res({ passthrough: true }) response: Response) {
@@ -75,6 +76,7 @@ export class AuthController {
 
   @Get('me')
   @SessionOnly()
+  @AllowBeforePasswordChange()
   @AllowWhenLocked()
   async me(@Req() request: RequestWithContext) {
     const session = request.session;
@@ -84,6 +86,7 @@ export class AuthController {
 
   @Post('change-password')
   @SessionOnly()
+  @AllowBeforePasswordChange()
   @AllowWhenLocked()
   @HttpCode(204)
   async changePassword(
@@ -95,6 +98,7 @@ export class AuthController {
 
   @Post('lock')
   @SessionOnly()
+  @AllowBeforePasswordChange()
   @HttpCode(204)
   async lock(@Req() request: RequestWithContext) {
     await this.auth.lock(contextOf(request));
@@ -102,6 +106,7 @@ export class AuthController {
 
   @Post('unlock')
   @SessionOnly()
+  @AllowBeforePasswordChange()
   @AllowWhenLocked()
   @HttpCode(204)
   async unlock(

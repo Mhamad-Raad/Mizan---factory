@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 /**
  * The two families of specification 3.7.1, self-hosted and subset (NFR-03 budgets 120 kB per
  * family; these are 48 kB each) and declared `font-display: swap`, so a slow connection shows
@@ -26,6 +26,7 @@ import '@fontsource/ibm-plex-sans-arabic/700.css';
 import '@mizan/ui/tokens.css';
 import '@mizan/ui/base.css';
 import { App } from './App.js';
+import { ApiError } from './lib/api.js';
 import { initI18n } from './lib/i18n.js';
 import { applyPreferences, readPreferences } from './lib/preferences.js';
 
@@ -35,7 +36,21 @@ const preferences = readPreferences();
 applyPreferences(preferences);
 await initI18n(preferences.lang);
 
-const queryClient = new QueryClient({
+/**
+ * The API refuses everything but the change-password screen's own calls while the user must
+ * choose a new password (security review, finding 6). When that answer arrives — an admin set a
+ * temporary password while this tab was open — `me` is read again, and it carries the flag that
+ * sends the app to the change-password screen instead of leaving an error on the current page.
+ */
+function onRefusal(error: unknown): void {
+  if (error instanceof ApiError && error.code === 'PASSWORD_CHANGE_REQUIRED') {
+    void queryClient.invalidateQueries({ queryKey: ['me'] });
+  }
+}
+
+const queryClient: QueryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: onRefusal }),
+  mutationCache: new MutationCache({ onError: onRefusal }),
   defaultOptions: {
     queries: {
       staleTime: 30_000,

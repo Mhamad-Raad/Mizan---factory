@@ -9,6 +9,8 @@ export const ERROR_CODES = {
   UNAUTHENTICATED: 401,
   SESSION_LOCKED: 423,
   PERMISSION_DENIED: 403,
+  /** The user must choose their own password before anything else (FR-101, FR-108). */
+  PASSWORD_CHANGE_REQUIRED: 403,
   NOT_FOUND: 404,
   VALIDATION_FAILED: 422,
   VERSION_CONFLICT: 409,

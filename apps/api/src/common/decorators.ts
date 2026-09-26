@@ -11,6 +11,7 @@ export const ADMIN_ONLY_KEY = 'mizan:admin_only';
 export const PUBLIC_KEY = 'mizan:public';
 export const SESSION_ONLY_KEY = 'mizan:session_only';
 export const ALLOW_WHEN_LOCKED_KEY = 'mizan:allow_when_locked';
+export const ALLOW_BEFORE_PASSWORD_CHANGE_KEY = 'mizan:allow_before_password_change';
 
 /**
  * One key, or several that are **all** required — the specification's route table writes the
@@ -31,3 +32,12 @@ export const SessionOnly = () => SetMetadata(SESSION_ONLY_KEY, true);
  * `me` (spec 2.8). Those four carry this marker.
  */
 export const AllowWhenLocked = () => SetMetadata(ALLOW_WHEN_LOCKED_KEY, true);
+
+/**
+ * A user flagged "must change password" (FR-101, FR-108) may call only what the change-password
+ * screen needs — who they are, the change itself, sign-out, lock and unlock — until they have
+ * chosen their own. Enforced in the guard, not only by the interface's routing (security
+ * review, finding 6): the temporary password an admin read out must not be a working key to
+ * the whole API.
+ */
+export const AllowBeforePasswordChange = () => SetMetadata(ALLOW_BEFORE_PASSWORD_CHANGE_KEY, true);

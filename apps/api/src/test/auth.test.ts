@@ -319,6 +319,38 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
       expect(row?.changes).toEqual({ other_sessions_signed_out: 1 });
     });
 
+    it('refuses everything but the change itself until a flagged user has chosen a password', async () => {
+      const user = await seedUser({ username: 'sara', role: 'admin', mustChangePassword: true });
+      const session = await signIn(ctx.http, user);
+
+      const refused = await as(ctx.http, session).get('/api/v1/users').expect(403);
+      expect(refused.body.error).toMatchObject({
+        code: 'PASSWORD_CHANGE_REQUIRED',
+        message_key: 'errors:PASSWORD_CHANGE_REQUIRED',
+      });
+      await as(ctx.http, session).get('/api/v1/history/me').expect(403);
+      await as(ctx.http, session)
+        .post('/api/v1/customers')
+        .send({ name: 'Not yet' })
+        .expect(403);
+
+      // What the change-password screen needs stays open.
+      const me = await as(ctx.http, session).get('/api/v1/auth/me').expect(200);
+      expect(me.body.user.must_change_password).toBe(true);
+      await as(ctx.http, session)
+        .post('/api/v1/auth/change-password')
+        .send({ current: user.password, new: 'a-brand-new-password' })
+        .expect(204);
+
+      await as(ctx.http, session).get('/api/v1/users').expect(200);
+    });
+
+    it('lets a flagged user sign out', async () => {
+      const user = await seedUser({ username: 'sara', mustChangePassword: true });
+      const session = await signIn(ctx.http, user);
+      await as(ctx.http, session).post('/api/v1/auth/logout').expect(204);
+    });
+
     it('refuses a short password, the username itself and a common password', async () => {
       const user = await seedUser({ username: 'sara', role: 'admin' });
       const session = await signIn(ctx.http, user);

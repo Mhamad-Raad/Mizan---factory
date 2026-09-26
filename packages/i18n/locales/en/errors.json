@@ -57,5 +57,6 @@
   "damage_paid_back": "These broken goods were already paid back, so the record cannot be voided",
   "paid_back_money_needs_permission": "Recording that a company paid back in money needs the “Pay a company” permission — ask your admin",
   "paid_back_materials_needs_permission": "Recording that a company paid back in materials needs the “Record a supplier credit” permission — ask your admin",
-  "credit_needs_permission": "Recording a supplier credit needs the “Record a supplier credit” permission — ask your admin"
+  "credit_needs_permission": "Recording a supplier credit needs the “Record a supplier credit” permission — ask your admin",
+  "PASSWORD_CHANGE_REQUIRED": "Choose your own password before you continue"
 }

@@ -318,6 +318,12 @@ describe('users and permissions (FR-102 to FR-108, FR-201 to FR-206)', () => {
         password: created.body.temporary_password,
         displayName: 'Karwan',
       });
+      // A temporary password opens nothing but the change-password screen (security review, 6).
+      await as(ctx.http, session).get('/api/v1/orders').expect(403);
+      await as(ctx.http, session)
+        .post('/api/v1/auth/change-password')
+        .send({ current: created.body.temporary_password, new: 'karwan-own-password' })
+        .expect(204);
       await as(ctx.http, session).get('/api/v1/orders').expect(200);
       await as(ctx.http, session).get('/api/v1/companies').expect(403);
     });
