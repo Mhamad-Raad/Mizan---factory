@@ -593,7 +593,7 @@ export class DamagesService {
         ]);
       }
       if (!can(context, 'companies.record_credit'))
-        throw ApiError.permissionDenied('companies.record_credit');
+        throw ApiError.permissionDenied('companies.record_credit', 'errors:credit_needs_permission');
     }
 
     const action = withCredit ? 'credited' : input.status;
@@ -947,6 +947,19 @@ export class DamagesService {
   ): Promise<DamageDetailDto> {
     const existing = await this.requireDamage(id);
     if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { damage_id: id });
+    /*
+     * The route asks for `damages.mark_returned`; what this writes is a payment or a credit on
+     * the company's account (and, for materials, stock coming back in), so it also needs the
+     * key that guards that same row everywhere else. Checked here, with the method known, the
+     * same shape as the credit on "Mark returned" (security review, finding 3).
+     */
+    const needed = input.method === 'money' ? 'companies.record_payment' : 'companies.record_credit';
+    if (!can(context, needed)) {
+      throw ApiError.permissionDenied(
+        needed,
+        input.method === 'money' ? 'errors:paid_back_money_needs_permission' : 'errors:paid_back_materials_needs_permission',
+      );
+    }
     const entryDate = input.entry_date ?? this.period.today();
     this.period.assertNotFuture(entryDate, 'entry_date');
 

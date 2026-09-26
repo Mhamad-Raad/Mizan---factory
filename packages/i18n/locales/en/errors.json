@@ -54,5 +54,8 @@
   "REQUEST_TOO_LARGE": "That file is too large — split it into two smaller ones.",
   "BUY_IN_USE": "Some of this stock has already been sold or recorded as broken, so this buy can no longer be changed",
   "damage_not_owed": "Nobody owes for these broken goods, or they were already paid back",
-  "damage_paid_back": "These broken goods were already paid back, so the record cannot be voided"
+  "damage_paid_back": "These broken goods were already paid back, so the record cannot be voided",
+  "paid_back_money_needs_permission": "Recording that a company paid back in money needs the “Pay a company” permission — ask your admin",
+  "paid_back_materials_needs_permission": "Recording that a company paid back in materials needs the “Record a supplier credit” permission — ask your admin",
+  "credit_needs_permission": "Recording a supplier credit needs the “Record a supplier credit” permission — ask your admin"
 }

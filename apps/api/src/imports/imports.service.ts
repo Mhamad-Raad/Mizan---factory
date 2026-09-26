@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { normalizeForSearch } from '@mizan/text';
-import { ApiError, messageKeyFor } from '../common/errors.js';
+import { ApiError } from '../common/errors.js';
 import type { RequestContext } from '../common/request-context.js';
 import { Database } from '../database/pool.js';
 import { ItemsService } from '../items/items.service.js';
@@ -231,7 +231,7 @@ export class ImportsService {
           // A field error is the useful one — "row 812: this customer has no name" — so it is
           // preferred over the generic code when the row failed validation.
           message_key: error
-            ? (error.fields[0]?.message_key ?? messageKeyFor(error.code))
+            ? (error.fields[0]?.message_key ?? error.messageKey)
             : 'errors:INTERNAL',
           params: error ? (error.fields[0]?.params ?? error.params) : {},
         });
@@ -387,7 +387,7 @@ export class ImportsService {
       const error = caught instanceof ApiError ? caught : null;
       problem(
         'entry_date',
-        error ? (error.fields[0]?.message_key ?? messageKeyFor(error.code)) : 'errors:INTERNAL',
+        error ? (error.fields[0]?.message_key ?? error.messageKey) : 'errors:INTERNAL',
         error ? (error.fields[0]?.params ?? error.params) : {},
       );
     }

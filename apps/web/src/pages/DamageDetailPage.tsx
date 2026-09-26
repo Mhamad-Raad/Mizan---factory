@@ -35,6 +35,10 @@ export function DamageDetailPage() {
   const formatter = useFormatter();
   const queryClient = useQueryClient();
   const mayMarkPaid = usePermission('damages.mark_returned');
+  // Paid back writes a payment or a credit on the company's account, so it also needs the key
+  // that guards that row (security review, finding 3); the API checks the same.
+  const mayPaidMoney = usePermission('companies.record_payment');
+  const mayPaidMaterials = usePermission('companies.record_credit');
   const mayEdit = usePermission('damages.edit');
   const mayVoid = usePermission('damages.void');
 
@@ -196,15 +200,19 @@ export function DamageDetailPage() {
                       {value}
                     </div>
                     <p className="mz-caption">{t('damages:owed_hint')}</p>
-                    {active && mayMarkPaid ? (
+                    {active && mayMarkPaid && (mayPaidMoney || mayPaidMaterials) ? (
                       <div className="mz-actions">
                         <div className="mz-actions__group mz-actions__group--primary">
-                          <Button icon="check" onClick={() => setSheet('money')}>
-                            {t('damages:paid_back_money')}
-                          </Button>
-                          <Button variant="secondary" icon="materials" onClick={() => setSheet('materials')}>
-                            {t('damages:paid_back_materials')}
-                          </Button>
+                          {mayPaidMoney ? (
+                            <Button icon="check" onClick={() => setSheet('money')}>
+                              {t('damages:paid_back_money')}
+                            </Button>
+                          ) : null}
+                          {mayPaidMaterials ? (
+                            <Button variant="secondary" icon="materials" onClick={() => setSheet('materials')}>
+                              {t('damages:paid_back_materials')}
+                            </Button>
+                          ) : null}
                         </div>
                       </div>
                     ) : null}

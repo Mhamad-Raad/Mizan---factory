@@ -188,6 +188,45 @@ describe('the warehouse and the accountant (D-062)', () => {
     expect((await as(ctx.http, admin).get(`/api/v1/customers/${kawa}`).expect(200)).body.balance.amount_iqd).toBe(0);
   });
 
+  it('asks for the company money keys before a damage is marked paid back', async () => {
+    const damage = await as(ctx.http, admin)
+      .post('/api/v1/damages')
+      .send({ item_id: bottles, qty_count: 10, damage_date: today(), attribution: 'company', company_id: kawa })
+      .expect(201);
+    const paidBack = (session: Session, method: 'money' | 'materials') =>
+      as(ctx.http, session).post(`/api/v1/damages/${damage.body.id}/paid-back`).send({ method });
+
+    // The warehouse may mark returns, but money and credits on an account are not theirs.
+    const warehouse = await signIn(
+      ctx.http,
+      await seedUser({ username: 'shwan.warehouse', permissions: ['damages.view', 'damages.mark_returned'] }),
+    );
+    const money = await paidBack(warehouse, 'money').expect(403);
+    expect(money.body.error).toMatchObject({
+      code: 'PERMISSION_DENIED',
+      message_key: 'errors:paid_back_money_needs_permission',
+      params: { required: 'companies.record_payment' },
+    });
+    const materials = await paidBack(warehouse, 'materials').expect(403);
+    expect(materials.body.error).toMatchObject({
+      message_key: 'errors:paid_back_materials_needs_permission',
+      params: { required: 'companies.record_credit' },
+    });
+    // Nothing was written: the company still owes the damage.
+    expect((await as(ctx.http, admin).get(`/api/v1/customers/${kawa}`).expect(200)).body.balance.amount_iqd).toBe(13_100);
+
+    // With the key for the method, the same user may.
+    const payer = await signIn(
+      ctx.http,
+      await seedUser({
+        username: 'sara.payer',
+        permissions: ['damages.view', 'damages.mark_returned', 'companies.record_payment'],
+      }),
+    );
+    await paidBack(payer, 'materials').expect(403);
+    await paidBack(payer, 'money').expect(200);
+  });
+
   it('voids an expense with a reason, and keeps it out of the totals', async () => {
     const expense = await as(ctx.http, admin)
       .post('/api/v1/expenses')
