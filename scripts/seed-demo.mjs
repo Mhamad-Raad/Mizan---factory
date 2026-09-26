@@ -133,16 +133,15 @@ async function company(body, rate) {
   return created.id;
 }
 const kawa = await company(
-  { name: 'Kawa Trading', phone: '0750 123 4567', address: 'Erbil, Industrial Area', assigned_user_id: rebaz },
+  { name: 'Kawa Trading', phone: '0750 123 4567', address: 'Erbil, Industrial Area' },
   '1315',
 );
 const hawler = await company({
   name: 'Hawler Construction',
   phone: '0751 987 6543',
   settlement_currency: 'USD',
-  assigned_user_id: rebaz,
 });
-const slemani = await company({ name: 'Slemani Build Co.', phone: '0770 222 1100', assigned_user_id: rebaz });
+const slemani = await company({ name: 'Slemani Build Co.', phone: '0770 222 1100' });
 const duhok = await company({ name: 'Duhok Fabrication', phone: '0750 444 7788' });
 const azadi = await company({ name: 'Azadi Workshop', phone: '0771 300 2020' });
 
@@ -171,7 +170,6 @@ const erbilMetal = await company(
     name: 'Erbil Metal House',
     contact_name: 'Dilshad',
     phone: '0750 909 8080',
-    assigned_user_id: rebaz,
   },
   '1312',
 );

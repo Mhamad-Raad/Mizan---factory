@@ -96,13 +96,6 @@ const LIST_COLUMNS = `c.name AS customer_name, c.is_system AS customer_is_system
                       (SELECT count(*)::text FROM order_lines l
                         WHERE l.order_id = o.id AND l.deleted_at IS NULL) AS line_count`;
 
-/** The scope of the caller for orders (spec 2.6.4). */
-export interface OrderScope {
-  userId: string;
-  /** `customers.view_all`: every order. Otherwise: my customers' orders, plus my own. */
-  viewAll: boolean;
-}
-
 export interface OrderFilters {
   /** FR-802: the damage pickers show only the documents that carried the material. */
   item_id?: string;
@@ -110,7 +103,6 @@ export interface OrderFilters {
   from?: string;
   to?: string;
   done_by?: string;
-  assigned_to?: string;
   payment_type?: PaymentType;
   status?: 'unpaid' | 'partially_paid' | 'paid' | 'void';
   q?: string;
@@ -158,21 +150,9 @@ export interface NewOrderLine {
 export class OrdersRepository {
   constructor(private readonly database: Database) {}
 
-  /**
-   * Orders the caller may see: every order with `customers.view_all`, otherwise the orders of
-   * customers assigned to them **or** orders they entered themselves — an employee must not
-   * lose sight of their own work when a customer is reassigned (spec 2.6.4).
-   */
-  private scopeCondition(scope: OrderScope, values: unknown[], alias = 'o'): string | null {
-    if (scope.viewAll) return null;
-    values.push(scope.userId);
-    const param = values.length;
-    return `(c.assigned_user_id = $${param}::uuid OR c.is_system OR ${alias}.created_by = $${param}::uuid)`;
-  }
-
-  async findById(id: string, scope: OrderScope, tx?: Db): Promise<OrderListRow | null> {
+  /** An order by id. Everybody who may see orders sees them all (D-056): no scope to apply. */
+  async findById(id: string, tx?: Db): Promise<OrderListRow | null> {
     const values: unknown[] = [id];
-    const scoped = this.scopeCondition(scope, values);
     const { rows } = await (tx ?? this.database).query<OrderListRow>(
       `SELECT ${orderColumns('o')}, ${LIST_COLUMNS}
          FROM orders o
@@ -181,7 +161,7 @@ export class OrdersRepository {
          LEFT JOIN users v ON v.id = o.voided_by
          ${REMAINING_LATERAL}
          ${RECEIVED_LATERAL}
-        WHERE o.id = $1 AND o.deleted_at IS NULL ${scoped ? `AND ${scoped}` : ''}`,
+        WHERE o.id = $1 AND o.deleted_at IS NULL`,
       values,
     );
     return rows[0] ?? null;
@@ -195,12 +175,10 @@ export class OrdersRepository {
     return rows[0] ?? null;
   }
 
-  async list(filters: OrderFilters, scope: OrderScope): Promise<{ rows: OrderListRow[]; total: number }> {
+  async list(filters: OrderFilters): Promise<{ rows: OrderListRow[]; total: number }> {
     const conditions = ['o.deleted_at IS NULL'];
     const values: unknown[] = [];
 
-    const scoped = this.scopeCondition(scope, values);
-    if (scoped) conditions.push(scoped);
 
     if (filters.customer_id) {
       values.push(filters.customer_id);
@@ -229,10 +207,6 @@ export class OrdersRepository {
     if (filters.done_by) {
       values.push(filters.done_by);
       conditions.push(`o.acting_user_id = $${values.length}::uuid`);
-    }
-    if (filters.assigned_to) {
-      values.push(filters.assigned_to);
-      conditions.push(`c.assigned_user_id = $${values.length}::uuid`);
     }
     if (filters.payment_type) {
       values.push(filters.payment_type);

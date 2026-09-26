@@ -93,7 +93,8 @@ describe('presets (spec 1.5.3)', () => {
     const sales = expandImplied(PRESETS.sales.keys);
     expect(sales.has('fields.see_customer_balances')).toBe(true);
     expect(sales.has('fields.see_bought_price')).toBe(false);
-    expect(sales.has('customers.view_all')).toBe(false);
+    // Accounts are not assigned any more (D-056): there is no "sees every customer" to lack.
+    expect(sales.has('customers.view')).toBe(true);
   });
 
   it('Warehouse sees bought prices but no balances', () => {
@@ -126,12 +127,11 @@ describe('presets (spec 1.5.3)', () => {
   });
 });
 
-describe('the six extras and their "partly" state (FR-204, spec 2.6.5)', () => {
-  it('there are exactly six', () => {
+describe('the five extras and their "partly" state (FR-204, spec 2.6.5)', () => {
+  it('there are exactly five — "sees all customers" went with assignment (D-056)', () => {
     expect(EXTRAS.map((extra) => extra.key)).toEqual([
       'can_void',
       'sees_bought_prices',
-      'sees_all_customers',
       'sees_balances',
       'can_adjust_owed',
       'can_set_rates',

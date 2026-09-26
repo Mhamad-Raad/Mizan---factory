@@ -133,7 +133,7 @@ check(purchase.status === 201, `purchase #${purchase.body?.number} brought 1,000
 
 const kawa = await call(admin, '/customers', {
   method: 'POST',
-  body: { name: `Kawa Trading ${unique}`, assigned_user_id: salesUser.body.user.id },
+  body: { name: `Kawa Trading ${unique}` },
 });
 const order = await call(rebaz.session, '/orders', {
   method: 'POST',

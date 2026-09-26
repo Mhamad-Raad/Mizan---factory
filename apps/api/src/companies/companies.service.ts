@@ -73,8 +73,6 @@ export interface CompanyDto {
   address: string | null;
   notes: string | null;
   settlement_currency: Currency;
-  assigned_user_id: string | null;
-  assigned_user_name: string | null;
   is_active: boolean;
   /** The company's own rate, with "since", or null when it falls back to the global one. */
   rate: { rate_iqd_per_usd: Rate; since: string; is_company_rate: boolean } | null;
@@ -151,11 +149,10 @@ export class CompaniesService {
 
   private async detailOf(row: CompanyRow, tx?: Db): Promise<CompanyDto> {
     const db = tx ?? this.database;
-    const [balance, companyRate, globalRate, assignee] = await Promise.all([
+    const [balance, companyRate, globalRate] = await Promise.all([
       this.companies.balanceOf(row.id, db),
       this.companies.currentRate(row.id, db),
       this.rates.current(db),
-      this.assigneeName(db, row.assigned_user_id),
     ]);
 
     const rate = companyRate
@@ -180,22 +177,11 @@ export class CompaniesService {
       address: row.address,
       notes: row.notes,
       settlement_currency: row.settlement_currency,
-      assigned_user_id: row.assigned_user_id,
-      assigned_user_name: assignee,
       is_active: row.is_active,
       rate,
       balance: rate ? toBalance(balance, row.settlement_currency, rate.rate_iqd_per_usd) : null,
       version: row.version,
     };
-  }
-
-  private async assigneeName(db: Db, userId: string | null): Promise<string | null> {
-    if (!userId) return null;
-    const { rows } = await db.query<{ display_name: string }>(
-      'SELECT display_name FROM users WHERE id = $1',
-      [userId],
-    );
-    return rows[0]?.display_name ?? null;
   }
 
   /**
@@ -1074,8 +1060,6 @@ function toCompanyDtoFromListRow(row: CompanyListRow, globalRate: Rate | null): 
     address: row.address,
     notes: row.notes,
     settlement_currency: row.settlement_currency,
-    assigned_user_id: row.assigned_user_id,
-    assigned_user_name: row.assigned_user_name,
     is_active: row.is_active,
     rate,
     balance: rate

@@ -16,7 +16,6 @@ describe('history depth (FR-902, FR-903)', () => {
   let rebaz: Session;
   let sara: Session;
   let rebazId: string;
-  let saraId: string;
   let copper: string;
   let kawa: string;
 
@@ -45,7 +44,6 @@ describe('history depth (FR-902, FR-903)', () => {
       permissions: ['orders.create', 'orders.edit', 'history.view', 'customers.view_all'],
     });
     rebazId = rebazUser.id;
-    saraId = saraUser.id;
 
     admin = await signIn(ctx.http, adminUser);
     rebaz = await signIn(ctx.http, rebazUser);
@@ -91,28 +89,6 @@ describe('history depth (FR-902, FR-903)', () => {
       })
       .expect(201);
   }
-
-  it('answers two different questions with "done by" and "assigned to"', async () => {
-    // Sara records an order for a customer assigned to Rebaz, which is the case that makes the
-    // two filters mean different things (spec 2.9.4).
-    const order = await orderFor(sara);
-
-    const byDoer = await as(ctx.http, admin).get(`/api/v1/history?done_by=${saraId}&entity_type=order`).expect(200);
-    expect(byDoer.body.items.map((row: { entity_id: string }) => row.entity_id)).toContain(order.body.id);
-
-    const byAssignee = await as(ctx.http, admin)
-      .get(`/api/v1/history?assigned_to=${rebazId}&entity_type=order`)
-      .expect(200);
-    expect(byAssignee.body.items.map((row: { entity_id: string }) => row.entity_id)).toContain(order.body.id);
-
-    // The two sets are not the same question: Rebaz did nothing, and Sara is assigned nothing.
-    const rebazDid = await as(ctx.http, admin).get(`/api/v1/history?done_by=${rebazId}&entity_type=order`).expect(200);
-    expect(rebazDid.body.items).toHaveLength(0);
-    const assignedToSara = await as(ctx.http, admin)
-      .get(`/api/v1/history?assigned_to=${saraId}&entity_type=order`)
-      .expect(200);
-    expect(assignedToSara.body.items).toHaveLength(0);
-  });
 
   it('collapses an edit storm into one entry that expands to the whole story (2.4.5)', async () => {
     const order = await orderFor(rebaz);

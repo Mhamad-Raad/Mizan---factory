@@ -22,7 +22,6 @@ const rateSchema = z.object({
 
 const listSchema = z.object({
   q: z.string().max(200).optional(),
-  assigned_to: z.string().uuid().optional(),
   balance: z.enum(['owes', 'settled', 'credit']).optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
   sort: z.enum(['name', 'balance']).optional(),
@@ -39,18 +38,11 @@ const createSchema = z.object({
   address: z.string().max(500).nullish(),
   notes: z.string().max(2000).nullish(),
   settlement_currency: z.enum(['IQD', 'USD']).optional(),
-  assigned_user_id: z.string().uuid().nullish(),
   credit_limit: money.nullish(),
 });
 
 const updateSchema = createSchema.partial().extend({ version: z.number().int().positive() });
 const statusSchema = z.object({ version: z.number().int().positive(), note: z.string().max(2000).nullish() });
-const assignSchema = z.object({
-  user_id: z.string().uuid().nullable(),
-  note: z.string().max(2000).nullish(),
-  version: z.number().int().positive().optional(),
-});
-
 const currencySchema = z.object({
   currency: z.enum(['IQD', 'USD']),
   note: z.string().min(1).max(2000),
@@ -123,7 +115,6 @@ export class CustomersController {
   async list(@Req() request: RequestWithContext, @Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
     return this.customers.list(contextOf(request), {
       q: query.q,
-      assigned_to: query.assigned_to,
       balance: query.balance,
       include_inactive: query.include_inactive === 'true',
       sort: query.sort,
@@ -159,7 +150,6 @@ export class CustomersController {
       address: body.address ?? null,
       notes: body.notes ?? null,
       settlement_currency: body.settlement_currency,
-      assigned_user_id: body.assigned_user_id ?? null,
       credit_limit: body.credit_limit ?? null,
     });
   }
@@ -218,16 +208,6 @@ export class CustomersController {
     @Body(zodBody(z.object({ version: z.number().int().positive() }))) body: { version: number },
   ) {
     await this.customers.softDelete(contextOf(request), id, body.version);
-  }
-
-  @Put('customers/:id/assignment')
-  @RequirePermission('customers.view')
-  async assign(
-    @Req() request: RequestWithContext,
-    @Param('id') id: string,
-    @Body(zodBody(assignSchema)) body: z.infer<typeof assignSchema>,
-  ) {
-    return this.customers.assign(contextOf(request), id, body);
   }
 
   @Put('customers/:id/settlement-currency')

@@ -77,7 +77,7 @@ async function seedFixture(): Promise<void> {
 
   await post(context, session, '/settings/global-rates', { rate_iqd_per_usd: '1310' });
 
-  const salesUser = await ensureSalesEmployee(context, session);
+  await ensureSalesEmployee(context, session);
 
   const copperId = await createMaterial(context, session, {
     name: 'Copper wire 2 mm',
@@ -96,7 +96,7 @@ async function seedFixture(): Promise<void> {
     openingCount: 500,
   });
 
-  const customerId = await createCustomer(context, session, salesUser, today);
+  const customerId = await createCustomer(context, session, today);
   const orderId = await createOrder(context, session, { customerId, copperId, steelId, today });
 
   // Iteration 2: the supplier side of the same yard — a company with its own rate, a purchase
@@ -332,13 +332,11 @@ async function createMaterial(
 async function createCustomer(
   context: Awaited<ReturnType<typeof request.newContext>>,
   session: Headers,
-  assignedTo: string,
   today: string,
 ): Promise<string> {
   const created = (await post(context, session, '/customers', {
     name: 'Kawa Trading',
     phone: '0770 123 4567',
-    assigned_user_id: assignedTo,
   })) as { id: string };
 
   await post(context, session, `/customers/${created.id}/opening-balance`, {

@@ -227,7 +227,7 @@ ok('(the app opening in Rebaz\'s own language is the browser\'s part of this ste
 step(3, 'Rebaz records a payment; the admin opens that History entry');
 const customer = await call(office, '/customers', {
   method: 'POST',
-  body: { name: `Kawa Trading ${unique}`, assigned_user_id: rebazUser.body.user.id },
+  body: { name: `Kawa Trading ${unique}` },
 });
 const item = await call(office, '/items', {
   method: 'POST',

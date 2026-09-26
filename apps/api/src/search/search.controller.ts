@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { normalizeForSearch, normalizePhone } from '@mizan/text';
 import { SessionOnly } from '../common/decorators.js';
 import { can, contextOf } from '../common/request-context.js';
-import type { RequestContext, RequestWithContext } from '../common/request-context.js';
+import type { RequestWithContext } from '../common/request-context.js';
 import { Database } from '../database/pool.js';
 import { zodBody } from '../common/zod.pipe.js';
 
@@ -48,8 +48,8 @@ export class SearchController {
     const sections: Promise<SearchHit[]>[] = [];
     if (can(context, 'materials.view')) sections.push(this.items(normalized));
     // One record per business (D-054): a supplier is found here too, for whoever may see suppliers.
-    if (can(context, 'customers.view')) sections.push(this.customers(context, normalized, phone));
-    if (number !== null && can(context, 'orders.view')) sections.push(this.orders(context, number));
+    if (can(context, 'customers.view')) sections.push(this.customers(normalized, phone));
+    if (number !== null && can(context, 'orders.view')) sections.push(this.orders(number));
     if (number !== null && can(context, 'purchases.view')) sections.push(this.purchases(number));
 
     const hits = (await Promise.all(sections)).flat();
@@ -66,33 +66,27 @@ export class SearchController {
     return rows.map((row) => ({ kind: 'item', id: row.id, title: row.name, subtitle: row.code }));
   }
 
-  /** The scope of 2.6.4 applies here exactly as it does on the Customers page. */
-  private async customers(context: RequestContext, normalized: string, phone: string): Promise<SearchHit[]> {
-    // Every account is a company, and whoever may see the companies sees them all (D-055).
-    const scoped = can(context, 'customers.view_all') || can(context, 'companies.view') ? null : context.userId;
+  /** Every account, for whoever may see accounts — they are nobody's in particular (D-056). */
+  private async customers(normalized: string, phone: string): Promise<SearchHit[]> {
     const { rows } = await this.database.query<{ id: string; name: string; phone: string | null }>(
       `SELECT id, name, phone FROM customers
         WHERE deleted_at IS NULL
           AND (name_normalized LIKE $1
                OR ($2::text <> '' AND phone_normalized LIKE '%' || $2 || '%'))
-          AND ($3::uuid IS NULL OR assigned_user_id = $3::uuid OR is_system = true)
         ORDER BY name ASC LIMIT 5`,
-      [normalized, phone, scoped],
+      [normalized, phone],
     );
     return rows.map((row) => ({ kind: 'customer', id: row.id, title: row.name, subtitle: row.phone }));
   }
 
-  private async orders(context: RequestContext, number: number): Promise<SearchHit[]> {
-    const scoped = can(context, 'customers.view_all') ? null : context.userId;
+  private async orders(number: number): Promise<SearchHit[]> {
     const { rows } = await this.database.query<{ id: string; number: string; name: string; order_date: string }>(
       `SELECT o.id, o.number::text AS number, c.name,
               to_char(o.order_date, 'YYYY-MM-DD') AS order_date
          FROM orders o JOIN customers c ON c.id = o.customer_id
         WHERE o.deleted_at IS NULL AND o.number = $1::bigint
-          AND ($2::uuid IS NULL OR c.assigned_user_id = $2::uuid OR c.is_system = true
-               OR o.acting_user_id = $2::uuid)
         LIMIT 3`,
-      [number, scoped],
+      [number],
     );
     return rows.map((row) => ({
       kind: 'order',

@@ -27,7 +27,6 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
   /** Sara: another sales employee, to prove the scope rules. */
   let otherSales: Session;
   let salesUserId: string;
-  let otherSalesUserId: string;
   let copper: string;
   let steel: string;
   let kawa: string;
@@ -71,7 +70,6 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       permissions: ['orders.create', 'customers.create', 'fields.see_customer_balances'],
     });
     salesUserId = salesUser.id;
-    otherSalesUserId = otherUser.id;
 
     admin = await signIn(ctx.http, adminUser);
     sales = await signIn(ctx.http, salesUser);
@@ -90,10 +88,10 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
     await addStock(copper, '6000.000');
     await addStock(steel, '500.000', 500);
 
-    // "Kawa Trading", assigned to Rebaz (the demo script's customer).
+    // "Kawa Trading" (the demo script's customer).
     const customer = await as(ctx.http, admin)
       .post('/api/v1/customers')
-      .send({ name: 'Kawa Trading', phone: '0770 123 4567', assigned_user_id: salesUserId })
+      .send({ name: 'Kawa Trading', phone: '0770 123 4567' })
       .expect(201);
     kawa = customer.body.id;
 
@@ -218,7 +216,7 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
     it("defaults an order to the customer's own rate, not the global one", async () => {
       const rateCo = await as(ctx.http, admin)
         .post('/api/v1/customers')
-        .send({ name: 'Rate Co', assigned_user_id: salesUserId })
+        .send({ name: 'Rate Co' })
         .expect(201);
       // Give the customer their own rate (1,300), apart from the global 1,310.
       await as(ctx.http, admin)
@@ -595,7 +593,7 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       const plain = await seedUser({
         username: 'plain',
         displayName: 'Plain',
-        permissions: ['customers.view', 'customers.view_all', 'orders.view'],
+        permissions: ['customers.view', 'orders.view'],
       });
       const session = await signIn(ctx.http, plain);
       const stripped = await as(ctx.http, session)
@@ -873,72 +871,17 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
     });
   });
 
-  describe('scope and assignment (FR-501, FR-502, spec 2.6.4)', () => {
-    it("hides another employee's customer and their orders, with 404 rather than 403", async () => {
-      const order = await createOrder(sales, {
+  describe('every account and every order is visible (D-056)', () => {
+    it("shows a salesman every company and a colleague's orders — accounts are nobody's", async () => {
+      const theirs = await createOrder(otherSales, {
+        customer_id: kawa,
         lines: [{ item_id: copper, qty_kg: '10.000' }],
       }).expect(201);
 
-      await as(ctx.http, otherSales).get(`/api/v1/customers/${kawa}`).expect(404);
-      await as(ctx.http, otherSales).get(`/api/v1/orders/${order.body.id}`).expect(404);
-
-      const list = await as(ctx.http, otherSales).get('/api/v1/customers').expect(200);
-      expect(list.body.items.map((row: { name: string }) => row.name)).toEqual([
-        'Walk-in customer',
-      ]);
-    });
-
-    it('names the assignee when a duplicate belongs to someone else (FR-501)', async () => {
-      const duplicates = await as(ctx.http, otherSales)
-        .get('/api/v1/customers/duplicates?name=Kawa%20Trading')
-        .expect(200);
-      expect(duplicates.body.duplicates[0]).toMatchObject({
-        name: 'Kawa Trading',
-        assigned_user_name: 'Rebaz',
-      });
-    });
-
-    it('assigns a customer created by a scoped employee to that employee (FR-501)', async () => {
-      const created = await as(ctx.http, otherSales)
-        .post('/api/v1/customers')
-        .send({ name: 'Zana Metals' })
-        .expect(201);
-      expect(created.body.assigned_user_id).toBe(otherSalesUserId);
-
-      const mine = await as(ctx.http, otherSales).get('/api/v1/customers').expect(200);
-      expect(mine.body.items.map((row: { name: string }) => row.name)).toContain('Zana Metals');
-    });
-
-    it('opens the customer up once an admin grants "sees all customers"', async () => {
-      await as(ctx.http, admin)
-        .post(`/api/v1/users/${otherSalesUserId}/permissions`)
-        .send({
-          keys: [
-            'orders.create',
-            'customers.create',
-            'customers.view_all',
-            'fields.see_customer_balances',
-          ],
-        })
-        .expect(201);
-
-      const list = await as(ctx.http, otherSales).get('/api/v1/customers').expect(200);
-      expect(list.body.items.map((row: { name: string }) => row.name)).toContain('Kawa Trading');
-    });
-
-    it('keeps an order visible to the employee who entered it after a reassignment', async () => {
-      const order = await createOrder(sales, {
-        lines: [{ item_id: copper, qty_kg: '10.000' }],
-      }).expect(201);
-      await as(ctx.http, admin)
-        .put(`/api/v1/customers/${kawa}/assignment`)
-        .send({ user_id: otherSalesUserId, note: 'handover' })
-        .expect(200);
-
-      const stillVisible = await as(ctx.http, sales)
-        .get(`/api/v1/orders/${order.body.id}`)
-        .expect(200);
-      expect(stillVisible.body.id).toBe(order.body.id);
+      const companies = await as(ctx.http, sales).get('/api/v1/customers').expect(200);
+      expect(companies.body.items.some((row: { id: string }) => row.id === kawa)).toBe(true);
+      await as(ctx.http, sales).get(`/api/v1/orders/${theirs.body.id}`).expect(200);
+      expect(companies.body.items[0]).not.toHaveProperty('assigned_user_id');
     });
   });
 
@@ -1000,7 +943,7 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       const plain = await seedUser({
         username: 'plain',
         displayName: 'Plain',
-        permissions: ['customers.view', 'customers.view_all', 'orders.view'],
+        permissions: ['customers.view', 'orders.view'],
       });
       const session = await signIn(ctx.http, plain);
 
@@ -1051,7 +994,6 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
         .post('/api/v1/customers')
         .send({
           name: 'Small Shop',
-          assigned_user_id: salesUserId,
           credit_limit: { amount: 50_000, currency: 'IQD' },
         })
         .expect(201);
@@ -1217,9 +1159,6 @@ describe('iteration 1 review regressions', () => {
   let ctx: TestApp;
   let admin: Session;
   let sales: Session;
-  let salesUserId: string;
-  let otherSalesUserId: string;
-  let otherSales: Session;
   let copper: string;
   let kawa: string;
 
@@ -1260,17 +1199,9 @@ describe('iteration 1 review regressions', () => {
         'fields.see_customer_balances',
       ],
     });
-    const other = await seedUser({
-      username: 'sara.review',
-      displayName: 'Sara',
-      permissions: ['orders.view', 'customers.view', 'fields.see_customer_balances'],
-    });
-    salesUserId = salesUser.id;
-    otherSalesUserId = other.id;
 
     admin = await signIn(ctx.http, adminUser);
     sales = await signIn(ctx.http, salesUser);
-    otherSales = await signIn(ctx.http, other);
 
     await as(ctx.http, admin)
       .post('/api/v1/settings/global-rates')
@@ -1293,7 +1224,7 @@ describe('iteration 1 review regressions', () => {
 
     const customer = await as(ctx.http, admin)
       .post('/api/v1/customers')
-      .send({ name: 'Kawa Trading', assigned_user_id: salesUserId })
+      .send({ name: 'Kawa Trading' })
       .expect(201);
     kawa = customer.body.id;
   });
@@ -1368,42 +1299,10 @@ describe('iteration 1 review regressions', () => {
     expect(customer.body.balance.amount_iqd).toBe(0);
   });
 
-  it('lets the employee who entered an order pay it off after the customer is reassigned', async () => {
-    const order = await as(ctx.http, sales)
-      .post('/api/v1/orders')
-      .send({
-        customer_id: kawa,
-        order_date: today(),
-        payment_type: 'borrowed',
-        lines: [{ item_id: copper, qty_kg: '100.000' }],
-      })
-      .expect(201);
-
-    await as(ctx.http, admin)
-      .put(`/api/v1/customers/${kawa}/assignment`)
-      .send({ user_id: otherSalesUserId, note: 'handover' })
-      .expect(200);
-
-    // The customer is out of Rebaz's scope now, but the order he entered is not (2.6.4).
-    await as(ctx.http, sales).get(`/api/v1/customers/${kawa}`).expect(404);
-    const payment = await as(ctx.http, sales)
-      .post(`/api/v1/orders/${order.body.id}/payments`)
-      .send({ amount: 30_000, currency: 'IQD', entry_date: today() })
-      .expect(201);
-    expect(payment.body[0].order.status).toBe('partially_paid');
-
-    // A payment not tied to an order still obeys the customer scope.
-    await as(ctx.http, sales)
-      .post(`/api/v1/customers/${kawa}/payments`)
-      .send({ amount: 1_000, currency: 'IQD', entry_date: today() })
-      .expect(404);
-    expect(otherSales).toBeDefined();
-  });
-
   it('refuses an edit that would move the order to another customer', async () => {
     const other = await as(ctx.http, admin)
       .post('/api/v1/customers')
-      .send({ name: 'Zana Metals', assigned_user_id: salesUserId })
+      .send({ name: 'Zana Metals' })
       .expect(201);
     const order = await as(ctx.http, sales)
       .post('/api/v1/orders')

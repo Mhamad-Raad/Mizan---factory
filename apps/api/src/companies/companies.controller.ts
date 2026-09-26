@@ -17,7 +17,6 @@ const method = z.enum(['cash', 'transfer', 'other']);
 
 const listSchema = z.object({
   q: z.string().max(200).optional(),
-  assigned_to: z.string().uuid().optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
   sort: z.enum(['name', 'balance']).optional(),
   page: z.coerce.number().int().positive().optional(),
@@ -112,7 +111,6 @@ export class CompaniesController {
   ) {
     return this.companies.list(contextOf(request), {
       q: query.q,
-      assigned_to: query.assigned_to,
       include_inactive: query.include_inactive === 'true',
       sort: query.sort,
       page: query.page,

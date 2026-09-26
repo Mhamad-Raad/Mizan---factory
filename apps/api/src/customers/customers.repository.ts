@@ -18,7 +18,6 @@ function customerColumns(alias = 'customers'): string {
     'address',
     'notes',
     'settlement_currency::text AS settlement_currency',
-    'assigned_user_id',
     'is_system',
     'credit_limit_iqd::text AS credit_limit_iqd',
     'credit_limit_usd_cents::text AS credit_limit_usd_cents',
@@ -32,28 +31,8 @@ function customerColumns(alias = 'customers'): string {
     .join(', ');
 }
 
-/**
- * The scope of the caller (spec 2.6.4). It is applied *here*, in the repository, from the
- * request context — never in a controller — so no list, search or picker can forget it.
- */
-export interface CustomerScope {
-  userId: string;
-  /**
-   * Sees every account: `customers.view_all`, or `companies.view` — the buying side was never
-   * scoped (FR-711), a warehouse employee records purchases from any company, and every account
-   * is a company now (D-055). Otherwise only their own accounts, plus the walk-in.
-   */
-  viewAll: boolean;
-}
-
-/** The scope predicate over alias `c`, with the caller's id at `$userParam`. */
-function scopeCondition(alias: string, userParam: number): string {
-  return `(${alias}.is_system OR ${alias}.assigned_user_id = $${userParam}::uuid)`;
-}
-
 export interface CustomerFilters {
   q?: string;
-  assigned_to?: string;
   /** On the net figure: `owes` = they owe us, `credit` = we owe them, `settled` = zero (FR-505). */
   balance?: 'owes' | 'settled' | 'credit';
   include_inactive?: boolean;
@@ -63,7 +42,6 @@ export interface CustomerFilters {
 }
 
 export interface CustomerListRow extends CustomerRow {
-  assigned_user_name: string | null;
   /** What they owe us, what we owe them, and the difference — all in the settlement currency. */
   balance: string;
   payable: string;
@@ -75,26 +53,20 @@ export class CustomersRepository {
   constructor(private readonly database: Database) {}
 
   /**
-   * A customer the caller may open. Out of scope returns null so the service can answer 404
-   * rather than 403: a "forbidden" would confirm that the customer exists (spec 2.6.4).
+   * An account by id. Every account is visible to whoever may see accounts (D-055, D-056), so
+   * there is no scope to apply — the route's permission is the whole of the rule.
    */
-  async findById(id: string, scope: CustomerScope, tx?: Db): Promise<CustomerRow | null> {
-    const { rows } = await (tx ?? this.database).query<CustomerRow>(
-      `SELECT ${customerColumns()} FROM customers
-        WHERE id = $1 AND deleted_at IS NULL
-          AND ($2::boolean OR ${scopeCondition('customers', 3)})`,
-      [id, scope.viewAll, scope.userId],
-    );
-    return rows[0] ?? null;
-  }
-
-  /** Unscoped read, for the paths that must see every customer: duplicate checks and admin. */
-  async findByIdUnscoped(id: string, tx?: Db): Promise<CustomerRow | null> {
+  async findById(id: string, tx?: Db): Promise<CustomerRow | null> {
     const { rows } = await (tx ?? this.database).query<CustomerRow>(
       `SELECT ${customerColumns()} FROM customers WHERE id = $1 AND deleted_at IS NULL`,
       [id],
     );
     return rows[0] ?? null;
+  }
+
+  /** The same read as `findById`; kept for the callers that name it (D-056). */
+  async findByIdUnscoped(id: string, tx?: Db): Promise<CustomerRow | null> {
+    return this.findById(id, tx);
   }
 
   async lock(id: string, tx: Db): Promise<CustomerRow | null> {
@@ -113,23 +85,19 @@ export class CustomersRepository {
   }
 
   /**
-   * The duplicate check of FR-501 runs over **all** customers whatever the caller's scope:
+   * The duplicate check of FR-501 runs over **all** accounts:
    * the directory must not fragment into twins because an employee cannot see the original.
-   * The assignee's name comes back so the warning can say "ask your admin".
    */
   async findDuplicates(
     name: string,
     tx?: Db,
-  ): Promise<{ id: string; name: string; assigned_user_id: string | null; assigned_user_name: string | null }[]> {
+  ): Promise<{ id: string; name: string }[]> {
     const { rows } = await (tx ?? this.database).query<{
       id: string;
       name: string;
-      assigned_user_id: string | null;
-      assigned_user_name: string | null;
     }>(
-      `SELECT c.id, c.name, c.assigned_user_id, u.display_name AS assigned_user_name
+      `SELECT c.id, c.name
          FROM customers c
-         LEFT JOIN users u ON u.id = c.assigned_user_id
         WHERE c.deleted_at IS NULL AND c.name_normalized = $1
         ORDER BY c.created_at ASC
         LIMIT 5`,
@@ -140,21 +108,11 @@ export class CustomersRepository {
 
   async list(
     filters: CustomerFilters,
-    scope: CustomerScope,
   ): Promise<{ rows: CustomerListRow[]; total: number }> {
     const conditions = ['c.deleted_at IS NULL'];
     const values: unknown[] = [];
 
-    // Scope first, so every later condition narrows an already-permitted set (spec 2.6.4).
-    if (!scope.viewAll) {
-      values.push(scope.userId);
-      conditions.push(scopeCondition('c', values.length));
-    }
     if (!filters.include_inactive) conditions.push('c.is_active = true');
-    if (filters.assigned_to) {
-      values.push(filters.assigned_to);
-      conditions.push(`c.assigned_user_id = $${values.length}::uuid`);
-    }
     const query = filters.q?.trim();
     if (query) {
       values.push(`%${normalizeForSearch(query)}%`);
@@ -176,7 +134,6 @@ export class CustomersRepository {
 
     // The balance is a sum over the customer's own rows, which `customer_ledger_running_idx`
     // serves as one index scan per customer rather than an aggregate of the whole ledger.
-    const assignee = 'LEFT JOIN users u ON u.id = c.assigned_user_id';
     const balance = `
       LEFT JOIN LATERAL (
         SELECT coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0)
@@ -192,12 +149,11 @@ export class CustomersRepository {
           FROM company_ledger l
          WHERE l.company_id = c.id
       ) pay ON true`;
-    const from = `FROM customers c\n${assignee}${balance}${payable}`;
+    const from = `FROM customers c\n${balance}${payable}`;
     const where = `WHERE ${conditions.join(' AND ')}`;
     // Counting thirty thousand customers does not need each one's balance summed — only a
     // filter on the balance does (`countFrom`, the system-wide review).
     const forCount = countFrom('FROM customers c', where, [
-      { alias: 'u.', sql: assignee },
       { alias: 'bal.', sql: balance },
       { alias: 'pay.', sql: payable },
     ]);
@@ -211,7 +167,7 @@ export class CustomersRepository {
 
     const [list, count] = await Promise.all([
       this.database.query<CustomerListRow>(
-        `SELECT ${customerColumns('c')}, u.display_name AS assigned_user_name, bal.balance::text AS balance,
+        `SELECT ${customerColumns('c')}, bal.balance::text AS balance,
                 pay.payable::text AS payable, ${net}::text AS net
          ${from} ${where}
          ORDER BY ${order}
@@ -250,7 +206,6 @@ export class CustomersRepository {
       address: string | null;
       notes: string | null;
       settlement_currency: Currency;
-      assigned_user_id: string | null;
       credit_limit_iqd: number | null;
       credit_limit_usd_cents: number | null;
       created_by: string;
@@ -259,10 +214,9 @@ export class CustomersRepository {
   ): Promise<CustomerRow> {
     const { rows } = await tx.query<CustomerRow>(
       `INSERT INTO customers (name, name_normalized, phone, phone_normalized, address, notes,
-                              settlement_currency, assigned_user_id, credit_limit_iqd,
-                              credit_limit_usd_cents, created_by, updated_by,
-                              contact_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::currency, $8, $9, $10, $11, $11, $12)
+                              settlement_currency, credit_limit_iqd, credit_limit_usd_cents,
+                              created_by, updated_by, contact_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::currency, $8, $9, $10, $10, $11)
        RETURNING ${customerColumns()}`,
       [
         input.name,
@@ -272,7 +226,6 @@ export class CustomersRepository {
         input.address,
         input.notes,
         input.settlement_currency,
-        input.assigned_user_id,
         input.credit_limit_iqd,
         input.credit_limit_usd_cents,
         input.created_by,
@@ -292,7 +245,6 @@ export class CustomersRepository {
       address: string | null;
       notes: string | null;
       settlement_currency: Currency;
-      assigned_user_id: string | null;
       credit_limit_iqd: number | null;
       credit_limit_usd_cents: number | null;
       is_active: boolean;

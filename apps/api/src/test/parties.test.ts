@@ -20,13 +20,10 @@ describe('one kind of account (D-054, D-055)', () => {
   let warehouse: Session;
   /** Nazdar: pays companies, sees what we owe but not what customers owe. */
   let accountant: Session;
-  let salesUserId: string;
   let copper: string;
-  /** Assigned to Rebaz. */
   let kawa: string;
-  /** Assigned to nobody; we both buy from it and sell to it. */
+  /** We both buy from it and sell to it. */
   let zagros: string;
-  /** Assigned to nobody. */
   let alNoor: string;
   let walkIn: string;
 
@@ -57,7 +54,6 @@ describe('one kind of account (D-054, D-055)', () => {
       displayName: 'Nazdar',
       permissions: ['companies.record_payment', 'companies.set_rate', 'fields.see_company_balances'],
     });
-    salesUserId = salesUser.id;
 
     admin = await signIn(ctx.http, adminUser);
     sales = await signIn(ctx.http, salesUser);
@@ -79,7 +75,7 @@ describe('one kind of account (D-054, D-055)', () => {
       .send({ sale: { amount: 850, currency: 'IQD' }, bought: { amount: 700, currency: 'IQD' } })
       .expect(200);
 
-    kawa = await createParty(admin, { name: 'Kawa Trading', assigned_user_id: salesUserId });
+    kawa = await createParty(admin, { name: 'Kawa Trading' });
     zagros = await createParty(admin, { name: 'Zagros Metals' });
     alNoor = await createParty(admin, { name: 'Al-Noor Steel Co.' });
     walkIn = await withDatabase(async (client) => {
@@ -254,20 +250,16 @@ describe('one kind of account (D-054, D-055)', () => {
   });
 
   describe('who sees and makes an account', () => {
-    it('shows whoever may see the companies every account, and a salesman his own', async () => {
-      const seen = await as(ctx.http, warehouse).get('/api/v1/customers').expect(200);
-      expect(seen.body.items.map((row: { name: string }) => row.name).sort()).toEqual([
-        'Al-Noor Steel Co.',
-        'Kawa Trading',
-        'Walk-in customer',
-        'Zagros Metals',
-      ]);
-
-      const own = await as(ctx.http, sales).get('/api/v1/customers').expect(200);
-      expect(own.body.items.map((row: { name: string }) => row.name).sort()).toEqual([
-        'Kawa Trading',
-        'Walk-in customer',
-      ]);
+    it('shows every account to whoever may see accounts — nobody is assigned one (D-056)', async () => {
+      for (const session of [warehouse, sales]) {
+        const seen = await as(ctx.http, session).get('/api/v1/customers').expect(200);
+        expect(seen.body.items.map((row: { name: string }) => row.name).sort()).toEqual([
+          'Al-Noor Steel Co.',
+          'Kawa Trading',
+          'Walk-in customer',
+          'Zagros Metals',
+        ]);
+      }
     });
 
     it('lets either side’s permission create an account, and refuses somebody with neither', async () => {

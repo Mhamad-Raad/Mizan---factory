@@ -60,8 +60,9 @@ export class DashboardController {
     const asking: Promise<DashboardTile[]>[] = [];
 
     if (can(context, 'orders.view')) {
-      // A sales employee's dashboard is their own work (spec 2.6.4); an owner's is the factory's.
-      const scoped = can(context, 'customers.view_all') ? null : context.userId;
+      // A sales employee's dashboard is the orders they entered (spec 2.6.4); an owner's — whoever
+      // may see everybody's reports — is the factory's. Accounts are not assigned (D-056).
+      const scoped = can(context, 'reports.view_all') ? null : context.userId;
       asking.push(this.sellingTiles(today, scoped));
     }
     if (can(context, 'purchases.view')) asking.push(this.purchaseTile(today));
@@ -92,8 +93,7 @@ export class DashboardController {
                 coalesce(sum(o.total_usd_cents), 0)::text AS usd_cents
            FROM orders o JOIN customers c ON c.id = o.customer_id
           WHERE o.status = 'active' AND o.deleted_at IS NULL AND o.order_date = $1::date
-            AND ($2::uuid IS NULL OR c.assigned_user_id = $2::uuid OR o.acting_user_id = $2::uuid
-                 OR c.is_system = true)`,
+            AND ($2::uuid IS NULL OR o.acting_user_id = $2::uuid)`,
         [today, scoped],
       ),
       // One grouped pass over the ledger rather than the `order_balances` view, which groups
@@ -114,8 +114,7 @@ export class DashboardController {
            JOIN orders o ON o.id = r.order_id
            JOIN customers c ON c.id = o.customer_id
           WHERE o.status = 'active' AND o.deleted_at IS NULL
-            AND ($1::uuid IS NULL OR c.assigned_user_id = $1::uuid OR o.acting_user_id = $1::uuid
-                 OR c.is_system = true)
+            AND ($1::uuid IS NULL OR o.acting_user_id = $1::uuid)
             AND (CASE WHEN c.settlement_currency = 'IQD' THEN r.remaining_iqd
                       ELSE r.remaining_usd_cents END) > 0`,
         [scoped],

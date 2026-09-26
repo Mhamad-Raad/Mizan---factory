@@ -10,7 +10,6 @@ export interface CustomerRow {
   address: string | null;
   notes: string | null;
   settlement_currency: Currency;
-  assigned_user_id: string | null;
   is_system: boolean;
   credit_limit_iqd: string | null;
   credit_limit_usd_cents: string | null;
@@ -42,8 +41,6 @@ export interface CustomerDto {
   address: string | null;
   notes: string | null;
   settlement_currency: Currency;
-  assigned_user_id: string | null;
-  assigned_user_name: string | null;
   /** True for the walk-in customer: no ledger tab, no assignment, cash orders only (A-33). */
   is_system: boolean;
   /** Proposed — not requested (FR-616): warns on a borrowed order, never blocks. */

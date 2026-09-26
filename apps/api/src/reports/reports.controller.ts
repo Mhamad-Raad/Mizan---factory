@@ -13,13 +13,12 @@ const baseSchema = z.object({
   from: isoDate.optional(),
   to: isoDate.optional(),
   done_by: z.string().uuid().optional(),
-  assigned_to: z.string().uuid().optional(),
   company_id: z.string().uuid().optional(),
   item_id: z.string().uuid().optional(),
 });
 
 const salesSchema = baseSchema.extend({
-  group_by: z.enum(['month', 'day', 'customer', 'item', 'employee', 'assigned']).optional(),
+  group_by: z.enum(['month', 'day', 'customer', 'item', 'employee']).optional(),
 });
 const purchasesSchema = baseSchema.extend({
   group_by: z.enum(['month', 'day', 'company', 'item', 'employee']).optional(),

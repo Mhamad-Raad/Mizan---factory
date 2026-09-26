@@ -758,3 +758,27 @@ them was "more work for no reason".
 
 Relied on: the client's instruction; 2.3.3 (the document's rate), 2.6.4 (scope in repositories),
 rule 3 (every change in History).
+
+## D-056 · 2026-09-26 · client review · Accounts are not assigned to employees
+
+The client, asked what assignment was for (FR-502: which salesman sees which customers, and
+whose account it is): "remove that from the system".
+
+**Choice** (migration 0025):
+
+- **The column and three permissions go:** `customers.assigned_user_id`, `customers.assign`,
+  `companies.assign`, and `customers.view_all` — "sees every customer, not only the assigned
+  ones" is now what `customers.view` means by itself. Grants of the three keys are deleted; the
+  Sales preset and the simple editor lose "Sees all customers" (five extras, not six).
+- **Nobody's view is narrowed by assignment.** Whoever may see accounts sees every account;
+  whoever may see orders sees every order. The dashboard of somebody without
+  `reports.view_all` is the orders *they entered*, not "their customers'"; Receivables is no
+  longer pinned to anybody; reports lose the "assigned employee" grouping and filter; History
+  loses the "assigned to" filter.
+- **History keeps every assignment ever made** — audit rows are append-only (rule 2).
+- **Found on the way:** once every salesman could open every company, the company page showed
+  the purchases side to people without `purchases.view` (an error box) and a one-sided balance
+  as if it were the whole account ("Settled" for a company we owe millions). The purchases parts
+  now show only with `purchases.view`, and a balance of one side says which side it is.
+
+Relied on: the client's instruction; 2.6.4 (the scope rules this empties); rule 2.

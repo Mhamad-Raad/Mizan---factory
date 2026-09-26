@@ -89,15 +89,8 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
 
   // Customers
   { key: 'customers.view', page: 'customers', implies: [], labelKey: 'permissions.customers.view' },
-  {
-    key: 'customers.view_all',
-    page: 'customers',
-    implies: ['customers.view'],
-    labelKey: 'permissions.customers.view_all',
-  },
   { key: 'customers.create', page: 'customers', implies: ['customers.view'], labelKey: 'permissions.customers.create' },
   { key: 'customers.edit', page: 'customers', implies: ['customers.view'], labelKey: 'permissions.customers.edit' },
-  { key: 'customers.assign', page: 'customers', implies: ['customers.view'], labelKey: 'permissions.customers.assign' },
   {
     key: 'customers.opening_balance',
     page: 'customers',
@@ -122,7 +115,6 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
   },
   { key: 'companies.create', page: 'companies', implies: ['companies.view'], labelKey: 'permissions.companies.create' },
   { key: 'companies.edit', page: 'companies', implies: ['companies.view'], labelKey: 'permissions.companies.edit' },
-  { key: 'companies.assign', page: 'companies', implies: ['companies.view'], labelKey: 'permissions.companies.assign' },
   {
     key: 'companies.set_rate',
     page: 'companies',

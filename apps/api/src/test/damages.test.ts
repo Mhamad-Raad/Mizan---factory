@@ -79,7 +79,6 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
         'orders.credit',
         'orders.view',
         'customers.view',
-        'customers.view_all',
         'fields.see_company_balances',
         'fields.see_customer_balances',
         'fields.see_bought_price',

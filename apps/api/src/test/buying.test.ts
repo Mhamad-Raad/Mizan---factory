@@ -240,8 +240,8 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       expect(response.body.duplicates.map((row: { id: string }) => row.id)).toEqual([alNoor]);
     });
 
-    it('shows every company to every user with companies.view, assigned or not (FR-711)', async () => {
-      await createCompany({ name: 'Zagros Metals', assigned_user_id: accountantUserId });
+    it('shows every company to every user with companies.view (FR-711)', async () => {
+      await createCompany({ name: 'Zagros Metals' });
       const mine = await as(ctx.http, accountant).get('/api/v1/companies').expect(200);
       const theirs = await as(ctx.http, warehouse).get('/api/v1/companies').expect(200);
       expect(mine.body.total).toBe(2);

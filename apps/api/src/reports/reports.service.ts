@@ -10,7 +10,6 @@ export interface ReportRequest {
   from?: string;
   to?: string;
   done_by?: string;
-  assigned_to?: string;
   group_by?: GroupBy;
   company_id?: string;
   item_id?: string;
@@ -21,7 +20,7 @@ export interface ReportMeta {
   to: string;
   group_by: string;
   /** Which user filter the report was pinned to, so the screen can say so rather than lie. */
-  pinned?: { filter: 'done_by' | 'assigned_to'; user_id: string };
+  pinned?: { filter: 'done_by'; user_id: string };
 }
 
 /**
@@ -29,11 +28,10 @@ export interface ReportMeta {
  *
  * Two rules live here rather than in the SQL, because both are about *who is asking*:
  *
- *   · **the pinned filter.** Without `reports.view_all` a report is pinned to the caller —
- *     `done_by` for the ones about what somebody did, `assigned_to` for the ones about whose
- *     customers and suppliers they are (2.11). The pin is applied over the query and echoed in
+ *   · **the pinned filter.** Without `reports.view_all` a report about what somebody did is
+ *     pinned to the caller (`done_by`, 2.11). The pin is applied over the query and echoed in
  *     the response, so the screen can show "your figures" instead of pretending to be the
- *     factory's;
+ *     factory's. Accounts are not assigned (D-056), so Receivables is not pinned to anybody;
  *   · **the field flags.** A column the caller may not see is *omitted*, not zeroed: every
  *     amount that is a bought price travels under `cost`, and the interceptor removes the whole
  *     group (D-022).
@@ -279,14 +277,14 @@ export class ReportsService {
    * all but two hundred rows is what cost 2.3 seconds at the design point (REVIEW-I6).
    */
   async receivables(context: RequestContext, request: ReportRequest) {
-    const { filters, meta } = this.resolve(context, request, 'assigned_to');
+    // Not pinned: accounts are nobody's in particular any more (D-056).
+    const { filters, meta } = this.resolve(context, request, null);
     const rows = await this.reports.receivables(filters, MAX_GROUPS);
 
     const groups = rows.map((row) => ({
       key: row.key,
       label: row.label,
       settlement_currency: row.settlement_currency,
-      assigned_user_name: row.assigned_user_name,
       unpaid_orders: Number(row.unpaid_orders),
       balance: {
         amount: Number(row.balance),
@@ -503,7 +501,7 @@ export class ReportsService {
   private resolve(
     context: RequestContext,
     request: ReportRequest,
-    pin: 'done_by' | 'assigned_to' | null,
+    pin: 'done_by' | null,
   ): { filters: ReportFilters; meta: ReportMeta } {
     const filters = this.range(request);
     const maySeeEveryone = can(context, 'reports.view_all');
@@ -512,7 +510,7 @@ export class ReportsService {
       // Without `reports.view_all` there is nobody else's figures to ask for, so an unpinned
       // report ignores the user filters rather than letting them in by the back door.
       const resolved = maySeeEveryone
-        ? { ...filters, done_by: request.done_by, assigned_to: request.assigned_to }
+        ? { ...filters, done_by: request.done_by }
         : filters;
       return {
         filters: resolved,

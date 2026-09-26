@@ -19,12 +19,6 @@ export interface AuditRow {
 
 export interface HistoryFilters {
   done_by?: string;
-  /**
-   * The employee the *record* is assigned to, which is a different question from who did it
-   * (spec 2.9.4): it reads `related.assigned_user_id`, written by every audit row that belongs
-   * to a customer or a company, and is served by the GIN index on `related`.
-   */
-  assigned_to?: string;
   from?: string;
   to?: string;
   entity_type?: string;
@@ -69,12 +63,6 @@ export class HistoryRepository {
     if (filters.done_by) {
       values.push(filters.done_by);
       conditions.push(`a.actor_user_id = $${values.length}`);
-    }
-    // Containment rather than `->>`: `audit_log_related_idx` is a GIN index on the whole
-    // document, so `related @> {...}` is an index scan while a field extraction is a filter.
-    if (filters.assigned_to) {
-      values.push(JSON.stringify({ assigned_user_id: filters.assigned_to }));
-      conditions.push(`a.related @> $${values.length}::jsonb`);
     }
     // Business days are Asia/Baghdad days, whatever the server's time zone (spec 2.9.4).
     //

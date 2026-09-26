@@ -67,7 +67,6 @@ const listSchema = z.object({
   from: isoDate.optional(),
   to: isoDate.optional(),
   done_by: z.string().uuid().optional(),
-  assigned_to: z.string().uuid().optional(),
   payment_type: z.enum(['cash', 'borrowed']).optional(),
   status: z.enum(['unpaid', 'partially_paid', 'paid', 'void']).optional(),
   q: z.string().max(200).optional(),
@@ -82,7 +81,7 @@ const historySchema = z.object({
 });
 
 /**
- * Orders (FR-601 to FR-613). Scope is applied in the repository from the request context, and
+ * Orders (FR-601 to FR-613). Every order is visible to whoever may see orders (D-056), and
  * the cost snapshot on each line — a bought price — is stripped for callers without
  * `fields.see_bought_price` (FR-602, spec 2.6.2).
  */
@@ -100,7 +99,7 @@ export class OrdersController {
     });
   }
 
-  /** The customer's Orders tab; the same scoped list, filtered to one customer (FR-503). */
+  /** The account's Orders tab; the same list, filtered to one account (FR-503). */
   @Get('customers/:id/orders')
   @RequirePermission('orders.view')
   async ofCustomer(

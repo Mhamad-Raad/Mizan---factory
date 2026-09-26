@@ -126,7 +126,7 @@ await call(admin, `/items/${steel.body.id}/opening-stock`, {
 
 // ───────────────────────── 2. the customer and their opening debt ─────────────────────────
 
-step(2, 'Create "Kawa Trading" assigned to Rebaz, with an opening balance of 450,000 د.ع');
+step(2, 'Create "Kawa Trading", with an opening balance of 450,000 د.ع');
 const rebazUser = await call(admin, '/users', {
   method: 'POST',
   body: { display_name: 'Rebaz Ahmed', username: `rebaz.${unique}`, role: 'employee', preset_key: 'sales' },
@@ -143,9 +143,9 @@ check(Boolean(rebaz && sara), 'both signed in and set their own passwords');
 
 const kawa = await call(admin, '/customers', {
   method: 'POST',
-  body: { name: `Kawa Trading ${unique}`, phone: '0770 123 4567', assigned_user_id: rebazUser.body.user.id },
+  body: { name: `Kawa Trading ${unique}`, phone: '0770 123 4567' },
 });
-check(kawa.status === 201, `customer created, assigned to ${kawa.body?.assigned_user_name}`);
+check(kawa.status === 201, 'company created');
 
 const openingBalance = await call(admin, `/customers/${kawa.body.id}/opening-balance`, {
   method: 'POST',
@@ -315,32 +315,14 @@ check(refund.status === 201, 'the 5,000 د.ع that had arrived stayed as credit 
 
 // ─────────────────────────────── 8. the scope rules ───────────────────────────────
 
-step(8, 'As Sara: Kawa is invisible, the duplicate warning names Rebaz, and "sees all customers" opens it up');
+step(8, 'Every company is visible to every salesman — accounts are not assigned (D-056)');
 const saraSees = await call(sara.session, '/customers');
 check(
-  !(saraSees.body?.items ?? []).some((row) => row.id === kawa.body.id),
-  "Kawa Trading is not in Sara's list",
+  (saraSees.body?.items ?? []).some((row) => row.id === kawa.body.id),
+  "Kawa Trading is in Sara's list as well as Rebaz's",
 );
 const saraOpens = await call(sara.session, `/customers/${kawa.body.id}`);
-check(saraOpens.status === 404, 'opening it answers 404, which does not even confirm it exists');
-
-const duplicates = await call(sara.session, `/customers/duplicates?name=${encodeURIComponent(`Kawa Trading ${unique}`)}`);
-check(
-  duplicates.body?.duplicates?.[0]?.assigned_user_name === 'Rebaz Ahmed',
-  'the duplicate warning says it is assigned to Rebaz Ahmed — ask your admin',
-);
-
-await call(admin, `/users/${saraUser.body.user.id}/permissions`, {
-  method: 'POST',
-  body: {
-    keys: ['orders.create', 'customers.create', 'customers.view_all', 'fields.see_customer_balances'],
-  },
-});
-const saraSeesNow = await call(sara.session, '/customers');
-check(
-  (saraSeesNow.body?.items ?? []).some((row) => row.id === kawa.body.id),
-  'after the admin grants "sees all customers", it is there — on the very next request',
-);
+check(saraOpens.status === 200, 'and she can open it');
 
 // ─────────────────────────────── 9. the period lock ───────────────────────────────
 

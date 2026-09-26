@@ -35,7 +35,7 @@ import { PeriodService } from '../settings/period.service.js';
 import { SettingsService } from '../settings/settings.service.js';
 import { StockService } from '../stock/stock.service.js';
 import { OrdersRepository } from './orders.repository.js';
-import type { NewOrderLine, OrderFilters, OrderListRow, OrderScope } from './orders.repository.js';
+import type { NewOrderLine, OrderFilters, OrderListRow } from './orders.repository.js';
 import type { OrderDto, OrderLineDto, OrderLineRow, PaymentType } from './order.types.js';
 
 /** How long the creator may undo an order from the save toast (FR-610). */
@@ -98,15 +98,11 @@ export class OrdersService {
     private readonly history: HistoryRepository,
   ) {}
 
-  scopeOf(context: RequestContext): OrderScope {
-    return { userId: context.userId, viewAll: can(context, 'customers.view_all') };
-  }
-
   async list(
     context: RequestContext,
     filters: OrderFilters,
   ): Promise<{ items: OrderDto[]; total: number }> {
-    const { rows, total } = await this.orders.list(filters, this.scopeOf(context));
+    const { rows, total } = await this.orders.list(filters);
     return { items: rows.map((row) => toOrderDto(row, [])), total };
   }
 
@@ -117,8 +113,7 @@ export class OrdersService {
   }
 
   private async requireOrder(context: RequestContext, id: string): Promise<OrderListRow> {
-    const row = await this.orders.findById(id, this.scopeOf(context));
-    // Out of scope answers 404, not 403: a refusal would confirm the order exists (2.6.4).
+    const row = await this.orders.findById(id);
     if (!row) throw ApiError.notFound();
     return row;
   }
@@ -136,10 +131,7 @@ export class OrdersService {
       ]);
     }
 
-    const customer = await this.customers.findById(
-      input.customer_id,
-      this.customersService.scopeOf(context),
-    );
+    const customer = await this.customers.findById(input.customer_id);
     if (!customer) throw ApiError.notFound();
     if (!customer.is_active) {
       throw ApiError.validation([
@@ -257,7 +249,6 @@ export class OrdersService {
           related: {
             order_id: order.id,
             customer_id: customer.id,
-            assigned_user_id: customer.assigned_user_id,
           },
         },
         tx,
@@ -658,9 +649,8 @@ export class OrdersService {
   ): Promise<WriteResultDto[]> {
     const order = await this.requireOrder(context, id);
     if (order.status === 'void') throw new ApiError('DOCUMENT_VOID', { order_id: id });
-    // The order's own scope rule already authorised this caller — an employee may pay off an
-    // order they entered even after the customer was reassigned to somebody else (2.6.4), so
-    // the customer-level check is not applied a second time here.
+    // The order's own route already authorised this caller (orders.record_payment), so the
+    // account-level check is not applied a second time here.
     return this.customersService.recordPayment(
       context,
       order.customer_id,
@@ -1191,7 +1181,7 @@ export class OrdersService {
   }
 
   private async versionConflict(context: RequestContext, id: string): Promise<ApiError> {
-    const current = await this.orders.findById(id, this.scopeOf(context));
+    const current = await this.orders.findById(id);
     return new ApiError('VERSION_CONFLICT', { entity: 'order', version: current?.version ?? null });
   }
 }

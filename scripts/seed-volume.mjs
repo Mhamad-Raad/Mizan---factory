@@ -105,14 +105,13 @@ await client.query(
 
 say('customers and companies');
 await client.query(
-  `INSERT INTO customers (name, name_normalized, settlement_currency, assigned_user_id, created_by, updated_by)
+  `INSERT INTO customers (name, name_normalized, settlement_currency, created_by, updated_by)
    SELECT 'Volume customer ' || g, 'volume customer ' || g,
           (CASE WHEN g % 10 = 0 THEN 'USD' ELSE 'IQD' END)::currency,
-          (SELECT id FROM users WHERE username = 'volume.' || (1 + g % $3)),
           $1, $1
      FROM generate_series(1, $2) g
-   ON CONFLICT DO NOTHING`,
-  [actor, CUSTOMERS, EMPLOYEES],
+    WHERE NOT EXISTS (SELECT 1 FROM customers c WHERE c.name_normalized = 'volume customer ' || g)`,
+  [actor, CUSTOMERS],
 );
 await client.query(
   // Every account is a company (D-055). Names are not unique any more, so a re-run is kept
@@ -276,7 +275,7 @@ for (let year = 0; year < YEARS; year += 1) {
         related, request_id, auth_method)
      SELECT o.created_at, o.acting_user_id, 'create', 'order', o.id::text,
             'Order #' || o.number, '{}'::jsonb,
-            jsonb_build_object('customer_id', o.customer_id, 'assigned_user_id', c.assigned_user_id),
+            jsonb_build_object('customer_id', o.customer_id),
             gen_random_uuid(), 'password'
        FROM orders o JOIN customers c ON c.id = o.customer_id
       WHERE o.order_date >= (now() - $1::interval)::date

@@ -15,7 +15,6 @@ export interface CompanyRow {
   address: string | null;
   notes: string | null;
   settlement_currency: Currency;
-  assigned_user_id: string | null;
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
@@ -24,7 +23,6 @@ export interface CompanyRow {
 }
 
 export interface CompanyListRow extends CompanyRow {
-  assigned_user_name: string | null;
   balance: string;
   rate_iqd_per_usd: string | null;
   rate_since: Date | null;
@@ -32,7 +30,6 @@ export interface CompanyListRow extends CompanyRow {
 
 export interface CompanyFilters {
   q?: string;
-  assigned_to?: string;
   include_inactive?: boolean;
   /** FR-710: "highest balance first" is the collections view an owner asks for. */
   sort?: 'name' | 'balance';
@@ -51,7 +48,6 @@ function companyColumns(alias = 'companies'): string {
     'address',
     'notes',
     'settlement_currency::text AS settlement_currency',
-    'assigned_user_id',
     'is_active',
     'created_at',
     'updated_at',
@@ -64,7 +60,7 @@ function companyColumns(alias = 'companies'): string {
 
 /**
  * The buying side of a business, read from `customers` (D-054): a "company" is a business with
- * an ordinary account (not the walk-in, D-055), and the record itself — creating, editing, assigning, its rate and its
+ * an ordinary account (not the walk-in, D-055), and the record itself — creating, editing, its rate and its
  * settlement currency — belongs to the customers module. What stays here is what the buying
  * side reads: the supplier as the purchase and damage forms see it, its balance, its rate.
  *
@@ -97,10 +93,6 @@ export class CompaniesRepository {
     const values: unknown[] = [];
 
     if (!filters.include_inactive) conditions.push('c.is_active = true');
-    if (filters.assigned_to) {
-      values.push(filters.assigned_to);
-      conditions.push(`c.assigned_user_id = $${values.length}::uuid`);
-    }
     const query = filters.q?.trim();
     if (query) {
       values.push(`%${normalizeForSearch(query)}%`);
@@ -115,7 +107,6 @@ export class CompaniesRepository {
       );
     }
 
-    const assignee = 'LEFT JOIN users u ON u.id = c.assigned_user_id';
     const owed = `
       LEFT JOIN LATERAL (
         SELECT coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0)
@@ -131,11 +122,10 @@ export class CompaniesRepository {
          ORDER BY r.effective_from DESC
          LIMIT 1
       ) rate ON true`;
-    const from = `FROM customers c\n${assignee}${owed}${currentRate}`;
+    const from = `FROM customers c\n${owed}${currentRate}`;
     const where = `WHERE ${conditions.join(' AND ')}`;
     // The count needs none of the three unless a filter mentions one (`countFrom`).
     const forCount = countFrom('FROM customers c', where, [
-      { alias: 'u.', sql: assignee },
       { alias: 'bal.', sql: owed },
       { alias: 'rate.', sql: currentRate },
     ]);
@@ -149,7 +139,7 @@ export class CompaniesRepository {
 
     const [list, count] = await Promise.all([
       this.database.query<CompanyListRow>(
-        `SELECT ${companyColumns('c')}, u.display_name AS assigned_user_name,
+        `SELECT ${companyColumns('c')},
                 bal.balance::text AS balance,
                 rate.rate_iqd_per_usd::text AS rate_iqd_per_usd,
                 rate.effective_from AS rate_since

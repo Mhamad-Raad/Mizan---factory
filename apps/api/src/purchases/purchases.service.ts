@@ -274,7 +274,6 @@ export class PurchasesService {
           related: {
             purchase_id: purchase.id,
             company_id: company?.id ?? null,
-            assigned_user_id: company?.assigned_user_id ?? null,
           },
         },
         tx,

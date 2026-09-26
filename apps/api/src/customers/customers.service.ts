@@ -17,7 +17,7 @@ import { PeriodService } from '../settings/period.service.js';
 import { SettingsService } from '../settings/settings.service.js';
 import { CompaniesService } from '../companies/companies.service.js';
 import { CustomersRepository } from './customers.repository.js';
-import type { CustomerFilters, CustomerScope } from './customers.repository.js';
+import type { CustomerFilters } from './customers.repository.js';
 import type {
   BalanceDto,
   CustomerDto,
@@ -45,7 +45,6 @@ export interface CreateCustomerInput {
   address?: string | null;
   notes?: string | null;
   settlement_currency?: Currency;
-  assigned_user_id?: string | null;
   /** Proposed — not requested (FR-616). */
   credit_limit?: MoneyInput | null;
 }
@@ -121,14 +120,6 @@ export class CustomersService {
     private readonly suppliers: CompaniesService,
   ) {}
 
-  scopeOf(context: RequestContext): CustomerScope {
-    return {
-      userId: context.userId,
-      // Every account is a company (D-055), and whoever may see the companies sees them all.
-      viewAll: can(context, 'customers.view_all') || can(context, 'companies.view'),
-    };
-  }
-
   /**
    * Which balances this caller may read (FR-503, FR-704). The net figure needs both: from the
    * net and one side anybody could work out the side they may not see.
@@ -141,11 +132,11 @@ export class CustomersService {
   }
 
   /**
-   * Creating, editing or assigning an account (D-055). Every account is a company we both buy
+   * Creating or editing an account (D-055). Every account is a company we both buy
    * from and sell to, so either side's permission is enough: `customers.<action>` or
    * `companies.<action>`.
    */
-  private requireEither(context: RequestContext, action: 'create' | 'edit' | 'assign'): void {
+  private requireEither(context: RequestContext, action: 'create' | 'edit'): void {
     if (!can(context, `customers.${action}`) && !can(context, `companies.${action}`)) {
       throw ApiError.permissionDenied(`companies.${action}`);
     }
@@ -166,7 +157,7 @@ export class CustomersService {
     context: RequestContext,
     filters: CustomerFilters,
   ): Promise<{ items: CustomerDto[]; total: number }> {
-    const { rows, total } = await this.customers.list(filters, this.scopeOf(context));
+    const { rows, total } = await this.customers.list(filters);
     const sight = this.sightOf(context);
     // The list values balances at the global rate; a customer's own rate is applied on the
     // detail, where a single per-row lookup is not thousands of them.
@@ -177,7 +168,6 @@ export class CustomersService {
     return {
       items: rows.map((row) =>
         toCustomerDto(row, {
-          assigned_user_name: row.assigned_user_name,
           balance: Number(row.balance),
           payable: Number(row.payable),
           rate: rateInfo,
@@ -199,12 +189,11 @@ export class CustomersService {
     tx?: Db,
   ): Promise<CustomerDto> {
     const db = tx ?? this.database;
-    const [balance, payable, customerRate, globalRate, assignee] = await Promise.all([
+    const [balance, payable, customerRate, globalRate] = await Promise.all([
       this.customers.balanceOf(row.id, db),
       this.customers.payableOf(row.id, db),
       this.customers.currentRate(row.id, db),
       this.rates.current(db),
-      this.assigneeName(db, row.assigned_user_id),
     ]);
     // The customer's own rate is authoritative; a customer with none falls back to the global.
     const rateInfo: CustomerRateInfo | null = customerRate
@@ -216,63 +205,27 @@ export class CustomersService {
       : globalRate
         ? { rate_iqd_per_usd: globalRate.rate_iqd_per_usd, since: null, is_customer_rate: false }
         : null;
-    return toCustomerDto(row, { assigned_user_name: assignee, balance, payable, rate: rateInfo, sight });
-  }
-
-  private async assigneeName(db: Db, userId: string | null): Promise<string | null> {
-    if (!userId) return null;
-    const { rows } = await db.query<{ display_name: string }>(
-      'SELECT display_name FROM users WHERE id = $1',
-      [userId],
-    );
-    return rows[0]?.display_name ?? null;
+    return toCustomerDto(row, { balance, payable, rate: rateInfo, sight });
   }
 
   /** 404 rather than 403 when the customer is out of the caller's scope (spec 2.6.4). */
   private async requireCustomer(context: RequestContext, id: string): Promise<CustomerRow> {
-    const row = await this.customers.findById(id, this.scopeOf(context));
+    const row = await this.customers.findById(id);
     if (!row) throw ApiError.notFound();
     return row;
   }
 
-  /**
-   * The duplicate check of FR-501, run over every customer whatever the caller may see. When
-   * the twin belongs to someone else the answer is not "open it" — the employee cannot — but
-   * "ask your admin to assign it to you", which is what stops the directory fragmenting.
-   */
-  async checkDuplicates(name: string): Promise<{
-    duplicates: {
-      id: string;
-      name: string;
-      assigned_user_name: string | null;
-      assigned_to_me: boolean;
-    }[];
-  }> {
+  /** The duplicate check of FR-501: an account of the same name, to open instead of repeating. */
+  async checkDuplicates(name: string): Promise<{ duplicates: { id: string; name: string }[] }> {
     const rows = await this.customers.findDuplicates(name);
-    return {
-      duplicates: rows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        assigned_user_name: row.assigned_user_name,
-        assigned_to_me: false,
-      })),
-    };
+    return { duplicates: rows.map((row) => ({ id: row.id, name: row.name })) };
   }
 
   async create(context: RequestContext, input: CreateCustomerInput): Promise<CustomerDto> {
     const name = input.name.trim();
-    const scope = this.scopeOf(context);
     this.requireEither(context, 'create');
     const ownRate = input.rate_iqd_per_usd ? validRate(input.rate_iqd_per_usd) : null;
     if (ownRate) this.requireRatePermission(context);
-
-    // A customer created by someone who sees only their own is assigned to them, or they
-    // could not use the record they just made (FR-501).
-    const assignedTo = can(context, 'customers.assign')
-      ? (input.assigned_user_id ?? (scope.viewAll ? null : context.userId))
-      : scope.viewAll
-        ? null
-        : context.userId;
 
     const defaultCurrency = await this.settings.get('default_customer_currency');
     const rate = input.credit_limit ? await this.rates.requireCurrent() : null;
@@ -291,7 +244,6 @@ export class CustomersService {
           address: input.address?.trim() || null,
           notes: input.notes?.trim() || null,
           settlement_currency: input.settlement_currency ?? defaultCurrency,
-          assigned_user_id: assignedTo,
           credit_limit_iqd: limit?.amount_iqd ?? null,
           credit_limit_usd_cents: limit?.amount_usd_cents ?? null,
           created_by: context.userId,
@@ -310,9 +262,8 @@ export class CustomersService {
             name: { old: null, new: row.name },
             phone: { old: null, new: row.phone },
             settlement_currency: { old: null, new: row.settlement_currency },
-            assigned_user_id: { old: null, new: row.assigned_user_id },
           },
-          related: { customer_id: row.id, assigned_user_id: row.assigned_user_id },
+          related: { customer_id: row.id },
         },
         tx,
       );
@@ -494,71 +445,6 @@ export class CustomersService {
         tx,
       );
     });
-  }
-
-  /** Assignment: who sees the customer and whose list they appear on (FR-502, A-15). */
-  async assign(
-    context: RequestContext,
-    id: string,
-    input: { user_id: string | null; note?: string | null; version?: number },
-  ): Promise<CustomerDto> {
-    const updated = await this.database.transaction(async (tx) => {
-      const before = await this.customers.lock(id, tx);
-      if (!before) throw ApiError.notFound();
-      this.requireEither(context, 'assign');
-      if (before.is_system) {
-        throw ApiError.validation([
-          {
-            path: 'id',
-            code: 'SYSTEM_CUSTOMER',
-            message_key: 'errors:system_customer',
-            params: {},
-          },
-        ]);
-      }
-      if (input.user_id) {
-        const { rowCount } = await tx.query(
-          'SELECT 1 FROM users WHERE id = $1 AND deleted_at IS NULL AND is_active = true',
-          [input.user_id],
-        );
-        if (!rowCount) {
-          throw ApiError.validation([
-            {
-              path: 'user_id',
-              code: 'NOT_FOUND',
-              message_key: 'errors:field.required',
-              params: {},
-            },
-          ]);
-        }
-      }
-
-      const row = await this.customers.update(
-        id,
-        input.version ?? before.version,
-        { assigned_user_id: input.user_id },
-        context.userId,
-        tx,
-      );
-      if (!row) throw await this.versionConflict(id);
-
-      await this.audit.record(
-        context,
-        {
-          action: 'assignment_change',
-          entity_type: 'customer',
-          entity_id: id,
-          entity_label: `Customer: ${row.name}`,
-          changes: { assigned_user_id: { old: before.assigned_user_id, new: input.user_id } },
-          note: input.note?.trim() || null,
-          related: { customer_id: id, assigned_user_id: input.user_id },
-        },
-        tx,
-      );
-      return row;
-    });
-
-    return this.detailOf(updated, this.sightOf(context));
   }
 
   /**
@@ -1498,7 +1384,6 @@ function toGroupDto(group: LedgerGroup, names: Map<string, string>): LedgerGroup
 function toCustomerDto(
   row: CustomerRow,
   extra: {
-    assigned_user_name: string | null;
     balance: number;
     payable: number;
     rate: CustomerRateInfo | null;
@@ -1530,8 +1415,6 @@ function toCustomerDto(
     address: row.address,
     notes: row.notes,
     settlement_currency: row.settlement_currency,
-    assigned_user_id: row.assigned_user_id,
-    assigned_user_name: extra.assigned_user_name,
     is_system: row.is_system,
     credit_limit:
       row.credit_limit_iqd === null || row.credit_limit_usd_cents === null

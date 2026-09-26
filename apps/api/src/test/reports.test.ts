@@ -72,17 +72,17 @@ describe('the reports (FR-1001 to FR-1013)', () => {
     await addStock(copper, '6000.000');
     await addStock(plates, '500.000', 500);
 
-    // Two customers, one per sales employee, so the assigned-to pin has something to hide.
+    // Two customers, each sold to by a different employee.
     kawa = (
       await as(ctx.http, admin)
         .post('/api/v1/customers')
-        .send({ name: 'Kawa Trading', assigned_user_id: rebazId })
+        .send({ name: 'Kawa Trading' })
         .expect(201)
     ).body.id;
     zagros = (
       await as(ctx.http, admin)
         .post('/api/v1/customers')
-        .send({ name: 'Zagros Metals', assigned_user_id: saraId })
+        .send({ name: 'Zagros Metals' })
         .expect(201)
     ).body.id;
 
@@ -457,11 +457,11 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       expect(report.body.groups[0].balance.received_iqd).toBe(210_000);
     });
 
-    it('pins receivables to the customers assigned to the caller', async () => {
+    it('does not pin receivables to anybody — accounts are not assigned (D-056)', async () => {
       await seedActivity();
-      const own = await as(ctx.http, rebaz).get(`/api/v1/reports/receivables?${range()}`).expect(200);
-      expect(own.body.pinned).toEqual({ filter: 'assigned_to', user_id: rebazId });
-      expect(own.body.groups.map((group: { label: string }) => group.label)).toEqual(['Kawa Trading']);
+      const theirs = await as(ctx.http, rebaz).get(`/api/v1/reports/receivables?${range()}`).expect(200);
+      expect(theirs.body.pinned).toBeUndefined();
+      expect(theirs.body.groups.map((group: { label: string }) => group.label)).toContain('Kawa Trading');
     });
 
     it('sums the company balances and the period movements', async () => {
@@ -704,7 +704,7 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       await seedActivity();
       const employee = await seedUser({
         username: 'hawre',
-        permissions: ['dashboard.view', 'orders.view', 'customers.view_all'],
+        permissions: ['dashboard.view', 'orders.view', 'reports.view_all'],
       });
       const session = await signIn(ctx.http, employee);
 

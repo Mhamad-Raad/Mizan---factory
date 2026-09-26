@@ -8,7 +8,6 @@ import { HistoryRepository } from './history.repository.js';
 
 const listSchema = z.object({
   done_by: z.string().uuid().optional(),
-  assigned_to: z.string().uuid().optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   entity_type: z.string().max(40).optional(),
