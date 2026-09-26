@@ -96,6 +96,6 @@
   "history_status": "الإخفاء والإظهار",
   "rate_changed": "السعر {{old}} ← {{new}}",
   "rate_set": "تم تعيين السعر {{new}}",
-  "entry.damage": "تلف",
+  "entry.damage": "بضاعة مكسورة",
   "tab_account": "الحساب"
 }

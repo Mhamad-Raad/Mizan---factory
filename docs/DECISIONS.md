@@ -949,3 +949,16 @@ Demo data was wiped and reseeded in this shape. The monthly *bought* price remai
 suggestion a buy opens with; the monthly *sale* price is unchanged.
 
 Relied on: the client's instructions (2026-09-26); rules 1–3 and 10; 2.4.1.
+
+## D-063 · 2026-09-26 · client review · "Damaged items" are called "Broken goods"
+
+The client asked for a friendlier name than "damage" and chose **Broken goods** (Kurdish
+کاڵای شکاو, Arabic البضاعة المكسورة): the sidebar, the page, "Record broken goods", a record is
+"Broken #3", the account row and the accountant tiles say so too. Only the words changed — the
+routes, tables and permission keys keep `damage`, so nothing stored moves; notes already written on
+a ledger keep the words they were written with (append-only). The page is laid out as Orders is:
+one toolbar (search, period, who broke it, owed or paid back, who recorded it, voided), three tiles
+(recorded, what it cost us, owed by companies — the last one also a filter), and a table on a
+desktop, cards on a phone. The list API gained `compensation=owed|paid` and the owed total; the
+Today tile that counted returns (which the D-062 flow never creates) now counts broken goods a
+company still owes for.

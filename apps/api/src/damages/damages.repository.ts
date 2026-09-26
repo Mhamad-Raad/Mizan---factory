@@ -60,6 +60,8 @@ export interface DamageFilters {
   to?: string;
   attribution?: DamageAttribution;
   return_status?: ReturnStatus;
+  /** Owed by a company, or paid back (in money or in materials) — D-062. */
+  compensation?: 'owed' | 'paid';
   /** `pending` plus `returnable` is the chip of 3.3: everything still expected to go back. */
   returnable?: boolean;
   done_by?: string;
@@ -78,10 +80,14 @@ export interface DamageTotals {
   qty_kg: string;
   /** How many records in the period have no valued month price behind them (FR-807). */
   unvalued: number;
+  /** Records a company still owes us for (D-062). */
+  owed_count: number;
   /** Under `cost` so one flag hides the period's value and leaves its quantities (D-022). */
   cost: {
     est_value_iqd: number;
     est_value_usd_cents: number;
+    owed_iqd: number;
+    owed_usd_cents: number;
   };
 }
 
@@ -238,6 +244,8 @@ export class DamagesRepository {
       values.push(filters.return_status);
       conditions.push(`d.return_status = $${values.length}::return_status`);
     }
+    if (filters.compensation === 'owed') conditions.push(`d.compensation = 'owed'`);
+    if (filters.compensation === 'paid') conditions.push(`d.compensation IN ('paid_money', 'paid_materials')`);
     if (filters.returnable) conditions.push('d.is_returnable = true');
     if (filters.done_by) {
       values.push(filters.done_by);
@@ -302,8 +310,14 @@ export class DamagesRepository {
         est_value_iqd: string;
         est_value_usd_cents: string;
         unvalued: string;
+        owed_count: string;
+        owed_iqd: string;
+        owed_usd_cents: string;
       }>(
         `SELECT count(*)::text AS records,
+                count(*) FILTER (WHERE d.compensation = 'owed')::text AS owed_count,
+                coalesce(sum(d.est_value_iqd) FILTER (WHERE d.compensation = 'owed'), 0)::text AS owed_iqd,
+                coalesce(sum(d.est_value_usd_cents) FILTER (WHERE d.compensation = 'owed'), 0)::text AS owed_usd_cents,
                 coalesce(sum(d.qty_count), 0)::text AS qty_count,
                 coalesce(sum(d.qty_kg), 0)::text AS qty_kg,
                 coalesce(sum(d.est_value_iqd), 0)::text AS est_value_iqd,
@@ -323,9 +337,13 @@ export class DamagesRepository {
         qty_count: Number(row?.qty_count ?? 0),
         qty_kg: Number(row?.qty_kg ?? 0).toFixed(3),
         unvalued: Number(row?.unvalued ?? 0),
+        owed_count: Number(row?.owed_count ?? 0),
         cost: {
           est_value_iqd: Number(row?.est_value_iqd ?? 0),
           est_value_usd_cents: Number(row?.est_value_usd_cents ?? 0),
+          // What companies still owe us for goods they broke, over the whole filter (D-062).
+          owed_iqd: Number(row?.owed_iqd ?? 0),
+          owed_usd_cents: Number(row?.owed_usd_cents ?? 0),
         },
       },
     };

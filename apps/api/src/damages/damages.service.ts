@@ -295,7 +295,7 @@ export class DamagesService {
           action: 'create',
           entity_type: 'damage',
           entity_id: record.id,
-          entity_label: `Damage #${record.number}`,
+          entity_label: `Broken #${record.number}`,
           changes: {
             item_id: { old: null, new: item.id },
             item: { old: null, new: item.name },
@@ -450,7 +450,7 @@ export class DamagesService {
           action: 'update',
           entity_type: 'damage',
           entity_id: id,
-          entity_label: `Damage #${record.number}`,
+          entity_label: `Broken #${record.number}`,
           changes: {
             quantity: {
               old: { qty_count: record.qty_count, qty_kg: record.qty_kg },
@@ -550,7 +550,7 @@ export class DamagesService {
           action: 'void',
           entity_type: 'damage',
           entity_id: id,
-          entity_label: `Damage #${record.number}`,
+          entity_label: `Broken #${record.number}`,
           changes: { status: { old: 'active', new: 'void' } },
           note: input.reason,
           related: { damage_id: id, item_id: record.item_id, company_id: record.company_id },
@@ -656,7 +656,7 @@ export class DamagesService {
           action: 'status_change',
           entity_type: 'damage',
           entity_id: id,
-          entity_label: `Damage #${record.number}`,
+          entity_label: `Broken #${record.number}`,
           changes: { return_status: { old: record.return_status, new: status } },
           note: input.note?.trim() || input.credit?.note?.trim() || null,
           related: { damage_id: id, item_id: record.item_id, company_id: record.company_id },
@@ -733,7 +733,7 @@ export class DamagesService {
           action: 'update',
           entity_type: 'damage',
           entity_id: id,
-          entity_label: `Damage #${record.number}`,
+          entity_label: `Broken #${record.number}`,
           changes: { stock_effect: { old: record.stock_effect, new: 'returned_in' } },
           note: input.note?.trim() || null,
           related: { damage_id: id, item_id: record.item_id, order_id: record.order_id },
@@ -922,11 +922,11 @@ export class DamagesService {
         entry_type: 'damage',
         money,
         entry_date: entryDate,
-        note: `Damage #${damageNumber}`,
+        note: `Broken #${damageNumber}`,
         performed_by_user_id: context.userId,
         refs: { order_id: null, damage_id: damageId },
       },
-      { audit_note: `Damage #${damageNumber}`, related: { damage_id: damageId, customer_id: companyId } },
+      { audit_note: `Broken #${damageNumber}`, related: { damage_id: damageId, customer_id: companyId } },
     );
   }
 
@@ -968,7 +968,7 @@ export class DamagesService {
         (entry) => entry.entry_type === 'damage' && entry.refs.damage_id === id && !reversed.has(entry.id),
       );
       if (!charge) throw ApiError.notFound();
-      const note = input.note?.trim() || `Damage #${record.number} paid back`;
+      const note = input.note?.trim() || `Broken #${record.number} paid back`;
 
       await this.customerLedger.write(
         context,
@@ -1024,7 +1024,7 @@ export class DamagesService {
           action: 'update',
           entity_type: 'damage',
           entity_id: id,
-          entity_label: `Damage #${record.number}`,
+          entity_label: `Broken #${record.number}`,
           changes: { compensation: { old: 'owed', new: compensation } },
           note,
           related: { damage_id: id, item_id: record.item_id, customer_id: record.company_id },

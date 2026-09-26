@@ -96,6 +96,6 @@
   "history_status": "Hidden or shown",
   "rate_changed": "Rate {{old}} → {{new}}",
   "rate_set": "Rate set to {{new}}",
-  "entry.damage": "Damage",
+  "entry.damage": "Broken goods",
   "tab_account": "Account"
 }

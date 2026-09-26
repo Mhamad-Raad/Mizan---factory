@@ -333,7 +333,7 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     it('logs the record in History with its quantity, attribution and stock effect', async () => {
       const response = await recordDamage(warehouse, { attribution: 'us' }).expect(201);
       const rows = await auditRows({ entityId: response.body.id, action: 'create' });
-      expect(rows[0]?.entity_label).toBe('Damage #1');
+      expect(rows[0]?.entity_label).toBe('Broken #1');
       expect(rows[0]?.changes).toMatchObject({
         attribution: { old: null, new: 'us' },
         stock_effect: { old: null, new: 'reduced' },

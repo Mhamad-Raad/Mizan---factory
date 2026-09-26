@@ -35,7 +35,7 @@
   "filter_out_of_stock": "نفد المخزون",
   "movement.purchase_in": "شراء",
   "movement.sale_out": "بيع",
-  "movement.damage_out": "تالف",
+  "movement.damage_out": "مكسور",
   "movement.return_in": "أُرجع للمخزون",
   "movement.opening": "المخزون الافتتاحي",
   "movement.adjustment": "تصحيح",

@@ -5,7 +5,7 @@
   "tile.purchases_today": "Today's purchases",
   "tile.we_owe_companies": "We owe companies",
   "tile.low_stock": "Low stock",
-  "tile.pending_returns": "Waiting to go back",
+  "tile.pending_returns": "Broken goods owed to us",
   "tile.my_actions_today": "My actions today",
   "empty": "Nothing yet today — start with a new order",
   "trend_title": "Sales and purchases",

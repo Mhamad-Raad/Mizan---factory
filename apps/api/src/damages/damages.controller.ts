@@ -69,6 +69,7 @@ const listSchema = z.object({
     .enum(['not_returnable', 'pending', 'returned', 'returned_credited', 'written_off'])
     .optional(),
   returnable: z.enum(['true', 'false']).optional(),
+  compensation: z.enum(['owed', 'paid']).optional(),
   done_by: z.string().uuid().optional(),
   company_id: z.string().uuid().optional(),
   order_id: z.string().uuid().optional(),

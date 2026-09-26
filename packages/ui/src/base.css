@@ -3775,3 +3775,25 @@ html[data-mirroring='true'] body {
 .mz-accounts__plain-table tbody tr {
   cursor: default;
 }
+
+/* ── broken goods: the period's three tiles (client review, D-062) ─────────────────── */
+
+/* Three across from a tablet up; stacked two-and-one on a phone like every tile row. */
+@media (width >= 48rem) {
+  .mz-kpis--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* A tile that is also a filter — "Owed by companies" narrows the list to what is still owed.
+   It is a real button (keyboard, screen reader), dressed as the tile beside it. */
+.mz-kpi--button {
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.mz-kpi--button[aria-pressed='true'] {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}

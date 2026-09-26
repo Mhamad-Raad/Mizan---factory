@@ -34,7 +34,7 @@
   "entity.customer": "Customer",
   "entity.company": "Company",
   "entity.item": "Material",
-  "entity.damage": "Damaged item",
+  "entity.damage": "Broken goods",
   "filter_entity": "Record type",
   "filter_action": "What happened",
   "all_types": "All records",

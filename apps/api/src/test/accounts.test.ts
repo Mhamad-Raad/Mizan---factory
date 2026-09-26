@@ -152,6 +152,11 @@ describe('the warehouse and the accountant (D-062)', () => {
     expect(owed.balance.amount_iqd).toBe(13_100);
     let summary = (await as(ctx.http, admin).get('/api/v1/accounts/summary').expect(200)).body;
     expect(summary.damage_loss.amount_iqd).toBe(13_100);
+    // The list can be narrowed to what is still owed, and says how much that is.
+    const owedList = (await as(ctx.http, admin).get('/api/v1/damages?compensation=owed').expect(200)).body;
+    expect(owedList.total).toBe(1);
+    expect(owedList.totals.owed_count).toBe(1);
+    expect(owedList.totals.cost.owed_iqd).toBe(13_100);
 
     const paid = await as(ctx.http, admin)
       .post(`/api/v1/damages/${damage.body.id}/paid-back`)
@@ -162,6 +167,8 @@ describe('the warehouse and the accountant (D-062)', () => {
     summary = (await as(ctx.http, admin).get('/api/v1/accounts/summary').expect(200)).body;
     expect(summary.damage_loss.amount_iqd).toBe(0);
     expect(summary.damage_recovered).toMatchObject({ amount_iqd: 13_100, count: 1 });
+    expect((await as(ctx.http, admin).get('/api/v1/damages?compensation=owed').expect(200)).body.total).toBe(0);
+    expect((await as(ctx.http, admin).get('/api/v1/damages?compensation=paid').expect(200)).body.total).toBe(1);
 
     // Paid back once is paid back: a second time is refused.
     await as(ctx.http, admin).post(`/api/v1/damages/${damage.body.id}/paid-back`).send({ method: 'money' }).expect(422);

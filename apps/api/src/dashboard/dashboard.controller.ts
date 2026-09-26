@@ -350,10 +350,11 @@ export class DashboardController {
     return [{ key: 'low_stock', count: Number(rows[0]?.count ?? 0) }];
   }
 
+  /** Broken goods a company still owes us for (D-062) — the key keeps its old name. */
   private async pendingReturnsTile(): Promise<DashboardTile[]> {
     const { rows } = await this.database.query<{ count: string }>(
       `SELECT count(*)::text AS count FROM damages
-        WHERE status = 'active' AND deleted_at IS NULL AND return_status = 'pending'`,
+        WHERE status = 'active' AND deleted_at IS NULL AND compensation = 'owed'`,
     );
     return [{ key: 'pending_returns', count: Number(rows[0]?.count ?? 0) }];
   }

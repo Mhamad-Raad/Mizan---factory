@@ -35,7 +35,7 @@
   "filter_out_of_stock": "Out of stock",
   "movement.purchase_in": "Purchase",
   "movement.sale_out": "Sold",
-  "movement.damage_out": "Damaged",
+  "movement.damage_out": "Broken",
   "movement.return_in": "Returned to stock",
   "movement.opening": "Opening stock",
   "movement.adjustment": "Correction",
