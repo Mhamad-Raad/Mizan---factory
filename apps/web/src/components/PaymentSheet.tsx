@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BottomSheet, Button, DateField, SegmentedControl, TextField, Toggle } from '@mizan/ui';
+import { BottomSheet, Button, DateField, NumberField, SegmentedControl, TextField, Toggle } from '@mizan/ui';
 import { convert } from '@mizan/money';
 import type { Currency, Rate } from '@mizan/money';
 import { MoneyInput, centsToInput, parseMinor } from './MoneyInput.js';
@@ -159,15 +159,16 @@ export function PaymentSheet({
           </>
         ) : (
           <div className="mz-grid-2">
-            <TextField
+            <NumberField
               label={`${t('customers:amount_received')} · ${t('glossary:iqd')}`}
-              inputMode="numeric"
+              unit={t('common:iqd_symbol')}
               value={splitIqd}
               onChange={(event) => setSplitIqd(event.target.value)}
             />
-            <TextField
+            <NumberField
               label={`${t('customers:amount_received')} · ${t('glossary:usd')}`}
-              inputMode="decimal"
+              unit={t('common:usd_symbol')}
+              decimals={2}
               value={splitUsd}
               onChange={(event) => setSplitUsd(event.target.value)}
             />

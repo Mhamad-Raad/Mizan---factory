@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { groupDigits, ungroupDigits } from '@mizan/text';
 import { Icon } from '../icons/registry.js';
 import type { IconName } from '../icons/registry.js';
 
@@ -559,6 +560,11 @@ export interface NumberFieldProps extends Omit<InputHTMLAttributes<HTMLInputElem
   unit?: string;
   /** Kilograms take three decimals; counts and minor units take none. */
   decimals?: number;
+  /**
+   * Thousands separators while typing — `1,250,000` on screen, `1250000` to the form. On by
+   * default; off for a figure that is not a quantity, such as a year or a PIN-like code.
+   */
+  grouped?: boolean;
 }
 
 /**
@@ -569,24 +575,64 @@ export interface NumberFieldProps extends Omit<InputHTMLAttributes<HTMLInputElem
  * `inputmode="decimal"` opens the right keyboard without the browser reformatting what the
  * employee typed.
  */
-export function NumberField({ label, hint, error, unit, decimals = 0, onChange, ...rest }: NumberFieldProps) {
+export function NumberField({
+  label,
+  hint,
+  error,
+  unit,
+  decimals = 0,
+  grouped = true,
+  onChange,
+  value,
+  ...rest
+}: NumberFieldProps) {
+  const input = useRef<HTMLInputElement>(null);
+  /**
+   * Where the caret belongs after a keystroke, counted in characters that are not separators:
+   * typing the fourth digit adds a comma *before* the caret, and without this the caret would
+   * jump to the end of the field on every keystroke.
+   */
+  const caret = useRef<number | null>(null);
+  const shown = value === undefined || value === null ? value : grouped ? groupDigits(String(value)) : value;
+
+  useLayoutEffect(() => {
+    const element = input.current;
+    const wanted = caret.current;
+    caret.current = null;
+    if (!element || wanted === null || document.activeElement !== element) return;
+    let position = 0;
+    for (let seen = 0; position < element.value.length && seen < wanted; position += 1) {
+      if (element.value[position] !== ',') seen += 1;
+    }
+    element.setSelectionRange(position, position);
+  });
+
   return (
     <Field label={label} hint={hint} error={error}>
       {(id) => (
         // Numbers read left-to-right in every language, so the field is an LTR island: the digits
-        // start at the left and the unit sits at the right, even on an Arabic or Kurdish page.
+        // run left to right and the unit sits at the right, even on an Arabic or Kurdish page.
         <div className="mz-number" dir="ltr">
           <input
+            ref={input}
             id={id}
             className="mz-field__control"
             inputMode={decimals > 0 ? 'decimal' : 'numeric'}
             autoComplete="off"
             aria-invalid={error ? true : undefined}
+            value={shown}
             onChange={(event) => {
               // Eastern Arabic-Indic and Persian digits are normalised to ASCII on input, so
-              // nothing downstream has to know which keyboard was used (spec 2.10.4).
-              const normalized = normalizeDigits(event.target.value);
-              if (normalized !== event.target.value) event.target.value = normalized;
+              // nothing downstream has to know which keyboard was used (spec 2.10.4); the
+              // separators are presentation, so the form only ever sees the bare number.
+              const typed = event.target.value;
+              const normalized = normalizeDigits(typed);
+              const raw = grouped ? ungroupDigits(normalized) : normalized;
+              if (grouped) {
+                const before = typed.slice(0, event.target.selectionStart ?? typed.length);
+                caret.current = ungroupDigits(normalizeDigits(before)).length;
+              }
+              if (raw !== typed) event.target.value = raw;
               onChange?.(event);
             }}
             {...rest}

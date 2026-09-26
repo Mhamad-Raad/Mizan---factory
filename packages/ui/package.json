@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@mizan/i18n": "workspace:*",
+    "@mizan/text": "workspace:*",
     "lucide-react": "^1.48.0"
   },
   "peerDependencies": {

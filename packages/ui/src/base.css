@@ -64,12 +64,24 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-/* Numeric and phone inputs stay LTR inside an RTL form (spec 2.10.6 point 5). */
+/*
+ * Numeric and phone inputs stay LTR inside an RTL form (spec 2.10.6 point 5) — the digits of
+ * 1,250,000 always run left to right — but the text sits where the page starts reading: at the
+ * right in Kurdish and Arabic, at the left in English. Inside an LTR field `end` is the right
+ * edge, which is the RTL page's start; an English page puts it back at `start`, the left edge.
+ * (It was `end` everywhere, which is why English numbers sat at the right.)
+ */
 input[inputmode='decimal'],
 input[inputmode='numeric'],
 input[type='tel'] {
   direction: ltr;
   text-align: end;
+}
+
+html[dir='ltr'] input[inputmode='decimal'],
+html[dir='ltr'] input[inputmode='numeric'],
+html[dir='ltr'] input[type='tel'] {
+  text-align: start;
 }
 
 @media (prefers-reduced-motion: reduce) {
