@@ -3306,3 +3306,254 @@ html[data-mirroring='true'] body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ── Today: stat tiles, the two-week chart, who owes us, recent orders (client review) ── */
+
+/* Headline numbers: two across on a phone, four on a desktop; each opens the list it counts. */
+.mz-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+@media (width >= 64rem) {
+  .mz-kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+}
+
+.mz-kpi {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  transition: border-color var(--duration-micro) var(--ease-out);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  min-inline-size: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.mz-kpi:hover {
+  border-color: var(--color-border-strong);
+}
+
+.mz-kpi:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.mz-kpi__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.mz-kpi__icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  inline-size: 2rem;
+  block-size: 2rem;
+  color: var(--color-primary);
+}
+
+.mz-kpi__count {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+/* The trend is wide and the list of who owes us is narrow: side by side on a desktop. */
+.mz-dashboard__grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+@media (width >= 64rem) {
+  .mz-dashboard__grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+
+  .mz-dashboard__grid > :only-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.mz-dashboard__grid > .mz-card,
+.mz-dashboard > .mz-card {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  min-inline-size: 0;
+}
+
+.mz-chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.mz-chart-head > .mz-button {
+  flex: none;
+  padding-inline: var(--space-2);
+}
+
+.mz-chart-empty {
+  padding-block: var(--space-6);
+  text-align: center;
+}
+
+.mz-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  list-style: none;
+}
+
+.mz-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mz-legend__swatch {
+  display: inline-block;
+  flex: none;
+  border-radius: 3px;
+  inline-size: 10px;
+  block-size: 10px;
+}
+
+.mz-chart {
+  position: relative;
+  min-inline-size: 0;
+}
+
+.mz-chart svg {
+  display: block;
+  overflow: visible;
+}
+
+.mz-chart__grid {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.mz-chart__axis {
+  fill: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.mz-chart__hit {
+  cursor: pointer;
+  outline: none;
+  fill: transparent;
+}
+
+.mz-chart__hit:focus-visible {
+  stroke: var(--color-focus);
+  stroke-width: 2;
+}
+
+.mz-chart__tooltip {
+  position: absolute;
+  inset-block-start: 0;
+  z-index: 2;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sheet);
+  background: var(--color-surface);
+  padding: var(--space-2) var(--space-3);
+  min-inline-size: 180px;
+  pointer-events: none;
+  font-size: 0.875rem;
+}
+
+.mz-tooltip-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: var(--space-2);
+}
+
+.mz-tooltip-row > :last-child {
+  grid-column: 2;
+}
+
+/* Who owes us most: a name and its amount over a bar scaled to the largest. */
+.mz-barlist {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mz-barlist__row {
+  display: grid;
+  gap: var(--space-1);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  color: inherit;
+  text-decoration: none;
+}
+
+.mz-barlist__row:hover {
+  background: var(--color-surface-2);
+}
+
+.mz-barlist__row:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 0;
+}
+
+.mz-barlist__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  min-inline-size: 0;
+}
+
+/* The name keeps at least 8rem; when the amount does not fit beside it, the amount wraps under. */
+.mz-barlist__label {
+  flex: 1 1 8rem;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mz-barlist__value {
+  flex: none;
+  text-align: end;
+}
+
+.mz-barlist__track {
+  display: block;
+  border-radius: 4px;
+  background: var(--color-surface-2);
+  block-size: 8px;
+  overflow: hidden;
+}
+
+.mz-barlist__bar {
+  display: block;
+  border-radius: 4px;
+  block-size: 100%;
+}

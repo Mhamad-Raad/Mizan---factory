@@ -782,3 +782,22 @@ whose account it is): "remove that from the system".
   now show only with `purchases.view`, and a balance of one side says which side it is.
 
 Relied on: the client's instruction; 2.6.4 (the scope rules this empties); rule 2.
+
+## D-057 · Today shows two weeks, who owes us most, and the latest orders (client review)
+
+The client: "make the today ui better with charts and if needed tables of the recent orders".
+
+- **Stat tiles stay first**, each still opening the list it counts, four across on a desktop.
+- **Sales and purchases over the last fourteen days** as grouped columns on one axis in
+  dinars (never two scales), a legend, a tooltip with both currencies and the counts, and a
+  "show as table" view with the same figures. Purchases appear only for `purchases.view` with
+  `fields.see_bought_price`; the sales series follows the same scope as the Today tile
+  (own orders without `reports.view_all`). Colours are two chart tokens, validated for
+  colour-blind separation and contrast in both themes.
+- **Who owes us most:** the six largest balances in our favour — the net balance with
+  `fields.see_company_balances`, the sales side alone without it, and absent without
+  `fields.see_customer_balances`. Ranked in dinars at today's rate so dollar and dinar accounts
+  compare fairly; the rate only orders the list and every amount shown is the stored one (rule 1).
+- **Recent orders:** the latest eight, exactly as the Orders page lists them.
+
+Relied on: the client's instruction; 1.5.4 (field flags); 2.3 (dual currency); rule 7.

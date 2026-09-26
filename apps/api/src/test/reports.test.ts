@@ -700,6 +700,44 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       expect(tile.cost).toBeUndefined();
     });
 
+    it('charts the last fourteen days, today matching its tile, and names who owes us most', async () => {
+      await seedActivity();
+      const dashboard = await as(ctx.http, admin).get('/api/v1/dashboard').expect(200);
+
+      const days = dashboard.body.days as {
+        date: string;
+        sales: { count: number; amount_iqd: number };
+        cost: { amount_iqd: number } | null;
+      }[];
+      expect(days).toHaveLength(14);
+      const tile = dashboard.body.tiles.find((row: { key: string }) => row.key === 'sales_today');
+      const today = days[days.length - 1];
+      expect(today?.sales.count).toBe(tile.count);
+      expect(today?.sales.amount_iqd).toBe(tile.amount_iqd);
+      expect(days.every((day) => day.cost !== null)).toBe(true);
+
+      const debtors = dashboard.body.debtors as { name: string; balance: { amount_iqd: number; net: boolean } }[];
+      expect(debtors.length).toBeGreaterThan(0);
+      expect(debtors[0]?.balance.net).toBe(true);
+      // Ranked in dinars, whatever currency each account settles in.
+      const amounts = debtors.map((row) => row.balance.amount_iqd);
+      expect([...amounts].sort((a, b) => b - a)).toEqual(amounts);
+    });
+
+    it('keeps bought prices and balances out of the charts for a user without their flags', async () => {
+      await seedActivity();
+      const employee = await seedUser({
+        username: 'hawre.charts',
+        permissions: ['dashboard.view', 'orders.view', 'purchases.view', 'customers.view'],
+      });
+      const session = await signIn(ctx.http, employee);
+
+      const dashboard = await as(ctx.http, session).get('/api/v1/dashboard').expect(200);
+      expect(dashboard.body.days).toHaveLength(14);
+      expect(dashboard.body.days.every((day: Record<string, unknown>) => !('cost' in day))).toBe(true);
+      expect(dashboard.body.debtors).toBeNull();
+    });
+
     it('hides the unpaid tile amount from a user without the customer-balances flag', async () => {
       await seedActivity();
       const employee = await seedUser({

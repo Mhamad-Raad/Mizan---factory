@@ -103,6 +103,14 @@
   --color-sidebar-hover: #edf3f0;
   --color-on-header: #121e17;
   --color-brass: #93690d;
+
+  /*
+   * The two chart series of Today — sales and purchases. Validated with the dataviz palette
+   * check against the light surface: lightness band, chroma, CVD ΔE 10.1 (protan), normal
+   * ΔE 15.7, ≥ 3:1 contrast. Always shown with a legend, never colour alone.
+   */
+  --color-chart-sales: #00816c;
+  --color-chart-purchases: #93690d;
   --color-focus: #00816c;
   --color-neutral-chip-bg: #edf3f0;
   --color-neutral-chip-text: #5a675f;
@@ -148,6 +156,11 @@
   --color-sidebar-hover: #202c25;
   --color-on-header: #e9f1ec;
   --color-brass: #e6b55d;
+
+  /* The dark steps of the same two hues, validated against the dark surface: CVD ΔE 12.6
+     (deutan), normal ΔE 17.1, inside the dark lightness band. */
+  --color-chart-sales: #34a38e;
+  --color-chart-purchases: #b3831f;
   --color-focus: #46bba5;
   --color-neutral-chip-bg: #25312a;
   --color-neutral-chip-text: #9aa9a0;

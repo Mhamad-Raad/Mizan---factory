@@ -1,4 +1,6 @@
 import { Controller, Get, Req } from '@nestjs/common';
+import { convert } from '@mizan/money';
+import type { Currency } from '@mizan/money';
 import { RequirePermission } from '../common/decorators.js';
 import { can, contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
@@ -20,6 +22,28 @@ export interface DashboardTile {
   /** What we owe suppliers — a *company* balance, so not the bought-price flag's business. */
   owed?: { amount_iqd: number; amount_usd_cents: number } | null;
 }
+
+/** One day of the Today chart: what was sold, and — under `cost`, one flag — what was bought. */
+export interface DashboardDay {
+  date: string;
+  sales: { count: number; amount_iqd: number; amount_usd_cents: number };
+  /** Purchases are bought prices: stripped without `fields.see_bought_price` (D-022). */
+  cost?: { count: number; amount_iqd: number; amount_usd_cents: number } | null;
+}
+
+/** An account on the "who owes us most" chart. */
+export interface DashboardDebtor {
+  id: string;
+  name: string;
+  settlement_currency: Currency;
+  /** Stripped without `fields.see_customer_balances`, like every customer balance (FR-503). */
+  balance?: { amount: number; amount_iqd: number; amount_usd_cents: number; net: boolean } | null;
+}
+
+/** How many days the Today chart covers, today included. */
+const TREND_DAYS = 14;
+/** How many accounts the "who owes us most" chart names. */
+const TOP_DEBTORS = 6;
 
 /**
  * The dashboard (FR-1309, **Proposed — not requested**): today's numbers, one tile per
@@ -54,6 +78,10 @@ export class DashboardController {
     date: string;
     tiles: DashboardTile[];
     rate: { rate_iqd_per_usd: string } | null;
+    /** The last two weeks, day by day, for whoever may see orders (client review). */
+    days: DashboardDay[] | null;
+    /** The accounts that owe us most, for whoever may see their balances. */
+    debtors: DashboardDebtor[] | null;
   }> {
     const context = contextOf(request);
     const today = this.period.today();
@@ -74,14 +102,135 @@ export class DashboardController {
     // Everyone's own recent actions, which needs no permission: it is their own trail (1.5.2).
     asking.push(this.myActionsTile(context.userId, today));
 
-    const [groups, current] = await Promise.all([Promise.all(asking), this.rates.current()]);
+    const scopedSales = can(context, 'reports.view_all') ? null : context.userId;
+    const [groups, current, days, debtors] = await Promise.all([
+      Promise.all(asking),
+      this.rates.current(),
+      can(context, 'orders.view')
+        ? this.trend(today, scopedSales, can(context, 'purchases.view'))
+        : Promise.resolve(null),
+      can(context, 'customers.view') && can(context, 'fields.see_customer_balances')
+        ? this.topDebtors(can(context, 'fields.see_company_balances'))
+        : Promise.resolve(null),
+    ]);
     const tiles = groups.flat();
 
     return {
       date: today,
       tiles,
       rate: current ? { rate_iqd_per_usd: current.rate_iqd_per_usd } : null,
+      days,
+      debtors,
     };
+  }
+
+  /**
+   * Sales and purchases per day over the last two weeks, a zero for a day with none — the chart
+   * shows the quiet days too. Each currency column is summed on its own (rule 1); sales follow
+   * the same scope as the tiles, purchases are the factory's and travel under `cost`.
+   */
+  private async trend(today: string, scoped: string | null, withPurchases: boolean): Promise<DashboardDay[]> {
+    const { rows } = await this.database.query<{
+      date: string;
+      sold: string;
+      sold_iqd: string;
+      sold_usd_cents: string;
+      bought: string;
+      bought_iqd: string;
+      bought_usd_cents: string;
+    }>(
+      `WITH days AS (
+         SELECT d::date AS day FROM generate_series($1::date - ($2::int - 1), $1::date, interval '1 day') d
+       ),
+       sold AS (
+         SELECT o.order_date AS day, count(*) AS n,
+                sum(o.total_iqd) AS iqd, sum(o.total_usd_cents) AS usd_cents
+           FROM orders o
+          WHERE o.status = 'active' AND o.deleted_at IS NULL
+            AND o.order_date > $1::date - $2::int AND o.order_date <= $1::date
+            AND ($3::uuid IS NULL OR o.acting_user_id = $3::uuid)
+          GROUP BY o.order_date
+       ),
+       bought AS (
+         SELECT p.purchase_date AS day, count(*) AS n,
+                sum(p.total_iqd) AS iqd, sum(p.total_usd_cents) AS usd_cents
+           FROM purchases p
+          WHERE $4::boolean AND p.status = 'active' AND p.deleted_at IS NULL
+            AND p.purchase_date > $1::date - $2::int AND p.purchase_date <= $1::date
+          GROUP BY p.purchase_date
+       )
+       SELECT to_char(days.day, 'YYYY-MM-DD') AS date,
+              coalesce(sold.n, 0)::text AS sold,
+              coalesce(sold.iqd, 0)::text AS sold_iqd,
+              coalesce(sold.usd_cents, 0)::text AS sold_usd_cents,
+              coalesce(bought.n, 0)::text AS bought,
+              coalesce(bought.iqd, 0)::text AS bought_iqd,
+              coalesce(bought.usd_cents, 0)::text AS bought_usd_cents
+         FROM days
+         LEFT JOIN sold ON sold.day = days.day
+         LEFT JOIN bought ON bought.day = days.day
+        ORDER BY days.day ASC`,
+      [today, TREND_DAYS, scoped, withPurchases],
+    );
+    return rows.map((row) => ({
+      date: row.date,
+      sales: {
+        count: Number(row.sold),
+        amount_iqd: Number(row.sold_iqd),
+        amount_usd_cents: Number(row.sold_usd_cents),
+      },
+      cost: withPurchases
+        ? {
+            count: Number(row.bought),
+            amount_iqd: Number(row.bought_iqd),
+            amount_usd_cents: Number(row.bought_usd_cents),
+          }
+        : null,
+    }));
+  }
+
+  /**
+   * The accounts that owe us most. The net figure — what they owe less what we owe them — for
+   * whoever may see both sides (D-054); the selling side alone for whoever may see only that,
+   * and the answer says which. The settlement currency is the fact; the other side is today's
+   * conversion through the money kernel, never floating point (rule 1, 2.3.6).
+   */
+  private async topDebtors(net: boolean): Promise<DashboardDebtor[]> {
+    const figure = net ? 'p.net' : 'p.receivable';
+    const rate = await this.rates.current();
+    // Ranked in dinars at today's rate, so a dollar account's cents are never weighed against
+    // another account's dinars. The conversion only orders the list; every amount returned is
+    // the stored one, and the other currency comes from the integer `convert` below (rule 1).
+    const { rows } = await this.database.query<{
+      id: string;
+      name: string;
+      settlement_currency: Currency;
+      amount: string;
+    }>(
+      `SELECT c.id, c.name, c.settlement_currency::text AS settlement_currency, ${figure}::text AS amount
+         FROM party_balances p
+         JOIN customers c ON c.id = p.customer_id
+        WHERE c.deleted_at IS NULL AND NOT c.is_system AND ${figure} > 0
+        ORDER BY CASE WHEN c.settlement_currency = 'USD' THEN ${figure} * coalesce($1::numeric, 0) / 100
+                      ELSE ${figure} END DESC, c.name
+        LIMIT ${TOP_DEBTORS}`,
+      [rate?.rate_iqd_per_usd ?? null],
+    );
+    return rows.map((row) => {
+      const amount = Number(row.amount);
+      const other = rate ? convert(amount, row.settlement_currency, rate.rate_iqd_per_usd) : 0;
+      return {
+        id: row.id,
+        name: row.name,
+        settlement_currency: row.settlement_currency,
+        balance: {
+          amount,
+          amount_iqd: row.settlement_currency === 'IQD' ? amount : other,
+          amount_usd_cents: row.settlement_currency === 'USD' ? amount : other,
+          net,
+        },
+      };
+    });
   }
 
   /** Today's sales and what is still owed — two questions about the same records. */
