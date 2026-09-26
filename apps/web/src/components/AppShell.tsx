@@ -3,9 +3,9 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BottomSheet, Icon, IconButton, Menu, MizanMark } from '@mizan/ui';
 import { LANGUAGE_NAMES, LOCALES } from '@mizan/i18n';
-import { resolveTheme } from '../lib/preferences.js';
 import type { IconName } from '@mizan/ui';
 import { useApp } from '../lib/store.js';
+import { useAppearanceMenus } from './Appearance.js';
 import { apiRequest } from '../lib/api.js';
 
 type NavGroup = 'daily' | 'records' | 'insight' | 'admin';
@@ -18,6 +18,11 @@ interface Destination {
   group: NavGroup;
   permission?: string;
   adminOnly?: boolean;
+}
+
+/** A name's first letter, for the circle in the sidebar's footer. */
+function initialOf(name: string): string {
+  return [...name.trim()][0]?.toUpperCase() ?? '?';
 }
 
 /** The order the sidebar shows the groups in, with the label above each. */
@@ -35,17 +40,71 @@ const GROUPS: { key: NavGroup; labelKey: string }[] = [
  */
 const DESTINATIONS: Destination[] = [
   // The phone bar takes the first four of these, in this order, as specification 3.3 fixes it.
-  { to: '/orders', labelKey: 'orders:title', icon: 'orders', group: 'daily', permission: 'orders.view' },
-  { to: '/materials', labelKey: 'glossary:materials', icon: 'materials', group: 'records', permission: 'materials.view' },
-  { to: '/customers', labelKey: 'customers:title', icon: 'customers', group: 'records', permission: 'customers.view' },
-  { to: '/companies', labelKey: 'companies:title', icon: 'companies', group: 'records', permission: 'companies.view' },
-  { to: '/damages', labelKey: 'damages:tab_label', icon: 'warning', group: 'daily', permission: 'damages.view' },
-  { to: '/purchases', labelKey: 'purchases:title', icon: 'purchases', group: 'daily', permission: 'purchases.view' },
-  { to: '/reports', labelKey: 'reports:title', icon: 'orders', group: 'insight', permission: 'reports.view' },
-  { to: '/dashboard', labelKey: 'dashboard:title', icon: 'materials', group: 'daily', permission: 'dashboard.view' },
+  {
+    to: '/orders',
+    labelKey: 'orders:title',
+    icon: 'orders',
+    group: 'daily',
+    permission: 'orders.view',
+  },
+  {
+    to: '/materials',
+    labelKey: 'glossary:materials',
+    icon: 'materials',
+    group: 'records',
+    permission: 'materials.view',
+  },
+  {
+    to: '/customers',
+    labelKey: 'customers:title',
+    icon: 'customers',
+    group: 'records',
+    permission: 'customers.view',
+  },
+  {
+    to: '/companies',
+    labelKey: 'companies:title',
+    icon: 'companies',
+    group: 'records',
+    permission: 'companies.view',
+  },
+  {
+    to: '/damages',
+    labelKey: 'damages:tab_label',
+    icon: 'warning',
+    group: 'daily',
+    permission: 'damages.view',
+  },
+  {
+    to: '/purchases',
+    labelKey: 'purchases:title',
+    icon: 'purchases',
+    group: 'daily',
+    permission: 'purchases.view',
+  },
+  {
+    to: '/reports',
+    labelKey: 'reports:title',
+    icon: 'orders',
+    group: 'insight',
+    permission: 'reports.view',
+  },
+  {
+    to: '/dashboard',
+    labelKey: 'dashboard:title',
+    icon: 'materials',
+    group: 'daily',
+    permission: 'dashboard.view',
+  },
   { to: '/search', labelKey: 'search:title', icon: 'search', group: 'insight' },
   { to: '/users', labelKey: 'glossary:users', icon: 'users', group: 'admin', adminOnly: true },
-  { to: '/history', labelKey: 'glossary:history', icon: 'history', group: 'insight', permission: 'history.view' },
+  {
+    to: '/history',
+    labelKey: 'glossary:history',
+    icon: 'history',
+    group: 'insight',
+    permission: 'history.view',
+  },
   { to: '/settings', labelKey: 'glossary:settings', icon: 'settings', group: 'admin' },
 ];
 
@@ -77,8 +136,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   /** The lock screen is for a device other people pick up; a desk does not need it. */
   const isSharedDevice = useApp((state) => state.preferences.sharedDevice);
   const preferences = useApp((state) => state.preferences);
-  /** What the theme resolves to *now*, so the button offers the other one (3.7.4). */
-  const resolvedTheme = resolveTheme(preferences.theme);
+  /*
+   * The bar's appearance menus come from the same lists the Settings cards are built from, so
+   * the two can never offer different modes or different names for them (3.7.4).
+   */
+  const { themeIcon, themeItems, textItems } = useAppearanceMenus();
   const [moreOpen, setMoreOpen] = useState(false);
   const title = useApp((state) => state.pageTitle);
   const collapsed = useApp((state) => state.preferences.sidebarCollapsed);
@@ -86,7 +148,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const permitted = DESTINATIONS.filter((destination) => {
     if (destination.adminOnly) return user?.role === 'admin';
-    if (destination.permission) return user?.role === 'admin' || permissions.has(destination.permission);
+    if (destination.permission)
+      return user?.role === 'admin' || permissions.has(destination.permission);
     return true;
   });
   const visible = permitted.slice(0, VISIBLE_TABS);
@@ -107,20 +170,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mz-app mz-app--shell" data-sidebar={collapsed ? 'collapsed' : 'open'}>
       <header className="mz-header">
-        <MizanMark size={26} />
+        {/* No mark here: the brand is in the sidebar, and on a phone the page's own name is
+            what the bar is for. */}
         <h1 className="mz-header__title">
           {/* A name may be Latin inside an RTL header, so it carries its own direction (2.10.6). */}
           <bdi>{title}</bdi>
         </h1>
 
         {/*
-          * The bar's own controls, at the reading end.
-          *
-          * Language and light-or-dark belong here because they are changed *while* working —
-          * an employee hands a tablet to somebody who reads Arabic, or the sun comes through
-          * the window — and walking to Settings for either is a detour. Settings still owns
-          * the full choice: the text size, the numerals, the shared-device flag.
-          */}
+         * The bar's own controls, at the reading end: the language, the theme and the text
+         * size. All three are changed *while* working — a tablet is handed to somebody who
+         * reads Arabic, the sun comes through the window, a foreman cannot read the figures
+         * at arm's length — and walking to Settings for any of them is a detour. Settings
+         * shows the same three choices as pictures, and keeps the numerals and the
+         * shared-device flag, which are decided once.
+         */}
         <Menu
           label={t('common:language_menu')}
           icon="language"
@@ -131,11 +195,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onSelect: () => setPreference('lang', locale),
           }))}
         />
-        <IconButton
-          icon={resolvedTheme === 'dark' ? 'sun' : 'moon'}
-          label={resolvedTheme === 'dark' ? t('common:use_light') : t('common:use_dark')}
-          onClick={() => setPreference('theme', resolvedTheme === 'dark' ? 'light' : 'dark')}
-        />
+        <Menu label={t('common:theme_menu')} icon={themeIcon} items={themeItems} />
+        <Menu label={t('common:text_size_menu')} icon="text" items={textItems} />
         {/* The sidebar carries the account on a desktop; on a phone this is where it lives. */}
         <span className="mz-header__account">
           <Menu
@@ -143,17 +204,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             icon="user"
             items={[
               { label: t('glossary:settings'), onSelect: () => navigate('/settings') },
-              ...(isSharedDevice ? [{ label: t('auth:lock_now'), onSelect: () => void lock() }] : []),
+              ...(isSharedDevice
+                ? [{ label: t('auth:lock_now'), onSelect: () => void lock() }]
+                : []),
               { label: t('auth:sign_out'), onSelect: () => void signOut() },
             ]}
           />
         </span>
         {/*
-          * The padlock is for a tablet somebody else will pick up, so it is shown on a device
-          * marked shared and nowhere else. On a desk it was the only way out of the
-          * application, which is why nobody could tell what it was for; signing out now lives
-          * in the sidebar, where it belongs.
-          */}
+         * The padlock is for a tablet somebody else will pick up, so it is shown on a device
+         * marked shared and nowhere else. On a desk it was the only way out of the
+         * application, which is why nobody could tell what it was for; signing out now lives
+         * in the sidebar, where it belongs.
+         */}
         {isSharedDevice ? (
           <IconButton icon="lock" label={t('auth:lock_now')} onClick={() => void lock()} />
         ) : null}
@@ -168,33 +231,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <main className="mz-main">{children}</main>
 
-      <nav className="mz-tabbar" aria-label={t('common:more')}>
+      <nav className="mz-tabbar" id="mizan-sidebar" aria-label={t('common:more')}>
         {/* ── the sidebar, on a screen with room for one ─────────────────────────── */}
         <div className="mz-sidebar__brand">
-          <MizanMark size={24} />
-          <span className="mz-sidebar__brand-name">{t('common:app_name')}</span>
+          <span className="mz-sidebar__mark" aria-hidden="true">
+            <MizanMark size={22} />
+          </span>
+          <span className="mz-sidebar__brand-name">
+            <span>{t('common:app_name')}</span>
+            <span className="mz-sidebar__tagline">{t('common:app_tagline')}</span>
+          </span>
         </div>
 
-        {GROUPS.map((group) => {
-          const items = permitted.filter((destination) => destination.group === group.key);
-          if (items.length === 0) return null;
-          return (
-            <div key={group.key} className="mz-sidebar__group">
-              <p className="mz-sidebar__label">{t(group.labelKey)}</p>
-              {items.map((destination) => (
-                <NavLink
-                  key={destination.to}
-                  to={destination.to}
-                  className="mz-tabbar__item mz-tabbar__item--sidebar"
-                  title={collapsed ? t(destination.labelKey) : undefined}
-                >
-                  <Icon name={destination.icon} />
-                  <span className="mz-tabbar__label">{t(destination.labelKey)}</span>
-                </NavLink>
-              ))}
-            </div>
-          );
-        })}
+        <div className="mz-sidebar__nav">
+          {GROUPS.map((group) => {
+            const items = permitted.filter((destination) => destination.group === group.key);
+            if (items.length === 0) return null;
+            return (
+              <div key={group.key} className="mz-sidebar__group">
+                <p className="mz-sidebar__label">{t(group.labelKey)}</p>
+                {items.map((destination) => (
+                  <NavLink
+                    key={destination.to}
+                    to={destination.to}
+                    className="mz-tabbar__item mz-tabbar__item--sidebar"
+                    title={collapsed ? t(destination.labelKey) : undefined}
+                  >
+                    <Icon name={destination.icon} />
+                    <span className="mz-tabbar__label">{t(destination.labelKey)}</span>
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
+        </div>
 
         {/* Who is signed in, and the two ways out — which used to exist only on the lock
             screen, so a desktop had no way to sign out at all. */}
@@ -203,45 +273,49 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             type="button"
             className="mz-tabbar__item mz-tabbar__item--sidebar"
             aria-expanded={!collapsed}
+            aria-controls="mizan-sidebar"
             title={collapsed ? t('common:expand_sidebar') : undefined}
             aria-label={collapsed ? t('common:expand_sidebar') : t('common:collapse_sidebar')}
             onClick={() => setPreference('sidebarCollapsed', !collapsed)}
           >
-            {/* Both mirror in RTL by the registry's own rule, so the arrow points at the edge
-                the sidebar is about to move to, in either direction (2.10.6 point 2). */}
-            <Icon name={collapsed ? 'chevron' : 'back'} />
+            <Icon name="panel" />
             <span className="mz-tabbar__label">{t('common:collapse_sidebar')}</span>
           </button>
 
-          <p className="mz-sidebar__label">{t('common:signed_in_as')}</p>
-          <p className="mz-sidebar__user">
-            <bdi>{user?.display_name ?? ''}</bdi>
-          </p>
-          {isSharedDevice ? (
-            <button
-              type="button"
-              className="mz-tabbar__item mz-tabbar__item--sidebar"
-              title={collapsed ? t('auth:lock_now') : undefined}
-              onClick={() => void lock()}
-            >
-              <Icon name="lock" />
-              <span className="mz-tabbar__label">{t('auth:lock_now')}</span>
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="mz-tabbar__item mz-tabbar__item--sidebar"
-            title={collapsed ? t('auth:sign_out') : undefined}
-            onClick={() => void signOut()}
-          >
-            <Icon name="logout" />
-            <span className="mz-tabbar__label">{t('auth:sign_out')}</span>
-          </button>
+          <div className="mz-sidebar__user">
+            <span className="mz-sidebar__avatar" aria-hidden="true">
+              {initialOf(user?.display_name ?? '')}
+            </span>
+            <span className="mz-sidebar__who">
+              <strong>
+                <bdi>{user?.display_name ?? ''}</bdi>
+              </strong>
+              <span className="mz-sidebar__role">
+                {user?.role === 'admin' ? t('glossary:admin') : t('glossary:employee')}
+              </span>
+            </span>
+            <Menu
+              label={t('common:account_menu')}
+              icon="more"
+              align="start"
+              items={[
+                { label: t('glossary:settings'), onSelect: () => navigate('/settings') },
+                ...(isSharedDevice
+                  ? [{ label: t('auth:lock_now'), onSelect: () => void lock() }]
+                  : []),
+                { label: t('auth:sign_out'), onSelect: () => void signOut() },
+              ]}
+            />
+          </div>
         </div>
 
         {/* ── the phone bar: four tabs and More (spec 3.3) ───────────────────────── */}
         {visible.map((destination) => (
-          <NavLink key={destination.to} to={destination.to} className="mz-tabbar__item mz-tabbar__item--tab">
+          <NavLink
+            key={destination.to}
+            to={destination.to}
+            className="mz-tabbar__item mz-tabbar__item--tab"
+          >
             <Icon name={destination.icon} />
             {t(destination.labelKey)}
           </NavLink>
@@ -259,7 +333,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       {moreOpen ? (
-        <BottomSheet title={t('common:more')} open onClose={() => setMoreOpen(false)} closeLabel={t('common:close')}>
+        <BottomSheet
+          title={t('common:more')}
+          open
+          onClose={() => setMoreOpen(false)}
+          closeLabel={t('common:close')}
+        >
           <ul className="mz-list">
             {more.map((destination) => (
               <li key={destination.to}>

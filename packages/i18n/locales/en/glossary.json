@@ -79,5 +79,10 @@
   "document_rate_purchase": "Rate for this purchase",
   "remaining": "Remaining",
   "companies": "Companies",
-  "purchases": "Purchases"
+  "purchases": "Purchases",
+  "system_rate": "the system rate",
+  "customer_rate": "the customer's rate",
+  "order_rate": "this order's rate",
+  "item": "Item",
+  "amount": "Amount"
 }

@@ -22,6 +22,7 @@
   "permissions.customers.edit": "Edit a customer",
   "permissions.customers.assign": "Assign a customer",
   "permissions.customers.opening_balance": "Enter an opening debt",
+  "permissions.customers.set_rate": "Set a customer rate",
   "permissions.companies.view": "See companies",
   "permissions.companies.create": "Add a company",
   "permissions.companies.edit": "Edit a company",

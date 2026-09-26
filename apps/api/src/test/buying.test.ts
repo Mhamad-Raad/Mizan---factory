@@ -49,7 +49,11 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
   beforeEach(async () => {
     await resetDatabase();
 
-    const adminUser = await seedUser({ username: 'admin.buying', role: 'admin', displayName: 'Dara' });
+    const adminUser = await seedUser({
+      username: 'admin.buying',
+      role: 'admin',
+      displayName: 'Dara',
+    });
     const accountantUser = await seedUser({
       username: 'nazdar',
       displayName: 'Nazdar',
@@ -85,10 +89,16 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     noMoney = await signIn(ctx.http, plainUser);
 
     // The global rate of the demo script; the company's own rate is set apart from it.
-    await as(ctx.http, admin).post('/api/v1/settings/global-rates').send({ rate_iqd_per_usd: '1300' }).expect(201);
+    await as(ctx.http, admin)
+      .post('/api/v1/settings/global-rates')
+      .send({ rate_iqd_per_usd: '1300' })
+      .expect(201);
 
     steel = await createMaterial('Steel sheet 1.2 mm', 'per_kg', { sale: 850, bought: 700 });
-    plates = await createMaterial('Steel plate 10 mm', 'per_piece', { sale: 18_000, bought: 15_000 });
+    plates = await createMaterial('Steel plate 10 mm', 'per_piece', {
+      sale: 18_000,
+      bought: 15_000,
+    });
 
     alNoor = await createCompany({ name: 'Al-Noor Steel Co.' });
   });
@@ -98,7 +108,10 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     pricingUnit: 'per_kg' | 'per_piece',
     prices: { sale: number; bought: number },
   ): Promise<string> {
-    const created = await as(ctx.http, admin).post('/api/v1/items').send({ name, pricing_unit: pricingUnit }).expect(201);
+    const created = await as(ctx.http, admin)
+      .post('/api/v1/items')
+      .send({ name, pricing_unit: pricingUnit })
+      .expect(201);
     const id = created.body.id as string;
     await as(ctx.http, admin)
       .put(`/api/v1/items/${id}/prices/${new Date().toISOString().slice(0, 7)}`)
@@ -180,23 +193,33 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
 
   async function balanceOf(companyId: string, session: Session = accountant): Promise<number> {
     const response = await as(ctx.http, session).get(`/api/v1/companies/${companyId}`).expect(200);
-    const balance = response.body.balance as { amount_iqd: number; amount_usd_cents: number } | null;
+    const balance = response.body.balance as {
+      amount_iqd: number;
+      amount_usd_cents: number;
+    } | null;
     if (!balance) throw new Error('balance was stripped from the response');
-    return response.body.settlement_currency === 'IQD' ? balance.amount_iqd : balance.amount_usd_cents;
+    return response.body.settlement_currency === 'IQD'
+      ? balance.amount_iqd
+      : balance.amount_usd_cents;
   }
 
   // ─────────────────────────── companies and their rate (FR-701 to FR-703, FR-711) ───────────────────────────
 
   describe('company profiles and rates (FR-701, FR-703, FR-711)', () => {
     it('creates a company with its settlement currency and logs it', async () => {
-      const response = await as(ctx.http, accountant).get(`/api/v1/companies/${alNoor}`).expect(200);
+      const response = await as(ctx.http, accountant)
+        .get(`/api/v1/companies/${alNoor}`)
+        .expect(200);
       expect(response.body).toMatchObject({
         name: 'Al-Noor Steel Co.',
         settlement_currency: 'IQD',
         is_active: true,
       });
       // No company rate yet: the global one applies and the interface says so (2.3.3).
-      expect(response.body.rate).toMatchObject({ rate_iqd_per_usd: '1300.0000', is_company_rate: false });
+      expect(response.body.rate).toMatchObject({
+        rate_iqd_per_usd: '1300.0000',
+        is_company_rate: false,
+      });
 
       const rows = await auditRows({ entityId: alNoor, action: 'create' });
       expect(rows[0]?.entity_label).toBe('Company: Al-Noor Steel Co.');
@@ -230,31 +253,33 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
         .expect(201);
 
       const detail = await as(ctx.http, accountant).get(`/api/v1/companies/${alNoor}`).expect(200);
-      expect(detail.body.rate).toMatchObject({ rate_iqd_per_usd: '1310.0000', is_company_rate: true });
+      expect(detail.body.rate).toMatchObject({
+        rate_iqd_per_usd: '1310.0000',
+        is_company_rate: true,
+      });
 
-      const history = await as(ctx.http, accountant).get(`/api/v1/companies/${alNoor}/rates`).expect(200);
-      expect(history.body.items[0]).toMatchObject({ rate_iqd_per_usd: '1310.0000', note: 'agreed with Al-Noor' });
+      const history = await as(ctx.http, accountant)
+        .get(`/api/v1/companies/${alNoor}/rates`)
+        .expect(200);
+      expect(history.body.items[0]).toMatchObject({
+        rate_iqd_per_usd: '1310.0000',
+        note: 'agreed with Al-Noor',
+      });
 
       const rows = await auditRows({ entityId: alNoor, action: 'rate_change' });
       expect(rows[0]?.changes).toEqual({ rate_iqd_per_usd: { old: null, new: '1310.0000' } });
     });
 
-    it('asks before accepting a rate more than ±20 % away, and accepts it when confirmed', async () => {
+    it('accepts a new company rate without a change guard', async () => {
       await as(ctx.http, accountant)
         .post(`/api/v1/companies/${alNoor}/rates`)
         .send({ rate_iqd_per_usd: '1310' })
         .expect(201);
 
-      const guarded = await as(ctx.http, accountant)
-        .post(`/api/v1/companies/${alNoor}/rates`)
-        .send({ rate_iqd_per_usd: '13100' })
-        .expect(422);
-      expect(guarded.body.error.code).toBe('RATE_GUARD');
-      expect(guarded.body.error.params).toMatchObject({ previous: '1310.0000', next: '13100.0000' });
-
+      // A large change is accepted directly — the ±% guard was removed.
       await as(ctx.http, accountant)
         .post(`/api/v1/companies/${alNoor}/rates`)
-        .send({ rate_iqd_per_usd: '13100', confirm: true })
+        .send({ rate_iqd_per_usd: '13100' })
         .expect(201);
     });
   });
@@ -270,12 +295,19 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
         ],
       }).expect(201);
 
-      const purchase = await as(ctx.http, accountant).get(`/api/v1/purchases/${response.body.id}`).expect(200);
-      expect(purchase.body.lines[0].cost).toMatchObject({ unit_price_iqd: 700, price_source: 'month' });
+      const purchase = await as(ctx.http, accountant)
+        .get(`/api/v1/purchases/${response.body.id}`)
+        .expect(200);
+      expect(purchase.body.lines[0].cost).toMatchObject({
+        unit_price_iqd: 700,
+        price_source: 'month',
+      });
       // 700 × 5,000 = 3,500,000 IQD; 15,000 × 40 = 600,000 IQD; each currency summed on its own.
-      expect(purchase.body.lines.map((line: { cost: { line_total_iqd: number } }) => line.cost.line_total_iqd)).toEqual([
-        3_500_000, 600_000,
-      ]);
+      expect(
+        purchase.body.lines.map(
+          (line: { cost: { line_total_iqd: number } }) => line.cost.line_total_iqd,
+        ),
+      ).toEqual([3_500_000, 600_000]);
       expect(purchase.body.cost.total_iqd).toBe(4_100_000);
 
       const steelStock = await stockOf(steel);
@@ -285,6 +317,27 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
 
       const material = await as(ctx.http, admin).get(`/api/v1/items/${steel}`).expect(200);
       expect(material.body.first_bought_on).toBe(today());
+    });
+
+    it('stores a typed line total exactly and derives the unit price from it (short form)', async () => {
+      const widget = await createMaterial('Widget', 'per_piece', { sale: 5_000, bought: 4_000 });
+      const response = await createPurchase(warehouse, {
+        company_id: null,
+        lines: [{ item_id: widget, qty_count: 7, total: { amount: 100_000, currency: 'IQD' } }],
+      }).expect(201);
+
+      const purchase = await as(ctx.http, accountant)
+        .get(`/api/v1/purchases/${response.body.id}`)
+        .expect(200);
+      const line = purchase.body.lines[0];
+      // 100,000 / 7 is not whole, so unit_price × quantity would drift; the entered total is kept
+      // exactly and the unit price is only the rounded derivation for the record.
+      expect(line.cost.line_total_iqd).toBe(100_000);
+      expect(line.cost.unit_price_iqd).toBe(14_286); // round(100,000 / 7)
+      expect(purchase.body.cost.total_iqd).toBe(100_000);
+
+      const stock = await stockOf(widget);
+      expect(stock).toMatchObject({ movements: '1', qty_count: '7' });
     });
 
     it('writes exactly one company entry copying the purchase totals, never a conversion', async () => {
@@ -324,15 +377,25 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       const balance = await as(ctx.http, accountant)
         .get(`/api/v1/purchases/${response.body.id}/balance`)
         .expect(200);
-      expect(balance.body.cost).toEqual({ total: null, linked: null, allocated: null, remaining: null });
+      expect(balance.body.cost).toEqual({
+        total: null,
+        linked: null,
+        allocated: null,
+        remaining: null,
+      });
 
       // And it is findable as "stock only" rather than lost among the company purchases.
-      const list = await as(ctx.http, accountant).get('/api/v1/purchases?company=stock_only').expect(200);
+      const list = await as(ctx.http, accountant)
+        .get('/api/v1/purchases?company=stock_only')
+        .expect(200);
       expect(list.body.total).toBe(1);
     });
 
     it("values a USD-settled company's purchase at the company rate, though the price is in dinars", async () => {
-      const usdCompany = await createCompany({ name: 'Gulf Steel FZE', settlement_currency: 'USD' });
+      const usdCompany = await createCompany({
+        name: 'Gulf Steel FZE',
+        settlement_currency: 'USD',
+      });
       await as(ctx.http, accountant)
         .post(`/api/v1/companies/${usdCompany}/rates`)
         .send({ rate_iqd_per_usd: '1310' })
@@ -347,7 +410,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
         })
         .expect(201);
 
-      const purchase = await as(ctx.http, accountant).get(`/api/v1/purchases/${response.body.id}`).expect(200);
+      const purchase = await as(ctx.http, accountant)
+        .get(`/api/v1/purchases/${response.body.id}`)
+        .expect(200);
       expect(purchase.body.rate_iqd_per_usd).toBe('1310.0000');
       expect(purchase.body.rate_source).toBe('company');
       // 700,000 IQD ÷ 1,310 = $534.35, not the $538.46 the global 1,300 would have given.
@@ -355,7 +420,10 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       expect(purchase.body.cost.total_usd_cents).toBe(53_435);
 
       const entries = await companyLedger(usdCompany);
-      expect(entries[0]).toMatchObject({ amount_usd_cents: '53435', rate_iqd_per_usd: '1310.0000' });
+      expect(entries[0]).toMatchObject({
+        amount_usd_cents: '53435',
+        rate_iqd_per_usd: '1310.0000',
+      });
       expect(await balanceOf(usdCompany)).toBe(53_435);
     });
 
@@ -368,15 +436,25 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
         ],
       }).expect(201);
 
-      const purchase = await as(ctx.http, accountant).get(`/api/v1/purchases/${response.body.id}`).expect(200);
+      const purchase = await as(ctx.http, accountant)
+        .get(`/api/v1/purchases/${response.body.id}`)
+        .expect(200);
       expect(purchase.body.rate_source).toBe('manual');
-      expect(purchase.body.lines[0].cost).toMatchObject({ price_source: 'month', unit_price_iqd: 700 });
-      expect(purchase.body.lines[1].cost).toMatchObject({ price_source: 'override', unit_price_iqd: 720 });
+      expect(purchase.body.lines[0].cost).toMatchObject({
+        price_source: 'month',
+        unit_price_iqd: 700,
+      });
+      expect(purchase.body.lines[1].cost).toMatchObject({
+        price_source: 'override',
+        unit_price_iqd: 720,
+      });
       // 14,200 IQD ÷ 1,250 = $11.36, the rate of this purchase and not the global one.
       expect(purchase.body.cost.total_iqd).toBe(14_200);
       expect(purchase.body.cost.total_usd_cents).toBe(1_136);
       // The same material twice is legitimate — two price tiers — and only warned about.
-      expect(response.body.duplicate_item_warning).toEqual([{ item_id: steel, item_name: 'Steel sheet 1.2 mm' }]);
+      expect(response.body.duplicate_item_warning).toEqual([
+        { item_id: steel, item_name: 'Steel sheet 1.2 mm' },
+      ]);
     });
   });
 
@@ -401,7 +479,11 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       expect(await stockOf(steel)).toMatchObject({ movements: '3', qty_kg: '150.000' });
 
       const entries = await companyLedger(alNoor);
-      expect(entries.map((entry) => entry.entry_type)).toEqual(['purchase', 'reversal', 'purchase']);
+      expect(entries.map((entry) => entry.entry_type)).toEqual([
+        'purchase',
+        'reversal',
+        'purchase',
+      ]);
       expect(await balanceOf(alNoor)).toBe(105_000);
 
       const rows = await auditRows({ entityId: id, action: 'update' });
@@ -412,7 +494,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
 
     it('refuses to move a purchase to another company: that is a void and a new purchase', async () => {
       const other = await createCompany({ name: 'Zagros Metals' });
-      const created = await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '10.000' }] }).expect(201);
+      const created = await createPurchase(warehouse, {
+        lines: [{ item_id: steel, qty_kg: '10.000' }],
+      }).expect(201);
 
       const response = await as(ctx.http, warehouse)
         .put(`/api/v1/purchases/${created.body.id}`)
@@ -423,30 +507,29 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
           lines: [{ item_id: steel, qty_kg: '10.000' }],
         })
         .expect(422);
-      expect(response.body.error.fields[0]).toMatchObject({ path: 'company_id', code: 'IMMUTABLE' });
+      expect(response.body.error.fields[0]).toMatchObject({
+        path: 'company_id',
+        code: 'IMMUTABLE',
+      });
     });
 
-    it('refuses an edit once a payment names the purchase, unless the admin allowed it', async () => {
-      const created = await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '100.000' }] }).expect(201);
+    it('allows an edit even once a payment names the purchase (edit window removed)', async () => {
+      const created = await createPurchase(warehouse, {
+        lines: [{ item_id: steel, qty_kg: '100.000' }],
+      }).expect(201);
       const id = created.body.id as string;
 
       await as(ctx.http, accountant)
         .post(`/api/v1/companies/${alNoor}/payments`)
-        .send({ amount: 20_000, currency: 'IQD', entry_date: today(), purchase_id: id, note: 'part payment' })
+        .send({
+          amount: 20_000,
+          currency: 'IQD',
+          entry_date: today(),
+          purchase_id: id,
+          note: 'part payment',
+        })
         .expect(201);
 
-      const refused = await as(ctx.http, warehouse)
-        .put(`/api/v1/purchases/${id}`)
-        .send({
-          company_id: alNoor,
-          purchase_date: today(),
-          version: created.body.version,
-          lines: [{ item_id: steel, qty_kg: '120.000' }],
-        })
-        .expect(409);
-      expect(refused.body.error.code).toBe('EDIT_WINDOW_CLOSED');
-
-      await as(ctx.http, admin).patch('/api/v1/settings').send({ allow_edit_after_payment: true }).expect(200);
       await as(ctx.http, warehouse)
         .put(`/api/v1/purchases/${id}`)
         .send({
@@ -459,11 +542,19 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     });
 
     it('restores stock and what we owe on a void, and keeps the payment standing', async () => {
-      const created = await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '100.000' }] }).expect(201);
+      const created = await createPurchase(warehouse, {
+        lines: [{ item_id: steel, qty_kg: '100.000' }],
+      }).expect(201);
       const id = created.body.id as string;
       await as(ctx.http, accountant)
         .post(`/api/v1/companies/${alNoor}/payments`)
-        .send({ amount: 20_000, currency: 'IQD', entry_date: today(), purchase_id: id, note: 'part payment' })
+        .send({
+          amount: 20_000,
+          currency: 'IQD',
+          entry_date: today(),
+          purchase_id: id,
+          note: 'part payment',
+        })
         .expect(201);
 
       const voided = await as(ctx.http, warehouse)
@@ -484,12 +575,16 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     });
 
     it('lets the creator undo a purchase they just saved, and hides it from the list', async () => {
-      const created = await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '10.000' }] }).expect(201);
+      const created = await createPurchase(warehouse, {
+        lines: [{ item_id: steel, qty_kg: '10.000' }],
+      }).expect(201);
       await as(ctx.http, warehouse).post(`/api/v1/purchases/${created.body.id}/undo`).expect(200);
 
       const list = await as(ctx.http, accountant).get('/api/v1/purchases').expect(200);
       expect(list.body.total).toBe(0);
-      const withUndone = await as(ctx.http, accountant).get('/api/v1/purchases?include_undone=true').expect(200);
+      const withUndone = await as(ctx.http, accountant)
+        .get('/api/v1/purchases?include_undone=true')
+        .expect(200);
       expect(withUndone.body.total).toBe(1);
       expect(await stockOf(steel)).toMatchObject({ qty_kg: '0.000' });
     });
@@ -506,11 +601,19 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     });
 
     it('converts a payment at the company rate and stores both currencies with the rate', async () => {
-      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(201);
+      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(
+        201,
+      );
 
       const payment = await as(ctx.http, accountant)
         .post(`/api/v1/companies/${alNoor}/payments`)
-        .send({ amount: 1_000_000, currency: 'IQD', entry_date: today(), method: 'cash', note: 'first instalment' })
+        .send({
+          amount: 1_000_000,
+          currency: 'IQD',
+          entry_date: today(),
+          method: 'cash',
+          note: 'first instalment',
+        })
         .expect(201);
 
       expect(payment.body[0]).toMatchObject({
@@ -533,7 +636,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     });
 
     it('stores an overridden other-currency amount as the implied manual rate', async () => {
-      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(201);
+      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(
+        201,
+      );
 
       await as(ctx.http, accountant)
         .post(`/api/v1/companies/${alNoor}/payments`)
@@ -560,7 +665,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     });
 
     it('settles in full and leaves the account on exactly zero', async () => {
-      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(201);
+      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(
+        201,
+      );
 
       // The supplier is handed $2,672 for a 3,500,000 IQD debt: inside tolerance at 1,310.
       await as(ctx.http, accountant)
@@ -578,7 +685,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     });
 
     it('records a credit for goods returned and an opening balance at go-live', async () => {
-      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '100.000' }] }).expect(201);
+      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '100.000' }] }).expect(
+        201,
+      );
 
       await as(ctx.http, accountant)
         .post(`/api/v1/companies/${alNoor}/credits`)
@@ -595,7 +704,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     });
 
     it('writes exactly the delta for an adjustment, with the note and before/after in History', async () => {
-      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(201);
+      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(
+        201,
+      );
 
       // FR-706 lets the accountant type the *new balance*; the entry is the difference.
       const adjustment = await as(ctx.http, accountant)
@@ -640,16 +751,29 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
 
       const both = await as(ctx.http, accountant)
         .post(`/api/v1/companies/${alNoor}/adjustments`)
-        .send({ new_balance: 10, delta: -10, currency: 'IQD', entry_date: today(), note: 'contradiction' })
+        .send({
+          new_balance: 10,
+          delta: -10,
+          currency: 'IQD',
+          entry_date: today(),
+          note: 'contradiction',
+        })
         .expect(422);
       expect(both.body.error.code).toBe('VALIDATION_FAILED');
     });
 
     it('reverses a money row by exact negation, and refuses to reverse it twice', async () => {
-      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(201);
+      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(
+        201,
+      );
       const payment = await as(ctx.http, accountant)
         .post(`/api/v1/companies/${alNoor}/payments`)
-        .send({ amount: 1_000_000, currency: 'IQD', entry_date: today(), note: 'paid twice by mistake' })
+        .send({
+          amount: 1_000_000,
+          currency: 'IQD',
+          entry_date: today(),
+          note: 'paid twice by mistake',
+        })
         .expect(201);
       const entryId = payment.body[0].entry_id as string;
 
@@ -667,7 +791,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     });
 
     it('refuses to update or delete a company ledger row at the database level (rule 2)', async () => {
-      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '10.000' }] }).expect(201);
+      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '10.000' }] }).expect(
+        201,
+      );
 
       // As the *application* role, which is where the guarantee has to hold (rule 2).
       const client = new Client({ connectionString: TEST_DATABASE_URL });
@@ -676,8 +802,12 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
         await expect(client.query("UPDATE company_ledger SET note = 'tampered'")).rejects.toThrow(
           /permission denied/i,
         );
-        await expect(client.query('DELETE FROM company_ledger')).rejects.toThrow(/permission denied/i);
-        await expect(client.query('DELETE FROM company_rates')).rejects.toThrow(/permission denied/i);
+        await expect(client.query('DELETE FROM company_ledger')).rejects.toThrow(
+          /permission denied/i,
+        );
+        await expect(client.query('DELETE FROM company_rates')).rejects.toThrow(
+          /permission denied/i,
+        );
         await expect(client.query('DELETE FROM purchases')).rejects.toThrow(/permission denied/i);
       } finally {
         await client.end();
@@ -712,10 +842,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
         .expect(200);
 
       const byId = new Map<string, { remaining: number }>(
-        breakdown.body.allocation.purchases.map((row: { purchase_id: string; remaining: number }) => [
-          row.purchase_id,
-          row,
-        ]),
+        breakdown.body.allocation.purchases.map(
+          (row: { purchase_id: string; remaining: number }) => [row.purchase_id, row],
+        ),
       );
       // The oldest purchase was absorbed by the payment, so it is counted rather than sent.
       expect(byId.has(first.body.id)).toBe(false);
@@ -731,7 +860,12 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       const firstBalance = await as(ctx.http, accountant)
         .get(`/api/v1/purchases/${first.body.id}/balance`)
         .expect(200);
-      expect(firstBalance.body.cost).toMatchObject({ total: 70_000, linked: 0, allocated: -70_000, remaining: 0 });
+      expect(firstBalance.body.cost).toMatchObject({
+        total: 70_000,
+        linked: 0,
+        allocated: -70_000,
+        remaining: 0,
+      });
       const secondBalance = await as(ctx.http, accountant)
         .get(`/api/v1/purchases/${second.body.id}/balance`)
         .expect(200);
@@ -762,7 +896,12 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       const balance = await as(ctx.http, accountant)
         .get(`/api/v1/purchases/${second.body.id}/balance`)
         .expect(200);
-      expect(balance.body.cost).toMatchObject({ total: 140_000, linked: -140_000, allocated: 0, remaining: 0 });
+      expect(balance.body.cost).toMatchObject({
+        total: 140_000,
+        linked: -140_000,
+        allocated: 0,
+        remaining: 0,
+      });
 
       // The older purchase keeps its whole total: the payment named the newer one, and an
       // explicit link always wins over the oldest-first spread (FR-712).
@@ -778,7 +917,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
 
   describe('changing the settlement currency (FR-702, spec 2.3.5)', () => {
     it('refuses a change with money on the account unless a re-basing rate is given', async () => {
-      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(201);
+      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(
+        201,
+      );
 
       const refused = await as(ctx.http, admin)
         .put(`/api/v1/companies/${alNoor}/settlement-currency`)
@@ -788,7 +929,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     });
 
     it('lands on exactly the agreed balance through one re-basing entry', async () => {
-      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(201);
+      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(
+        201,
+      );
       const before = await companyLedger(alNoor);
       const storedUsd = Number(before[0]?.amount_usd_cents);
 
@@ -803,7 +946,10 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
 
       const after = await companyLedger(alNoor);
       expect(after).toHaveLength(2);
-      expect(after[1]).toMatchObject({ entry_type: 'settlement_change', rate_iqd_per_usd: '1310.0000' });
+      expect(after[1]).toMatchObject({
+        entry_type: 'settlement_change',
+        rate_iqd_per_usd: '1310.0000',
+      });
       // The re-basing row carries only the difference between the agreed figure and the sum of
       // the dollar column, so no historical amount is touched (2.3.5).
       expect(Number(after[1]?.amount_usd_cents)).toBe(267_176 - storedUsd);
@@ -815,9 +961,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
         .post(`/api/v1/companies/${alNoor}/rates`)
         .send({ rate_iqd_per_usd: '1310' })
         .expect(201);
-      const purchase = await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '5000.000' }] }).expect(
-        201,
-      );
+      const purchase = await createPurchase(warehouse, {
+        lines: [{ item_id: steel, qty_kg: '5000.000' }],
+      }).expect(201);
       const before = await companyLedger(alNoor);
 
       await as(ctx.http, accountant)
@@ -827,7 +973,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
 
       const after = await companyLedger(alNoor);
       expect(after).toEqual(before);
-      const reread = await as(ctx.http, accountant).get(`/api/v1/purchases/${purchase.body.id}`).expect(200);
+      const reread = await as(ctx.http, accountant)
+        .get(`/api/v1/purchases/${purchase.body.id}`)
+        .expect(200);
       expect(reread.body.rate_iqd_per_usd).toBe('1310.0000');
       expect(reread.body.cost.total_usd_cents).toBe(Number(before[0]?.amount_usd_cents));
     });
@@ -855,7 +1003,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
           .expect(201);
       }
 
-      const all = await as(ctx.http, accountant).get(`/api/v1/companies/${alNoor}/ledger`).expect(200);
+      const all = await as(ctx.http, accountant)
+        .get(`/api/v1/companies/${alNoor}/ledger`)
+        .expect(200);
       expect(all.body.total).toBe(4);
       expect(all.body.has_more).toBe(false);
 
@@ -864,7 +1014,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
         .get(`/api/v1/companies/${alNoor}/ledger?type=payment`)
         .expect(200);
       expect(payments.body.total).toBe(3);
-      expect(payments.body.items.every((row: { entry_type: string }) => row.entry_type === 'payment')).toBe(true);
+      expect(
+        payments.body.items.every((row: { entry_type: string }) => row.entry_type === 'payment'),
+      ).toBe(true);
 
       const september = await as(ctx.http, accountant)
         .get(`/api/v1/companies/${alNoor}/ledger?from=2026-09-01&to=2026-09-01`)
@@ -908,13 +1060,15 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
         .get(`/api/v1/companies/${alNoor}/purchase-breakdown`)
         .expect(200);
 
-      expect(breakdown.body.allocation.purchases.map((row: { purchase_id: string }) => row.purchase_id)).toEqual([
-        owing.body.id,
-      ]);
+      expect(
+        breakdown.body.allocation.purchases.map((row: { purchase_id: string }) => row.purchase_id),
+      ).toEqual([owing.body.id]);
       expect(breakdown.body.settled_count).toBe(1);
       expect(breakdown.body.owing_count).toBe(1);
       expect(breakdown.body.owing_total).toBe(70_000);
-      expect(breakdown.body.purchases.map((row: { id: string }) => row.id)).toEqual([owing.body.id]);
+      expect(breakdown.body.purchases.map((row: { id: string }) => row.id)).toEqual([
+        owing.body.id,
+      ]);
       // The identity stays checkable from the response when the rows are cut to a page.
       expect(breakdown.body.owing_total + breakdown.body.allocation.general).toBe(
         breakdown.body.allocation.balance,
@@ -930,7 +1084,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     });
 
     it('covers the last three months when a statement is asked for without a period', async () => {
-      const statement = await as(ctx.http, accountant).get(`/api/v1/companies/${alNoor}/statement`).expect(200);
+      const statement = await as(ctx.http, accountant)
+        .get(`/api/v1/companies/${alNoor}/statement`)
+        .expect(200);
       expect(statement.body.from).toBe(monthsAgo(3));
       expect(statement.body.to).toBeNull();
 
@@ -966,7 +1122,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
 
   describe('field-level permissions (FR-704, spec 2.6.2)', () => {
     it('strips company money from every response for a user without the balances flag', async () => {
-      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '100.000' }] }).expect(201);
+      await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '100.000' }] }).expect(
+        201,
+      );
 
       const detail = await as(ctx.http, noMoney).get(`/api/v1/companies/${alNoor}`).expect(200);
       expect(detail.body.name).toBe('Al-Noor Steel Co.');
@@ -983,9 +1141,13 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     });
 
     it('keeps quantities and hides prices for a user without the bought-price flag', async () => {
-      const created = await createPurchase(warehouse, { lines: [{ item_id: steel, qty_kg: '100.000' }] }).expect(201);
+      const created = await createPurchase(warehouse, {
+        lines: [{ item_id: steel, qty_kg: '100.000' }],
+      }).expect(201);
 
-      const detail = await as(ctx.http, noMoney).get(`/api/v1/purchases/${created.body.id}`).expect(200);
+      const detail = await as(ctx.http, noMoney)
+        .get(`/api/v1/purchases/${created.body.id}`)
+        .expect(200);
       expect(detail.body.purchase_date).toBe(today());
       expect(detail.body.lines[0].qty_kg).toBe('100.000');
       expect('cost' in detail.body).toBe(false);
@@ -996,7 +1158,9 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       expect(list.body.total).toBe(1);
       expect('cost' in list.body.items[0]).toBe(false);
 
-      const history = await as(ctx.http, noMoney).get(`/api/v1/purchases/${created.body.id}/history`).expect(200);
+      const history = await as(ctx.http, noMoney)
+        .get(`/api/v1/purchases/${created.body.id}/history`)
+        .expect(200);
       const create = history.body.items.find((row: { action: string }) => row.action === 'create');
       expect('purchase_total' in create.changes).toBe(false);
       expect('unit_price' in create.changes.lines.new[0]).toBe(false);

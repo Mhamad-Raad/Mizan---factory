@@ -41,7 +41,7 @@ export function DashboardPage() {
   const dashboard = useQuery({
     queryKey: ['dashboard'],
     queryFn: () =>
-      apiRequest<{ date: string; tiles: Tile[]; rate: { rate_iqd_per_usd: string; is_stale: boolean } | null }>(
+      apiRequest<{ date: string; tiles: Tile[]; rate: { rate_iqd_per_usd: string } | null }>(
         '/dashboard',
       ),
   });
@@ -53,14 +53,11 @@ export function DashboardPage() {
   return (
     <>
       <div className="mz-stack">
-        {/* Proposed — not requested (FR-1106): a rate nobody has touched skews every dollar. */}
-        {dashboard.data?.rate?.is_stale ? (
-          <div className="mz-warning" role="status">
-            {t('settings:rate_stale', { rate: formatter.rate(dashboard.data.rate.rate_iqd_per_usd) })}
-          </div>
-        ) : null}
-
-        <QueryStates query={dashboard} isEmpty={tiles.length === 0} emptyTitle={t('dashboard:empty')}>
+        <QueryStates
+          query={dashboard}
+          isEmpty={tiles.length === 0}
+          emptyTitle={t('dashboard:empty')}
+        >
           <div className="mz-tiles">
             {tiles.map((tile) => (
               <Card key={tile.key}>
@@ -72,13 +69,22 @@ export function DashboardPage() {
                     </span>
                   ) : null}
                   {tile.amount_iqd !== undefined ? (
-                    <DualAmount amount_iqd={tile.amount_iqd} amount_usd_cents={tile.amount_usd_cents ?? 0} />
+                    <DualAmount
+                      amount_iqd={tile.amount_iqd}
+                      amount_usd_cents={tile.amount_usd_cents ?? 0}
+                    />
                   ) : null}
                   {tile.cost ? (
-                    <DualAmount amount_iqd={tile.cost.amount_iqd} amount_usd_cents={tile.cost.amount_usd_cents} />
+                    <DualAmount
+                      amount_iqd={tile.cost.amount_iqd}
+                      amount_usd_cents={tile.cost.amount_usd_cents}
+                    />
                   ) : null}
                   {tile.owed ? (
-                    <DualAmount amount_iqd={tile.owed.amount_iqd} amount_usd_cents={tile.owed.amount_usd_cents} />
+                    <DualAmount
+                      amount_iqd={tile.owed.amount_iqd}
+                      amount_usd_cents={tile.owed.amount_usd_cents}
+                    />
                   ) : null}
                   {/* A balance is a pair: the dinars owed and the dollars owed, never a sum
                       of the two (rule 1). */}

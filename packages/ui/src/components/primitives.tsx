@@ -448,14 +448,18 @@ export function Menu({
   icon,
   items,
   align = 'end',
+  variant = 'icon',
 }: {
   label: string;
   icon: IconName;
   items: readonly MenuItem[];
   align?: 'start' | 'end';
+  /** `icon` is the app-bar dot; `button` is a labelled trigger for a toolbar (e.g. Filter). */
+  variant?: 'icon' | 'button';
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const activeCount = items.filter((item) => item.current).length;
 
   useEffect(() => {
     if (!open) return;
@@ -476,17 +480,33 @@ export function Menu({
 
   return (
     <div className="mz-menu" ref={root}>
-      <button
-        type="button"
-        className="mz-icon-button"
-        aria-label={label}
-        title={label}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <Icon name={icon} size={22} />
-      </button>
+      {variant === 'button' ? (
+        <button
+          type="button"
+          className="mz-button mz-button--secondary mz-menu__trigger"
+          aria-label={label}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          onClick={() => setOpen((current) => !current)}
+        >
+          <Icon name={icon} size={18} />
+          {label}
+          {activeCount > 0 ? <span className="mz-menu__count">{activeCount}</span> : null}
+          <Icon name="chevron" size={16} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="mz-icon-button"
+          aria-label={label}
+          title={label}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          onClick={() => setOpen((current) => !current)}
+        >
+          <Icon name={icon} size={22} />
+        </button>
+      )}
       {open ? (
         <div className={`mz-menu__list mz-menu__list--${align}`} role="menu" aria-label={label}>
           {items.map((item) => (
@@ -553,7 +573,9 @@ export function NumberField({ label, hint, error, unit, decimals = 0, onChange, 
   return (
     <Field label={label} hint={hint} error={error}>
       {(id) => (
-        <div className="mz-number">
+        // Numbers read left-to-right in every language, so the field is an LTR island: the digits
+        // start at the left and the unit sits at the right, even on an Arabic or Kurdish page.
+        <div className="mz-number" dir="ltr">
           <input
             id={id}
             className="mz-field__control"

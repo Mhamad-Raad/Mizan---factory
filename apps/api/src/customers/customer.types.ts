@@ -49,7 +49,18 @@ export interface CustomerDto {
   is_active: boolean;
   /** Stripped for a caller without `fields.see_customer_balances` (FR-503). */
   balance: BalanceDto | null;
+  /**
+   * The customer's own IQD-per-USD rate, or the global one when they have none. `is_customer_rate`
+   * says which, so the order form can default to the customer's rate and the page can say so.
+   */
+  rate: CustomerRateInfo | null;
   version: number;
+}
+
+export interface CustomerRateInfo {
+  rate_iqd_per_usd: Rate;
+  since: string | null;
+  is_customer_rate: boolean;
 }
 
 /** One row of a customer's ledger, already grouped per the presentation rules of 2.4.5. */

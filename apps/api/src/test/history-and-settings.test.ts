@@ -1,6 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Client } from 'pg';
-import { as, auditRows, createTestApp, resetDatabase, seedUser, signIn, TEST_DATABASE_URL } from './harness.js';
+import {
+  as,
+  auditRows,
+  createTestApp,
+  resetDatabase,
+  seedUser,
+  signIn,
+  TEST_DATABASE_URL,
+} from './harness.js';
 import type { Session, TestApp } from './harness.js';
 
 describe('history and settings (FR-901, FR-902, FR-1107)', () => {
@@ -58,7 +66,11 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
       for (let index = 0; index < 5; index += 1) {
         await as(ctx.http, adminSession)
           .post('/api/v1/users')
-          .send({ display_name: `Employee ${index}`, username: `employee${index}`, role: 'employee' })
+          .send({
+            display_name: `Employee ${index}`,
+            username: `employee${index}`,
+            role: 'employee',
+          })
           .expect(201);
       }
 
@@ -86,16 +98,20 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
         .expect(201);
 
       const scoped = await as(ctx.http, employeeSession).get('/api/v1/history').expect(200);
-      const actors = new Set(scoped.body.items.map((row: { actor_user_id: string }) => row.actor_user_id));
+      const actors = new Set(
+        scoped.body.items.map((row: { actor_user_id: string }) => row.actor_user_id),
+      );
       expect([...actors]).toEqual([employee.id]);
 
       // Asking for someone else's rows does not widen the scope.
       const attempted = await as(ctx.http, employeeSession)
         .get(`/api/v1/history?done_by=${admin.id}`)
         .expect(200);
-      expect(attempted.body.items.every((row: { actor_user_id: string }) => row.actor_user_id === employee.id)).toBe(
-        true,
-      );
+      expect(
+        attempted.body.items.every(
+          (row: { actor_user_id: string }) => row.actor_user_id === employee.id,
+        ),
+      ).toBe(true);
     });
 
     it('lets everyone read their own activity even without history.view (spec 1.5.2 rule 3)', async () => {
@@ -104,7 +120,11 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
 
       await as(ctx.http, employeeSession).get('/api/v1/history').expect(403);
       const mine = await as(ctx.http, employeeSession).get('/api/v1/history/me').expect(200);
-      expect(mine.body.items.every((row: { actor_user_id: string }) => row.actor_user_id === employee.id)).toBe(true);
+      expect(
+        mine.body.items.every(
+          (row: { actor_user_id: string }) => row.actor_user_id === employee.id,
+        ),
+      ).toBe(true);
     });
 
     it('filters by date in Asia/Baghdad days and by action', async () => {
@@ -118,7 +138,9 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
         .get(`/api/v1/history?from=${today}&to=${today}&action=create`)
         .expect(200);
       expect(todayRows.body.items.length).toBeGreaterThan(0);
-      expect(todayRows.body.items.every((row: { action: string }) => row.action === 'create')).toBe(true);
+      expect(todayRows.body.items.every((row: { action: string }) => row.action === 'create')).toBe(
+        true,
+      );
 
       const longAgo = await as(ctx.http, adminSession)
         .get('/api/v1/history?from=2020-01-01&to=2020-01-02')
@@ -132,7 +154,9 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
         .send({ display_name: 'Rebaz', username: 'rebaz', role: 'employee' })
         .expect(201);
 
-      const rows = await as(ctx.http, adminSession).get('/api/v1/history?action=create').expect(200);
+      const rows = await as(ctx.http, adminSession)
+        .get('/api/v1/history?action=create')
+        .expect(200);
       expect(rows.body.items[0].actor_display_name).toBe('Sara');
       expect(rows.body.items[0].request_id).toMatch(/^[0-9a-f-]{36}$/);
     });
@@ -145,26 +169,17 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
 
       const response = await as(ctx.http, employeeSession).get('/api/v1/settings').expect(200);
       // The two formatting keys plus the rules an employee's own forms must respect, so a
-      // screen can warn before the API refuses: the selling and buying windows from I1 and I2,
-      // and from I5 the PIN policy their own lock screen and PIN form are subject to.
+      // screen can warn before the API refuses: the stock and settlement rules from I1.
       expect(Object.keys(response.body).sort()).toEqual([
-        'allow_edit_after_payment',
         'allow_negative_stock',
-        'allow_pin_switch_on_shared',
         'date_format',
         'default_customer_currency',
-        'locked_through',
-        'order_edit_window_days',
-        'pin_min_length_personal',
-        'pin_min_length_shared',
-        'purchase_edit_window_days',
         'settle_tolerance_iqd',
         'settle_tolerance_usd_cents',
         'week_start',
       ]);
       // An admin-only key stays admin-only.
-      expect('rate_guard_percent' in response.body).toBe(false);
-      expect('rate_guard_percent' in response.body).toBe(false);
+      expect('idle_lock_shared_minutes' in response.body).toBe(false);
     });
 
     it('gives an admin everything and logs a change old -> new', async () => {
@@ -193,30 +208,23 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
         .expect(422);
     });
 
-    it('opens the purchase edit window that buying needs (I2)', async () => {
-      await as(ctx.http, adminSession)
-        .patch('/api/v1/settings')
-        .send({ purchase_edit_window_days: 3 })
-        .expect(200);
-
-      const after = await as(ctx.http, adminSession).get('/api/v1/settings').expect(200);
-      expect(after.body.purchase_edit_window_days).toBe(3);
-    });
-
     it('opens the stock and money rules that selling needs (I1)', async () => {
       await as(ctx.http, adminSession)
         .patch('/api/v1/settings')
-        .send({ allow_negative_stock: false, locked_through: '2026-08-31' })
+        .send({ allow_negative_stock: false })
         .expect(200);
 
       const after = await as(ctx.http, adminSession).get('/api/v1/settings').expect(200);
-      expect(after.body).toMatchObject({ allow_negative_stock: false, locked_through: '2026-08-31' });
+      expect(after.body).toMatchObject({ allow_negative_stock: false });
     });
 
     it('refuses an employee outright', async () => {
       const employee = await seedUser({ username: 'rebaz' });
       const employeeSession = await signIn(ctx.http, employee);
-      await as(ctx.http, employeeSession).patch('/api/v1/settings').send({ week_start: 'mon' }).expect(403);
+      await as(ctx.http, employeeSession)
+        .patch('/api/v1/settings')
+        .send({ week_start: 'mon' })
+        .expect(403);
     });
   });
 

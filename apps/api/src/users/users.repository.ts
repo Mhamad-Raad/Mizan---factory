@@ -5,7 +5,7 @@ import type { Db } from '../database/pool.js';
 import type { DirectoryEntryDto, UserRole, UserRow } from './user.types.js';
 
 const COLUMNS = `id, username::text AS username, phone, display_name, role, password_hash,
-                 must_change_password, pin_hash, pin_length, preset_key, preset_version,
+                 must_change_password, preset_key, preset_version,
                  is_active, last_login_at, failed_login_count, locked_until,
                  created_at, updated_at, deleted_at, version`;
 
@@ -165,8 +165,6 @@ export class UsersRepository {
         | 'is_active'
         | 'must_change_password'
         | 'password_hash'
-        | 'pin_hash'
-        | 'pin_length'
       >
     >,
     updatedBy: string,
@@ -216,15 +214,19 @@ export class UsersRepository {
   }
 
   /** The whole set is replaced at once, inside the caller's transaction (spec 2.6.5). */
-  async replacePermissions(userId: string, keys: readonly string[], grantedBy: string, tx: Db): Promise<void> {
+  async replacePermissions(
+    userId: string,
+    keys: readonly string[],
+    grantedBy: string,
+    tx: Db,
+  ): Promise<void> {
     await tx.query('DELETE FROM user_permissions WHERE user_id = $1', [userId]);
     if (keys.length === 0) return;
     const placeholders = keys.map((_, index) => `($1, $${index + 3}, $2)`).join(', ');
-    await tx.query(`INSERT INTO user_permissions (user_id, permission_key, granted_by) VALUES ${placeholders}`, [
-      userId,
-      grantedBy,
-      ...keys,
-    ]);
+    await tx.query(
+      `INSERT INTO user_permissions (user_id, permission_key, granted_by) VALUES ${placeholders}`,
+      [userId, grantedBy, ...keys],
+    );
   }
 
   async recordLoginAttempt(

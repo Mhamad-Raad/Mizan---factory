@@ -22,6 +22,9 @@
   "optional": "Optional",
   "done_by": "Done by",
   "assigned_to": "Assigned to",
+  "type": "Type",
+  "activity": "Activity",
+  "filter": "Filter",
   "active": "Active",
   "deactivated": "Deactivated",
   "today": "Today",
@@ -73,5 +76,10 @@
   "use_dark": "Dark theme",
   "use_light": "Light theme",
   "language_menu": "Language",
-  "account_menu": "Account"
+  "account_menu": "Account",
+  "app_tagline": "One factory",
+  "theme_menu": "Theme",
+  "text_size_menu": "Text size",
+  "entered_separately": "Entered separately",
+  "rate_at_source": "At {{source}}: {{rate}}"
 }

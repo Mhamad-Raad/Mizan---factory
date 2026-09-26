@@ -8,7 +8,6 @@
   "old_value": "Was",
   "new_value": "Now",
   "request_id": "Reference",
-  "signed_in_with_pin": "signed in with PIN",
   "action.create": "created",
   "action.update": "changed",
   "action.void": "voided",

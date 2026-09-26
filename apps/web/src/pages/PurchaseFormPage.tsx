@@ -1,24 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, Chip, DateField, IconButton, NumberField, TextField, Toast } from '@mizan/ui';
-import { computeLineTotals, convert, documentTotals } from '@mizan/money';
-import type { Currency, Measure, Rate } from '@mizan/money';
+import {
+  Button,
+  Card,
+  DateField,
+  EmptyState,
+  Icon,
+  IconButton,
+  NumberField,
+  TextField,
+  Toast,
+} from '@mizan/ui';
+import { convert } from '@mizan/money';
+import type { Rate } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { DraftBanner } from '../components/DraftBanner.js';
-import { DualAmount } from '../components/DualAmount.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { PickerSheet } from '../components/PickerSheet.js';
-import { QuantityInput } from '../components/QuantityInput.js';
 import { QueryStates } from '../components/states.js';
 import { TotalsFooter } from '../components/TotalsFooter.js';
-import { PriceFromMonth, RateBadge } from '../components/chips.js';
 import { clearDraft, readDraft, writeDraft } from '../lib/drafts.js';
-import { useApp, useFormatter, usePermission } from '../lib/store.js';
-import type { CompanyRow } from './CompaniesPage.js';
+import { useFormatter } from '../lib/store.js';
 import type { ItemRow } from './MaterialsPage.js';
 import type { PurchaseDetail } from './PurchasesPage.js';
 
@@ -26,42 +32,27 @@ interface FormLine {
   key: string;
   item_id: string;
   item_name: string;
-  priced_measure: Measure;
+  /** How much was added, in pieces. */
   qty_count: number | null;
-  qty_kg: string | null;
-  price: MoneyValue;
-  /** True while the price is the month's bought price; typing in it makes it an override. */
-  from_month_price: boolean;
-  price_from_month: string | null;
-  note: string | null;
+  /** What it cost in total, entered directly (IQD and/or USD). */
+  total: MoneyValue;
 }
 
 interface FormState {
-  /** Null is a decision, not a gap: "No company — stock only" (FR-407). */
-  company_id: string | null;
-  company_name: string | null;
-  settlement_currency: Currency;
   purchase_date: string;
   notes: string;
-  rate_override: string;
-  acting_user_id: string;
-  discount: MoneyValue;
   lines: FormLine[];
 }
 
 /**
- * "Add material" — the purchase form (spec 3.3, flow 3.5.2), and the same form for an edit.
- *
- * It is the order form's twin with three differences the warehouse feels: the company is
- * optional, the price defaults from the month's **bought** price, and the rate under More is
- * the company's rather than the global one. Totals are computed here with the same kernel the
- * server uses, and the server recomputes them anyway (2.3.4).
+ * "Add material" — recording stock coming in (spec 3.3). Deliberately the short form the floor
+ * asked for: for each material, how much came in and what it cost in total, plus the date and a
+ * note. No supplier and no discount — stock goes up and the cost is recorded, nothing owed.
  */
 export function PurchaseFormPage({ mode }: { mode: 'create' | 'edit' }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const { id = '' } = useParams();
-  const [searchParams] = useSearchParams();
 
   const existing = useQuery({
     queryKey: ['purchases', id],
@@ -73,75 +64,46 @@ export function PurchaseFormPage({ mode }: { mode: 'create' | 'edit' }) {
 
   if (mode === 'edit') {
     return (
-      <>
-        <QueryStates query={existing} skeletonLines={10}>
-          {existing.data ? (
-            <PurchaseForm
-              mode="edit"
-              purchaseId={id}
-              version={existing.data.version}
-              initial={fromPurchase(existing.data)}
-            />
-          ) : null}
-        </QueryStates>
-      </>
+      <QueryStates query={existing} skeletonLines={10}>
+        {existing.data ? (
+          <PurchaseForm
+            mode="edit"
+            purchaseId={id}
+            version={existing.data.version}
+            initial={fromPurchase(existing.data)}
+          />
+        ) : null}
+      </QueryStates>
     );
   }
 
   return (
-    <>
-      <PurchaseForm
-        mode="create"
-        initial={{
-          company_id: searchParams.get('company'),
-          company_name: null,
-          settlement_currency: 'IQD',
-          purchase_date: formatter.today(),
-          notes: '',
-          rate_override: '',
-          acting_user_id: '',
-          discount: { amount: null, currency: 'IQD', other_amount: null },
-          lines: [],
-        }}
-      />
-    </>
+    <PurchaseForm
+      mode="create"
+      initial={{ purchase_date: formatter.today(), notes: '', lines: [] }}
+    />
   );
 }
 
 /** The purchase as the form holds it, so the form is initialised once and never synced. */
 function fromPurchase(purchase: PurchaseDetail): FormState {
   return {
-    company_id: purchase.company_id,
-    company_name: purchase.company_name,
-    settlement_currency: purchase.settlement_currency ?? 'IQD',
     purchase_date: purchase.purchase_date,
     notes: purchase.notes ?? '',
-    rate_override: purchase.rate_source === 'manual' ? purchase.rate_iqd_per_usd : '',
-    acting_user_id: '',
-    discount:
-      purchase.cost && purchase.cost.discount_iqd > 0
-        ? { amount: purchase.cost.discount_iqd, currency: 'IQD', other_amount: null }
-        : { amount: null, currency: 'IQD', other_amount: null },
-    lines: purchase.lines.map((line) => ({
-      key: line.id,
-      item_id: line.item_id,
-      item_name: line.item_name,
-      priced_measure: line.priced_measure,
-      qty_count: line.qty_count,
-      qty_kg: line.qty_kg,
-      price: {
-        amount: line.cost
-          ? line.cost.price_entered_currency === 'IQD'
-            ? line.cost.unit_price_iqd
-            : line.cost.unit_price_usd_cents
-          : null,
-        currency: line.cost?.price_entered_currency ?? 'IQD',
-        other_amount: null,
-      },
-      from_month_price: line.cost?.price_source === 'month',
-      price_from_month: line.cost?.price_from_month ?? null,
-      note: line.note,
-    })),
+    lines: purchase.lines.map((line) => {
+      const enteredIqd = line.cost?.price_entered_currency !== 'USD';
+      return {
+        key: line.id,
+        item_id: line.item_id,
+        item_name: line.item_name,
+        qty_count: line.qty_count,
+        total: {
+          amount: line.cost ? (enteredIqd ? line.cost.line_total_iqd : line.cost.line_total_usd_cents) : null,
+          currency: line.cost?.price_entered_currency ?? 'IQD',
+          other_amount: line.cost ? (enteredIqd ? line.cost.line_total_usd_cents : line.cost.line_total_iqd) : null,
+        },
+      };
+    }),
   };
 }
 
@@ -160,8 +122,6 @@ function PurchaseForm({
   const formatter = useFormatter();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const maySeeBalance = usePermission('fields.see_company_balances');
-  const isAdmin = useApp((state) => state.user?.role === 'admin');
 
   const draftId = mode === 'edit' ? (purchaseId as string) : 'new';
   const [idempotencyKey, setIdempotencyKey] = useState(
@@ -170,131 +130,65 @@ function PurchaseForm({
   const [draftFound, setDraftFound] = useState(() => readDraft<FormState>('purchase', draftId));
 
   const [form, setForm] = useState<FormState>(initial);
-  const [showMore, setShowMore] = useState(false);
-  const [picking, setPicking] = useState<'company' | 'material' | null>(null);
+  const [picking, setPicking] = useState(false);
   const [toast, setToast] = useState<{ message: string; purchaseId?: string } | null>(null);
 
+  // The other-currency side of a typed total is shown at the global rate; the server stores the
+  // typed side exactly and converts the other itself (2.3.4).
   const globalRate = useQuery({
     queryKey: ['global-rate'],
     queryFn: () =>
-      apiRequest<{ current: { rate_iqd_per_usd: string; is_stale: boolean } | null }>('/settings/global-rates'),
+      apiRequest<{ current: { rate_iqd_per_usd: string } | null }>('/settings/global-rates'),
   });
-
-  const directory = useQuery({
-    queryKey: ['users', 'directory'],
-    queryFn: () => apiRequest<{ id: string; display_name: string; is_active: boolean }[]>('/users/directory'),
-    enabled: isAdmin && showMore,
-  });
-
-  /**
-   * The company behind the chosen id. Its rate and settlement currency are *derived* at render
-   * rather than copied into the form, so a rate set in another tab is picked up on the next
-   * read instead of being stale in a draft.
-   */
-  const company = useQuery({
-    queryKey: ['companies', form.company_id],
-    queryFn: () => apiRequest<CompanyRow>(`/companies/${form.company_id}`),
-    enabled: Boolean(form.company_id),
-  });
-
-  const settlementCurrency = company.data?.settlement_currency ?? form.settlement_currency;
-  const companyRate = company.data?.rate?.rate_iqd_per_usd ?? null;
-
-  // "Rate for this purchase" (2.3.3): the one typed here, else the company's, else the global.
-  const documentRate: Rate =
-    form.rate_override.trim() !== ''
-      ? form.rate_override.trim()
-      : (companyRate ?? globalRate.data?.current?.rate_iqd_per_usd ?? '1310.0000');
-  const rateSource = form.rate_override.trim() !== '' ? 'manual' : companyRate ? 'company' : 'global';
+  const documentRate: Rate = globalRate.data?.current?.rate_iqd_per_usd ?? '1310.0000';
 
   useEffect(() => {
-    if (form.lines.length === 0 && !form.company_id) return;
-    const timer = window.setTimeout(() => writeDraft('purchase', draftId, form, idempotencyKey), 300);
+    if (form.lines.length === 0) return;
+    const timer = window.setTimeout(
+      () => writeDraft('purchase', draftId, form, idempotencyKey),
+      300,
+    );
     return () => window.clearTimeout(timer);
   }, [form, draftId, idempotencyKey]);
 
   const totals = useMemo(() => {
-    const lineTotals = form.lines
-      .filter((line) => quantityOf(line) !== null && line.price.amount !== null)
-      .map((line) =>
-        computeLineTotals({
-          priced_measure: line.priced_measure,
-          qty_count: line.qty_count,
-          qty_kg: line.qty_kg,
-          unit_price_iqd:
-            line.price.currency === 'IQD'
-              ? (line.price.amount as number)
-              : (line.price.other_amount ?? convert(line.price.amount as number, 'USD', documentRate)),
-          unit_price_usd_cents:
-            line.price.currency === 'USD'
-              ? (line.price.amount as number)
-              : (line.price.other_amount ?? convert(line.price.amount as number, 'IQD', documentRate)),
-          price_entered_currency: line.price.currency,
-          both_prices_typed: line.price.other_amount !== null && line.price.other_amount !== undefined,
-          document_rate: documentRate,
-          document_rate_source: rateSource,
-        }),
-      );
-    const discountIqd =
-      form.discount.amount === null
-        ? 0
-        : form.discount.currency === 'IQD'
-          ? form.discount.amount
-          : convert(form.discount.amount, 'USD', documentRate);
-    const discountUsd =
-      form.discount.amount === null
-        ? 0
-        : form.discount.currency === 'USD'
-          ? form.discount.amount
-          : convert(form.discount.amount, 'IQD', documentRate);
-    return {
-      lines: lineTotals,
-      ...documentTotals(lineTotals, { discount_iqd: discountIqd, discount_usd_cents: discountUsd }),
-    };
-  }, [form, documentRate, rateSource]);
+    let total_iqd = 0;
+    let total_usd_cents = 0;
+    for (const line of form.lines) {
+      if (line.total.amount === null) continue;
+      total_iqd += moneyIqd(line.total, documentRate);
+      total_usd_cents += moneyUsd(line.total, documentRate);
+    }
+    return { total_iqd, total_usd_cents };
+  }, [form, documentRate]);
 
   const save = useMutation({
     mutationFn: () => {
       const body = {
-        company_id: form.company_id,
+        company_id: null,
         purchase_date: form.purchase_date,
         notes: form.notes.trim() === '' ? null : form.notes.trim(),
-        rate_iqd_per_usd: form.rate_override.trim() === '' ? null : form.rate_override.trim(),
-        acting_user_id: form.acting_user_id === '' ? null : form.acting_user_id,
-        discount:
-          form.discount.amount === null
-            ? null
-            : {
-                amount: form.discount.amount,
-                currency: form.discount.currency,
-                other_amount: form.discount.other_amount ?? null,
-              },
+        discount: null,
         lines: form.lines.map((line) => ({
           item_id: line.item_id,
           qty_count: line.qty_count,
-          qty_kg: line.qty_kg,
-          unit_price: line.from_month_price
-            ? null
-            : {
-                amount: line.price.amount,
-                currency: line.price.currency,
-                other_amount: line.price.other_amount ?? null,
-              },
-          note: line.note,
+          total: {
+            amount: line.total.amount,
+            currency: line.total.currency,
+            other_amount: line.total.other_amount ?? null,
+          },
         })),
         ...(mode === 'edit' ? { version } : {}),
       };
-      return apiRequest<PurchaseDetail>(mode === 'edit' ? `/purchases/${purchaseId}` : '/purchases', {
-        method: mode === 'edit' ? 'PUT' : 'POST',
-        body,
-        idempotencyKey,
-      });
+      return apiRequest<PurchaseDetail>(
+        mode === 'edit' ? `/purchases/${purchaseId}` : '/purchases',
+        { method: mode === 'edit' ? 'PUT' : 'POST', body, idempotencyKey },
+      );
     },
     onSuccess: async (purchase) => {
       clearDraft('purchase', draftId);
       setIdempotencyKey(newIdempotencyKey());
       await queryClient.invalidateQueries({ queryKey: ['purchases'] });
-      await queryClient.invalidateQueries({ queryKey: ['companies'] });
       await queryClient.invalidateQueries({ queryKey: ['items'] });
       if (mode === 'edit') {
         navigate(`/purchases/${purchaseId}`, { replace: true });
@@ -305,31 +199,28 @@ function PurchaseForm({
         message: t('purchases:saved', { number: formatter.number(purchase.number) }),
         purchaseId: purchase.id,
       });
-      setForm((current) => ({
-        ...current,
-        lines: [],
-        notes: '',
-        discount: { amount: null, currency: 'IQD', other_amount: null },
-      }));
+      setForm((current) => ({ ...current, lines: [], notes: '' }));
     },
   });
 
   const undo = useMutation({
     mutationFn: (undoneId: string) =>
-      apiRequest(`/purchases/${undoneId}/undo`, { method: 'POST', body: {}, idempotencyKey: newIdempotencyKey() }),
+      apiRequest(`/purchases/${undoneId}/undo`, {
+        method: 'POST',
+        body: {},
+        idempotencyKey: newIdempotencyKey(),
+      }),
     onSuccess: async () => {
       setToast(null);
       await queryClient.invalidateQueries({ queryKey: ['purchases'] });
-      await queryClient.invalidateQueries({ queryKey: ['companies'] });
       await queryClient.invalidateQueries({ queryKey: ['items'] });
     },
   });
 
   const error = save.error instanceof ApiError ? save.error : null;
-  const duplicates = save.data?.duplicate_item_warning ?? [];
 
   const addLine = (item: ItemRow) => {
-    setPicking(null);
+    setPicking(false);
     setForm((current) => ({
       ...current,
       lines: [
@@ -338,17 +229,8 @@ function PurchaseForm({
           key: `${item.id}-${current.lines.length}-${Date.now()}`,
           item_id: item.id,
           item_name: item.name,
-          priced_measure: item.stock.priced_measure,
           qty_count: null,
-          qty_kg: null,
-          // The bought price, in the currency it was typed in; the other side fills at the
-          // purchase's rate (FR-402). A material with no bought price asks for one.
-          price: item.bought
-            ? { amount: item.bought.amount_iqd, currency: 'IQD', other_amount: null }
-            : { amount: null, currency: 'IQD', other_amount: null },
-          from_month_price: Boolean(item.bought),
-          price_from_month: null,
-          note: null,
+          total: { amount: null, currency: 'IQD', other_amount: null },
         },
       ],
     }));
@@ -361,8 +243,12 @@ function PurchaseForm({
     }));
   };
 
+  const incomplete = form.lines.some(
+    (line) => line.qty_count === null || line.qty_count <= 0 || line.total.amount === null,
+  );
+
   return (
-    <div className="mz-stack">
+    <div className="mz-stack mz-form-page">
       {draftFound && mode === 'create' ? (
         <DraftBanner
           savedAt={draftFound.saved_at}
@@ -377,160 +263,132 @@ function PurchaseForm({
         />
       ) : null}
 
+      {/* The two facts the whole purchase carries, under a line that says what this screen is. */}
       <Card>
-        <span className="mz-field__label">{t('purchases:company')}</span>
-        <Button variant="secondary" block onClick={() => setPicking('company')}>
-          {form.company_id ? (company.data?.name ?? form.company_name ?? t('purchases:pick_company')) : t('purchases:no_company')}
-        </Button>
-        {!form.company_id ? <p className="mz-caption">{t('purchases:no_company_hint')}</p> : null}
-        {form.company_id && company.data?.balance && maySeeBalance ? (
-          <div className="mz-row mz-row--between" style={{ marginBlockStart: 'var(--space-2)' }}>
-            <span className="mz-caption">{t('companies:we_owe_them')}</span>
-            <DualAmount
-              amount_iqd={company.data.balance.amount_iqd}
-              amount_usd_cents={company.data.balance.amount_usd_cents}
-              primary={company.data.balance.currency}
-              kind="derived"
+        <div className="mz-stack">
+          <div>
+            <h2 className="mz-heading">{t('purchases:details')}</h2>
+            <p className="mz-muted">{t('purchases:add_material_hint')}</p>
+          </div>
+          <div className="mz-form-grid">
+            <DateField
+              label={t('purchases:purchase_date')}
+              value={form.purchase_date}
+              max={formatter.today()}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, purchase_date: event.target.value }))
+              }
             />
-          </div>
-        ) : null}
-      </Card>
-
-      <DateField
-        label={t('purchases:purchase_date')}
-        value={form.purchase_date}
-        max={formatter.today()}
-        onChange={(event) => setForm((current) => ({ ...current, purchase_date: event.target.value }))}
-      />
-
-      <h2 className="mz-heading">{t('orders:lines')}</h2>
-      {form.lines.length === 0 ? <p className="mz-caption">{t('orders:add_first_line')}</p> : null}
-
-      {form.lines.map((line, index) => (
-        <div key={line.key} className="mz-line-card">
-          <div className="mz-line-card__head">
-            <strong><bdi>{line.item_name}</bdi></strong>
-            <span className="mz-row" style={{ gap: 'var(--space-2)' }}>
-              <Chip>{t(`glossary:${line.priced_measure === 'kg' ? 'per_kg' : 'per_piece'}`)}</Chip>
-              <IconButton
-                icon="trash"
-                label={t('purchases:remove_line')}
-                onClick={() =>
-                  setForm((current) => ({ ...current, lines: current.lines.filter((row) => row.key !== line.key) }))
-                }
-              />
-            </span>
-          </div>
-
-          <QuantityInput
-            priced_measure={line.priced_measure}
-            value={{ qty_count: line.qty_count, qty_kg: line.qty_kg }}
-            onChange={(value) => updateLine(line.key, value)}
-            error={
-              error?.fieldError(`lines.${index}.qty_kg`) || error?.fieldError(`lines.${index}.qty_count`)
-                ? t('errors:field.required')
-                : undefined
-            }
-          />
-
-          <MoneyInput
-            label={t('glossary:bought_price')}
-            value={line.price}
-            rate={documentRate}
-            onChange={(value) => updateLine(line.key, { price: value, from_month_price: false })}
-            error={
-              error?.fieldError(`lines.${index}.unit_price`)
-                ? t('purchases:price_missing', { item: line.item_name })
-                : undefined
-            }
-          />
-
-          <div className="mz-row mz-row--between">
-            <span className="mz-caption">
-              {line.from_month_price ? t('orders:from_month_price') : t('purchases:price_override')}
-              {line.price_from_month ? <PriceFromMonth month={line.price_from_month} /> : null}
-            </span>
-            {totals.lines[index] ? (
-              <DualAmount
-                amount_iqd={totals.lines[index]?.line_total_iqd ?? 0}
-                amount_usd_cents={totals.lines[index]?.line_total_usd_cents ?? 0}
-                primary={settlementCurrency}
-              />
-            ) : null}
-          </div>
-
-          <TextField
-            label={t('purchases:line_note')}
-            value={line.note ?? ''}
-            onChange={(event) => updateLine(line.key, { note: event.target.value || null })}
-            maxLength={500}
-          />
-        </div>
-      ))}
-
-      <Button variant="secondary" block icon="plus" onClick={() => setPicking('material')}>
-        {t('purchases:add_line')}
-      </Button>
-
-      <Button variant="ghost" onClick={() => setShowMore(!showMore)} aria-expanded={showMore}>
-        {t('orders:more')}
-      </Button>
-
-      {showMore ? (
-        <Card>
-          <div className="mz-stack">
             <TextField
               label={t('glossary:notes')}
+              hint={t('common:optional')}
               value={form.notes}
-              onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, notes: event.target.value }))
+              }
               maxLength={2000}
             />
-            <NumberField
-              label={t('glossary:document_rate_purchase')}
-              hint={t('orders:rate_hint')}
-              decimals={4}
-              value={form.rate_override}
-              onChange={(event) => setForm((current) => ({ ...current, rate_override: event.target.value }))}
-            />
-            <RateBadge rate={documentRate} source={rateSource} />
-            {isAdmin ? (
-              <label className="mz-field">
-                <span className="mz-field__label">{t('glossary:done_by')}</span>
-                <select
-                  className="mz-field__control"
-                  value={form.acting_user_id}
-                  onChange={(event) => setForm((current) => ({ ...current, acting_user_id: event.target.value }))}
-                >
-                  <option value="">{t('orders:done_by_me')}</option>
-                  {(directory.data ?? [])
-                    .filter((user) => user.is_active)
-                    .map((user) => (
-                      <option key={user.id} value={user.id}>
-                        <bdi>{user.display_name}</bdi>
-                      </option>
-                    ))}
-                </select>
-              </label>
-            ) : null}
           </div>
+        </div>
+      </Card>
+
+      <h2 className="mz-heading">{t('materials:title')}</h2>
+
+      {form.lines.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon="materials"
+            title={t('purchases:no_lines')}
+            body={t('orders:add_first_line')}
+            action={
+              <Button icon="plus" onClick={() => setPicking(true)}>
+                {t('purchases:add_line')}
+              </Button>
+            }
+          />
         </Card>
-      ) : null}
+      ) : (
+        <>
+          {form.lines.map((line, index) => {
+            const quantity = line.qty_count ?? 0;
+            // A quiet reassurance once both are in: what the total works out to per piece.
+            const unitIqd =
+              quantity > 0 && line.total.amount !== null
+                ? Math.round(moneyIqd(line.total, documentRate) / quantity)
+                : null;
+            return (
+              <div key={line.key} className="mz-line-card">
+                <div className="mz-line-card__head">
+                  <span
+                    className="mz-row"
+                    style={{ gap: 'var(--space-2)', alignItems: 'center', minInlineSize: 0 }}
+                  >
+                    <Icon name="materials" size={18} />
+                    <strong>
+                      <bdi>{line.item_name}</bdi>
+                    </strong>
+                  </span>
+                  <IconButton
+                    icon="trash"
+                    label={t('purchases:remove_line')}
+                    onClick={() =>
+                      setForm((current) => ({
+                        ...current,
+                        lines: current.lines.filter((row) => row.key !== line.key),
+                      }))
+                    }
+                  />
+                </div>
 
-      {duplicates.length > 0 ? (
-        <div className="mz-warning" role="status">
-          {duplicates.map((duplicate) => (
-            <span key={duplicate.item_id}>{t('purchases:duplicate_item', { item: duplicate.item_name })}</span>
-          ))}
-        </div>
-      ) : null}
+                <div className="mz-form-grid">
+                  <NumberField
+                    label={t('glossary:quantity')}
+                    unit={t('common:count_symbol')}
+                    value={line.qty_count === null ? '' : String(line.qty_count)}
+                    onChange={(event) =>
+                      updateLine(line.key, {
+                        qty_count:
+                          event.target.value.trim() === ''
+                            ? null
+                            : Math.round(Number(event.target.value)),
+                      })
+                    }
+                    error={
+                      error?.fieldError(`lines.${index}.qty_count`)
+                        ? t('errors:field.required')
+                        : undefined
+                    }
+                  />
+                  <MoneyInput
+                    label={t('glossary:total')}
+                    value={line.total}
+                    rate={documentRate}
+                    sourceLabel={t('glossary:system_rate')}
+                    onChange={(value) => updateLine(line.key, { total: value })}
+                    error={
+                      error?.fieldError(`lines.${index}.total`)
+                        ? t('purchases:price_missing', { item: line.item_name })
+                        : undefined
+                    }
+                  />
+                </div>
 
-      {error && error.code === 'EDIT_WINDOW_CLOSED' ? (
-        <div className="mz-warning" role="alert">
-          {t('purchases:edit_window_closed')}
-        </div>
-      ) : null}
+                {unitIqd !== null ? (
+                  <span className="mz-caption" data-tabular>
+                    ≈ {formatter.money(unitIqd, 'IQD')} / {t('common:count_symbol')}
+                  </span>
+                ) : null}
+              </div>
+            );
+          })}
 
-      {error && error.code !== 'EDIT_WINDOW_CLOSED' && !error.fields.length ? (
+          <Button variant="secondary" block icon="plus" onClick={() => setPicking(true)}>
+            {t('purchases:add_line')}
+          </Button>
+        </>
+      )}
+
+      {error && !error.fields.length ? (
         <div className="mz-warning" role="alert">
           {t(error.messageKey, { defaultValue: t('errors:INTERNAL') })}
         </div>
@@ -539,87 +397,21 @@ function PurchaseForm({
       <TotalsFooter
         total_iqd={totals.total_iqd}
         total_usd_cents={totals.total_usd_cents}
-        primary={settlementCurrency}
+        primary="IQD"
         lineCount={form.lines.length}
         saving={save.isPending}
-        disabled={form.lines.length === 0}
+        disabled={form.lines.length === 0 || incomplete}
         onSave={() => save.mutate()}
         saveLabel={mode === 'edit' ? t('common:save') : t('purchases:add_material')}
-        discount={
-          <div className="mz-row mz-row--between" style={{ gap: 'var(--space-2)' }}>
-            {/* Proposed — not requested (FR-616): a discount agreed with the supplier. */}
-            <NumberField
-              label={t('glossary:discount')}
-              value={form.discount.amount === null ? '' : String(form.discount.amount)}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  discount: {
-                    amount: event.target.value.trim() === '' ? null : Math.round(Number(event.target.value)),
-                    currency: 'IQD',
-                    other_amount: null,
-                  },
-                }))
-              }
-            />
-          </div>
-        }
       />
 
-      {picking === 'company' ? (
-        <PickerSheet
-          title={t('purchases:pick_company')}
-          open
-          onClose={() => setPicking(null)}
-          path="/companies"
-          searchLabel={t('companies:search_placeholder')}
-          emptyTitle={t('companies:empty')}
-          // "No company — stock only" is pinned to the top, as the wireframe asks (FR-407).
-          pinned={{
-            id: 'none',
-            title: t('purchases:no_company'),
-            subtitle: t('purchases:no_company_hint'),
-            row: null as never,
-          }}
-          toItem={(row: never) => {
-            const companyRow = row as unknown as CompanyRow;
-            return {
-              id: companyRow.id,
-              title: companyRow.name,
-              subtitle: companyRow.phone ?? undefined,
-              detail: companyRow.balance ? (
-                <DualAmount
-                  amount_iqd={companyRow.balance.amount_iqd}
-                  amount_usd_cents={companyRow.balance.amount_usd_cents}
-                  primary={companyRow.balance.currency}
-                  kind="derived"
-                />
-              ) : undefined,
-            };
-          }}
-          onPick={(pickedId, row) => {
-            setPicking(null);
-            if (pickedId === 'none') {
-              setForm((current) => ({ ...current, company_id: null, company_name: null, settlement_currency: 'IQD' }));
-              return;
-            }
-            const picked = row as unknown as CompanyRow;
-            setForm((current) => ({
-              ...current,
-              company_id: pickedId,
-              company_name: picked.name,
-              settlement_currency: picked.settlement_currency,
-            }));
-          }}
-        />
-      ) : null}
-
-      {picking === 'material' ? (
+      {picking ? (
         <PickerSheet
           title={t('purchases:pick_material')}
           open
-          onClose={() => setPicking(null)}
+          onClose={() => setPicking(false)}
           path="/items"
+          icon="materials"
           searchLabel={t('materials:search_placeholder')}
           emptyTitle={t('materials:empty')}
           toItem={(row: never) => {
@@ -627,13 +419,11 @@ function PurchaseForm({
             return {
               id: item.id,
               title: item.name,
-              subtitle: item.stock.priced_complete
-                ? `${formatter.number(item.stock.priced_quantity, item.stock.priced_measure === 'kg' ? 3 : 0)} ${t(
-                    `common:${item.stock.priced_measure}_symbol`,
-                  )}`
-                : undefined,
-              detail: item.bought ? (
-                <DualAmount amount_iqd={item.bought.amount_iqd} amount_usd_cents={item.bought.amount_usd_cents} />
+              subtitle: item.code ?? undefined,
+              detail: item.stock.count_complete ? (
+                <span className="mz-picker__meta">
+                  {formatter.number(item.stock.stock_count)} {t('common:count_symbol')}
+                </span>
               ) : undefined,
             };
           }}
@@ -652,6 +442,16 @@ function PurchaseForm({
   );
 }
 
-function quantityOf(line: FormLine): string | number | null {
-  return line.priced_measure === 'count' ? line.qty_count : line.qty_kg;
+/** The IQD side of a typed total: the amount if it was typed in dinars, else converted. */
+function moneyIqd(money: MoneyValue, rate: Rate): number {
+  if (money.amount === null) return 0;
+  if (money.currency === 'IQD') return money.amount;
+  return money.other_amount ?? convert(money.amount, 'USD', rate);
+}
+
+/** The USD side of a typed total: the amount if it was typed in dollars, else converted. */
+function moneyUsd(money: MoneyValue, rate: Rate): number {
+  if (money.amount === null) return 0;
+  if (money.currency === 'USD') return money.amount;
+  return money.other_amount ?? convert(money.amount, 'IQD', rate);
 }

@@ -8,7 +8,6 @@ import type { RequestContext } from '../common/request-context.js';
 import { Database } from '../database/pool.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { PasswordService, checkPasswordRules } from '../auth/password.service.js';
-import { DeviceTicketService } from '../auth/device-ticket.service.js';
 import { SessionService } from '../auth/session.service.js';
 import { UsersRepository } from './users.repository.js';
 import type { UserFilters } from './users.repository.js';
@@ -48,7 +47,6 @@ export class UsersService {
     private readonly users: UsersRepository,
     private readonly passwords: PasswordService,
     private readonly sessions: SessionService,
-    private readonly tickets: DeviceTicketService,
     private readonly audit: AuditService,
     private readonly authGuard: AuthGuard,
   ) {}
@@ -72,7 +70,10 @@ export class UsersService {
    * Creating an employee (FR-201). The temporary password is returned **once**, in the create
    * response only: it is never stored in clear and never written to History (spec 2.4.4).
    */
-  async create(context: RequestContext, input: CreateUserInput): Promise<{ user: UserDto; temporary_password: string }> {
+  async create(
+    context: RequestContext,
+    input: CreateUserInput,
+  ): Promise<{ user: UserDto; temporary_password: string }> {
     const username = input.username.trim().toLowerCase();
     const phone = input.phone ? normalizePhone(input.phone) : null;
 
@@ -178,7 +179,8 @@ export class UsersService {
     if (input.username && input.username.toLowerCase() !== existing.username) {
       await this.assertUsernameFree(input.username.toLowerCase(), id);
     }
-    const phone = input.phone === undefined ? undefined : input.phone ? normalizePhone(input.phone) : null;
+    const phone =
+      input.phone === undefined ? undefined : input.phone ? normalizePhone(input.phone) : null;
     if (phone) await this.assertPhoneFree(phone, id);
 
     // Admin safety: nobody demotes themselves, and the last active admin cannot be demoted
@@ -225,25 +227,35 @@ export class UsersService {
   }
 
   /** Users are deactivated, never deleted, so every historical row keeps its author (FR-203). */
-  async setActive(context: RequestContext, id: string, isActive: boolean, version: number): Promise<UserDto> {
+  async setActive(
+    context: RequestContext,
+    id: string,
+    isActive: boolean,
+    version: number,
+  ): Promise<UserDto> {
     const existing = await this.requireUser(id);
 
     if (!isActive) {
-      if (existing.id === context.userId) throw new ApiError('LAST_ADMIN', { reason: 'self_deactivate' });
+      if (existing.id === context.userId)
+        throw new ApiError('LAST_ADMIN', { reason: 'self_deactivate' });
       if (existing.role === 'admin' && (await this.users.countActiveAdmins(existing.id)) === 0) {
         throw new ApiError('LAST_ADMIN', { reason: 'last_admin' });
       }
     }
 
     return this.database.transaction(async (tx) => {
-      const updated = await this.users.update(id, version, { is_active: isActive }, context.userId, tx);
+      const updated = await this.users.update(
+        id,
+        version,
+        { is_active: isActive },
+        context.userId,
+        tx,
+      );
       if (!updated) throw new ApiError('VERSION_CONFLICT', { current_version: existing.version });
 
       // Deactivation ends their sessions; the guard also refuses an inactive user immediately.
       if (!isActive) {
         await this.sessions.revokeAllForUser(id, 'deactivated', tx);
-        // A PIN on a floor tablet must stop working the moment the account does (2.8).
-        await this.tickets.revokeAllForUser(id, 'deactivated', tx);
       }
 
       await this.audit.record(
@@ -266,7 +278,10 @@ export class UsersService {
    * An admin reset shows the temporary password once, forces a change at next sign-in and
    * ends every session the user had (FR-108, FR-202).
    */
-  async resetPassword(context: RequestContext, id: string): Promise<{ temporary_password: string }> {
+  async resetPassword(
+    context: RequestContext,
+    id: string,
+  ): Promise<{ temporary_password: string }> {
     const existing = await this.requireUser(id);
     const temporary = this.passwords.generateTemporary();
     const passwordHash = await this.passwords.hash(temporary);
@@ -282,8 +297,6 @@ export class UsersService {
       if (!updated) throw new ApiError('VERSION_CONFLICT', { current_version: existing.version });
 
       await this.sessions.revokeAllForUser(id, 'password_reset', tx);
-      // The old ticket proved a password sign-in that no longer means anything (2.8).
-      await this.tickets.revokeAllForUser(id, 'password_reset', tx);
       await this.audit.record(
         context,
         {
@@ -301,7 +314,9 @@ export class UsersService {
     return { temporary_password: temporary };
   }
 
-  async permissions(id: string): Promise<{ keys: string[]; preset_key: string | null; effective: string[] }> {
+  async permissions(
+    id: string,
+  ): Promise<{ keys: string[]; preset_key: string | null; effective: string[] }> {
     const user = await this.requireUser(id);
     const keys = await this.users.permissionsOf(id);
     return {
@@ -332,7 +347,12 @@ export class UsersService {
       assertKnownKeys(input.keys);
     } catch (error) {
       throw ApiError.validation([
-        { path: 'keys', code: 'UNKNOWN_KEY', message_key: 'errors:field.required', params: { reason: (error as Error).message } },
+        {
+          path: 'keys',
+          code: 'UNKNOWN_KEY',
+          message_key: 'errors:field.required',
+          params: { reason: (error as Error).message },
+        },
       ]);
     }
 
@@ -379,17 +399,13 @@ export class UsersService {
   }
 
   /**
-   * The admin's Sessions tab (FR-1304): where this employee is signed in, and which browsers
-   * may sign them in with a PIN. Both lists answer the same question — "who can act as this
-   * person right now, and from what" — so they arrive together.
+   * The admin's Sessions tab (FR-1304): where this employee is signed in — the browsers that can
+   * act as this person right now, each of which can be revoked from here.
    */
   async sessionsOf(id: string) {
     await this.requireUser(id);
-    const [sessions, tickets] = await Promise.all([
-      this.sessions.listForUser(id),
-      this.tickets.listForUser(id),
-    ]);
-    return { sessions, device_tickets: tickets };
+    const sessions = await this.sessions.listForUser(id);
+    return { sessions };
   }
 
   async revokeSession(context: RequestContext, id: string, sessionId: string): Promise<void> {
@@ -402,26 +418,6 @@ export class UsersService {
       entity_label: 'Session revoked by admin',
       related: { user_id: id },
     });
-  }
-
-  /**
-   * Take PIN sign-in away from every browser this employee has proved themselves on (2.8): the
-   * tablet that left the building, the phone that was lost. Their next sign-in anywhere asks
-   * for the password, which issues a fresh ticket — so this is a reset, not a punishment.
-   */
-  async revokeDeviceTickets(context: RequestContext, id: string): Promise<{ revoked: number }> {
-    const user = await this.requireUser(id);
-    const revoked = await this.tickets.revokeAllForUser(id, 'revoked_by_admin');
-    await this.audit.record(context, {
-      action: 'update',
-      entity_type: 'user',
-      entity_id: id,
-      entity_label: `Employee: ${user.display_name}`,
-      changes: { device_tickets: { old: revoked, new: 0 } },
-      note: 'PIN sign-in revoked on every device',
-      related: { user_id: id },
-    });
-    return { revoked };
   }
 
   private async requireUser(id: string): Promise<UserRow> {

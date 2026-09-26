@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { BottomSheet, TextField } from '@mizan/ui';
+import { BottomSheet, Icon, TextField } from '@mizan/ui';
+import type { IconName } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { useDebouncedValue } from '../lib/debounce.js';
 import { QueryStates } from './states.js';
@@ -24,14 +25,16 @@ export interface PickerSheetProps {
   onPick: (id: string, row: never) => void;
   searchLabel: string;
   emptyTitle: string;
+  /** The glyph shown at the start of every row — the thing being picked (a material, a customer). */
+  icon?: IconName;
   /** A row pinned to the top, such as the walk-in customer (wireframe 3.4.1). */
   pinned?: PickerItem & { row: never };
 }
 
 /**
- * The search-and-pick sheet the order form opens for customers and materials (3.4.1, 3.5.1):
- * the keyboard comes up focused, two letters in any script are enough (FR-1205), and tapping
- * a row returns to the form.
+ * The search-and-pick dialog the forms open for customers and materials (3.4.1, 3.5.1): the
+ * keyboard comes up focused, two letters in any script are enough (FR-1205), and choosing a row
+ * returns to the form. A centred modal on a desktop, a bottom sheet on a phone (`.mz-sheet`).
  */
 export function PickerSheet({
   title,
@@ -42,6 +45,7 @@ export function PickerSheet({
   onPick,
   searchLabel,
   emptyTitle,
+  icon,
   pinned,
 }: PickerSheetProps) {
   const { t } = useTranslation();
@@ -60,6 +64,30 @@ export function PickerSheet({
 
   const rows = results.data?.items ?? [];
 
+  const row = (item: PickerItem, onClick: () => void) => (
+    <li key={item.id}>
+      <button type="button" className="mz-list__item mz-list__item--interactive" onClick={onClick}>
+        {icon ? (
+          <span className="mz-picker__icon">
+            <Icon name={icon} size={18} />
+          </span>
+        ) : null}
+        <span className="mz-list__body">
+          <span className="mz-list__title">
+            <bdi>{item.title}</bdi>
+          </span>
+          {item.subtitle ? (
+            <span className="mz-caption" style={{ display: 'block' }}>
+              <bdi>{item.subtitle}</bdi>
+            </span>
+          ) : null}
+        </span>
+        {item.detail}
+        <Icon name="next" size={18} className="mz-picker__chevron" />
+      </button>
+    </li>
+  );
+
   return (
     <BottomSheet title={title} open={open} onClose={onClose} closeLabel={t('common:close')}>
       <div className="mz-stack">
@@ -74,39 +102,11 @@ export function PickerSheet({
 
         <QueryStates query={results} isEmpty={rows.length === 0 && !pinned} emptyTitle={emptyTitle} skeletonLines={4}>
           <ul className="mz-list">
-            {pinned ? (
-              <li key={pinned.id}>
-                <button
-                  type="button"
-                  className="mz-list__item mz-list__item--interactive"
-                  onClick={() => onPick(pinned.id, pinned.row)}
-                >
-                  <span className="mz-list__body">
-                    <span className="mz-list__title"><bdi>{pinned.title}</bdi></span>
-                    {pinned.subtitle ? <span className="mz-caption"><bdi>{pinned.subtitle}</bdi></span> : null}
-                  </span>
-                  {pinned.detail}
-                </button>
-              </li>
-            ) : null}
-            {rows.map((row) => {
-              const item = toItem(row as never);
+            {pinned ? row(pinned, () => onPick(pinned.id, pinned.row)) : null}
+            {rows.map((raw) => {
+              const item = toItem(raw as never);
               if (pinned && item.id === pinned.id) return null;
-              return (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    className="mz-list__item mz-list__item--interactive"
-                    onClick={() => onPick(item.id, row as never)}
-                  >
-                    <span className="mz-list__body">
-                      <span className="mz-list__title"><bdi>{item.title}</bdi></span>
-                      {item.subtitle ? <span className="mz-caption"><bdi>{item.subtitle}</bdi></span> : null}
-                    </span>
-                    {item.detail}
-                  </button>
-                </li>
-              );
+              return row(item, () => onPick(item.id, raw as never));
             })}
           </ul>
         </QueryStates>

@@ -14,7 +14,8 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@mizan/i18n": "workspace:*"
+    "@mizan/i18n": "workspace:*",
+    "lucide-react": "^1.48.0"
   },
   "peerDependencies": {
     "react": "^19.0.0",

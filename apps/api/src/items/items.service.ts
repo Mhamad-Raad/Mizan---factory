@@ -1,10 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  completePair,
-  firstOfMonth,
-  priceSideOf,
-  selectMonthPrice,
-} from '@mizan/money';
+import { completePair, firstOfMonth, priceSideOf, selectMonthPrice } from '@mizan/money';
 import type { Currency, MonthPriceRow } from '@mizan/money';
 import { pricedStock } from '@mizan/ledger';
 import type { ItemStock } from '@mizan/ledger';
@@ -289,7 +284,12 @@ export class ItemsService {
   }
 
   /** Materials are deactivated, not deleted; deactivation is reversible and logged (FR-309). */
-  async setActive(context: RequestContext, id: string, isActive: boolean, version: number): Promise<ItemDto> {
+  async setActive(
+    context: RequestContext,
+    id: string,
+    isActive: boolean,
+    version: number,
+  ): Promise<ItemDto> {
     const updated = await this.database.transaction(async (tx) => {
       const before = await this.items.lock(id, tx);
       if (!before) throw ApiError.notFound();
@@ -368,10 +368,14 @@ export class ItemsService {
     input: SetMonthPricesInput,
   ): Promise<MonthPriceDto> {
     const firstOf = firstOfMonth(month);
-    await this.period.assertMonthNotLocked(firstOf);
     if (!input.bought && !input.sale) {
       throw ApiError.validation([
-        { path: 'sale', code: 'REQUIRED', message_key: 'errors:field.required', params: { field: 'sale' } },
+        {
+          path: 'sale',
+          code: 'REQUIRED',
+          message_key: 'errors:field.required',
+          params: { field: 'sale' },
+        },
       ]);
     }
 
@@ -382,7 +386,9 @@ export class ItemsService {
       if (!item) throw ApiError.notFound();
       const before = await this.items.priceForMonth(id, firstOf, tx);
 
-      const bought = input.bought ? completePair({ ...input.bought, rate, rate_source: 'global' }) : null;
+      const bought = input.bought
+        ? completePair({ ...input.bought, rate, rate_source: 'global' })
+        : null;
       const sale = input.sale ? completePair({ ...input.sale, rate, rate_source: 'global' }) : null;
 
       // A side that is not sent keeps what it had: setting only the sale price of a month must
@@ -391,14 +397,18 @@ export class ItemsService {
         {
           item_id: id,
           month: firstOf,
-          bought_iqd: bought ? bought.amount_iqd : before?.bought_iqd ?? null,
-          bought_usd_cents: bought ? bought.amount_usd_cents : before?.bought_usd_cents ?? null,
-          bought_entered_currency: bought ? bought.entered_currency : before?.bought_entered_currency ?? null,
-          bought_rate: bought ? bought.rate_iqd_per_usd : before?.bought_rate ?? null,
-          sale_iqd: sale ? sale.amount_iqd : before?.sale_iqd ?? null,
-          sale_usd_cents: sale ? sale.amount_usd_cents : before?.sale_usd_cents ?? null,
-          sale_entered_currency: sale ? sale.entered_currency : before?.sale_entered_currency ?? null,
-          sale_rate: sale ? sale.rate_iqd_per_usd : before?.sale_rate ?? null,
+          bought_iqd: bought ? bought.amount_iqd : (before?.bought_iqd ?? null),
+          bought_usd_cents: bought ? bought.amount_usd_cents : (before?.bought_usd_cents ?? null),
+          bought_entered_currency: bought
+            ? bought.entered_currency
+            : (before?.bought_entered_currency ?? null),
+          bought_rate: bought ? bought.rate_iqd_per_usd : (before?.bought_rate ?? null),
+          sale_iqd: sale ? sale.amount_iqd : (before?.sale_iqd ?? null),
+          sale_usd_cents: sale ? sale.amount_usd_cents : (before?.sale_usd_cents ?? null),
+          sale_entered_currency: sale
+            ? sale.entered_currency
+            : (before?.sale_entered_currency ?? null),
+          sale_rate: sale ? sale.rate_iqd_per_usd : (before?.sale_rate ?? null),
           note: input.note?.trim() ? input.note.trim() : (before?.note ?? null),
           user_id: context.userId,
           version: input.version ?? before?.version ?? null,
@@ -441,7 +451,6 @@ export class ItemsService {
         { path: 'target_month', code: 'INVALID', message_key: 'errors:field.required', params: {} },
       ]);
     }
-    await this.period.assertMonthNotLocked(target);
 
     return this.database.transaction(async (tx) => {
       const ids = await this.items.idsForCopy(input.item_ids ?? null, tx);
@@ -525,7 +534,6 @@ export class ItemsService {
     },
   ): Promise<ItemDto> {
     this.period.assertNotFuture(input.entry_date, 'entry_date');
-    await this.period.assertNotLocked(input.entry_date);
 
     if ((input.qty_count ?? null) === null && (input.qty_kg ?? null) === null) {
       throw ApiError.validation([
@@ -685,7 +693,13 @@ function toItemDtoFromListRow(row: ItemListRow): ItemDto {
     },
     first_bought_on: row.first_bought_on,
     last_sold_on: row.last_sold_on,
-    sale: side(row.sale_month, row.sale_iqd, row.sale_usd_cents, row.sale_entered_currency, row.sale_rate),
+    sale: side(
+      row.sale_month,
+      row.sale_iqd,
+      row.sale_usd_cents,
+      row.sale_entered_currency,
+      row.sale_rate,
+    ),
     bought: side(
       row.bought_month,
       row.bought_iqd,
@@ -697,7 +711,9 @@ function toItemDtoFromListRow(row: ItemListRow): ItemDto {
   };
 }
 
-function toMonthPriceDto(row: StoredMonthPrice & { updated_by_name: string | null }): MonthPriceDto {
+function toMonthPriceDto(
+  row: StoredMonthPrice & { updated_by_name: string | null },
+): MonthPriceDto {
   const side = (which: 'bought' | 'sale') => {
     const value = priceSideOf(row, which);
     return value
@@ -731,14 +747,13 @@ function priceChanges(
   for (const side of ['bought', 'sale'] as const) {
     const from = before ? priceSideOf(before, side) : null;
     const to = priceSideOf(after, side);
-    if (
-      from?.amount_iqd === to?.amount_iqd &&
-      from?.amount_usd_cents === to?.amount_usd_cents
-    ) {
+    if (from?.amount_iqd === to?.amount_iqd && from?.amount_usd_cents === to?.amount_usd_cents) {
       continue;
     }
     changes[side] = {
-      old: from ? { iqd: from.amount_iqd, usd_cents: from.amount_usd_cents, rate: from.rate } : null,
+      old: from
+        ? { iqd: from.amount_iqd, usd_cents: from.amount_usd_cents, rate: from.rate }
+        : null,
       new: to ? { iqd: to.amount_iqd, usd_cents: to.amount_usd_cents, rate: to.rate } : null,
     };
   }

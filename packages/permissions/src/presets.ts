@@ -80,6 +80,7 @@ export const PRESETS: Readonly<Record<PresetKey, Preset>> = {
       'customers.view',
       'customers.view_all',
       'customers.opening_balance',
+      'customers.set_rate',
       'materials.view',
       'materials.set_prices',
       'damages.view',
@@ -141,7 +142,7 @@ export const EXTRAS: readonly Extra[] = [
   {
     key: 'can_set_rates',
     labelKey: 'permissions.extra.can_set_rates',
-    keys: ['companies.set_rate', 'settings.set_global_rate'],
+    keys: ['companies.set_rate', 'customers.set_rate', 'settings.set_global_rate'],
   },
 ];
 

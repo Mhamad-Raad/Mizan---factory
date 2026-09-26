@@ -311,4 +311,50 @@ export class CustomersRepository {
     );
     return rows[0]?.referenced ?? true;
   }
+
+  // ─────────────────────────────── rates ───────────────────────────────
+
+  /** The customer's current rate, or null when it has never had one (then the global applies). */
+  async currentRate(id: string, tx?: Db): Promise<{ rate: string; since: Date } | null> {
+    const { rows } = await (tx ?? this.database).query<{ rate: string; since: Date }>(
+      `SELECT rate_iqd_per_usd::text AS rate, effective_from AS since
+         FROM customer_rates
+        WHERE customer_id = $1 AND effective_from <= now()
+        ORDER BY effective_from DESC
+        LIMIT 1`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
+
+  async rateHistory(id: string, limit = 50) {
+    const { rows } = await this.database.query<{
+      id: string;
+      rate_iqd_per_usd: string;
+      effective_from: Date;
+      note: string | null;
+      created_by_name: string | null;
+    }>(
+      `SELECT r.id, r.rate_iqd_per_usd::text AS rate_iqd_per_usd, r.effective_from, r.note,
+              u.display_name AS created_by_name
+         FROM customer_rates r
+         LEFT JOIN users u ON u.id = r.created_by
+        WHERE r.customer_id = $1
+        ORDER BY r.effective_from DESC
+        LIMIT $2`,
+      [id, Math.min(limit, 100)],
+    );
+    return rows;
+  }
+
+  async insertRate(
+    input: { customer_id: string; rate: string; note: string | null; created_by: string },
+    tx: Db,
+  ): Promise<void> {
+    await tx.query(
+      `INSERT INTO customer_rates (customer_id, rate_iqd_per_usd, note, created_by)
+       VALUES ($1, $2::numeric, $3, $4)`,
+      [input.customer_id, input.rate, input.note, input.created_by],
+    );
+  }
 }

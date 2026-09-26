@@ -22,6 +22,7 @@
   "permissions.customers.edit": "تعديل عميل",
   "permissions.customers.assign": "إسناد عميل",
   "permissions.customers.opening_balance": "إدخال دين افتتاحي",
+  "permissions.customers.set_rate": "تعيين سعر صرف للزبون",
   "permissions.companies.view": "عرض الشركات",
   "permissions.companies.create": "إضافة شركة",
   "permissions.companies.edit": "تعديل شركة",

@@ -124,7 +124,8 @@ function DetailsTab({ user }: { user: UserDetail }) {
 
   const permissions = useQuery({
     queryKey: ['user-permissions', user.id],
-    queryFn: () => apiRequest<{ keys: string[]; preset_key: PresetKey | null }>(`/users/${user.id}/permissions`),
+    queryFn: () =>
+      apiRequest<{ keys: string[]; preset_key: PresetKey | null }>(`/users/${user.id}/permissions`),
     enabled: user.role === 'employee',
   });
 
@@ -145,7 +146,10 @@ function DetailsTab({ user }: { user: UserDetail }) {
   const permissionsChanged = useMemo(() => {
     if (!permissions.data || !draft) return false;
     const diff = diffSets(permissions.data.keys, draft.keys);
-    return diff.granted.length + diff.revoked.length > 0 || draft.preset !== (permissions.data.preset_key ?? 'none');
+    return (
+      diff.granted.length + diff.revoked.length > 0 ||
+      draft.preset !== (permissions.data.preset_key ?? 'none')
+    );
   }, [permissions.data, draft]);
 
   const save = useMutation({
@@ -182,7 +186,9 @@ function DetailsTab({ user }: { user: UserDetail }) {
       // The last-admin rules are explained inline rather than as a bare failure (spec 3.3).
       if (caught instanceof ApiError && caught.code === 'LAST_ADMIN') {
         setError(
-          caught.params.reason === 'self_role' ? t('users:cannot_change_own_role') : t('errors:LAST_ADMIN'),
+          caught.params.reason === 'self_role'
+            ? t('users:cannot_change_own_role')
+            : t('errors:LAST_ADMIN'),
         );
       } else if (caught instanceof ApiError && caught.code === 'VERSION_CONFLICT') {
         setError(t('common:conflict_title'));
@@ -213,7 +219,9 @@ function DetailsTab({ user }: { user: UserDetail }) {
 
   const resetPassword = useMutation({
     mutationFn: () =>
-      apiRequest<{ temporary_password: string }>(`/users/${user.id}/reset-password`, { method: 'POST' }),
+      apiRequest<{ temporary_password: string }>(`/users/${user.id}/reset-password`, {
+        method: 'POST',
+      }),
     onSuccess: (response) => setTemporaryPassword(response.temporary_password),
   });
 
@@ -254,7 +262,9 @@ function DetailsTab({ user }: { user: UserDetail }) {
           </div>
           <p className="mz-caption">
             {t('users:last_sign_in')}:{' '}
-            {user.last_login_at ? formatter.timestamp(new Date(user.last_login_at)) : t('users:never_signed_in')}
+            {user.last_login_at
+              ? formatter.timestamp(new Date(user.last_login_at))
+              : t('users:never_signed_in')}
           </p>
         </div>
       </Card>
@@ -299,7 +309,11 @@ function DetailsTab({ user }: { user: UserDetail }) {
             >
               {user.is_active ? t('users:deactivate') : t('users:reactivate')}
             </Button>
-            <Button variant="secondary" loading={resetPassword.isPending} onClick={() => resetPassword.mutate()}>
+            <Button
+              variant="secondary"
+              loading={resetPassword.isPending}
+              onClick={() => resetPassword.mutate()}
+            >
               {t('users:reset_password')}
             </Button>
           </div>
@@ -335,44 +349,27 @@ interface SessionRow {
   id: string;
   is_locked: boolean;
   is_shared_device: boolean;
-  auth_method: 'password' | 'ticket_pin';
   device_label: string | null;
   last_seen_at: string;
 }
 
-interface TicketRow {
-  id: string;
-  device_label: string | null;
-  is_shared_device: boolean;
-  expires_at: string;
-  last_used_at: string | null;
-  revoked_at: string | null;
-  revoke_reason: string | null;
-}
-
 /**
- * The Sessions tab (FR-1304, spec 2.8): where this employee is signed in, and which browsers
- * may sign them in with a PIN. Both answer the same question — who can act as this person right
- * now, and from what — so they sit on one screen, and both can be taken away from here.
- */
-/**
- * Where this employee is signed in, and which browsers may sign them in with a PIN (2.8).
+ * The Sessions tab (FR-1304, spec 2.8): where this employee is signed in — the browsers that
+ * can act as this person right now, each of which can be revoked from here.
  *
  * Small cards rather than a column of stacked rows (the client's note): a session is a device
- * somebody is holding — its name, whether it is shared, whether it is locked, how it signed in
- * and when it was last used — and half a dozen of those read better side by side than as a
- * list where every entry is the width of the screen.
+ * somebody is holding — its name, whether it is shared, whether it is locked and when it was
+ * last used — and half a dozen of those read better side by side than as a list where every
+ * entry is the width of the screen.
  */
 function SessionsTab({ userId }: { userId: string }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const queryClient = useQueryClient();
-  const [message, setMessage] = useState<string | null>(null);
 
   const sessions = useQuery({
     queryKey: ['user-sessions', userId],
-    queryFn: () =>
-      apiRequest<{ sessions: SessionRow[]; device_tickets: TicketRow[] }>(`/users/${userId}/sessions`),
+    queryFn: () => apiRequest<{ sessions: SessionRow[] }>(`/users/${userId}/sessions`),
   });
 
   const revokeSession = useMutation({
@@ -382,16 +379,6 @@ function SessionsTab({ userId }: { userId: string }) {
       await queryClient.invalidateQueries({ queryKey: ['user-sessions', userId] });
     },
   });
-
-  const revokeTickets = useMutation({
-    mutationFn: () => apiRequest(`/users/${userId}/device-tickets`, { method: 'DELETE' }),
-    onSuccess: async () => {
-      setMessage(t('settings:pin_devices_revoked'));
-      await queryClient.invalidateQueries({ queryKey: ['user-sessions', userId] });
-    },
-  });
-
-  const live = (sessions.data?.device_tickets ?? []).filter((ticket) => ticket.revoked_at === null);
 
   return (
     <QueryStates query={sessions} skeletonLines={6}>
@@ -414,9 +401,10 @@ function SessionsTab({ userId }: { userId: string }) {
                     </h3>
                     <p className="mz-device__facts">
                       <span>
-                        {session.is_shared_device ? t('settings:session_shared') : t('settings:session_personal')}
+                        {session.is_shared_device
+                          ? t('settings:session_shared')
+                          : t('settings:session_personal')}
                       </span>
-                      <span>{session.auth_method === 'ticket_pin' ? t('auth:pin') : t('auth:password')}</span>
                       <span>
                         {t('settings:session_last_seen', {
                           when: formatter.timestamp(new Date(session.last_seen_at)),
@@ -424,8 +412,13 @@ function SessionsTab({ userId }: { userId: string }) {
                       </span>
                     </p>
                   </div>
-                  <Chip tone={session.is_locked ? 'warning' : 'success'} icon={session.is_locked ? 'lock' : 'check'}>
-                    {session.is_locked ? t('settings:session_locked') : t('settings:session_active')}
+                  <Chip
+                    tone={session.is_locked ? 'warning' : 'success'}
+                    icon={session.is_locked ? 'lock' : 'check'}
+                  >
+                    {session.is_locked
+                      ? t('settings:session_locked')
+                      : t('settings:session_active')}
                   </Chip>
                   <Button
                     variant="ghost"
@@ -438,58 +431,6 @@ function SessionsTab({ userId }: { userId: string }) {
               ))}
             </div>
           )}
-        </section>
-
-        <section className="mz-stack" style={{ gap: 'var(--space-2)' }}>
-          <h2 className="mz-heading">{t('settings:pin_devices')}</h2>
-          {live.length === 0 ? <p className="mz-muted">{t('settings:pin_devices_empty')}</p> : null}
-          {(sessions.data?.device_tickets ?? []).length > 0 ? (
-            <div className="mz-devices">
-              {(sessions.data?.device_tickets ?? []).map((ticket) => (
-                <article key={ticket.id} className="mz-device">
-                  <span className="mz-device__badge" aria-hidden="true">
-                    <Icon name="lock" size={20} />
-                  </span>
-                  <div className="mz-device__body">
-                    <h3 className="mz-device__title">
-                      <bdi>{ticket.device_label ?? t('settings:session_unlabelled')}</bdi>
-                    </h3>
-                    <p className="mz-device__facts">
-                      <span>
-                        {ticket.is_shared_device ? t('settings:session_shared') : t('settings:session_personal')}
-                      </span>
-                      {ticket.last_used_at ? (
-                        <span>
-                          {t('settings:session_last_seen', {
-                            when: formatter.timestamp(new Date(ticket.last_used_at)),
-                          })}
-                        </span>
-                      ) : null}
-                    </p>
-                  </div>
-                  {ticket.revoked_at ? (
-                    <Chip tone="danger" icon="close">
-                      {t('settings:pin_device_revoked')}
-                    </Chip>
-                  ) : (
-                    <Chip tone="success" icon="check">
-                      {t('settings:pin_device_expires', {
-                        date: formatter.date(ticket.expires_at.slice(0, 10)),
-                      })}
-                    </Chip>
-                  )}
-                </article>
-              ))}
-            </div>
-          ) : null}
-          {message ? <p className="mz-muted">{message}</p> : null}
-          {live.length > 0 ? (
-            <div className="mz-row">
-              <Button variant="secondary" loading={revokeTickets.isPending} onClick={() => revokeTickets.mutate()}>
-                {t('settings:pin_devices_revoke')}
-              </Button>
-            </div>
-          ) : null}
         </section>
       </div>
     </QueryStates>
@@ -517,18 +458,27 @@ function ActivityTab({ userId }: { userId: string }) {
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ done_by: userId, limit: '25' });
       if (pageParam) params.set('cursor', String(pageParam));
-      return apiRequest<{ items: AuditRow[]; next_cursor: string | null }>(`/history?${params.toString()}`);
+      return apiRequest<{ items: AuditRow[]; next_cursor: string | null }>(
+        `/history?${params.toString()}`,
+      );
     },
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
 
   const rows = activity.data?.pages.flatMap((page) => page.items) ?? [];
   const action = (row: AuditRow) => t(`history:action.${row.action}`, { defaultValue: row.action });
-  const kind = (row: AuditRow) => t(`history:entity.${row.entity_type}`, { defaultValue: row.entity_type });
-  const hasDetail = (row: AuditRow) => Boolean(row.changes && Object.keys(row.changes).length > 0) || Boolean(row.note);
+  const kind = (row: AuditRow) =>
+    t(`history:entity.${row.entity_type}`, { defaultValue: row.entity_type });
+  const hasDetail = (row: AuditRow) =>
+    Boolean(row.changes && Object.keys(row.changes).length > 0) || Boolean(row.note);
 
   return (
-    <QueryStates query={activity} isEmpty={rows.length === 0} emptyTitle={t('history:empty')} skeletonLines={8}>
+    <QueryStates
+      query={activity}
+      isEmpty={rows.length === 0}
+      emptyTitle={t('history:empty')}
+      skeletonLines={8}
+    >
       <div className="mz-stack">
         {wide ? (
           /* An activity row leads nowhere — it is a record of something that happened, not a
@@ -581,10 +531,13 @@ function ActivityTab({ userId }: { userId: string }) {
               <article key={row.id} className="mz-entry">
                 <div className="mz-entry__head">
                   <Chip tone={toneOfAction(row.action)}>{action(row)}</Chip>
-                  <span className="mz-entry__when">{formatter.timestamp(new Date(row.occurred_at))}</span>
+                  <span className="mz-entry__when">
+                    {formatter.timestamp(new Date(row.occurred_at))}
+                  </span>
                 </div>
                 <p className="mz-entry__record">
-                  <bdi>{row.entity_label}</bdi> <span className="mz-entry__kind">· {kind(row)}</span>
+                  <bdi>{row.entity_label}</bdi>{' '}
+                  <span className="mz-entry__kind">· {kind(row)}</span>
                 </p>
                 {hasDetail(row) ? (
                   <details className="mz-entry__details">

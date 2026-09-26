@@ -21,6 +21,13 @@ export interface MoneyInputProps {
   hint?: string;
   error?: string;
   disabled?: boolean;
+  /**
+   * On by default: typing one currency fills the other at the rate. Off: the two sides are
+   * independent — each is only ever what the user typed, and neither moves the other.
+   */
+  autoConvert?: boolean;
+  /** A short, translated name for the rate in force ("the system rate", "the customer's rate"). */
+  sourceLabel?: string;
 }
 
 /**
@@ -32,61 +39,82 @@ export interface MoneyInputProps {
  * units the whole way: dinars have no decimals, dollars are entered as dollars and cents and
  * held as cents.
  */
-export function MoneyInput({ label, value, rate, onChange, hint, error, disabled }: MoneyInputProps) {
+export function MoneyInput({
+  label,
+  value,
+  rate,
+  onChange,
+  hint,
+  error,
+  disabled,
+  autoConvert,
+  sourceLabel,
+}: MoneyInputProps) {
   const { t } = useTranslation();
   const formatter = useFormatter();
+  const auto = autoConvert !== false;
 
   const entered = value.amount;
   const overridden = value.other_amount !== undefined && value.other_amount !== null;
-  const calculated =
-    entered === null ? null : overridden ? (value.other_amount as number) : convert(entered, value.currency, rate);
 
-  const iqd = value.currency === 'IQD' ? entered : calculated;
-  const usd = value.currency === 'IQD' ? calculated : entered;
+  // Which side holds each currency. In auto mode the side that was NOT typed shows the conversion
+  // of the one that was; off, each side shows only what the user typed.
+  const enteredIqd = value.currency === 'IQD';
+  const typedThis = entered;
+  const otherAuto = entered === null ? null : convert(entered, value.currency, rate);
+  const iqd = enteredIqd ? typedThis : auto ? otherAuto : (value.other_amount ?? null);
+  const usd = enteredIqd ? (auto ? otherAuto : (value.other_amount ?? null)) : typedThis;
 
-  const setSide = (currency: Currency, minor: number | null) => {
-    // Typing in a side makes it the entered one and drops any override, because the pair is
-    // now "this amount, converted" again.
-    onChange({ amount: minor, currency, other_amount: null });
+  /** Auto: whichever side you type becomes the entered one and the other is converted at the rate. */
+  const setAuto = (side: Currency, minor: number | null) =>
+    onChange({ amount: minor, currency: side, other_amount: null });
+
+  /**
+   * Off: the two sides are independent. The first side typed is the primary (`amount`); the other
+   * is stored as `other_amount`, so both are user-entered and neither is a conversion of the other.
+   */
+  const setManual = (side: Currency, minor: number | null) => {
+    if (value.currency === side || value.amount === null) {
+      onChange({ amount: minor, currency: side, other_amount: value.other_amount ?? null });
+    } else {
+      onChange({ ...value, other_amount: minor });
+    }
   };
 
-  const overrideSide = (minor: number | null) => {
-    onChange({ ...value, other_amount: minor });
-  };
+  const setSide = (side: Currency, minor: number | null) =>
+    auto ? setAuto(side, minor) : setManual(side, minor);
+
+  const note = !auto
+    ? overridden && iqd !== null && usd !== null && usd !== 0
+      ? t('common:manual_rate', { rate: formatter.rate(impliedRate(iqd, usd)) })
+      : (hint ?? t('common:entered_separately'))
+    : (hint ??
+      (sourceLabel
+        ? t('common:rate_at_source', { source: sourceLabel, rate: formatter.rate(rate) })
+        : t('common:rate_used', { rate: formatter.rate(rate) })));
 
   return (
     <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
+      {label ? <span className="mz-field__label">{label}</span> : null}
       <div className="mz-grid-2">
         <NumberField
-          label={`${label} · ${t('glossary:iqd')}`}
+          label={t('glossary:iqd')}
           unit={t('common:iqd_symbol')}
           value={iqd === null ? '' : String(iqd)}
           disabled={disabled}
           error={error}
-          onChange={(event) => {
-            const minor = parseMinor(event.target.value, 'IQD');
-            if (value.currency === 'IQD') setSide('IQD', minor);
-            else overrideSide(minor);
-          }}
+          onChange={(event) => setSide('IQD', parseMinor(event.target.value, 'IQD'))}
         />
         <NumberField
-          label={`${label} · ${t('glossary:usd')}`}
+          label={t('glossary:usd')}
           unit={t('common:usd_symbol')}
           decimals={2}
           value={usd === null ? '' : centsToInput(usd)}
           disabled={disabled}
-          onChange={(event) => {
-            const minor = parseMinor(event.target.value, 'USD');
-            if (value.currency === 'USD') setSide('USD', minor);
-            else overrideSide(minor);
-          }}
+          onChange={(event) => setSide('USD', parseMinor(event.target.value, 'USD'))}
         />
       </div>
-      <span className="mz-field__hint">
-        {overridden && iqd !== null && usd !== null && usd !== 0
-          ? t('common:manual_rate', { rate: formatter.rate(impliedRate(iqd, usd)) })
-          : (hint ?? t('common:rate_used', { rate: formatter.rate(rate) }))}
-      </span>
+      <span className="mz-field__hint">{note}</span>
     </div>
   );
 }

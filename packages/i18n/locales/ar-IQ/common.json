@@ -22,6 +22,9 @@
   "optional": "اختياري",
   "done_by": "بواسطة",
   "assigned_to": "مُسنَد إلى",
+  "type": "النوع",
+  "activity": "النشاط",
+  "filter": "تصفية",
   "active": "نشط",
   "deactivated": "معطّل",
   "today": "اليوم",
@@ -73,5 +76,10 @@
   "use_dark": "الوضع الداكن",
   "use_light": "الوضع الفاتح",
   "language_menu": "اللغة",
-  "account_menu": "الحساب"
+  "account_menu": "الحساب",
+  "app_tagline": "مصنع واحد",
+  "theme_menu": "المظهر",
+  "text_size_menu": "حجم النص",
+  "entered_separately": "يُدخَل كل منهما على حدة",
+  "rate_at_source": "حسب {{source}}: {{rate}}"
 }

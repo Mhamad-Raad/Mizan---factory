@@ -22,6 +22,7 @@
   "permissions.customers.edit": "دەستکاری کڕیار",
   "permissions.customers.assign": "سپاردنی کڕیار",
   "permissions.customers.opening_balance": "تۆمارکردنی قەرزی سەرەتایی",
+  "permissions.customers.set_rate": "دانانی نرخی زبوون",
   "permissions.companies.view": "بینینی کۆمپانیاکان",
   "permissions.companies.create": "زیادکردنی کۆمپانیا",
   "permissions.companies.edit": "دەستکاری کۆمپانیا",

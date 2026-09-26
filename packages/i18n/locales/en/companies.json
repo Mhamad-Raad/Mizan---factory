@@ -22,7 +22,6 @@
   "rate_history": "Rate history",
   "rate_saved": "Rate saved",
   "rate_applies_to_new": "The new rate applies to what you record from now on; entries already saved keep their own rate.",
-  "rate_guard": "That is {{percent}}% away from {{previous}}. Save it anyway?",
   "tab_overview": "Overview",
   "tab_purchases": "Purchases",
   "tab_accounting": "Accounting",

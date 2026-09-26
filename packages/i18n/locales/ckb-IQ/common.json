@@ -22,6 +22,9 @@
   "optional": "ئارەزوومەندانە",
   "done_by": "لەلایەن",
   "assigned_to": "سپێردراوە بە",
+  "type": "جۆر",
+  "activity": "چالاکی",
+  "filter": "پاڵاوتن",
   "active": "چالاک",
   "deactivated": "ناچالاک",
   "today": "ئەمڕۆ",
@@ -73,5 +76,10 @@
   "use_dark": "ڕووکاری تاریک",
   "use_light": "ڕووکاری ڕووناک",
   "language_menu": "زمان",
-  "account_menu": "هەژمار"
+  "account_menu": "هەژمار",
+  "app_tagline": "کارگەی یەکە",
+  "theme_menu": "ڕووکار",
+  "text_size_menu": "قەبارەی نووسین",
+  "entered_separately": "جیا جیا دەنووسرێت",
+  "rate_at_source": "بەپێی {{source}}: {{rate}}"
 }

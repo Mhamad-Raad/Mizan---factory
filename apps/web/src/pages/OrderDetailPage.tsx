@@ -1,15 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, DateField, SegmentedControl, TextField, Toast } from '@mizan/ui';
+import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { PaymentSheet } from '../components/PaymentSheet.js';
-import { ShareDocumentSheet } from '../components/ShareDocumentSheet.js';
 import { QueryStates } from '../components/states.js';
 import { OrderStatusChip, PaymentTypeChip, RateBadge } from '../components/chips.js';
 import { useJustSettled } from '../lib/motion.js';
@@ -62,7 +61,10 @@ export function OrderDetailPage() {
   const [paying, setPaying] = useState(false);
   const [changingType, setChangingType] = useState(false);
   const [voiding, setVoiding] = useState(false);
-  const [receipt, setReceipt] = useState(false);
+  // The receipt is fetched once, kept in an off-screen block, and printed straight from the
+  // Print button — no preview modal (the browser's own print dialog is the preview).
+  const [receiptWanted, setReceiptWanted] = useState(false);
+  const printPending = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const order = useQuery({
@@ -89,8 +91,26 @@ export function OrderDetailPage() {
         customer: { name: string; is_system: boolean; phone: string | null; settlement_currency: Currency };
         balance_after: number | null;
       }>(`/orders/${id}/receipt`),
-    enabled: receipt,
+    enabled: receiptWanted,
   });
+
+  // Print the moment the receipt data is in the DOM. The click handler enables the fetch and arms
+  // the ref; this fires window.print() once — a side effect only, no state set inside the effect.
+  useEffect(() => {
+    if (printPending.current && receiptData.data) {
+      printPending.current = false;
+      window.print();
+    }
+  }, [receiptData.data]);
+
+  const printReceipt = () => {
+    if (receiptData.data) {
+      window.print();
+      return;
+    }
+    printPending.current = true;
+    setReceiptWanted(true);
+  };
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -156,8 +176,11 @@ export function OrderDetailPage() {
               ) : null}
 
               <Card className={settled ? 'mz-settled' : undefined}>
-                <div className="mz-row mz-row--between">
-                  <div>
+                <div
+                  className="mz-row mz-row--between"
+                  style={{ gap: 'var(--space-3)', alignItems: 'flex-start' }}
+                >
+                  <div className="mz-stack" style={{ gap: '2px' }}>
                     <h2 className="mz-title">{t('orders:number', { number: formatter.number(data.number) })}</h2>
                     <Link to={`/customers/${data.customer_id}`} className="mz-caption">
                       {customerName({ name: data.customer_name, is_system: data.customer_is_system }, t)}
@@ -167,75 +190,118 @@ export function OrderDetailPage() {
                       {data.acting_user_name ? ` · ${t('glossary:done_by')}: ${data.acting_user_name}` : ''}
                     </span>
                   </div>
-                  <span className="mz-row" style={{ gap: 'var(--space-1)' }}>
+                  <span
+                    className="mz-row"
+                    style={{ gap: 'var(--space-1)', flexWrap: 'wrap', justifyContent: 'flex-end' }}
+                  >
                     <PaymentTypeChip type={data.payment_type} />
                     <OrderStatusChip status={data.status} settling={settled} />
                   </span>
                 </div>
 
-                <div style={{ marginBlockStart: 'var(--space-3)' }}>
-                  <DualAmount
-                    amount_iqd={data.total_iqd}
-                    amount_usd_cents={data.total_usd_cents}
-                    primary={data.settlement_currency}
-                    size="large"
-                  />
-                  {maySeeBalance ? (
-                    <span className="mz-caption" style={{ display: 'block' }} data-tabular>
-                      {t('orders:remaining')}: {formatter.money(data.remaining, data.settlement_currency)}
+                <hr className="mz-divider" />
+
+                <div className="mz-detail-summary">
+                  <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
+                    <span className="mz-figure__label">{t('glossary:total')}</span>
+                    <DualAmount
+                      amount_iqd={data.total_iqd}
+                      amount_usd_cents={data.total_usd_cents}
+                      primary={data.settlement_currency}
+                      size="large"
+                    />
+                    <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                      {data.received_currency ? (
+                        <Chip tone="primary">
+                          {t('orders:paid_in_currency', {
+                            currency: t(`glossary:${data.received_currency.toLowerCase()}`),
+                          })}
+                        </Chip>
+                      ) : null}
+                      <RateBadge rate={data.rate_iqd_per_usd} source={data.rate_source} />
                     </span>
-                  ) : null}
-                  {data.discount_iqd > 0 ? (
-                    <span className="mz-caption" style={{ display: 'block' }}>
-                      {t('glossary:discount')}: {formatter.money(data.discount_iqd, 'IQD')}
-                    </span>
-                  ) : null}
-                  {data.received_currency ? (
-                    <Chip tone="primary">
-                      {t('orders:paid_in_currency', {
-                        currency: t(`glossary:${data.received_currency.toLowerCase()}`),
-                      })}
-                    </Chip>
-                  ) : null}
-                  <RateBadge rate={data.rate_iqd_per_usd} source={data.rate_source} />
+                  </div>
+
+                  <div className="mz-detail-figures">
+                    {maySeeBalance ? (
+                      <div className="mz-figure">
+                        <span className="mz-figure__label">{t('orders:remaining')}</span>
+                        <span
+                          className={`mz-figure__value${data.remaining > 0 ? ' mz-figure__value--owed' : ''}`}
+                          data-tabular
+                        >
+                          {formatter.money(data.remaining, data.settlement_currency)}
+                        </span>
+                      </div>
+                    ) : null}
+                    {data.discount_iqd > 0 ? (
+                      <div className="mz-figure">
+                        <span className="mz-figure__label">{t('glossary:discount')}</span>
+                        <span className="mz-figure__value" data-tabular>
+                          {formatter.money(data.discount_iqd, 'IQD')}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </Card>
 
-              <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                {data.doc_status === 'active' && mayRecordPayment && data.status !== 'paid' ? (
-                  <Button onClick={() => setPaying(true)}>{t('customers:record_payment')}</Button>
+              {/* The actions read as three groups: settle the money, work with the document, and —
+                  set apart at the end — the one destructive action, so Void is never a slip. */}
+              <div className="mz-actions">
+                {data.doc_status === 'active' &&
+                ((mayRecordPayment && data.status !== 'paid') || mayChangeType) ? (
+                  <div className="mz-actions__group">
+                    {mayRecordPayment && data.status !== 'paid' ? (
+                      <Button icon="check" onClick={() => setPaying(true)}>
+                        {t('customers:record_payment')}
+                      </Button>
+                    ) : null}
+                    {mayChangeType ? (
+                      <Button variant="secondary" icon="refresh" onClick={() => setChangingType(true)}>
+                        {t('orders:change_payment_type')}
+                      </Button>
+                    ) : null}
+                  </div>
                 ) : null}
-                {data.doc_status === 'active' && mayChangeType ? (
-                  <Button variant="secondary" onClick={() => setChangingType(true)}>
-                    {t('orders:change_payment_type')}
+
+                <div className="mz-actions__group">
+                  {data.doc_status === 'active' ? (
+                    <Can permission="orders.view">
+                      <Link to={`/orders/${id}/edit`} className="mz-button mz-button--secondary">
+                        <Icon name="edit" />
+                        {t('common:edit')}
+                      </Link>
+                    </Can>
+                  ) : null}
+                  <Button variant="secondary" icon="print" onClick={printReceipt}>
+                    {t('common:print')}
                   </Button>
-                ) : null}
-                {data.doc_status === 'active' ? (
-                  <Can permission="orders.view">
-                    <Link to={`/orders/${id}/edit`} className="mz-button mz-button--secondary">
-                      {t('common:edit')}
+                  {data.doc_status === 'void' ? (
+                    <Link
+                      to={`/orders/new?customer=${data.customer_id}`}
+                      className="mz-button mz-button--secondary"
+                    >
+                      <Icon name="plus" />
+                      {t('orders:duplicate')}
+                    </Link>
+                  ) : null}
+                  {/* What came back damaged from this order (FR-802, FR-806). */}
+                  <Can permission="damages.view">
+                    <Link to={`/damages?order=${id}`} className="mz-button mz-button--ghost">
+                      <Icon name="warning" />
+                      {t('glossary:damaged_items')}
                     </Link>
                   </Can>
-                ) : null}
+                </div>
+
                 {data.doc_status === 'active' && mayVoid ? (
-                  <Button variant="danger" onClick={() => setVoiding(true)}>
-                    {t('orders:void_order')}
-                  </Button>
+                  <div className="mz-actions__group mz-actions__group--end">
+                    <Button variant="danger" icon="trash" onClick={() => setVoiding(true)}>
+                      {t('orders:void_order')}
+                    </Button>
+                  </div>
                 ) : null}
-                <Button variant="ghost" onClick={() => setReceipt(true)}>
-                  {t('glossary:receipt')}
-                </Button>
-                {data.doc_status === 'void' ? (
-                  <Link to={`/orders/new?customer=${data.customer_id}`} className="mz-button mz-button--secondary">
-                    {t('orders:duplicate')}
-                  </Link>
-                ) : null}
-                {/* What came back damaged from this order (FR-802, FR-806). */}
-                <Can permission="damages.view">
-                  <Link to={`/damages?order=${id}`} className="mz-button mz-button--ghost">
-                    {t('glossary:damaged_items')}
-                  </Link>
-                </Can>
               </div>
 
               <SegmentedControl
@@ -254,6 +320,9 @@ export function OrderDetailPage() {
                   <ul className="mz-list">
                     {data.lines.map((line) => (
                       <li key={line.id} className="mz-list__item">
+                        <span className="mz-row-lead">
+                          <Icon name="materials" size={18} />
+                        </span>
                         <span className="mz-list__body">
                           <span className="mz-list__title"><bdi>{line.item_name}</bdi></span>
                           <span className="mz-caption" style={{ display: 'block' }} data-tabular>
@@ -270,11 +339,13 @@ export function OrderDetailPage() {
                             <Chip tone="warning">{t('orders:price_overridden')}</Chip>
                           ) : null}
                         </span>
-                        <DualAmount
-                          amount_iqd={line.line_total_iqd}
-                          amount_usd_cents={line.line_total_usd_cents}
-                          primary={data.settlement_currency}
-                        />
+                        <span className="mz-list__end">
+                          <DualAmount
+                            amount_iqd={line.line_total_iqd}
+                            amount_usd_cents={line.line_total_usd_cents}
+                            primary={data.settlement_currency}
+                          />
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -298,6 +369,9 @@ export function OrderDetailPage() {
                         .filter((entry) => entry.entry_type !== 'order')
                         .map((entry) => (
                           <li key={entry.id} className="mz-list__item">
+                            <span className="mz-row-lead">
+                              <Icon name="check" size={18} />
+                            </span>
                             <span className="mz-list__body">
                               <span className="mz-list__title">{t(`customers:entry.${entry.entry_type}`)}</span>
                               <span className="mz-caption">
@@ -308,11 +382,13 @@ export function OrderDetailPage() {
                                 {entry.note ? ` · ${entry.note}` : ''}
                               </span>
                             </span>
-                            <DualAmount
-                              amount_iqd={entry.amount_iqd}
-                              amount_usd_cents={entry.amount_usd_cents}
-                              primary={data.settlement_currency}
-                            />
+                            <span className="mz-list__end">
+                              <DualAmount
+                                amount_iqd={entry.amount_iqd}
+                                amount_usd_cents={entry.amount_usd_cents}
+                                primary={data.settlement_currency}
+                              />
+                            </span>
                           </li>
                         ))}
                     </ul>
@@ -326,6 +402,9 @@ export function OrderDetailPage() {
                     <ul className="mz-list">
                       {(history.data?.payment_type_changes ?? []).map((change) => (
                         <li key={change.id} className="mz-list__item">
+                          <span className="mz-row-lead">
+                            <Icon name="refresh" size={18} />
+                          </span>
                           <span className="mz-list__body">
                             <span className="mz-list__title">
                               {t('orders:type_changed', {
@@ -342,6 +421,9 @@ export function OrderDetailPage() {
                       ))}
                       {(history.data?.items ?? []).map((entry) => (
                         <li key={entry.id} className="mz-list__item">
+                          <span className="mz-row-lead">
+                            <Icon name="clock" size={18} />
+                          </span>
                           <span className="mz-list__body">
                             <span className="mz-list__title">{t(`history:action.${entry.action}`)}</span>
                             <span className="mz-caption">
@@ -401,57 +483,143 @@ export function OrderDetailPage() {
           />
         ) : null}
 
-        {receipt && receiptData.data ? (
-          <ShareDocumentSheet
-            title={t('glossary:receipt')}
-            open
-            onClose={() => setReceipt(false)}
-            text={`${t('orders:number', { number: formatter.number(receiptData.data.order.number) })} · ${formatter.money(
-              receiptData.data.order.total_iqd,
-              'IQD',
-            )}`}
-          >
-            <div className="mz-receipt">
-              <strong>{t('orders:number', { number: formatter.number(receiptData.data.order.number) })}</strong>
-              <span className="mz-caption">
-                {customerName(
-                  { name: receiptData.data.customer.name, is_system: receiptData.data.customer.is_system },
-                  t,
-                )}{' '}
-                · {formatter.date(receiptData.data.order.order_date)}
-              </span>
-              {receiptData.data.order.lines.map((line) => (
-                <div key={line.id} className="mz-receipt__line">
-                  <span>
-                    <bdi>{line.item_name}</bdi> ·{' '}
-                    {line.priced_measure === 'kg'
-                      ? `${formatter.number(line.qty_kg ?? '0', 3)} ${t('common:kg_symbol')}`
-                      : formatter.number(line.qty_count ?? 0)}
-                  </span>
-                  <span data-tabular>{formatter.money(line.line_total_iqd, 'IQD')}</span>
+        {/* Kept off-screen and printed straight from the Print button — the browser's print dialog
+            is the only preview, so there is no modal to dismiss first. A full invoice: who issued
+            it, who it is for, the lines, the money, and the rate it was settled at. */}
+        {receiptData.data
+          ? (() => {
+              const rc = receiptData.data;
+              const subtotalIqd = rc.order.lines.reduce((sum, line) => sum + line.line_total_iqd, 0);
+              return (
+                <div className="mz-print-region" aria-hidden="true">
+                  <div className="mz-invoice">
+                    {/* Who issued it, and what this document is. */}
+                    <header className="mz-invoice__head">
+                      <div className="mz-invoice__brand">
+                        <strong className="mz-invoice__name">{t('common:app_name')}</strong>
+                        <span className="mz-invoice__muted">{t('common:app_tagline')}</span>
+                      </div>
+                      <div className="mz-invoice__doc">
+                        <span className="mz-invoice__doctype">{t('glossary:receipt')}</span>
+                        <strong>{t('orders:number', { number: formatter.number(rc.order.number) })}</strong>
+                        <span className="mz-invoice__muted">{formatter.date(rc.order.order_date)}</span>
+                      </div>
+                    </header>
+
+                    {/* Who it is for, and how it was paid. */}
+                    <div className="mz-invoice__parties">
+                      <div className="mz-invoice__party">
+                        <span className="mz-invoice__label">{t('glossary:customer')}</span>
+                        <strong>
+                          {customerName({ name: rc.customer.name, is_system: rc.customer.is_system }, t)}
+                        </strong>
+                        {rc.customer.phone ? (
+                          <span className="mz-invoice__muted">
+                            <bdi>{rc.customer.phone}</bdi>
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mz-invoice__party mz-invoice__party--end">
+                        <span className="mz-invoice__label">{t('glossary:payment_type')}</span>
+                        <strong>
+                          {t(`glossary:${rc.order.payment_type}`)} · {t(`glossary:${rc.order.status}`)}
+                        </strong>
+                        {rc.order.acting_user_name ? (
+                          <span className="mz-invoice__muted">
+                            {t('glossary:done_by')}: {rc.order.acting_user_name}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* The lines. */}
+                    <table className="mz-invoice__table">
+                      <thead>
+                        <tr>
+                          <th>{t('glossary:item')}</th>
+                          <th className="mz-invoice__num">{t('glossary:quantity')}</th>
+                          <th className="mz-invoice__num">{t('glossary:unit_price')}</th>
+                          <th className="mz-invoice__num">{t('glossary:amount')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rc.order.lines.map((line) => (
+                          <tr key={line.id}>
+                            <td>
+                              <bdi>{line.item_name}</bdi>
+                            </td>
+                            <td className="mz-invoice__num" data-tabular>
+                              {line.priced_measure === 'kg'
+                                ? `${formatter.number(line.qty_kg ?? '0', 3)} ${t('common:kg_symbol')}`
+                                : formatter.number(line.qty_count ?? 0)}
+                            </td>
+                            <td className="mz-invoice__num" data-tabular>
+                              {formatter.money(
+                                line.price_entered_currency === 'IQD'
+                                  ? line.unit_price_iqd
+                                  : line.unit_price_usd_cents,
+                                line.price_entered_currency,
+                              )}
+                            </td>
+                            <td className="mz-invoice__num" data-tabular>
+                              {formatter.money(line.line_total_iqd, 'IQD')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    {/* The money. */}
+                    <div className="mz-invoice__totals">
+                      <div className="mz-invoice__total-row">
+                        <span>{t('orders:subtotal')}</span>
+                        <span data-tabular>{formatter.money(subtotalIqd, 'IQD')}</span>
+                      </div>
+                      {rc.order.discount_iqd > 0 ? (
+                        <div className="mz-invoice__total-row">
+                          <span>{t('glossary:discount')}</span>
+                          <span data-tabular>−{formatter.money(rc.order.discount_iqd, 'IQD')}</span>
+                        </div>
+                      ) : null}
+                      <div className="mz-invoice__total-row mz-invoice__total-row--grand">
+                        <span>{t('glossary:total')}</span>
+                        <strong>
+                          <DualAmount
+                            amount_iqd={rc.order.total_iqd}
+                            amount_usd_cents={rc.order.total_usd_cents}
+                            primary={rc.customer.settlement_currency}
+                          />
+                        </strong>
+                      </div>
+                      <div className="mz-invoice__total-row">
+                        <span>{t('orders:remaining')}</span>
+                        <span data-tabular>
+                          {formatter.money(rc.order.remaining, rc.customer.settlement_currency)}
+                        </span>
+                      </div>
+                      {rc.balance_after !== null ? (
+                        <div className="mz-invoice__total-row">
+                          <span>{t('glossary:balance')}</span>
+                          <span data-tabular>
+                            {formatter.money(rc.balance_after, rc.customer.settlement_currency)}
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {/* The rate it was settled at, and a closing line. */}
+                    <footer className="mz-invoice__foot">
+                      <span>{t('common:rate_used', { rate: formatter.rate(rc.order.rate_iqd_per_usd) })}</span>
+                      <span>
+                        {t('orders:thank_you')} ·{' '}
+                        {t('orders:printed_on', { date: formatter.date(formatter.today()) })}
+                      </span>
+                    </footer>
+                  </div>
                 </div>
-              ))}
-              <div className="mz-receipt__line">
-                <strong>{t('glossary:total')}</strong>
-                <strong>
-                  <DualAmount
-                    amount_iqd={receiptData.data.order.total_iqd}
-                    amount_usd_cents={receiptData.data.order.total_usd_cents}
-                    primary={receiptData.data.customer.settlement_currency}
-                  />
-                </strong>
-              </div>
-              {receiptData.data.balance_after !== null ? (
-                <div className="mz-receipt__line">
-                  <span>{t('glossary:balance')}</span>
-                  <span data-tabular>
-                    {formatter.money(receiptData.data.balance_after, receiptData.data.customer.settlement_currency)}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          </ShareDocumentSheet>
-        ) : null}
+              );
+            })()
+          : null}
 
         {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
         <Button variant="ghost" onClick={() => navigate('/orders')}>

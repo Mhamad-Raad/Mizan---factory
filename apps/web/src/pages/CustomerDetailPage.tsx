@@ -13,6 +13,7 @@ import type { LedgerRow } from '../components/LedgerList.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { PaymentSheet } from '../components/PaymentSheet.js';
+import { SetRateSheet } from '../components/SetRateSheet.js';
 import { ShareDocumentSheet } from '../components/ShareDocumentSheet.js';
 import { QueryStates } from '../components/states.js';
 import { OrderStatusChip, PaymentTypeChip } from '../components/chips.js';
@@ -53,6 +54,7 @@ export function CustomerDetailPage() {
   const mayRecordPayment = usePermission('orders.record_payment');
   const mayCredit = usePermission('orders.credit');
   const mayOpeningBalance = usePermission('customers.opening_balance');
+  const maySetRate = usePermission('customers.set_rate');
   const maySeeBalance = usePermission('fields.see_customer_balances');
 
   const [tab, setTab] = useState<Tab>('overview');
@@ -60,6 +62,7 @@ export function CustomerDetailPage() {
   const [entrySheet, setEntrySheet] = useState<EntryKind | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [statement, setStatement] = useState(false);
+  const [ratingSheet, setRatingSheet] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const customer = useQuery({
@@ -165,6 +168,20 @@ export function CustomerDetailPage() {
     },
   });
 
+  const setRate = useMutation({
+    mutationFn: (body: { rate_iqd_per_usd: string; note: string | null }) =>
+      apiRequest(`/customers/${id}/rates`, {
+        method: 'POST',
+        body,
+        idempotencyKey: newIdempotencyKey(),
+      }),
+    onSuccess: async () => {
+      setRatingSheet(false);
+      setToast(t('customers:rate_saved'));
+      await invalidate();
+    },
+  });
+
   const directory = useQuery({
     queryKey: ['users', 'directory'],
     queryFn: () => apiRequest<{ id: string; display_name: string; is_active: boolean }[]>('/users/directory'),
@@ -217,6 +234,23 @@ export function CustomerDetailPage() {
                     />
                   </div>
                 ) : null}
+
+                {/* The IQD/USD rate this customer's orders are valued at (2.3.3). */}
+                {customer.data.rate ? (
+                  <div
+                    className="mz-row mz-row--between"
+                    style={{ marginBlockStart: 'var(--space-3)' }}
+                  >
+                    <span className="mz-caption">
+                      {customer.data.rate.is_customer_rate
+                        ? t('customers:rate_own')
+                        : t('customers:rate_is_global')}
+                    </span>
+                    <span data-tabular>
+                      {formatter.rate(customer.data.rate.rate_iqd_per_usd)}
+                    </span>
+                  </div>
+                ) : null}
               </Card>
 
               <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
@@ -248,6 +282,11 @@ export function CustomerDetailPage() {
                 {maySeeBalance && !customer.data.is_system ? (
                   <Button variant="ghost" onClick={() => setStatement(true)}>
                     {t('glossary:statement')}
+                  </Button>
+                ) : null}
+                {maySetRate && !customer.data.is_system ? (
+                  <Button variant="secondary" onClick={() => setRatingSheet(true)}>
+                    {t('customers:set_rate')}
                   </Button>
                 ) : null}
               </div>
@@ -490,6 +529,22 @@ export function CustomerDetailPage() {
               </div>
             </div>
           </ShareDocumentSheet>
+        ) : null}
+
+        {ratingSheet ? (
+          <SetRateSheet
+            title={t('customers:set_rate')}
+            label={t('customers:rate_label')}
+            hint={t('customers:rate_hint')}
+            current={
+              customer.data?.rate?.is_customer_rate
+                ? (customer.data.rate.rate_iqd_per_usd ?? null)
+                : null
+            }
+            saving={setRate.isPending}
+            onClose={() => setRatingSheet(false)}
+            onSave={(body) => setRate.mutate(body)}
+          />
         ) : null}
 
         {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}

@@ -62,7 +62,7 @@ export interface ImportResult extends ImportPreview {
  * same rate as one typed by hand — attributed to the admin who imported it (FR-1312).
  *
  * **It is previewed first, per row.** A preview reads the file against the database — unknown
- * material, duplicate name, unparsable number, a date in the future, a locked period — and says
+ * material, duplicate name, unparsable number, a date in the future — and says
  * which line of the spreadsheet is wrong and why. Nobody should discover row 4,213 after the
  * first 4,212 have been written.
  *
@@ -87,7 +87,10 @@ export class ImportsService {
       case 'materials':
         return { required: ['name', 'pricing_unit'], optional: ['code', 'min_stock', 'notes'] };
       case 'customers':
-        return { required: ['name'], optional: ['phone', 'address', 'settlement_currency', 'notes'] };
+        return {
+          required: ['name'],
+          optional: ['phone', 'address', 'settlement_currency', 'notes'],
+        };
       case 'companies':
         return {
           required: ['name'],
@@ -203,7 +206,11 @@ export class ImportsService {
    * Writes the rows, one transaction each, through the same services the screens use. A row
    * that fails comes back with its reason and does not stop the others.
    */
-  async run(context: RequestContext, kind: ImportKind, rows: readonly ImportRow[]): Promise<ImportResult> {
+  async run(
+    context: RequestContext,
+    kind: ImportKind,
+    rows: readonly ImportRow[],
+  ): Promise<ImportResult> {
     const preview = await this.preview(kind, rows);
     const badRows = new Set(preview.problems.map((problem) => problem.row));
     const failed: ImportResult['failed'] = [];
@@ -243,7 +250,9 @@ export class ImportsService {
           pricing_unit: text(row.pricing_unit) as 'per_kg' | 'per_piece',
           code: text(row.code),
           min_stock_count:
-            text(row.pricing_unit) === 'per_piece' && text(row.min_stock) ? Number(row.min_stock) : null,
+            text(row.pricing_unit) === 'per_piece' && text(row.min_stock)
+              ? Number(row.min_stock)
+              : null,
           min_stock_kg: text(row.pricing_unit) === 'per_kg' ? text(row.min_stock) : null,
           notes: text(row.notes),
         });
@@ -332,7 +341,10 @@ export class ImportsService {
     return new Map(rows.map((row) => [row.name_normalized, row.id]));
   }
 
-  private async findByName(table: 'items' | 'customers' | 'companies', name: string): Promise<string | null> {
+  private async findByName(
+    table: 'items' | 'customers' | 'companies',
+    name: string,
+  ): Promise<string | null> {
     const { rows } = await this.database.query<{ id: string }>(
       `SELECT id::text AS id FROM ${table} WHERE name_normalized = $1 AND deleted_at IS NULL LIMIT 1`,
       [normalizeForSearch(name)],
@@ -340,7 +352,10 @@ export class ImportsService {
     return rows[0]?.id ?? null;
   }
 
-  private async nameTaken(table: 'items' | 'customers' | 'companies', name: string): Promise<boolean> {
+  private async nameTaken(
+    table: 'items' | 'customers' | 'companies',
+    name: string,
+  ): Promise<boolean> {
     return (await this.findByName(table, name)) !== null;
   }
 
@@ -364,10 +379,9 @@ export class ImportsService {
       problem('entry_date', 'imports:bad_date', { value: given });
       return;
     }
-    // The same two rules every form obeys: not the future, not a locked period.
+    // The rule every form obeys: not the future.
     try {
       this.period.assertNotFuture(given, 'entry_date');
-      await this.period.assertNotLocked(given);
     } catch (caught) {
       const error = caught instanceof ApiError ? caught : null;
       problem(

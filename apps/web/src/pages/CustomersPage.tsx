@@ -28,6 +28,8 @@ export interface CustomerRow {
     currency: Currency;
     kind: 'derived';
   } | null;
+  /** The customer's own IQD-per-USD rate, or the global one when they have none. */
+  rate: { rate_iqd_per_usd: string; since: string | null; is_customer_rate: boolean } | null;
   version: number;
 }
 

@@ -10,7 +10,7 @@ import type { SettingKey, Settings } from './settings.types.js';
  * The system settings (FR-1107).
  *
  * They are read from the database on every request that needs them, deliberately: a setting
- * like `locked_through` or `allow_negative_stock` is a *rule*, and a cache — even a short one
+ * like `allow_negative_stock` is a *rule*, and a cache — even a short one
  * — means a second API replica can keep applying the old rule after an admin changed it,
  * which is the defect the I0 review found in the permission cache. The read is a primary-key
  * scan of a table with a dozen rows, which PostgreSQL answers from shared buffers.
@@ -50,14 +50,24 @@ export class SettingsService {
         const settingKey = key as SettingKey;
         if (!EDITABLE_KEYS.includes(settingKey)) {
           throw ApiError.validation([
-            { path: key, code: 'NOT_EDITABLE', message_key: 'errors:field.required', params: { field: key } },
+            {
+              path: key,
+              code: 'NOT_EDITABLE',
+              message_key: 'errors:field.required',
+              params: { field: key },
+            },
           ]);
         }
         const schema = SETTING_SCHEMAS[settingKey];
         const parsed = schema.safeParse(value);
         if (!parsed.success) {
           throw ApiError.validation([
-            { path: key, code: 'INVALID', message_key: 'errors:field.required', params: { field: key } },
+            {
+              path: key,
+              code: 'INVALID',
+              message_key: 'errors:field.required',
+              params: { field: key },
+            },
           ]);
         }
         if (before[settingKey] === parsed.data) continue;

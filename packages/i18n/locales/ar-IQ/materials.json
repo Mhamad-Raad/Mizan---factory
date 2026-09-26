@@ -39,5 +39,8 @@
   "movement.return_in": "أُرجع للمخزون",
   "movement.opening": "المخزون الافتتاحي",
   "movement.adjustment": "تصحيح",
-  "movement.reversal": "قيد عكسي"
+  "movement.reversal": "قيد عكسي",
+  "new_material_hint": "مادة تشتريها وتبيعها — اسمها، رمزها، الكمية المتوفرة الآن، وأسعارها.",
+  "prices": "الأسعار",
+  "prices_hint": "أسعار هذا الشهر — أدخلها بالدينار أو الدولار."
 }

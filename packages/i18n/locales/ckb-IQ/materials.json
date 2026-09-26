@@ -39,5 +39,8 @@
   "movement.return_in": "گەڕێندرایەوە کۆگا",
   "movement.opening": "کۆگای سەرەتایی",
   "movement.adjustment": "ڕاستکردنەوە",
-  "movement.reversal": "پێچەوانەکردنەوە"
+  "movement.reversal": "پێچەوانەکردنەوە",
+  "new_material_hint": "کەرەستەیەک کە دەیکڕیت و دەیفرۆشیت — ناو، کۆد، ئەو بڕەی ئێستا هەیە، و نرخەکانی.",
+  "prices": "نرخەکان",
+  "prices_hint": "نرخەکانی ئەم مانگە — بە دینار یان دۆلار بنووسە."
 }

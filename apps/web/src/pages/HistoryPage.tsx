@@ -58,7 +58,16 @@ export function rangeFor(
   return { from: date.toISOString().slice(0, 10), to: today };
 }
 
-const ENTITY_TYPES = ['order', 'purchase', 'customer', 'company', 'item', 'damage', 'user', 'settings'];
+const ENTITY_TYPES = [
+  'order',
+  'purchase',
+  'customer',
+  'company',
+  'item',
+  'damage',
+  'user',
+  'settings',
+];
 
 /**
  * The History page in full (FR-902, spec 2.4.5).
@@ -79,8 +88,13 @@ export function HistoryPage() {
   const [doneBy, setDoneBy] = useState(searchParams.get('done_by') ?? '');
   const [assignedTo, setAssignedTo] = useState(searchParams.get('assigned_to') ?? '');
   const [entityType, setEntityType] = useState(searchParams.get('entity_type') ?? '');
-  const [preset, setPreset] = useState<DatePreset>((searchParams.get('preset') as DatePreset) ?? 'today');
-  const [custom, setCustom] = useState({ from: searchParams.get('from') ?? '', to: searchParams.get('to') ?? '' });
+  const [preset, setPreset] = useState<DatePreset>(
+    (searchParams.get('preset') as DatePreset) ?? 'today',
+  );
+  const [custom, setCustom] = useState({
+    from: searchParams.get('from') ?? '',
+    to: searchParams.get('to') ?? '',
+  });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [expandedRows, setExpandedRows] = useState<string | null>(null);
   const [filters, setFilters] = useState(false);
@@ -103,7 +117,9 @@ export function HistoryPage() {
       if (range.from) params.set('from', range.from);
       if (range.to) params.set('to', range.to);
       if (pageParam) params.set('cursor', String(pageParam));
-      return apiRequest<{ items: AuditEntry[]; next_cursor: string | null }>(`/history?${params.toString()}`);
+      return apiRequest<{ items: AuditEntry[]; next_cursor: string | null }>(
+        `/history?${params.toString()}`,
+      );
     },
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
@@ -116,7 +132,12 @@ export function HistoryPage() {
   return (
     <>
       <div className="mz-stack">
-        <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }} role="group" aria-label={t('common:date')}>
+        <div
+          className="mz-row"
+          style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}
+          role="group"
+          aria-label={t('common:date')}
+        >
           {(['today', 'yesterday', 'week', 'month', 'all'] as DatePreset[]).map((option) => (
             <FilterChip key={option} active={option === preset} onClick={() => setPreset(option)}>
               {option === 'today'
@@ -188,77 +209,93 @@ export function HistoryPage() {
         </label>
 
         {/* The four states through the one component, so the offline wording cannot go missing. */}
-        <QueryStates query={history} isEmpty={entries.length === 0} emptyTitle={t('history:empty')} skeletonLines={8}>
-        {entries.map((entry) => (
-          <Card key={entry.id}>
-            <button
-              type="button"
-              className="mz-row mz-row--between"
-              style={{ background: 'none', border: 0, inlineSize: '100%', textAlign: 'start', cursor: 'pointer' }}
-              aria-expanded={expanded === entry.id}
-              onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}
-            >
-              <span>
-                <span className="mz-list__title">
-                  {entry.actor_display_name ?? '—'}{' '}
-                  {t(`history:action.${entry.action}`, { defaultValue: entry.action })}
+        <QueryStates
+          query={history}
+          isEmpty={entries.length === 0}
+          emptyTitle={t('history:empty')}
+          skeletonLines={8}
+        >
+          {entries.map((entry) => (
+            <Card key={entry.id}>
+              <button
+                type="button"
+                className="mz-row mz-row--between"
+                style={{
+                  background: 'none',
+                  border: 0,
+                  inlineSize: '100%',
+                  textAlign: 'start',
+                  cursor: 'pointer',
+                }}
+                aria-expanded={expanded === entry.id}
+                onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}
+              >
+                <span>
+                  <span className="mz-list__title">
+                    {entry.actor_display_name ?? '—'}{' '}
+                    {t(`history:action.${entry.action}`, { defaultValue: entry.action })}
+                  </span>
+                  <span className="mz-caption" style={{ display: 'block' }}>
+                    <bdi>{entry.entity_label}</bdi> ·{' '}
+                    {formatter.timestamp(new Date(entry.occurred_at))}
+                  </span>
                 </span>
-                <span className="mz-caption" style={{ display: 'block' }}>
-                  <bdi>{entry.entity_label}</bdi> · {formatter.timestamp(new Date(entry.occurred_at))}
-                  {entry.auth_method === 'ticket_pin' ? ` · ${t('history:signed_in_with_pin')}` : ''}
-                </span>
-              </span>
-              {/* An edit storm is one entry that says how many it stands for (2.4.5). */}
-              {entry.group_size > 1 ? <Chip tone="warning">{t('history:edits', { count: entry.group_size })}</Chip> : null}
-            </button>
-
-            {expanded === entry.id ? (
-              <div className="mz-stack" style={{ marginBlockStart: 'var(--space-3)', gap: 'var(--space-2)' }}>
-                <AuditDiff changes={entry.changes} note={entry.note} />
-
+                {/* An edit storm is one entry that says how many it stands for (2.4.5). */}
                 {entry.group_size > 1 ? (
-                  <>
-                    <Button
-                      variant="ghost"
-                      aria-expanded={expandedRows === entry.id}
-                      onClick={() => setExpandedRows(expandedRows === entry.id ? null : entry.id)}
-                    >
-                      {t('history:show_edits')}
-                    </Button>
-                    {expandedRows === entry.id
-                      ? entry.rows.slice(1).map((row) => (
-                          <div key={row.id} className="mz-ledger-row">
-                            <div>
-                              <span className="mz-caption" style={{ display: 'block' }}>
-                                {formatter.timestamp(new Date(row.occurred_at))}
-                                {row.actor_display_name ? ` · ${row.actor_display_name}` : ''}
-                              </span>
-                              <AuditDiff changes={row.changes} note={row.note} />
-                            </div>
-                          </div>
-                        ))
-                      : null}
-                  </>
+                  <Chip tone="warning">{t('history:edits', { count: entry.group_size })}</Chip>
                 ) : null}
+              </button>
 
-                <p className="mz-caption" dir="ltr">
-                  {t('history:request_id')}: {entry.request_id}
-                </p>
-              </div>
-            ) : null}
-          </Card>
-        ))}
+              {expanded === entry.id ? (
+                <div
+                  className="mz-stack"
+                  style={{ marginBlockStart: 'var(--space-3)', gap: 'var(--space-2)' }}
+                >
+                  <AuditDiff changes={entry.changes} note={entry.note} />
 
-        {history.hasNextPage ? (
-          <Button
-            variant="secondary"
-            block
-            loading={history.isFetchingNextPage}
-            onClick={() => void history.fetchNextPage()}
-          >
-            {t('common:more')}
-          </Button>
-        ) : null}
+                  {entry.group_size > 1 ? (
+                    <>
+                      <Button
+                        variant="ghost"
+                        aria-expanded={expandedRows === entry.id}
+                        onClick={() => setExpandedRows(expandedRows === entry.id ? null : entry.id)}
+                      >
+                        {t('history:show_edits')}
+                      </Button>
+                      {expandedRows === entry.id
+                        ? entry.rows.slice(1).map((row) => (
+                            <div key={row.id} className="mz-ledger-row">
+                              <div>
+                                <span className="mz-caption" style={{ display: 'block' }}>
+                                  {formatter.timestamp(new Date(row.occurred_at))}
+                                  {row.actor_display_name ? ` · ${row.actor_display_name}` : ''}
+                                </span>
+                                <AuditDiff changes={row.changes} note={row.note} />
+                              </div>
+                            </div>
+                          ))
+                        : null}
+                    </>
+                  ) : null}
+
+                  <p className="mz-caption" dir="ltr">
+                    {t('history:request_id')}: {entry.request_id}
+                  </p>
+                </div>
+              ) : null}
+            </Card>
+          ))}
+
+          {history.hasNextPage ? (
+            <Button
+              variant="secondary"
+              block
+              loading={history.isFetchingNextPage}
+              onClick={() => void history.fetchNextPage()}
+            >
+              {t('common:more')}
+            </Button>
+          ) : null}
         </QueryStates>
 
         {filters ? (

@@ -19,7 +19,6 @@ interface UserRow {
   role: 'admin' | 'employee';
   is_active: boolean;
   must_change_password: boolean;
-  has_pin: boolean;
   last_login_at: string | null;
   preset_key: string | null;
 }
@@ -58,7 +57,9 @@ export function UsersPage() {
   };
 
   const signedIn = (user: UserRow) =>
-    user.last_login_at ? formatter.timestamp(new Date(user.last_login_at)) : t('users:never_signed_in');
+    user.last_login_at
+      ? formatter.timestamp(new Date(user.last_login_at))
+      : t('users:never_signed_in');
 
   /**
    * The column always says something, because a blank cell in a table reads as missing data
@@ -81,7 +82,6 @@ export function UsersPage() {
           {t('users:must_change_password')}
         </Chip>
       ) : null}
-      {user.has_pin ? <Chip icon="lock">{t('users:pin_set')}</Chip> : null}
     </span>
   );
 
@@ -172,7 +172,9 @@ export function UsersPage() {
       </QueryStates>
 
       {rows.length > 0 ? (
-        <p className="mz-caption">{t('users:employee_count', { count: users.data?.total ?? rows.length })}</p>
+        <p className="mz-caption">
+          {t('users:employee_count', { count: users.data?.total ?? rows.length })}
+        </p>
       ) : null}
     </div>
   );

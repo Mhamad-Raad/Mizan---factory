@@ -14,6 +14,11 @@ const money = z.object({
   other_amount: z.number().int().nullish(),
 });
 const method = z.enum(['cash', 'transfer', 'other']);
+const rate = z.string().regex(/^\d+(\.\d{1,4})?$/);
+const rateSchema = z.object({
+  rate_iqd_per_usd: z.union([rate, z.number().positive()]),
+  note: z.string().max(2000).nullish(),
+});
 
 const listSchema = z.object({
   q: z.string().max(200).optional(),
@@ -214,6 +219,26 @@ export class CustomersController {
       note: body.note,
       rebase_rate: body.rebase_rate ?? null,
       version: body.version,
+    });
+  }
+
+  @Get('customers/:id/rates')
+  @RequirePermission('customers.view')
+  async rates(@Req() request: RequestWithContext, @Param('id') id: string) {
+    return this.customers.rateHistoryOf(contextOf(request), id);
+  }
+
+  @Post('customers/:id/rates')
+  @RequirePermission('customers.set_rate')
+  @HttpCode(201)
+  async setRate(
+    @Req() request: RequestWithContext,
+    @Param('id') id: string,
+    @Body(zodBody(rateSchema)) body: z.infer<typeof rateSchema>,
+  ) {
+    return this.customers.setRate(contextOf(request), id, {
+      rate_iqd_per_usd: String(body.rate_iqd_per_usd),
+      note: body.note ?? null,
     });
   }
 
