@@ -189,8 +189,16 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       expect(
         response.body.lines.map((line: { line_total_iqd: number }) => line.line_total_iqd),
       ).toEqual([10_625, 720_000]);
-      expect(response.body.total_iqd).toBe(730_625);
-      expect(response.body.total_usd_cents).toBe(811 + 54_962);
+      // The lines add up to 730,625; the total rounds up to the next 250 — 730,750 — and the
+      // 125 added moves the dollars by 125 ÷ 1,310 = 9.54 → 10 cents (D-065).
+      expect(response.body.total_iqd).toBe(730_750);
+      expect(response.body.rounding_iqd).toBe(125);
+      expect(response.body.rounding_usd_cents).toBe(10);
+      expect(response.body.total_usd_cents).toBe(811 + 54_962 + 10);
+
+      // The company owes the rounded total.
+      const customer = await as(ctx.http, sales).get(`/api/v1/customers/${kawa}`).expect(200);
+      expect(customer.body.balance.amount_iqd ?? customer.body.balance).toBe(730_750);
     });
 
     it('defaults the price from the month list and marks an override', async () => {

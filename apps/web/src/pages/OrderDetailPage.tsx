@@ -210,6 +210,12 @@ export function OrderDetailPage() {
                       primary={data.settlement_currency}
                       size="large"
                     />
+                    {/* Said out loud, so nobody wonders why the total is not the lines' sum (D-065). */}
+                    {(data.rounding_iqd ?? 0) > 0 ? (
+                      <span className="mz-caption">
+                        {t('orders:rounded_up', { amount: formatter.money(data.rounding_iqd ?? 0, 'IQD') })}
+                      </span>
+                    ) : null}
                     <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                       {data.received_currency ? (
                         <Chip tone="primary">
@@ -622,6 +628,12 @@ export function OrderDetailPage() {
                         <div className="mz-invoice__total-row">
                           <span>{t('glossary:discount')}</span>
                           <span data-tabular>−{formatter.money(rc.order.discount_iqd, 'IQD')}</span>
+                        </div>
+                      ) : null}
+                      {(rc.order.rounding_iqd ?? 0) > 0 ? (
+                        <div className="mz-invoice__total-row">
+                          <span>{t('orders:rounding')}</span>
+                          <span data-tabular>+{formatter.money(rc.order.rounding_iqd ?? 0, 'IQD')}</span>
                         </div>
                       ) : null}
                       <div className="mz-invoice__total-row mz-invoice__total-row--grand">

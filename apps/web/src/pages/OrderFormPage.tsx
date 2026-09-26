@@ -15,7 +15,7 @@ import {
   TextField,
   Toggle,
 } from '@mizan/ui';
-import { computeLineTotals, convert, documentTotals } from '@mizan/money';
+import { computeLineTotals, convert, documentTotals, roundOrderTotals } from '@mizan/money';
 import type { Currency, Measure, Rate, RateSource } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
@@ -305,9 +305,13 @@ function OrderForm({
       perLine,
       discount_iqd: discountIqd,
       discount_usd_cents: discountUsd,
-      ...documentTotals(
-        complete.map((entry) => entry.gross),
-        { discount_iqd: discountIqd, discount_usd_cents: discountUsd },
+      // The same rounding the server applies, so the total shown is the total saved (D-065).
+      ...roundOrderTotals(
+        documentTotals(
+          complete.map((entry) => entry.gross),
+          { discount_iqd: discountIqd, discount_usd_cents: discountUsd },
+        ),
+        documentRate,
       ),
     };
   }, [form, documentRate, rateSource]);
@@ -739,6 +743,11 @@ function OrderForm({
       <TotalsFooter
         total_iqd={totals.total_iqd}
         total_usd_cents={totals.total_usd_cents}
+        note={
+          totals.rounding_iqd > 0
+            ? t('orders:rounded_up', { amount: formatter.money(totals.rounding_iqd, 'IQD') })
+            : undefined
+        }
         primary={settlementCurrency}
         lineCount={form.lines.length}
         saving={save.isPending}
@@ -844,6 +853,9 @@ export interface OrderDetail {
   discount_usd_cents: number;
   total_iqd: number;
   total_usd_cents: number;
+  /** What was added to reach a round 250 dinars (D-065). */
+  rounding_iqd?: number;
+  rounding_usd_cents?: number;
   status: 'unpaid' | 'partially_paid' | 'paid' | 'void';
   doc_status: 'active' | 'void';
   void_reason: string | null;

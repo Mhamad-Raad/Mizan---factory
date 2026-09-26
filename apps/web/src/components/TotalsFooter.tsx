@@ -16,6 +16,8 @@ export interface TotalsFooterProps {
   /** Proposed — not requested (FR-616): the discount row above the total. */
   discount?: React.ReactNode;
   saveLabel?: string;
+  /** A line under the total — "Rounded up by 125 د.ع" (D-065). */
+  note?: React.ReactNode;
 }
 
 /**
@@ -33,6 +35,7 @@ export function TotalsFooter({
   onSave,
   discount,
   saveLabel,
+  note,
 }: TotalsFooterProps) {
   const { t } = useTranslation();
   // The pulse of signature moment 1: a line was added, so the total leans forward once.
@@ -64,6 +67,7 @@ export function TotalsFooter({
         {/* Rolls, because this is the figure the employee is watching grow (3.6.2). */}
         <DualAmount amount_iqd={total_iqd} amount_usd_cents={total_usd_cents} primary={primary} roll />
       </div>
+      {note ? <p className="mz-caption mz-totals__note">{note}</p> : null}
       <Button block loading={saving} disabled={disabled} onClick={onSave}>
         {saveLabel ?? t('orders:save_order', { count: lineCount })}
       </Button>

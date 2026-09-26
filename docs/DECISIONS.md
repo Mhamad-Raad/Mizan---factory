@@ -986,3 +986,19 @@ information about everything in this system and can filter with dates".
   materials sold by the piece as "0 kg". Stock is now valued at what is left of each buy at its
   own price — the figure the material page splits by price — and a piece material reads in
   pieces.
+
+## D-065 · 2026-09-27 · client review · An order's total rounds up to the next 250 dinars
+
+- **Asked:** "630 should turn to 750" — the order total in IQD rounds up to a multiple of 250,
+  the dollar total follows, only the total (never a line's price), and it says it was rounded.
+- **Chosen:** after the discount, the total rounds **up** to the next 250 IQD
+  (`roundOrderTotals`, `@mizan/money`). The added dinars are converted at the order's own rate
+  and added to the USD total, so both currencies still describe the same amount (2.3.4). The
+  order keeps what was added (`rounding_iqd`, `rounding_usd_cents`, migration 0027), so the
+  lines still sum to the total before rounding and the difference is explained rather than
+  hidden: the form's totals, the order page ("Rounded up by IQD 10 to a round 250") and the
+  receipt ("Rounding +10") all show it.
+- **Where it applies:** new orders, and an order when it is edited. Orders already saved keep
+  the total they were saved with (rule 1: history is never recalculated).
+- **Money:** the customer owes the rounded total; on the Accounts page the rounding counts as
+  profit, next to the margins and against the discount.

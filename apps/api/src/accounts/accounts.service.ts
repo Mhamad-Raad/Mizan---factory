@@ -17,7 +17,7 @@ export interface AccountsSummary {
   sold: Pair & { count: number };
   /** What the goods those orders sold cost us, from the buys they came from (D-062). */
   cost_of_sold: Pair;
-  /** Sold less the cost of what was sold — the orders' margins, less their discounts. */
+  /** Sold less the cost of what was sold — the orders' margins, less discounts, plus rounding. */
   profit: Pair;
   /** Order lines of a material never bought: they have no cost, so they are not in the profit. */
   lines_without_cost: number;
@@ -54,10 +54,19 @@ export class AccountsService {
 
   async summary(from: string, to: string): Promise<AccountsSummary> {
     const [sales, lines, bought, expenses, damage] = await Promise.all([
-      this.database.query<{ count: string; iqd: string; usd: string; disc_iqd: string; disc_usd: string }>(
+      this.database.query<{
+        count: string;
+        iqd: string;
+        usd: string;
+        disc_iqd: string;
+        disc_usd: string;
+        round_iqd: string;
+        round_usd: string;
+      }>(
         `SELECT count(*)::text AS count,
                 coalesce(sum(total_iqd), 0)::text AS iqd, coalesce(sum(total_usd_cents), 0)::text AS usd,
-                coalesce(sum(discount_iqd), 0)::text AS disc_iqd, coalesce(sum(discount_usd_cents), 0)::text AS disc_usd
+                coalesce(sum(discount_iqd), 0)::text AS disc_iqd, coalesce(sum(discount_usd_cents), 0)::text AS disc_usd,
+                coalesce(sum(rounding_iqd), 0)::text AS round_iqd, coalesce(sum(rounding_usd_cents), 0)::text AS round_usd
            FROM orders
           WHERE status = 'active' AND deleted_at IS NULL AND order_date BETWEEN $1::date AND $2::date`,
         [from, to],
@@ -102,7 +111,9 @@ export class AccountsService {
     const s = sales.rows[0];
     const l = lines.rows[0];
     const discount = pair(s?.disc_iqd, s?.disc_usd);
-    const profit = minus(pair(l?.margin_iqd, l?.margin_usd), discount);
+    // The rounding up to 250 dinars (D-065) is money received with no stock behind it: profit.
+    const rounding = pair(s?.round_iqd, s?.round_usd);
+    const profit = minus(pair(l?.margin_iqd, l?.margin_usd), discount, minus(pair('0', '0'), rounding));
     const expenseRow = expenses.rows[0];
     const lossRow = damage.rows.find((row) => !row.recovered);
     const recoveredRow = damage.rows.find((row) => row.recovered);
@@ -150,6 +161,8 @@ export class AccountsService {
         margin_usd: string;
         discount_iqd: string;
         discount_usd_cents: string;
+        rounding_iqd: string;
+        rounding_usd_cents: string;
         uncosted: string;
       }>(
         `SELECT o.id, o.number::text AS number, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
@@ -157,6 +170,7 @@ export class AccountsService {
                 c.settlement_currency::text AS settlement_currency,
                 o.total_iqd::text AS total_iqd, o.total_usd_cents::text AS total_usd_cents,
                 o.discount_iqd::text AS discount_iqd, o.discount_usd_cents::text AS discount_usd_cents,
+                o.rounding_iqd::text AS rounding_iqd, o.rounding_usd_cents::text AS rounding_usd_cents,
                 m.margin_iqd::text AS margin_iqd, m.margin_usd::text AS margin_usd, m.uncosted::text AS uncosted
            FROM orders o
            JOIN customers c ON c.id = o.customer_id
@@ -178,7 +192,11 @@ export class AccountsService {
     return {
       items: list.rows.map((row) => {
         const total = pair(row.total_iqd, row.total_usd_cents);
-        const profit = minus(pair(row.margin_iqd, row.margin_usd), pair(row.discount_iqd, row.discount_usd_cents));
+        const profit = minus(
+          pair(row.margin_iqd, row.margin_usd),
+          pair(row.discount_iqd, row.discount_usd_cents),
+          minus(pair('0', '0'), pair(row.rounding_iqd, row.rounding_usd_cents)),
+        );
         return {
           id: row.id,
           number: Number(row.number),

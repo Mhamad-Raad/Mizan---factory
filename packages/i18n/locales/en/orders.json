@@ -56,5 +56,7 @@
   "new_order_hint": "Record a sale — the company, what they bought, and how they paid.",
   "tile_orders": "Orders",
   "tile_sold": "Sold",
-  "tile_to_collect": "Still to collect"
+  "tile_to_collect": "Still to collect",
+  "rounded_up": "Rounded up by {{amount}} to a round 250",
+  "rounding": "Rounding"
 }

@@ -10,6 +10,7 @@ import {
   formatRate,
   impliedRate,
   roundHalfAwayFromZero,
+  roundOrderTotals,
   selectMonthPrice,
   withinTolerance,
 } from '@mizan/money';
@@ -179,10 +180,14 @@ export class OrdersService {
 
       const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource);
       const discount = this.discountPair(input.discount, rate, rateSource, lines);
-      const totals = documentTotals(lines, {
-        discount_iqd: discount.amount_iqd,
-        discount_usd_cents: discount.amount_usd_cents,
-      });
+      // The total rounds up to the next 250 dinars; the lines keep their prices (D-065).
+      const totals = roundOrderTotals(
+        documentTotals(lines, {
+          discount_iqd: discount.amount_iqd,
+          discount_usd_cents: discount.amount_usd_cents,
+        }),
+        rate,
+      );
 
       const warnings = await this.stock.assertSellable(
         tx,
@@ -212,7 +217,12 @@ export class OrdersService {
       await this.orders.updateOrder(
         order.id,
         order.version,
-        { total_iqd: totals.total_iqd, total_usd_cents: totals.total_usd_cents },
+        {
+          total_iqd: totals.total_iqd,
+          total_usd_cents: totals.total_usd_cents,
+          rounding_iqd: totals.rounding_iqd,
+          rounding_usd_cents: totals.rounding_usd_cents,
+        },
         context.userId,
         tx,
       );
@@ -336,10 +346,14 @@ export class OrdersService {
       await this.lots.release(tx, { type: 'order_line', ids: oldLines.map((line) => line.id), createdBy: context.userId });
       const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource);
       const discount = this.discountPair(input.discount, rate, rateSource, lines);
-      const totals = documentTotals(lines, {
-        discount_iqd: discount.amount_iqd,
-        discount_usd_cents: discount.amount_usd_cents,
-      });
+      // The total rounds up to the next 250 dinars; the lines keep their prices (D-065).
+      const totals = roundOrderTotals(
+        documentTotals(lines, {
+          discount_iqd: discount.amount_iqd,
+          discount_usd_cents: discount.amount_usd_cents,
+        }),
+        rate,
+      );
 
       await this.stock.assertSellable(
         tx,
@@ -369,6 +383,8 @@ export class OrdersService {
           discount_usd_cents: discount.amount_usd_cents,
           total_iqd: totals.total_iqd,
           total_usd_cents: totals.total_usd_cents,
+          rounding_iqd: totals.rounding_iqd,
+          rounding_usd_cents: totals.rounding_usd_cents,
           acting_user_id: actingUserId,
         },
         context.userId,
@@ -1321,6 +1337,8 @@ function toOrderDto(row: OrderListRow, lines: readonly OrderLineRow[]): OrderDto
     discount_usd_cents: Number(row.discount_usd_cents),
     total_iqd: Number(row.total_iqd),
     total_usd_cents: Number(row.total_usd_cents),
+    rounding_iqd: Number(row.rounding_iqd ?? 0),
+    rounding_usd_cents: Number(row.rounding_usd_cents ?? 0),
     // The view derives the status; this repeats the kernel's rule for the rows a list joined
     // without it, and the two agree by construction (2.4.3).
     status:

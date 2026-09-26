@@ -27,6 +27,8 @@ function orderColumns(alias = 'orders'): string {
     'discount_usd_cents::text AS discount_usd_cents',
     'total_iqd::text AS total_iqd',
     'total_usd_cents::text AS total_usd_cents',
+    'rounding_iqd::text AS rounding_iqd',
+    'rounding_usd_cents::text AS rounding_usd_cents',
     'created_at',
     'created_by',
     'updated_at',
@@ -478,6 +480,8 @@ export class OrdersRepository {
       discount_usd_cents: number;
       total_iqd: number;
       total_usd_cents: number;
+      rounding_iqd: number;
+      rounding_usd_cents: number;
       acting_user_id: string;
       status: 'active' | 'void';
       void_reason: string | null;
