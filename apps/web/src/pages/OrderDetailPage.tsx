@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
@@ -31,7 +31,6 @@ export function OrderDetailPage() {
   const { id = '' } = useParams();
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const mayRecordPayment = usePermission('orders.record_payment');
   const mayChangeType = usePermission('orders.change_payment_type');
@@ -637,9 +636,6 @@ export function OrderDetailPage() {
           : null}
 
         {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
-        <Button variant="ghost" onClick={() => navigate('/orders')}>
-          {t('common:back')}
-        </Button>
       </div>
     </>
   );

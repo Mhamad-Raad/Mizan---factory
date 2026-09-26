@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, DateField, TextField, Toast, Toggle } from '@mizan/ui';
@@ -33,7 +33,6 @@ export function DamageDetailPage() {
   const { id = '' } = useParams();
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const mayMarkReturned = usePermission('damages.mark_returned');
   const mayEdit = usePermission('damages.edit');
@@ -393,9 +392,6 @@ export function DamageDetailPage() {
         ) : null}
 
         {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
-        <Button variant="ghost" onClick={() => navigate('/damages')}>
-          {t('common:back')}
-        </Button>
       </div>
     </>
   );

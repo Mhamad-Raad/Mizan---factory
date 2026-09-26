@@ -45,6 +45,7 @@
   "no_entries": "هێشتا تۆمار نییە",
   "more_entries": "نوێترین {{shown}} لە {{total}} تۆمار پیشان دەدرێت",
   "show_more": "زیاتر پیشان بدە",
+  "ledger_key": "سوور قەرزی ئێمە بۆ ئەوان کەم دەکاتەوە",
   "statement_range": "لە {{from}} بۆ {{to}}",
   "settlement_currency_change": "گۆڕینی دراوی حیساب",
   "rebase_rate": "نرخی ئاڵوگۆڕ بۆ گۆڕین",

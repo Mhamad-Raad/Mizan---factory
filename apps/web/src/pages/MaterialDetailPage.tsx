@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -60,7 +60,6 @@ export function MaterialDetailPage() {
   const { id = '' } = useParams();
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const maySetPrices = usePermission('materials.set_prices');
   const mayRecordStock = usePermission('materials.opening_stock');
@@ -573,9 +572,6 @@ export function MaterialDetailPage() {
         {toast ? (
           <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} />
         ) : null}
-        <Button variant="ghost" onClick={() => navigate('/materials')}>
-          {t('common:back')}
-        </Button>
       </div>
     </>
   );

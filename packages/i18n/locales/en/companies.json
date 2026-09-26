@@ -45,6 +45,7 @@
   "no_entries": "No entries yet",
   "more_entries": "Showing the newest {{shown}} of {{total}} entries",
   "show_more": "Show more",
+  "ledger_key": "Red lowers what we owe them",
   "statement_range": "From {{from}} to {{to}}",
   "settlement_currency_change": "Change the settlement currency",
   "rebase_rate": "Rate for the conversion",

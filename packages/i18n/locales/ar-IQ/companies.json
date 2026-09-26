@@ -45,6 +45,7 @@
   "no_entries": "لا توجد قيود بعد",
   "more_entries": "يتم عرض أحدث {{shown}} من {{total}} قيداً",
   "show_more": "عرض المزيد",
+  "ledger_key": "الأحمر يُنقص ما علينا لهم",
   "statement_range": "من {{from}} إلى {{to}}",
   "settlement_currency_change": "تغيير عملة الحساب",
   "rebase_rate": "سعر الصرف للتحويل",

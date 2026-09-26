@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, DateField, Icon, Menu, SegmentedControl, TextField, Toast } from '@mizan/ui';
@@ -17,7 +17,7 @@ import { PaymentSheet } from '../components/PaymentSheet.js';
 import { SetRateSheet } from '../components/SetRateSheet.js';
 import { ShareDocumentSheet } from '../components/ShareDocumentSheet.js';
 import { QueryStates } from '../components/states.js';
-import { OrderStatusChip, PaymentTypeChip } from '../components/chips.js';
+import { OrderTable } from '../components/OrderTable.js';
 import { statementWindow, useCompanySide } from '../components/party/CompanySide.js';
 import { EditPartySheet, RateHistorySheet, SettlementCurrencySheet } from '../components/party/PartySheets.js';
 import { customerName } from '../lib/customers.js';
@@ -54,7 +54,6 @@ export function CustomerDetailPage() {
   const { id = '' } = useParams();
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isAdmin = useApp((state) => state.user?.role === 'admin');
   const mayRecordPayment = usePermission('orders.record_payment');
@@ -325,9 +324,9 @@ export function CustomerDetailPage() {
                         emptyTitle={t('customers:no_orders')}
                         skeletonLines={3}
                       >
-                        <OrderList
-                          orders={(orders.data?.items ?? []).filter((order) => order.status !== 'paid').slice(0, 5)}
-                          settlement={settlement}
+                        <OrderTable
+                          rows={(orders.data?.items ?? []).filter((order) => order.status !== 'paid').slice(0, 5)}
+                          showCustomer={false}
                         />
                       </QueryStates>
                     </Card>
@@ -354,7 +353,7 @@ export function CustomerDetailPage() {
                     </Can>
                   }
                 >
-                  <OrderList orders={orders.data?.items ?? []} settlement={settlement} withType />
+                  <OrderTable rows={orders.data?.items ?? []} showCustomer={false} />
                 </QueryStates>
               ) : null}
 
@@ -538,9 +537,6 @@ export function CustomerDetailPage() {
         {companySide.sheets}
 
         {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
-        <Button variant="ghost" onClick={() => navigate('/customers')}>
-          {t('common:back')}
-        </Button>
       </div>
     </>
   );
@@ -584,42 +580,6 @@ function PartyFigure({ party }: { party: CustomerRow }) {
         </span>
       ) : null}
     </div>
-  );
-}
-
-function OrderList({
-  orders,
-  settlement,
-  withType = false,
-}: {
-  orders: readonly OrderRow[];
-  settlement: Currency;
-  withType?: boolean;
-}) {
-  const { t } = useTranslation();
-  const formatter = useFormatter();
-  return (
-    <ul className="mz-list">
-      {orders.map((order) => (
-        <li key={order.id}>
-          <Link to={`/orders/${order.id}`} className="mz-list__item mz-list__item--interactive mz-list__item--detail">
-            <span className="mz-list__body">
-              <span className="mz-list__title">{t('orders:number', { number: formatter.number(order.number) })}</span>
-              <span className="mz-caption" style={{ display: 'block' }}>
-                {formatter.date(order.order_date)}
-              </span>
-              <span className="mz-rowcard__chips">
-                {withType ? <PaymentTypeChip type={order.payment_type} /> : null}
-                <OrderStatusChip status={order.status} />
-              </span>
-            </span>
-            <span className="mz-list__end">
-              <DualAmount amount_iqd={order.total_iqd} amount_usd_cents={order.total_usd_cents} primary={settlement} />
-            </span>
-          </Link>
-        </li>
-      ))}
-    </ul>
   );
 }
 
