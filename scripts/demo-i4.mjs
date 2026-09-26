@@ -395,9 +395,9 @@ check(
   `and Nazdar paid out ${nazdarCash?.paid_out_iqd} د.ع, a net of ${nazdarCash?.net_iqd}`,
 );
 
-// ─────────────────────── 4. the dashboard and search ───────────────────────
+// ─────────────────────── 4. the dashboard ───────────────────────
 
-step(4, 'The dashboard for an owner against a sales employee, and search across the scripts');
+step(4, 'The dashboard for an owner against a sales employee');
 const ownerTiles = await call(nazdar.session, '/dashboard');
 const ownerKeys = (ownerTiles.body?.tiles ?? []).map((tile) => tile.key);
 check(
@@ -413,16 +413,6 @@ check(
 );
 check(ownerTiles.body?.rate !== null, `and both carry today's rate, with its stale marker`);
 
-const byName = await call(nazdar.session, `/search?q=kawa`);
-check(
-  byName.body?.hits?.some((hit) => hit.kind === 'customer'),
-  'search finds "Kawa" typed in Latin letters',
-);
-const byNumber = await call(nazdar.session, `/search?q=${order.body.number}`);
-check(
-  byNumber.body?.hits?.some((hit) => hit.kind === 'order'),
-  `and order #${order.body.number} by its number alone`,
-);
 
 // ─────────────────────── the invariant ───────────────────────
 

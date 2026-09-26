@@ -35,7 +35,6 @@ const STATIC_ROUTES = [
   '/reports/receivables',
   '/reports/stock',
   '/dashboard',
-  '/search',
   '/settings',
   '/import',
   '/font-check',

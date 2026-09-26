@@ -19,7 +19,6 @@ import ckbPurchases from '@mizan/i18n/locales/ckb-IQ/purchases.json';
 import ckbDamages from '@mizan/i18n/locales/ckb-IQ/damages.json';
 import ckbReports from '@mizan/i18n/locales/ckb-IQ/reports.json';
 import ckbDashboard from '@mizan/i18n/locales/ckb-IQ/dashboard.json';
-import ckbSearch from '@mizan/i18n/locales/ckb-IQ/search.json';
 import ckbImports from '@mizan/i18n/locales/ckb-IQ/imports.json';
 
 import arCommon from '@mizan/i18n/locales/ar-IQ/common.json';
@@ -38,7 +37,6 @@ import arPurchases from '@mizan/i18n/locales/ar-IQ/purchases.json';
 import arDamages from '@mizan/i18n/locales/ar-IQ/damages.json';
 import arReports from '@mizan/i18n/locales/ar-IQ/reports.json';
 import arDashboard from '@mizan/i18n/locales/ar-IQ/dashboard.json';
-import arSearch from '@mizan/i18n/locales/ar-IQ/search.json';
 import arImports from '@mizan/i18n/locales/ar-IQ/imports.json';
 
 import enCommon from '@mizan/i18n/locales/en/common.json';
@@ -57,7 +55,6 @@ import enPurchases from '@mizan/i18n/locales/en/purchases.json';
 import enDamages from '@mizan/i18n/locales/en/damages.json';
 import enReports from '@mizan/i18n/locales/en/reports.json';
 import enDashboard from '@mizan/i18n/locales/en/dashboard.json';
-import enSearch from '@mizan/i18n/locales/en/search.json';
 import enImports from '@mizan/i18n/locales/en/imports.json';
 
 /**
@@ -82,7 +79,6 @@ const resources = {
     damages: ckbDamages,
     reports: ckbReports,
     dashboard: ckbDashboard,
-    search: ckbSearch,
     imports: ckbImports,
   },
   'ar-IQ': {
@@ -102,7 +98,6 @@ const resources = {
     damages: arDamages,
     reports: arReports,
     dashboard: arDashboard,
-    search: arSearch,
     imports: arImports,
   },
   en: {
@@ -122,7 +117,6 @@ const resources = {
     damages: enDamages,
     reports: enReports,
     dashboard: enDashboard,
-    search: enSearch,
     imports: enImports,
   },
 } as const;

@@ -2,6 +2,8 @@ import type { SVGProps } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
+  ChartColumn,
+  LayoutDashboard,
   ArrowRight,
   Building2,
   Check,
@@ -48,6 +50,8 @@ import {
  */
 export type IconName =
   | 'back'
+  | 'dashboard'
+  | 'chart'
   | 'chevron'
   | 'next'
   | 'search'
@@ -94,6 +98,8 @@ export const MIRRORED_ICONS: ReadonlySet<IconName> = new Set<IconName>([
 
 const ICONS: Record<IconName, LucideIcon> = {
   back: ArrowLeft,
+  dashboard: LayoutDashboard,
+  chart: ChartColumn,
   chevron: ChevronRight,
   next: ArrowRight,
   search: Search,

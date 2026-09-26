@@ -7,7 +7,7 @@ import { useApp } from '../lib/store.js';
 import { AppearanceMenus } from './Appearance.js';
 import { apiRequest } from '../lib/api.js';
 
-type NavGroup = 'daily' | 'records' | 'insight' | 'admin';
+type NavGroup = 'home' | 'trade' | 'records' | 'insight' | 'admin';
 
 interface Destination {
   to: string;
@@ -25,27 +25,35 @@ function initialOf(name: string): string {
 }
 
 /** The order the sidebar shows the groups in, with the label above each. */
-const GROUPS: { key: NavGroup; labelKey: string }[] = [
-  { key: 'daily', labelKey: 'common:nav_daily' },
+const GROUPS: { key: NavGroup; labelKey: string | null }[] = [
+  // Today stands on its own at the top: it is where the day starts, not one record among others.
+  { key: 'home', labelKey: null },
+  { key: 'trade', labelKey: 'common:nav_trade' },
   { key: 'records', labelKey: 'common:nav_records' },
   { key: 'insight', labelKey: 'common:nav_insight' },
   { key: 'admin', labelKey: 'common:nav_admin' },
 ];
 
-/**
- * The bottom tab bar is computed from the permission set (spec 2.6.3): an employee never sees
- * a tab that would refuse them. The first four permitted destinations are shown, then More —
- * the order is the one specification 3.3 gives.
- */
 const DESTINATIONS: Destination[] = [
-  // The phone bar takes the first four of these, in this order, as specification 3.3 fixes it.
+  // The phone bar takes the first four of these, in this order: Today, then the day's two
+  // kinds of document, then materials — the client's order (client review).
   {
-    to: '/orders',
-    labelKey: 'orders:title',
-    icon: 'orders',
-    group: 'daily',
-    permission: 'orders.view',
+    to: '/dashboard',
+    labelKey: 'dashboard:title',
+    icon: 'dashboard',
+    group: 'home',
+    permission: 'dashboard.view',
   },
+  // What we sell and what we buy, side by side.
+  { to: '/orders', labelKey: 'orders:title', icon: 'orders', group: 'trade', permission: 'orders.view' },
+  {
+    to: '/purchases',
+    labelKey: 'purchases:title',
+    icon: 'purchases',
+    group: 'trade',
+    permission: 'purchases.view',
+  },
+  // The things and the accounts those documents are about.
   {
     to: '/materials',
     labelKey: 'glossary:materials',
@@ -53,60 +61,15 @@ const DESTINATIONS: Destination[] = [
     group: 'records',
     permission: 'materials.view',
   },
-  {
-    to: '/customers',
-    labelKey: 'customers:title',
-    icon: 'customers',
-    group: 'records',
-    permission: 'customers.view',
-  },
-  {
-    to: '/damages',
-    labelKey: 'damages:tab_label',
-    icon: 'warning',
-    group: 'daily',
-    permission: 'damages.view',
-  },
-  {
-    to: '/purchases',
-    labelKey: 'purchases:title',
-    icon: 'purchases',
-    group: 'daily',
-    permission: 'purchases.view',
-  },
-  {
-    to: '/reports',
-    labelKey: 'reports:title',
-    icon: 'orders',
-    group: 'insight',
-    permission: 'reports.view',
-  },
-  {
-    to: '/dashboard',
-    labelKey: 'dashboard:title',
-    icon: 'materials',
-    group: 'daily',
-    permission: 'dashboard.view',
-  },
-  { to: '/search', labelKey: 'search:title', icon: 'search', group: 'insight' },
+  { to: '/damages', labelKey: 'damages:tab_label', icon: 'warning', group: 'records', permission: 'damages.view' },
+  { to: '/customers', labelKey: 'customers:title', icon: 'companies', group: 'records', permission: 'customers.view' },
+  // Looking back over all of it.
+  { to: '/reports', labelKey: 'reports:title', icon: 'chart', group: 'insight', permission: 'reports.view' },
+  { to: '/history', labelKey: 'glossary:history', icon: 'history', group: 'insight', permission: 'history.view' },
   { to: '/users', labelKey: 'glossary:users', icon: 'users', group: 'admin', adminOnly: true },
-  {
-    to: '/history',
-    labelKey: 'glossary:history',
-    icon: 'history',
-    group: 'insight',
-    permission: 'history.view',
-  },
   { to: '/settings', labelKey: 'glossary:settings', icon: 'settings', group: 'admin' },
 ];
 
-/**
- * Four tabs fit a 360 px phone; the rest live behind "More" (spec 3.3).
- *
- * On a desktop there is no such shortage, so every destination is in the sidebar and "More"
- * is not rendered at all — the same list, laid out by the stylesheet rather than by a second
- * component, so a destination can never appear in one and be forgotten in the other.
- */
 const VISIBLE_TABS = 4;
 
 /**
@@ -241,7 +204,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             if (items.length === 0) return null;
             return (
               <div key={group.key} className="mz-sidebar__group">
-                <p className="mz-sidebar__label">{t(group.labelKey)}</p>
+                {group.labelKey ? <p className="mz-sidebar__label">{t(group.labelKey)}</p> : null}
                 {items.map((destination) => (
                   <NavLink
                     key={destination.to}

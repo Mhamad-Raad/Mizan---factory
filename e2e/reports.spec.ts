@@ -129,36 +129,6 @@ test.describe('the reports and History', () => {
     await shot(page, 'dashboard-ckb-light.png');
   });
 
-  test('search finds a customer by name and an order by its number', async ({ page }) => {
-    await withPreferences(page, { lang: 'en', theme: 'light' });
-    await signIn(page, ACCOUNTANT);
-
-    await page.goto('/search');
-    await page.locator('input[type="search"]').fill('kawa');
-    await expect(page.getByText('Kawa Trading')).toBeVisible();
-    await shot(page, 'search-en-light.png');
-
-    await page.locator('input[type="search"]').fill('1001');
-    await expect(page.getByText('#1001').first()).toBeVisible();
-  });
-
-  test('search asks the server once for a typed word, not once per letter', async ({ page }) => {
-    await withPreferences(page, { lang: 'en', theme: 'light' });
-    await signIn(page, ACCOUNTANT);
-
-    const asked: string[] = [];
-    page.on('request', (request) => {
-      if (request.url().includes('/api/v1/search')) asked.push(request.url());
-    });
-
-    await page.goto('/search');
-    await page.locator('input[type="search"]').pressSequentially('kawa', { delay: 40 });
-    await expect(page.getByText('Kawa Trading')).toBeVisible();
-    // Four letters typed: the field holds the request until the typing stops (NFR-03). Two is
-    // the allowance for a run where the delay between keystrokes exceeds the debounce.
-    expect(asked.length, asked.join('\n')).toBeLessThanOrEqual(2);
-  });
-
   test('the History diff arrow mirrors in Kurdish, so it points at the new value', async ({ page }) => {
     await withPreferences(page, { lang: 'ckb-IQ', theme: 'light' });
     await signIn(page, ADMIN);

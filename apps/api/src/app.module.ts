@@ -44,7 +44,6 @@ import { ReportsController } from './reports/reports.controller.js';
 import { ReportsRepository } from './reports/reports.repository.js';
 import { ReportsService } from './reports/reports.service.js';
 import { DashboardController } from './dashboard/dashboard.controller.js';
-import { SearchController } from './search/search.controller.js';
 import { PeriodService } from './settings/period.service.js';
 import { StockService } from './stock/stock.service.js';
 import { SettingsController } from './settings/settings.controller.js';
@@ -73,7 +72,6 @@ import { UsersService } from './users/users.service.js';
     DamagesController,
     ReportsController,
     DashboardController,
-    SearchController,
     ImportsController,
     HealthController,
   ],

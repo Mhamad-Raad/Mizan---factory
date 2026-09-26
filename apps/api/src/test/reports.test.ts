@@ -715,30 +715,6 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       expect(tile.balance).toBeUndefined();
     });
 
-    it('finds a name typed in the other script, and a document by its number', async () => {
-      const seeded = await seedActivity();
-
-      // "كاوا" typed with Arabic kaf finds "Kawa" — the same normalisation the pickers use.
-      const byName = await as(ctx.http, admin).get('/api/v1/search?q=kawa').expect(200);
-      expect(byName.body.hits.some((hit: { kind: string; title: string }) => hit.title === 'Kawa Trading')).toBe(true);
-
-      const byNumber = await as(ctx.http, admin)
-        .get(`/api/v1/search?q=${seeded.kawaOrder.number}`)
-        .expect(200);
-      expect(byNumber.body.hits.some((hit: { kind: string }) => hit.kind === 'order')).toBe(true);
-    });
-
-    it('leaves out the sections the caller may not see', async () => {
-      await seedActivity();
-      const plain = await seedUser({ username: 'shilan', permissions: ['materials.view'] });
-      const session = await signIn(ctx.http, plain);
-
-      const hits = await as(ctx.http, session).get('/api/v1/search?q=copper').expect(200);
-      expect(hits.body.hits.every((hit: { kind: string }) => hit.kind === 'item')).toBe(true);
-
-      const noCustomers = await as(ctx.http, session).get('/api/v1/search?q=kawa').expect(200);
-      expect(noCustomers.body.hits).toEqual([]);
-    });
   });
 });
 

@@ -70,17 +70,18 @@ const HistoryPage = chunk(() => import('./pages/HistoryPage.js'), 'HistoryPage')
 const ReportsPage = chunk(() => import('./pages/ReportsPage.js'), 'ReportsPage');
 const ReportPage = chunk(() => import('./pages/ReportPage.js'), 'ReportPage');
 const DashboardPage = chunk(() => import('./pages/DashboardPage.js'), 'DashboardPage');
-const SearchPage = chunk(() => import('./pages/SearchPage.js'), 'SearchPage');
 const SettingsPage = chunk(() => import('./pages/SettingsPage.js'), 'SettingsPage');
 const FontCheckPage = chunk(() => import('./pages/FontCheckPage.js'), 'FontCheckPage');
 const ImportPage = chunk(() => import('./pages/ImportPage.js'), 'ImportPage');
 
 /**
  * Where a user lands after signing in: the first tab they may open, in the order the bottom
- * bar shows them (spec 2.10.1, 2.6.3). An admin holds every key, so they land on Orders.
+ * bar shows them (spec 2.10.1, 2.6.3). Today comes first; an admin holds every key, so lands there.
  */
 function landingFor(user: SessionUser | null, permissions: string[]): string {
   const may = (key: string) => user?.role === 'admin' || permissions.includes(key);
+  // Today first: the dashboard is where the day starts (client review).
+  if (may('dashboard.view')) return '/dashboard';
   if (may('orders.view')) return '/orders';
   if (may('materials.view')) return '/materials';
   if (may('customers.view')) return '/customers';
@@ -114,6 +115,9 @@ export function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const user = useApp((state) => state.user);
+  // The session's own permissions, set the moment sign-in answers — `me` may still hold the
+  // unauthenticated answer from before it, which sent everybody to Settings (client review).
+  const sessionPermissions = useApp((state) => state.permissions);
   const isLocked = useApp((state) => state.isLocked);
   const setSession = useApp((state) => state.setSession);
   const clearSession = useApp((state) => state.clearSession);
@@ -247,7 +251,6 @@ export function App() {
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/reports/:name" element={<ReportPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/search" element={<SearchPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {/* A test fixture with a URL, deliberately not in the navigation (spec 3.7.1). */}
             <Route path="/font-check" element={<FontCheckPage />} />
@@ -256,7 +259,7 @@ export function App() {
             {/* The home route sends each user to the first page they may open (spec 2.10.1). */}
             <Route
               path="/"
-              element={<Navigate to={landingFor(user, me.data?.permissions ?? [])} replace />}
+              element={<Navigate to={landingFor(user, [...sessionPermissions])} replace />}
             />
             <Route
               path="*"
