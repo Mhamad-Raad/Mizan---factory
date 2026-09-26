@@ -328,7 +328,7 @@ export function OrderDetailPage() {
                         </span>
                         <span className="mz-caption" style={{ display: 'block' }} data-tabular>
                           {line.priced_measure === 'kg'
-                            ? `${formatter.number(line.qty_kg ?? '0', 3)} ${t('common:kg_symbol')}`
+                            ? `${formatter.quantity(line.qty_kg ?? '0')} ${t('common:kg_symbol')}`
                             : formatter.number(line.qty_count ?? 0)}
                           {' × '}
                           {formatter.money(
@@ -593,7 +593,7 @@ export function OrderDetailPage() {
                             </td>
                             <td className="mz-invoice__num" data-tabular>
                               {line.priced_measure === 'kg'
-                                ? `${formatter.number(line.qty_kg ?? '0', 3)} ${t('common:kg_symbol')}`
+                                ? `${formatter.quantity(line.qty_kg ?? '0')} ${t('common:kg_symbol')}`
                                 : formatter.number(line.qty_count ?? 0)}
                             </td>
                             <td className="mz-invoice__num" data-tabular>

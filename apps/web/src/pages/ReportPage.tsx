@@ -297,7 +297,7 @@ export function ReportPage({ name }: { name?: ReportName }) {
                   <div key={field} className="mz-row mz-row--between">
                     <span className="mz-caption">{t(labelKey)}</span>
                     <span data-tabular>
-                      {formatter.number(String(totals[field]), 3)} {t('common:kg_symbol')}
+                      {formatter.quantity(String(totals[field]))} {t('common:kg_symbol')}
                     </span>
                   </div>
                 ),
@@ -385,7 +385,7 @@ export function ReportPage({ name }: { name?: ReportName }) {
                             <div key={field} className="mz-row mz-row--between">
                               <span className="mz-caption">{t(labelKey)}</span>
                               <span data-tabular>
-                                {formatter.number(String(group[field]), 3)} {t('common:kg_symbol')}
+                                {formatter.quantity(String(group[field]))} {t('common:kg_symbol')}
                               </span>
                             </div>
                           ),

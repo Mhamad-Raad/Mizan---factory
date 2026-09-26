@@ -329,7 +329,7 @@ function quantityOf(
   formatter: ReturnType<typeof useFormatter>,
   t: (key: string) => string,
 ): string {
-  const kg = line.qty_kg !== null ? `${formatter.number(line.qty_kg, 3)} ${t('common:kg_symbol')}` : null;
+  const kg = line.qty_kg !== null ? `${formatter.quantity(line.qty_kg)} ${t('common:kg_symbol')}` : null;
   const count = line.qty_count !== null ? `${formatter.number(line.qty_count)} ${t('common:count_symbol')}` : null;
   const [first, second] = line.priced_measure === 'kg' ? [kg, count] : [count, kg];
   return [first, second].filter(Boolean).join(' · ');

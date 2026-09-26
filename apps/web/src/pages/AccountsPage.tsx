@@ -518,7 +518,7 @@ function MaterialsTab({ from, to }: { from: string; to: string }) {
   const quantity = (row: MaterialRow, value: string) =>
     row.pricing_unit === 'per_piece'
       ? `${formatter.number(Number(value))} ${t('common:count_symbol')}`
-      : `${formatter.number(value, 3)} ${t('common:kg_symbol')}`;
+      : `${formatter.quantity(value)} ${t('common:kg_symbol')}`;
 
   const columns: Column<MaterialRow>[] = [
     { header: t('purchases:col_material'), cell: (row) => <strong><bdi>{row.name}</bdi></strong> },

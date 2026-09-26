@@ -392,7 +392,7 @@ function OrderForm({
           price_from_month:
             item.sale && item.sale.source === 'fallback' ? item.sale.from_month : null,
           stock_hint: item.stock.priced_complete
-            ? `${formatter.number(item.stock.priced_quantity, item.stock.priced_measure === 'kg' ? 3 : 0)} ${t(
+            ? `${formatter.quantity(item.stock.priced_quantity)} ${t(
                 `common:${item.stock.priced_measure}_symbol`,
               )}`
             : null,
@@ -889,10 +889,9 @@ function LotHint({ itemId, pricedMeasure }: { itemId: string; pricedMeasure: Mea
   const live = (lots.data?.items ?? []).filter((lot) => Number(lot.remaining) > 0);
   if (live.length === 0) return null;
 
-  const decimals = pricedMeasure === 'kg' ? 3 : 0;
   const parts = live.map((lot) => {
     // Pieces are whole: the API's "125.000" reads "125" (a string keeps its own decimals).
-    const left = pricedMeasure === 'kg' ? formatter.number(lot.remaining, decimals) : formatter.number(Number(lot.remaining));
+    const left = formatter.quantity(lot.remaining);
     if (!maySeeCost || lot.unit_cost_iqd === undefined || lot.unit_cost_usd_cents === undefined) return left;
     const unit = lot.entered_currency === 'IQD' ? lot.unit_cost_iqd : lot.unit_cost_usd_cents;
     return t('materials:lot_at', { quantity: left, price: formatter.money(unit, lot.entered_currency) });

@@ -127,7 +127,7 @@ function DamageForm({ initial }: { initial: FormState }) {
 
   const pricedMeasure: Measure = item.data ? item.data.stock.priced_measure : form.priced_measure;
   const stockHint = item.data?.stock.priced_complete
-    ? `${formatter.number(item.data.stock.priced_quantity, item.data.stock.priced_measure === 'kg' ? 3 : 0)} ${t(
+    ? `${formatter.quantity(item.data.stock.priced_quantity)} ${t(
         `common:${item.data.stock.priced_measure}_symbol`,
       )}`
     : form.stock_hint;
@@ -177,7 +177,7 @@ function DamageForm({ initial }: { initial: FormState }) {
   const stockSentence = t('damages:stock_will_fall', {
     quantity:
       pricedMeasure === 'kg'
-        ? `${formatter.number(Number(form.qty_kg ?? 0), 3)} ${t('common:kg_symbol')}`
+        ? `${formatter.quantity(Number(form.qty_kg ?? 0))} ${t('common:kg_symbol')}`
         : `${formatter.number(form.qty_count ?? 0)} ${t('common:count_symbol')}`,
   });
 
@@ -336,7 +336,7 @@ function DamageForm({ initial }: { initial: FormState }) {
               id: material.id,
               title: material.name,
               subtitle: material.stock.priced_complete
-                ? `${formatter.number(material.stock.priced_quantity, material.stock.priced_measure === 'kg' ? 3 : 0)} ${t(
+                ? `${formatter.quantity(material.stock.priced_quantity)} ${t(
                     `common:${material.stock.priced_measure}_symbol`,
                   )}`
                 : undefined,
