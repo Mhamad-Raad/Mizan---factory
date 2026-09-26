@@ -87,5 +87,12 @@
   "status_any": "أي حالة",
   "tile_recorded": "المسجَّل",
   "tile_value": "كم كلّفنا",
-  "tile_owed": "مستحق على الشركات"
+  "tile_owed": "مستحق على الشركات",
+  "what_broke": "ما الذي انكسر",
+  "what_broke_hint": "المادة، والكمية، ومتى.",
+  "stock_now": "في المخزون الآن",
+  "stock_after": "بعد الحفظ",
+  "effect_us": "خسارة علينا بكلفة المخزون",
+  "effect_company": "ستكون {{company}} مدينة لنا بكلفة المخزون",
+  "details": "التفاصيل"
 }

@@ -87,5 +87,12 @@
   "status_any": "Any status",
   "tile_recorded": "Recorded",
   "tile_value": "What it cost us",
-  "tile_owed": "Owed by companies"
+  "tile_owed": "Owed by companies",
+  "what_broke": "What broke",
+  "what_broke_hint": "The material, how much of it, and when.",
+  "stock_now": "In stock now",
+  "stock_after": "After saving",
+  "effect_us": "A loss for us, at what the stock cost",
+  "effect_company": "{{company}} will owe us what the stock cost",
+  "details": "Details"
 }

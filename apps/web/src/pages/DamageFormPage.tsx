@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, DateField, TextField } from '@mizan/ui';
-import type { Measure } from '@mizan/money';
+import { Button, Card, DateField, Icon, StickyFooter, TextField } from '@mizan/ui';
+import { Decimal, roundHalfAwayFromZero } from '@mizan/money';
+import type { Currency, Measure } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { DraftBanner } from '../components/DraftBanner.js';
@@ -90,6 +91,51 @@ export function DamageFormPage({ mode }: { mode: 'create' | 'edit' }) {
 
 const WHO: FormState['attribution'][] = ['us', 'company'];
 
+/** One buy of the material, as `/items/:id/lots` returns it (D-062); costs absent without the flag. */
+interface LotRow {
+  remaining: string;
+  unit_cost_iqd?: number;
+  unit_cost_usd_cents?: number;
+  entered_currency: Currency;
+}
+
+/**
+ * What a quantity of broken goods costs us, taken from the buys oldest first — the same order the
+ * save takes them in — in both currencies, from each buy's own stored pair. Past the last buy the
+ * latest buy's price stands in, as it does on the server. A preview only: the saved record is
+ * valued by the server.
+ */
+function costOf(
+  lots: readonly LotRow[],
+  quantity: string,
+): { amount_iqd: number; amount_usd_cents: number; currency: Currency } | null {
+  const priced = lots.filter((lot) => lot.unit_cost_iqd !== undefined && lot.unit_cost_usd_cents !== undefined);
+  if (priced.length === 0 || !(Number(quantity) > 0)) return null;
+  // Decimal all the way, rounded once per currency at the end: money never passes through a
+  // float, even in a preview (rule 1).
+  let left = new Decimal(quantity);
+  let iqd = new Decimal(0);
+  let usd = new Decimal(0);
+  for (const lot of priced) {
+    if (left.lte(0)) break;
+    const take = Decimal.min(new Decimal(lot.remaining), left);
+    if (take.lte(0)) continue;
+    iqd = iqd.plus(take.times(lot.unit_cost_iqd ?? 0));
+    usd = usd.plus(take.times(lot.unit_cost_usd_cents ?? 0));
+    left = left.minus(take);
+  }
+  const latest = priced[priced.length - 1] as LotRow;
+  if (left.gt(0)) {
+    iqd = iqd.plus(left.times(latest.unit_cost_iqd ?? 0));
+    usd = usd.plus(left.times(latest.unit_cost_usd_cents ?? 0));
+  }
+  return {
+    amount_iqd: roundHalfAwayFromZero(iqd),
+    amount_usd_cents: roundHalfAwayFromZero(usd),
+    currency: latest.entered_currency,
+  };
+}
+
 function DamageForm({ initial }: { initial: FormState }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
@@ -110,12 +156,11 @@ function DamageForm({ initial }: { initial: FormState }) {
 
   const [form, setForm] = useState<FormState>(initial);
   const [picking, setPicking] = useState<'material' | 'company' | null>(null);
-  const [showMore, setShowMore] = useState(false);
 
   const directory = useQuery({
     queryKey: ['users', 'directory'],
     queryFn: () => apiRequest<{ id: string; display_name: string; is_active: boolean }[]>('/users/directory'),
-    enabled: isAdmin && showMore,
+    enabled: isAdmin,
   });
 
   /** The material behind an id that came from a link, so its measure and stock are current. */
@@ -173,16 +218,25 @@ function DamageForm({ initial }: { initial: FormState }) {
     Number(quantity) > 0 &&
     (form.attribution !== 'company' || Boolean(form.company_id));
 
+  /** What the broken goods cost us: taken from the buys oldest first, as the save will (D-062). */
+  const lots = useQuery({
+    queryKey: ['items', form.item_id, 'lots'],
+    queryFn: () => apiRequest<{ items: LotRow[] }>(`/items/${form.item_id}/lots`),
+    enabled: Boolean(form.item_id) && maySeeBought,
+  });
+  const estimate = maySeeBought && quantity !== null ? costOf(lots.data?.items ?? [], String(quantity)) : null;
+
+  const unit = t(pricedMeasure === 'kg' ? 'common:kg_symbol' : 'common:count_symbol');
+  const typed = pricedMeasure === 'kg' ? Number(form.qty_kg ?? 0) : Number(form.qty_count ?? 0);
+  const inStock = item.data?.stock.priced_complete ? Number(item.data.stock.priced_quantity) : null;
+
   // Whoever did it, the goods leave stock (FR-804); the sentence says how much before the save.
   const stockSentence = t('damages:stock_will_fall', {
-    quantity:
-      pricedMeasure === 'kg'
-        ? `${formatter.quantity(Number(form.qty_kg ?? 0))} ${t('common:kg_symbol')}`
-        : `${formatter.number(form.qty_count ?? 0)} ${t('common:count_symbol')}`,
+    quantity: `${formatter.quantity(typed)} ${unit}`,
   });
 
   return (
-    <div className="mz-stack">
+    <div className="mz-stack mz-form-page mz-damage-form">
       {draftFound ? (
         <DraftBanner
           savedAt={draftFound.saved_at}
@@ -197,85 +251,168 @@ function DamageForm({ initial }: { initial: FormState }) {
         />
       ) : null}
 
+      {/* 1 — What broke: the material, how much and when, with stock before and after. */}
       <Card>
-        <span className="mz-field__label">{t('glossary:material')}</span>
-        <Button variant="secondary" block onClick={() => setPicking('material')}>
-          {item.data?.name ?? form.item_name ?? t('damages:pick_material')}
-        </Button>
-        {stockHint ? <span className="mz-caption">{t('orders:stock_hint', { quantity: stockHint })}</span> : null}
+        <div className="mz-stack">
+          <div>
+            <h2 className="mz-heading">{t('damages:what_broke')}</h2>
+            <p className="mz-muted">{t('damages:what_broke_hint')}</p>
+          </div>
+          <div className="mz-form-grid">
+            <div className="mz-form-grid__wide mz-field">
+              <span className="mz-field__label">{t('glossary:material')}</span>
+              <button type="button" className="mz-picker-field" onClick={() => setPicking('material')}>
+                <Icon name="materials" size={18} />
+                <span className="mz-picker-field__value">
+                  {item.data?.name ?? form.item_name ? (
+                    <bdi>{item.data?.name ?? form.item_name}</bdi>
+                  ) : (
+                    <span className="mz-muted">{t('damages:pick_material')}</span>
+                  )}
+                </span>
+                <Icon name="chevron" size={16} />
+              </button>
+              {/* The stock panel below says it better; the hint is for when it cannot be drawn. */}
+              {stockHint && inStock === null ? (
+                <span className="mz-field__hint">{t('orders:stock_hint', { quantity: stockHint })}</span>
+              ) : null}
+            </div>
+            <div className="mz-form-grid__wide">
+              <span className="mz-field__label">{t('damages:quantity')}</span>
+              <QuantityInput
+                priced_measure={pricedMeasure}
+                value={{ qty_count: form.qty_count, qty_kg: form.qty_kg }}
+                onChange={(value) => setForm((current) => ({ ...current, ...value }))}
+                error={
+                  error?.fieldError('qty_kg') || error?.fieldError('qty_count') ? t('errors:field.required') : undefined
+                }
+              />
+            </div>
+            <DateField
+              label={t('damages:damage_date')}
+              value={form.damage_date}
+              max={formatter.today()}
+              onChange={(event) => setForm((current) => ({ ...current, damage_date: event.target.value }))}
+            />
+            {/* Stock now and after the save, side by side with the date on a desktop. */}
+            {inStock !== null ? (
+              <div className="mz-damage-stock" aria-live="polite">
+                <span className="mz-damage-stock__cell">
+                  <span className="mz-caption">{t('damages:stock_now')}</span>
+                  <strong data-tabular>
+                    {formatter.quantity(inStock)} {unit}
+                  </strong>
+                </span>
+                <Icon name="next" size={16} />
+                <span className="mz-damage-stock__cell">
+                  <span className="mz-caption">{t('damages:stock_after')}</span>
+                  <strong data-tabular className={inStock - typed < 0 ? 'mz-owed' : undefined}>
+                    {formatter.quantity(inStock - typed)} {unit}
+                  </strong>
+                </span>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </Card>
 
-      <h2 className="mz-heading">{t('damages:quantity')}</h2>
-      <QuantityInput
-        priced_measure={pricedMeasure}
-        value={{ qty_count: form.qty_count, qty_kg: form.qty_kg }}
-        onChange={(value) => setForm((current) => ({ ...current, ...value }))}
-        error={error?.fieldError('qty_kg') || error?.fieldError('qty_count') ? t('errors:field.required') : undefined}
-      />
+      {/* 2 — Who broke it, and what that means for the money. */}
+      <Card>
+        <div className="mz-stack">
+          <h2 className="mz-heading">{t('damages:who_did_it')}</h2>
+          <div className="mz-damage-who" role="radiogroup" aria-label={t('damages:who_did_it')}>
+            {WHO.map((value) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={form.attribution === value}
+                className={`mz-damage-who__option${form.attribution === value ? ' mz-damage-who__option--on' : ''}`}
+                onClick={() =>
+                  setForm((current) => ({
+                    ...current,
+                    attribution: value,
+                    company_id: value === 'company' ? current.company_id : null,
+                    company_name: value === 'company' ? current.company_name : null,
+                  }))
+                }
+              >
+                <span className="mz-damage-who__icon" aria-hidden="true">
+                  <Icon name={value === 'us' ? 'warning' : 'companies'} size={20} />
+                </span>
+                <span className="mz-damage-who__body">
+                  <span className="mz-damage-who__title">{t(`damages:who.${value}`)}</span>
+                  <span className="mz-caption">{t(`damages:who_${value}_hint`)}</span>
+                </span>
+                {form.attribution === value ? (
+                  <span className="mz-option__check" aria-hidden="true">
+                    <Icon name="check" size={14} />
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
 
-      <DateField
-        label={t('damages:damage_date')}
-        value={form.damage_date}
-        max={formatter.today()}
-        onChange={(event) => setForm((current) => ({ ...current, damage_date: event.target.value }))}
-      />
+          {form.attribution === 'company' ? (
+            <div className="mz-field">
+              <span className="mz-field__label">{t('damages:pick_owing_company')}</span>
+              <button type="button" className="mz-picker-field" onClick={() => setPicking('company')}>
+                <Icon name="companies" size={18} />
+                <span className="mz-picker-field__value">
+                  {form.company_name ? (
+                    <bdi>{form.company_name}</bdi>
+                  ) : (
+                    <span className="mz-muted">{t('damages:pick_owing_company')}</span>
+                  )}
+                </span>
+                <Icon name="chevron" size={16} />
+              </button>
+            </div>
+          ) : null}
 
-      {/* Who did it: two answers, and what each one means for the money. */}
-      <h2 className="mz-heading">{t('damages:who_did_it')}</h2>
-      <div className="mz-tiles">
-        {WHO.map((value) => (
-          <button
-            key={value}
-            type="button"
-            className={`mz-tile${form.attribution === value ? ' mz-tile--selected' : ''}`}
-            aria-pressed={form.attribution === value}
-            onClick={() =>
-              setForm((current) => ({
-                ...current,
-                attribution: value,
-                company_id: value === 'company' ? current.company_id : null,
-                company_name: value === 'company' ? current.company_name : null,
-              }))
-            }
-          >
-            <span className="mz-stack" style={{ gap: '2px' }}>
-              <span>{t(`damages:who.${value}`)}</span>
-              <span className="mz-caption">{t(`damages:who_${value}_hint`)}</span>
-            </span>
-          </button>
-        ))}
-      </div>
+          {/* What the save will mean, in money, before it is made. */}
+          {estimate ? (
+            <div className="mz-damage-effect">
+              <span className="mz-caption">
+                {form.attribution === 'company'
+                  ? t('damages:effect_company', { company: form.company_name ?? t('damages:who.company') })
+                  : t('damages:effect_us')}
+              </span>
+              <DualAmount
+                amount_iqd={estimate.amount_iqd}
+                amount_usd_cents={estimate.amount_usd_cents}
+                primary={estimate.currency}
+                kind="derived"
+              />
+            </div>
+          ) : null}
+        </div>
+      </Card>
 
-      {form.attribution === 'company' ? (
-        <Card>
-          <span className="mz-field__label">{t('damages:pick_owing_company')}</span>
-          <Button variant="secondary" block onClick={() => setPicking('company')}>
-            <bdi>{form.company_name ?? t('damages:pick_owing_company')}</bdi>
-          </Button>
-        </Card>
-      ) : null}
-
-      <TextField
-        label={t('damages:reason')}
-        hint={t('damages:reason_hint')}
-        value={form.reason}
-        onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
-        maxLength={2000}
-      />
-
-      <Button variant="ghost" onClick={() => setShowMore(!showMore)} aria-expanded={showMore}>
-        {t('orders:more')}
-      </Button>
-
-      {showMore ? (
-        <Card>
-          <div className="mz-stack">
-            <TextField
-              label={t('glossary:notes')}
-              value={form.notes}
-              onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-              maxLength={2000}
-            />
+      {/* 3 — The words: why it happened, and anything else worth keeping. */}
+      <Card>
+        <div className="mz-stack">
+          <h2 className="mz-heading">{t('damages:details')}</h2>
+          <div className="mz-form-grid">
+            <div className="mz-form-grid__wide">
+              <TextField
+                label={t('damages:reason')}
+                hint={t('damages:reason_hint')}
+                value={form.reason}
+                onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
+                maxLength={2000}
+              />
+            </div>
+            {/* Beside "Done by" for an admin; the full width for everyone else. */}
+            <div className={isAdmin ? undefined : 'mz-form-grid__wide'}>
+              <TextField
+                label={t('glossary:notes')}
+                hint={t('common:optional')}
+                value={form.notes}
+                onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+                maxLength={2000}
+              />
+            </div>
             {isAdmin ? (
               <label className="mz-field">
                 <span className="mz-field__label">{t('glossary:done_by')}</span>
@@ -289,15 +426,15 @@ function DamageForm({ initial }: { initial: FormState }) {
                     .filter((user) => user.is_active)
                     .map((user) => (
                       <option key={user.id} value={user.id}>
-                        <bdi>{user.display_name}</bdi>
+                        {user.display_name}
                       </option>
                     ))}
                 </select>
               </label>
             ) : null}
           </div>
-        </Card>
-      ) : null}
+        </div>
+      </Card>
 
       {error && !error.fields.length ? (
         <div className="mz-warning" role="alert">
@@ -305,22 +442,20 @@ function DamageForm({ initial }: { initial: FormState }) {
         </div>
       ) : null}
 
-      {/* The stock-effect sentence sits with the save button, where the decision is made. */}
-      <div className="mz-sticky-footer">
-        <div className="mz-totals">
-          <span>{stockSentence}</span>
-          {maySeeBought && item.data?.bought && quantity !== null ? (
-            <DualAmount
-              amount_iqd={Math.round(item.data.bought.amount_iqd * Number(quantity))}
-              amount_usd_cents={Math.round(item.data.bought.amount_usd_cents * Number(quantity))}
-              kind="derived"
-            />
-          ) : null}
-        </div>
-        <Button block loading={save.isPending} disabled={!canSave} onClick={() => save.mutate()}>
+      {/* The stock-effect sentence sits with the save button, where the decision is made; on a
+          phone the bar stays in the thumb zone, on a desktop it closes the form, Save at the end. */}
+      <StickyFooter>
+        <span className="mz-damage-form__summary">{quantity !== null && typed > 0 ? stockSentence : null}</span>
+        <Button type="button" block loading={save.isPending} disabled={!canSave} onClick={() => save.mutate()}>
           {t('damages:record')}
         </Button>
-      </div>
+        {/* A phone has the app bar's Back; the footer there stays one button tall. */}
+        <span className="mz-damage-form__cancel">
+          <Button type="button" variant="ghost" block onClick={() => navigate('/damages')}>
+            {t('glossary:cancel')}
+          </Button>
+        </span>
+      </StickyFooter>
 
       {picking === 'material' ? (
         <PickerSheet
@@ -414,31 +549,73 @@ function DamageTextsForm({ damage }: { damage: DamageDetail }) {
   const error = save.error instanceof ApiError ? save.error : null;
 
   return (
-    <div className="mz-stack">
+    <div className="mz-stack mz-form-page mz-damage-form">
+      {/* What was recorded — read-only: it has taken its stock and, for a company, its debt. */}
       <Card>
-        <h2 className="mz-heading">
-          <bdi>{damage.item_name}</bdi>
-        </h2>
-        <span className="mz-caption" style={{ display: 'block' }} data-tabular>
-          {quantityOf(damage, formatter, t)} · {formatter.date(damage.damage_date)} ·{' '}
-          {damage.attribution === 'company' ? <bdi>{damage.company_name}</bdi> : t('damages:who.us')}
-        </span>
-        <p className="mz-caption">{t('damages:edit_texts_only')}</p>
+        <div className="mz-stack">
+          <div>
+            <h2 className="mz-heading">{t('damages:number', { number: formatter.number(damage.number) })}</h2>
+            <p className="mz-muted">{t('damages:edit_texts_only')}</p>
+          </div>
+          <dl className="mz-damage-facts">
+            <div>
+              <dt className="mz-caption">{t('glossary:material')}</dt>
+              <dd>
+                <bdi>{damage.item_name}</bdi>
+              </dd>
+            </div>
+            <div>
+              <dt className="mz-caption">{t('damages:quantity')}</dt>
+              <dd data-tabular>{quantityOf(damage, formatter, t)}</dd>
+            </div>
+            <div>
+              <dt className="mz-caption">{t('damages:damage_date')}</dt>
+              <dd data-tabular>{formatter.date(damage.damage_date)}</dd>
+            </div>
+            <div>
+              <dt className="mz-caption">{t('damages:who_did_it')}</dt>
+              <dd>{damage.attribution === 'company' ? <bdi>{damage.company_name}</bdi> : t('damages:who.us')}</dd>
+            </div>
+            {damage.cost && damage.cost.est_value_iqd !== null ? (
+              <div>
+                <dt className="mz-caption">{t('damages:value_column')}</dt>
+                <dd>
+                  <DualAmount
+                    amount_iqd={damage.cost.est_value_iqd}
+                    amount_usd_cents={damage.cost.est_value_usd_cents ?? 0}
+                  />
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
       </Card>
 
-      <TextField
-        label={t('damages:reason')}
-        hint={t('damages:reason_hint')}
-        value={reason}
-        onChange={(event) => setReason(event.target.value)}
-        maxLength={2000}
-      />
-      <TextField
-        label={t('glossary:notes')}
-        value={notes}
-        onChange={(event) => setNotes(event.target.value)}
-        maxLength={2000}
-      />
+      <Card>
+        <div className="mz-stack">
+          <h2 className="mz-heading">{t('damages:details')}</h2>
+          <div className="mz-form-grid">
+            <div className="mz-form-grid__wide">
+              <TextField
+                label={t('damages:reason')}
+                hint={t('damages:reason_hint')}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                maxLength={2000}
+              />
+            </div>
+            <div className="mz-form-grid__wide">
+              <TextField
+                label={t('glossary:notes')}
+                hint={t('common:optional')}
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                maxLength={2000}
+              />
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {error ? (
         <div className="mz-warning" role="alert">
@@ -446,11 +623,16 @@ function DamageTextsForm({ damage }: { damage: DamageDetail }) {
         </div>
       ) : null}
 
-      <div className="mz-sticky-footer">
-        <Button block loading={save.isPending} onClick={() => save.mutate()}>
+      <StickyFooter>
+        <Button type="button" block loading={save.isPending} onClick={() => save.mutate()}>
           {t('common:save')}
         </Button>
-      </div>
+        <span className="mz-damage-form__cancel">
+          <Button type="button" variant="ghost" block onClick={() => navigate(`/damages/${damage.id}`)}>
+            {t('glossary:cancel')}
+          </Button>
+        </span>
+      </StickyFooter>
     </div>
   );
 }

@@ -67,7 +67,6 @@ const NewUserPage = chunk(() => import('./pages/NewUserPage.js'), 'NewUserPage')
 const UserDetailPage = chunk(() => import('./pages/UserDetailPage.js'), 'UserDetailPage');
 const HistoryPage = chunk(() => import('./pages/HistoryPage.js'), 'HistoryPage');
 const ReportsPage = chunk(() => import('./pages/ReportsPage.js'), 'ReportsPage');
-const ReportPage = chunk(() => import('./pages/ReportPage.js'), 'ReportPage');
 const DashboardPage = chunk(() => import('./pages/DashboardPage.js'), 'DashboardPage');
 const SettingsPage = chunk(() => import('./pages/SettingsPage.js'), 'SettingsPage');
 const FontCheckPage = chunk(() => import('./pages/FontCheckPage.js'), 'FontCheckPage');
@@ -251,7 +250,8 @@ export function App() {
             <Route path="/users/:id" element={<UserDetailPage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/reports/:name" element={<ReportPage />} />
+            {/* One Reports page with a tab per report; an old link to one report opens its tab. */}
+            <Route path="/reports/:name" element={<ReportRedirect />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {/* A test fixture with a URL, deliberately not in the navigation (spec 3.7.1). */}
@@ -286,4 +286,10 @@ export function App() {
 function CompanyRedirect() {
   const { id = '' } = useParams();
   return <Navigate to={`/customers/${id}`} replace />;
+}
+
+/** `/reports/sales` from before the tabs: the same report, as a tab of the one Reports page. */
+function ReportRedirect() {
+  const { name = 'sales' } = useParams();
+  return <Navigate to={`/reports?tab=${name}`} replace />;
 }

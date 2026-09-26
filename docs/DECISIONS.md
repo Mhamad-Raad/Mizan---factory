@@ -962,3 +962,27 @@ one toolbar (search, period, who broke it, owed or paid back, who recorded it, v
 desktop, cards on a phone. The list API gained `compensation=owed|paid` and the owed total; the
 Today tile that counted returns (which the D-062 flow never creates) now counts broken goods a
 company still owes for.
+
+## D-064 · 2026-09-27 · client review · One Reports page, with Excel
+
+The client: "reports page … basically tabs … show case data and be able to create excel sheets …
+information about everything in this system and can filter with dates".
+
+- **One page, one period, a tab per report:** Sales, Profit, Bought, Stock, Companies owe us,
+  Broken goods, Expenses, Employee activity, Daily cash-up — each offered only to those whose
+  flags the API would accept. The period (presets or two dates) and the tab live in the address;
+  `/reports/<name>` from before still opens that tab. Payables left with the buying side (D-062).
+- **Each tab:** its totals as tiles (the whole period, never the page), a chart of the headline
+  figure when grouped by day or month (a period of two months or less opens by day), the table on
+  a desktop and cards on a phone, paged; names lead to the company, the material, or the
+  employee's History.
+- **Excel:** "Download Excel" writes the tab — every group, fetched a page of 100 at a time — and
+  "Download everything" writes one workbook with a sheet per report. The files are real .xlsx
+  (a small writer over `fflate`, tested and opened with an independent reader): numbers are
+  numbers with formats (whole dinars, dollars with cents, kilograms to the gram), dinars and
+  dollars in their own columns, a frozen header with filters, a bold totals row, and a Kurdish or
+  Arabic workbook opens right to left.
+- **Found on the way:** the Stock report valued stock at the month's price list and showed
+  materials sold by the piece as "0 kg". Stock is now valued at what is left of each buy at its
+  own price — the figure the material page splits by price — and a piece material reads in
+  pieces.

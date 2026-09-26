@@ -11,6 +11,7 @@ import {
   ClipboardList,
   Clock,
   Contact,
+  Download,
   Ellipsis,
   Eye,
   EyeOff,
@@ -50,6 +51,7 @@ import {
  */
 export type IconName =
   | 'back'
+  | 'download'
   | 'dashboard'
   | 'chart'
   | 'chevron'
@@ -135,6 +137,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   filter: Filter,
   print: Printer,
   edit: Pencil,
+  download: Download,
 };
 
 export interface IconProps extends SVGProps<SVGSVGElement> {
