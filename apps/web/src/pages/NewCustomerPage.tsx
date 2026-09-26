@@ -18,8 +18,8 @@ interface Duplicate {
 /**
  * "New company" (FR-501, FR-701, D-054, D-055).
  *
- * One kind of account: a company we sell to and buy from. Its own conversion rate is typed here,
- * on the same form — empty means the system-wide rate — because every order and purchase with it
+ * One kind of account: a company that buys from us (D-062). Its own conversion rate is typed here,
+ * on the same form — empty means the system-wide rate — because every order with it
  * is priced at that rate and keeps it. The duplicate check runs while the name is typed and over
  * *every* account, and offers to open the one that already exists instead.
  */
@@ -151,7 +151,7 @@ export function NewCustomerPage() {
 
       <Card>
         <div className="mz-stack">
-          {/* The company's own conversion rate (2.3.3, D-055): what its orders and purchases are
+          {/* The company's own conversion rate (2.3.3, D-055): what its orders are
               priced at, and what each of them keeps. Empty, the system-wide rate applies. */}
           {maySetRate ? (
             <NumberField

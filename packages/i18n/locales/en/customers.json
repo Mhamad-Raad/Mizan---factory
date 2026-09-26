@@ -56,8 +56,8 @@
   "name": "Name",
   "all_balances": "Any balance",
   "filter_owes": "They owe us",
-  "filter_credit": "We owe them",
-  "in_credit": "We owe them",
+  "filter_credit": "In credit",
+  "in_credit": "In credit — paid ahead",
   "net_balance": "Balance",
   "from_sales": "From sales: they owe us",
   "from_purchases": "From purchases: we owe them",
@@ -72,7 +72,7 @@
   "credit_from_them": "Credit from them",
   "tab_sales_ledger": "Sales account",
   "tab_purchase_ledger": "Purchases account",
-  "statement_sales": "Sales statement",
+  "statement_sales": "Statement",
   "statement_purchases": "Purchases statement",
   "rate_own": "Their own rate",
   "rate_label": "Their rate",
@@ -96,5 +96,6 @@
   "history_status": "Hidden or shown",
   "rate_changed": "Rate {{old}} → {{new}}",
   "rate_set": "Rate set to {{new}}",
-  "entry.damage": "Damage"
+  "entry.damage": "Damage",
+  "tab_account": "Account"
 }

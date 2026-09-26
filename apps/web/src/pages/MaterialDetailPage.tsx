@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -18,6 +19,8 @@ import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { MonthPriceEditor } from '../components/MonthPriceEditor.js';
+import { MoneyInput } from '../components/MoneyInput.js';
+import type { MoneyValue } from '../components/MoneyInput.js';
 import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
 import { useCursorPaging, usePaging } from '../lib/paging.js';
@@ -46,6 +49,23 @@ interface Movement {
   is_live: boolean;
 }
 
+/**
+ * One buy of this material (D-062): how much came in, how much of it is left, and what each unit
+ * cost. The unit cost is a bought price and is absent for whoever may not see bought prices.
+ */
+export interface Lot {
+  purchase_line_id: string;
+  purchase_id: string;
+  purchase_number: number;
+  bought_on: string;
+  quantity: string;
+  remaining: string;
+  unit_cost_iqd?: number;
+  unit_cost_usd_cents?: number;
+  entered_currency: 'IQD' | 'USD';
+  rate_iqd_per_usd: string;
+}
+
 interface ItemDetail extends ItemRow {
   notes: string | null;
   first_bought_on: string | null;
@@ -55,8 +75,9 @@ interface ItemDetail extends ItemRow {
 type Tab = 'overview' | 'prices' | 'movements' | 'history';
 
 /**
- * The material detail page (FR-307): stock and the two derived dates on the header card, then
- * the monthly prices, the movements that produced the stock, and this material's History.
+ * The material detail page (FR-307): stock and the two derived dates on the header card, the
+ * stock split by what we paid for it (D-062) with "Add stock" — which is how stock comes in now —
+ * then the monthly prices, the movements that produced the stock, and this material's History.
  */
 export function MaterialDetailPage() {
   const { id = '' } = useParams();
@@ -64,19 +85,26 @@ export function MaterialDetailPage() {
   const formatter = useFormatter();
   const queryClient = useQueryClient();
   const maySetPrices = usePermission('materials.set_prices');
-  const mayRecordStock = usePermission('materials.opening_stock');
+  // Adding stock is buying it (D-062): the key is the buying one.
+  const mayBuy = usePermission('purchases.create');
   const wide = useIsWide();
 
   const [tab, setTab] = useState<Tab>('overview');
   const [priceSheet, setPriceSheet] = useState<{ month: string; existing?: MonthPrice } | null>(
     null,
   );
-  const [stockSheet, setStockSheet] = useState<'opening' | 'adjustment' | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [showUsedUp, setShowUsedUp] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const item = useQuery({
     queryKey: ['items', id],
     queryFn: () => apiRequest<ItemDetail>(`/items/${id}`),
+  });
+
+  const lots = useQuery({
+    queryKey: ['items', id, 'lots'],
+    queryFn: () => apiRequest<{ items: Lot[] }>(`/items/${id}/lots`),
   });
 
   const rate = useQuery({
@@ -138,20 +166,37 @@ export function MaterialDetailPage() {
     },
   });
 
-  const recordStock = useMutation({
-    mutationFn: (input: { kind: 'opening' | 'adjustment'; body: unknown }) =>
-      apiRequest(
-        `/items/${id}/${input.kind === 'opening' ? 'opening-stock' : 'stock-adjustments'}`,
-        {
-          method: 'POST',
-          body: input.body,
-          idempotencyKey: newIdempotencyKey(),
+  // "Add stock" is a buy of this one material, with no company (D-062).
+  const addStock = useMutation({
+    mutationFn: (input: {
+      purchase_date: string;
+      note: string | null;
+      qty_count: number | null;
+      qty_kg: string | null;
+      unit_price: { amount: number; currency: 'IQD' | 'USD'; other_amount: number | null };
+    }) =>
+      apiRequest('/purchases', {
+        method: 'POST',
+        idempotencyKey: newIdempotencyKey(),
+        body: {
+          company_id: null,
+          purchase_date: input.purchase_date,
+          notes: input.note,
+          lines: [
+            {
+              item_id: id,
+              qty_count: input.qty_count,
+              qty_kg: input.qty_kg,
+              unit_price: input.unit_price,
+            },
+          ],
         },
-      ),
+      }),
     onSuccess: async () => {
-      setStockSheet(null);
-      setToast(t('materials:stock_recorded'));
+      setAdding(false);
+      setToast(t('materials:stock_added'));
       await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await queryClient.invalidateQueries({ queryKey: ['purchases'] });
     },
   });
 
@@ -229,6 +274,21 @@ export function MaterialDetailPage() {
                   {item.data.last_sold_on ? formatter.date(item.data.last_sold_on) : '—'}
                 </span>
               </Card>
+
+              <StockByPrice
+                lots={lots.data?.items ?? []}
+                loading={lots.isPending}
+                pricedMeasure={item.data.stock.priced_measure}
+                showUsedUp={showUsedUp}
+                onToggleUsedUp={() => setShowUsedUp(!showUsedUp)}
+                action={
+                  mayBuy && item.data.is_active ? (
+                    <Button icon="plus" onClick={() => setAdding(true)}>
+                      {t('materials:add_stock')}
+                    </Button>
+                  ) : null
+                }
+              />
 
               <Tabs
                 label={t('common:more')}
@@ -314,17 +374,6 @@ export function MaterialDetailPage() {
                         <bdi>{item.data.notes}</bdi>
                       </p>
                     </Card>
-                  ) : null}
-
-                  {mayRecordStock ? (
-                    <div className="mz-row" style={{ gap: 'var(--space-2)' }}>
-                      <Button variant="secondary" onClick={() => setStockSheet('opening')}>
-                        {t('glossary:opening_stock')}
-                      </Button>
-                      <Button variant="secondary" onClick={() => setStockSheet('adjustment')}>
-                        {t('materials:correct_stock')}
-                      </Button>
-                    </div>
                   ) : null}
 
                   <Can permission="materials.edit">
@@ -591,18 +640,21 @@ export function MaterialDetailPage() {
           />
         ) : null}
 
-        {stockSheet ? (
-          <StockSheet
-            kind={stockSheet}
-            pricedMeasure={item.data?.stock.priced_measure ?? 'count'}
-            saving={recordStock.isPending}
+        {adding && item.data ? (
+          <AddStockSheet
+            pricedMeasure={item.data.stock.priced_measure}
+            rate={currentRate}
+            latest={(lots.data?.items ?? []).at(-1) ?? null}
+            saving={addStock.isPending}
             error={
-              recordStock.error instanceof ApiError
-                ? t(recordStock.error.fields[0]?.message_key ?? 'errors:VALIDATION_FAILED')
+              addStock.error instanceof ApiError
+                ? t(addStock.error.fields[0]?.message_key ?? addStock.error.messageKey, {
+                    defaultValue: t('errors:VALIDATION_FAILED'),
+                  })
                 : undefined
             }
-            onClose={() => setStockSheet(null)}
-            onSave={(body) => recordStock.mutate({ kind: stockSheet, body })}
+            onClose={() => setAdding(false)}
+            onSave={(input) => addStock.mutate(input)}
           />
         ) : null}
 
@@ -624,80 +676,193 @@ function toMoneyBody(value: {
     : { amount: value.amount, currency: value.currency, other_amount: value.other_amount ?? null };
 }
 
-/** Opening stock and corrections: both are movements with a mandatory note (FR-303, FR-308). */
-function StockSheet({
-  kind,
+/**
+ * The stock split by what we paid (D-062): every buy of the material, oldest first — the order a
+ * sale takes them in — with how much of it is left and what each one cost. Used-up buys fold
+ * away behind a toggle; each row opens the buy it describes.
+ */
+function StockByPrice({
+  lots,
+  loading,
   pricedMeasure,
+  showUsedUp,
+  onToggleUsedUp,
+  action,
+}: {
+  lots: readonly Lot[];
+  loading: boolean;
+  pricedMeasure: 'count' | 'kg';
+  showUsedUp: boolean;
+  onToggleUsedUp: () => void;
+  action: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const formatter = useFormatter();
+  const decimals = pricedMeasure === 'kg' ? 3 : 0;
+  const unit = pricedMeasure === 'kg' ? ` ${t('common:kg_symbol')}` : '';
+  const live = lots.filter((lot) => Number(lot.remaining) > 0);
+  const usedUp = lots.length - live.length;
+  const shown = showUsedUp ? lots : live;
+
+  return (
+    <Card>
+      <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <div>
+          <h3 className="mz-heading">{t('materials:stock_by_price')}</h3>
+          <p className="mz-caption">{t('materials:stock_by_price_hint')}</p>
+        </div>
+        {action}
+      </div>
+
+      {loading ? null : shown.length === 0 ? (
+        <p className="mz-muted" style={{ marginBlockStart: 'var(--space-3)' }}>
+          {t('materials:no_stock_bought')}
+        </p>
+      ) : (
+        <ul className="mz-list" style={{ marginBlockStart: 'var(--space-2)' }}>
+          {shown.map((lot) => (
+            <li key={lot.purchase_line_id}>
+              <Link
+                to={`/purchases/${lot.purchase_id}`}
+                className="mz-list__item mz-list__item--interactive mz-list__item--detail"
+              >
+                <span className="mz-list__body">
+                  <span className="mz-list__title" data-tabular>
+                    {t('materials:left_of', {
+                      // Pieces are whole: the API's "125.000" reads "125".
+                      left: `${decimals ? formatter.number(lot.remaining, decimals) : formatter.number(Number(lot.remaining))}${unit}`,
+                      total: `${decimals ? formatter.number(lot.quantity, decimals) : formatter.number(Number(lot.quantity))}${unit}`,
+                    })}
+                  </span>
+                  <span className="mz-caption">
+                    {t('materials:bought_on_date', { date: formatter.date(lot.bought_on) })}
+                    {' · '}
+                    {t('purchases:number', { number: formatter.number(lot.purchase_number) })}
+                  </span>
+                </span>
+                {lot.unit_cost_iqd !== undefined && lot.unit_cost_usd_cents !== undefined ? (
+                  <span className="mz-list__end">
+                    <DualAmount
+                      amount_iqd={lot.unit_cost_iqd}
+                      amount_usd_cents={lot.unit_cost_usd_cents}
+                      primary={lot.entered_currency}
+                    />
+                    <span className="mz-caption" style={{ display: 'block' }}>
+                      {t('materials:each')}
+                    </span>
+                  </span>
+                ) : null}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {usedUp > 0 ? (
+        <Button variant="ghost" onClick={onToggleUsedUp}>
+          {showUsedUp ? t('materials:hide_used_up') : t('materials:show_used_up', { count: formatter.number(usedUp) })}
+        </Button>
+      ) : null}
+    </Card>
+  );
+}
+
+/**
+ * "Add stock" (D-062): a new buy of this material — how much came in, what each one cost, when.
+ * The cost opens with the last buy's, in the currency it was paid in, since a new shipment is
+ * most often at or near the last price; the buy keeps its own price whatever is typed.
+ */
+function AddStockSheet({
+  pricedMeasure,
+  rate,
+  latest,
   saving,
   error,
   onClose,
   onSave,
 }: {
-  kind: 'opening' | 'adjustment';
   pricedMeasure: 'count' | 'kg';
+  rate: string;
+  latest: Lot | null;
   saving: boolean;
   error?: string;
   onClose: () => void;
-  onSave: (body: unknown) => void;
+  onSave: (input: {
+    purchase_date: string;
+    note: string | null;
+    qty_count: number | null;
+    qty_kg: string | null;
+    unit_price: { amount: number; currency: 'IQD' | 'USD'; other_amount: number | null };
+  }) => void;
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const [date, setDate] = useState(formatter.today());
-  const [count, setCount] = useState('');
-  const [kg, setKg] = useState('');
+  const [quantity, setQuantity] = useState('');
   const [note, setNote] = useState('');
+  const [cost, setCost] = useState<MoneyValue>(() => {
+    if (latest && latest.unit_cost_iqd !== undefined && latest.unit_cost_usd_cents !== undefined) {
+      return {
+        amount: latest.entered_currency === 'IQD' ? latest.unit_cost_iqd : latest.unit_cost_usd_cents,
+        currency: latest.entered_currency,
+        other_amount: null,
+      };
+    }
+    return { amount: null, currency: 'IQD', other_amount: null };
+  });
+
+  const valid = quantity.trim() !== '' && Number(quantity) > 0 && cost.amount !== null && cost.amount >= 0;
 
   return (
-    <BottomSheet
-      title={kind === 'opening' ? t('glossary:opening_stock') : t('materials:correct_stock')}
-      open
-      onClose={onClose}
-      closeLabel={t('common:close')}
-    >
+    <BottomSheet title={t('materials:add_stock')} open onClose={onClose} closeLabel={t('common:close')}>
       <div className="mz-stack">
-        <DateField
-          label={t('common:date')}
-          value={date}
-          max={formatter.today()}
-          onChange={(event) => setDate(event.target.value)}
-        />
+        <p className="mz-muted">{t('materials:add_stock_hint')}</p>
         <div className="mz-grid-2">
           <NumberField
-            label={t('glossary:count')}
-            value={count}
-            hint={pricedMeasure === 'count' ? undefined : t('orders:for_information')}
-            onChange={(event) => setCount(event.target.value)}
+            label={t('glossary:quantity')}
+            unit={pricedMeasure === 'kg' ? t('common:kg_symbol') : t('common:count_symbol')}
+            decimals={pricedMeasure === 'kg' ? 3 : 0}
+            value={quantity}
+            onChange={(event) => setQuantity(event.target.value)}
           />
-          <NumberField
-            label={t('glossary:weight_kg')}
-            unit={t('common:kg_symbol')}
-            decimals={3}
-            value={kg}
-            hint={pricedMeasure === 'kg' ? undefined : t('orders:for_information')}
-            onChange={(event) => setKg(event.target.value)}
+          <DateField
+            label={t('materials:bought_on')}
+            value={date}
+            max={formatter.today()}
+            onChange={(event) => setDate(event.target.value)}
           />
         </div>
+        <MoneyInput
+          label={t('materials:cost_per_unit')}
+          value={cost}
+          rate={rate}
+          sourceLabel={t('glossary:system_rate')}
+          onChange={setCost}
+        />
         <TextField
-          label={t('common:note')}
+          label={t('materials:buy_note')}
+          hint={t('common:optional')}
           value={note}
           error={error}
+          maxLength={500}
           onChange={(event) => setNote(event.target.value)}
-          hint={t('materials:note_required')}
         />
         <Button
           block
           loading={saving}
-          disabled={note.trim() === '' || (count.trim() === '' && kg.trim() === '')}
+          disabled={!valid}
           onClick={() =>
+            cost.amount !== null &&
             onSave({
-              entry_date: date,
-              qty_count: count.trim() === '' ? null : Math.round(Number(count)),
-              qty_kg: kg.trim() === '' ? null : kg.trim(),
-              note: note.trim(),
+              purchase_date: date,
+              note: note.trim() === '' ? null : note.trim(),
+              qty_count: pricedMeasure === 'count' ? Math.round(Number(quantity)) : null,
+              qty_kg: pricedMeasure === 'kg' ? quantity.trim() : null,
+              unit_price: { amount: cost.amount, currency: cost.currency, other_amount: cost.other_amount ?? null },
             })
           }
         >
-          {t('common:save')}
+          {t('materials:add_stock')}
         </Button>
       </div>
     </BottomSheet>

@@ -54,7 +54,7 @@ interface Dashboard {
 const LINKS: Record<string, string> = {
   sales_today: '/orders',
   unpaid_orders: '/orders',
-  purchases_today: '/purchases',
+  purchases_today: '/accounts',
   we_owe_companies: '/customers',
   low_stock: '/materials',
   pending_returns: '/damages',

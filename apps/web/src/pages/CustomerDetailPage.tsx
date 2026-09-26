@@ -20,15 +20,14 @@ import { QueryStates } from '../components/states.js';
 import { OrderTable } from '../components/OrderTable.js';
 import { Pager } from '../components/Pager.js';
 import { useCursorPaging, usePaging } from '../lib/paging.js';
-import { statementWindow, useCompanySide } from '../components/party/CompanySide.js';
 import { EditPartySheet, RateHistorySheet, SettlementCurrencySheet } from '../components/party/PartySheets.js';
 import { customerName } from '../lib/customers.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
-import { InactiveChip, balanceToShow, directionOf } from './CustomersPage.js';
+import { DIRECTION_LABELS, InactiveChip, directionOf } from './CustomersPage.js';
 import type { BalanceValue, CustomerRow } from './CustomersPage.js';
 import type { OrderRow } from './OrdersPage.js';
 
-type Tab = 'overview' | 'orders' | 'purchases' | 'sales' | 'account' | 'history';
+type Tab = 'overview' | 'orders' | 'sales' | 'history';
 type EntryKind = 'credit' | 'refund' | 'adjustment' | 'opening';
 type Sheet = 'payment' | 'rate' | 'rate_history' | 'currency' | 'edit' | 'statement';
 
@@ -58,14 +57,13 @@ const HISTORY_ACTIONS: { value: HistoryAction; label: string }[] = [
 ];
 
 /**
- * One business (D-054, FR-503, FR-704): a customer, a company we buy from, or both.
+ * One company (D-054, FR-503): somebody who buys from us (D-062 — buying stock is the factory's
+ * own business, never a company's).
  *
- * The header card carries what anybody looks for first — the one balance, labelled by which way
- * it points, with what each side contributes when there are two; the one rate every amount is
- * filled at; the settlement currency. Below it the actions in three groups — selling, buying,
- * the record itself — and then one tab per thing the business has: its orders, its purchases,
- * each side's account, and History across both. A side the business does not take part in, or
- * the caller may not see, is simply not there.
+ * The header card carries what anybody looks for first — what they owe us, labelled by which way
+ * it points; the one rate every amount is filled at; the settlement currency. Below it the
+ * actions — take a payment, the record itself — and then one tab per thing the company has: its
+ * orders, its account, and its History.
  */
 export function CustomerDetailPage() {
   const { id = '' } = useParams();
@@ -94,10 +92,7 @@ export function CustomerDetailPage() {
     queryFn: () => apiRequest<CustomerRow>(`/customers/${id}`),
   });
   const data = party.data;
-  const walkInRecord = Boolean(data?.is_system);
-  // Every account is a company we sell to and buy from (D-055); the walk-in only buys from us.
   const selling = Boolean(data);
-  const buying = Boolean(data) && !walkInRecord;
   const walkIn = Boolean(data?.is_system);
 
   // Each list on this screen keeps its own page in the address (D-058).
@@ -165,7 +160,6 @@ export function CustomerDetailPage() {
   const inSettlement = (value: BalanceValue | null | undefined) =>
     value ? (settlement === 'IQD' ? value.amount_iqd : value.amount_usd_cents) : 0;
   const owedToUs = inSettlement(data?.balance);
-  const weOwe = inSettlement(data?.payable);
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ['customers'] });
@@ -208,16 +202,6 @@ export function CustomerDetailPage() {
     onSuccess: () => done(),
   });
 
-  const companySide = useCompanySide({
-    id,
-    enabled: buying,
-    tab,
-    settlement,
-    owed: weOwe,
-    rate,
-    onRecorded: (message) => setToast(message),
-  });
-
   const errorOf = (error: unknown) =>
     error instanceof ApiError ? t(error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') }) : undefined;
   const excessNeeded =
@@ -237,7 +221,6 @@ export function CustomerDetailPage() {
     ...(sellingActions && mayOpeningBalance
       ? [{ label: t('customers:opening_theirs'), onSelect: () => setEntrySheet('opening') }]
       : []),
-    ...companySide.menuItems,
     ...(mayRate && !walkIn ? [{ label: t('customers:set_rate'), onSelect: () => setSheet('rate') }] : []),
     { label: t('companies:rate_history'), onSelect: () => setSheet('rate_history') },
     ...(isAdmin && !walkIn
@@ -306,7 +289,6 @@ export function CustomerDetailPage() {
                       {t('customers:receive_payment')}
                     </Button>
                   ) : null}
-                  {companySide.primaryAction}
                 </div>
                 <div className="mz-actions__group">
                   {mayEdit ? (
@@ -325,42 +307,25 @@ export function CustomerDetailPage() {
                 options={[
                   { value: 'overview', label: t('materials:tab_overview') },
                   ...(selling ? [{ value: 'orders' as Tab, label: t('orders:title') }] : []),
-                  ...(companySide.maySeePurchases
-                    ? [{ value: 'purchases' as Tab, label: t('companies:tab_purchases') }]
-                    : []),
                   ...(selling && maySeeSelling && !walkIn
-                    ? [{ value: 'sales' as Tab, label: t('customers:tab_sales_ledger') }]
-                    : []),
-                  // Hidden without `fields.see_company_balances`: the API sends that side as null.
-                  ...(buying && data.payable != null
-                    ? [{ value: 'account' as Tab, label: t('customers:tab_purchase_ledger') }]
+                    ? [{ value: 'sales' as Tab, label: t('customers:tab_account') }]
                     : []),
                   { value: 'history', label: t('glossary:history') },
                 ]}
               />
 
-              {tab === 'overview' ? (
-                <>
-                  {selling ? (
-                    <Card>
-                      <h3 className="mz-heading">{t('customers:unpaid_first')}</h3>
-                      <QueryStates
-                        query={owing}
-                        isEmpty={(owing.data?.items.length ?? 0) === 0}
-                        emptyTitle={t('customers:no_orders')}
-                        skeletonLines={3}
-                      >
-                        <OrderTable rows={owing.data?.items ?? []} showCustomer={false} />
-                      </QueryStates>
-                    </Card>
-                  ) : null}
-                  {companySide.maySeePurchases ? (
-                    <Card>
-                      <h3 className="mz-heading">{t('companies:tab_purchases')}</h3>
-                      {companySide.recentPurchases}
-                    </Card>
-                  ) : null}
-                </>
+              {tab === 'overview' && selling ? (
+                <Card>
+                  <h3 className="mz-heading">{t('customers:unpaid_first')}</h3>
+                  <QueryStates
+                    query={owing}
+                    isEmpty={(owing.data?.items.length ?? 0) === 0}
+                    emptyTitle={t('customers:no_orders')}
+                    skeletonLines={3}
+                  >
+                    <OrderTable rows={owing.data?.items ?? []} showCustomer={false} />
+                  </QueryStates>
+                </Card>
               ) : null}
 
               {tab === 'orders' ? (
@@ -387,8 +352,6 @@ export function CustomerDetailPage() {
                 </QueryStates>
               ) : null}
 
-              {tab === 'purchases' ? companySide.purchasesTab : null}
-
               {tab === 'sales' ? (
                 <QueryStates
                   query={salesLedger}
@@ -411,8 +374,6 @@ export function CustomerDetailPage() {
                   </Card>
                 </QueryStates>
               ) : null}
-
-              {tab === 'account' ? companySide.accountTab : null}
 
               {tab === 'history' ? (
                 <>
@@ -514,8 +475,8 @@ export function CustomerDetailPage() {
         {sheet === 'currency' && data ? (
           <SettlementCurrencySheet
             current={settlement}
-            hasMoney={owedToUs !== 0 || weOwe !== 0}
-            balance={inSettlement(data.net ?? data.balance ?? data.payable)}
+            hasMoney={owedToUs !== 0}
+            balance={owedToUs}
             rate={rate}
             saving={setCurrency.isPending}
             error={errorOf(setCurrency.error)}
@@ -573,64 +534,39 @@ export function CustomerDetailPage() {
           </ShareDocumentSheet>
         ) : null}
 
-        {companySide.sheets}
-
         {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
       </div>
     </>
   );
 }
 
-/**
- * The one balance, large, labelled by which way it points — and, for a business on both sides
- * that the caller may see in full, what each side contributes to it (D-054).
- */
+/** What the company owes us, large, labelled by which way it points. */
 function PartyFigure({ party }: { party: CustomerRow }) {
   const { t } = useTranslation();
-  const formatter = useFormatter();
-  const shown = balanceToShow(party);
-  if (!shown) return <span />;
-  const direction = directionOf(shown);
-  const settlement = party.settlement_currency;
-  const side = (value: BalanceValue | null | undefined) =>
-    value ? (settlement === 'IQD' ? value.amount_iqd : value.amount_usd_cents) : 0;
-  const bothSides = party.net && !party.is_system;
+  const balance: BalanceValue | null | undefined = party.balance;
+  if (!balance) return <span />;
+  const direction = directionOf(balance);
 
   return (
     <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
-      <span className={direction === 'they_owe_us' ? 'mz-figure__label mz-owed' : 'mz-figure__label'}>
-        {t(`companies:${direction}`)}
+      <span className={direction === 'owes' ? 'mz-figure__label mz-owed' : 'mz-figure__label'}>
+        {t(DIRECTION_LABELS[direction])}
       </span>
       <DualAmount
-        amount_iqd={Math.abs(shown.value.amount_iqd)}
-        amount_usd_cents={Math.abs(shown.value.amount_usd_cents)}
-        primary={shown.value.currency}
+        amount_iqd={Math.abs(balance.amount_iqd)}
+        amount_usd_cents={Math.abs(balance.amount_usd_cents)}
+        primary={balance.currency}
         kind="derived"
         size="large"
       />
-      {/* One side only: say so, or a company we owe millions reads as "settled" (D-056). */}
-      {shown.kind !== 'net' && !party.is_system ? (
-        <span className="mz-caption">
-          {t(shown.kind === 'payable' ? 'customers:purchases_side_only' : 'customers:sales_side_only')}
-        </span>
-      ) : null}
-      {bothSides ? (
-        <span className="mz-stack" style={{ gap: '2px' }}>
-          <span className="mz-caption" data-tabular>
-            {t('customers:from_sales')}: {formatter.money(side(party.balance), settlement)}
-          </span>
-          <span className="mz-caption" data-tabular>
-            {t('customers:from_purchases')}: {formatter.money(side(party.payable), settlement)}
-          </span>
-        </span>
-      ) : null}
     </div>
   );
 }
 
 /**
- * One row of the business's History, across both sides. A money entry names what it was and
- * how much; everything else names the action, and the buying side says so.
+ * One row of the company's History. A money entry names what it was and how much; everything
+ * else names the action. Rows from before D-062 may still come from the old buying side, and
+ * are labelled from that side's names.
  */
 function HistoryItem({ row, settlement }: { row: HistoryRow; settlement: Currency }) {
   const { t } = useTranslation();
@@ -684,6 +620,14 @@ function HistoryItem({ row, settlement }: { row: HistoryRow; settlement: Currenc
       ) : null}
     </li>
   );
+}
+
+/** The last twelve months: the window a statement covers (FR-507). */
+function statementWindow(): { from: string; to: string } {
+  const today = new Date();
+  const from = new Date(today);
+  from.setFullYear(from.getFullYear() - 1);
+  return { from: from.toISOString().slice(0, 10), to: today.toISOString().slice(0, 10) };
 }
 
 function pathOf(kind: EntryKind): string {

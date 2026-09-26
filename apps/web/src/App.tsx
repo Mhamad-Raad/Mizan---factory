@@ -51,8 +51,7 @@ const CustomerDetailPage = chunk(
   'CustomerDetailPage',
 );
 const NewCustomerPage = chunk(() => import('./pages/NewCustomerPage.js'), 'NewCustomerPage');
-const PurchasesPage = chunk(() => import('./pages/PurchasesPage.js'), 'PurchasesPage');
-const PurchaseFormPage = chunk(() => import('./pages/PurchaseFormPage.js'), 'PurchaseFormPage');
+const AccountsPage = chunk(() => import('./pages/AccountsPage.js'), 'AccountsPage');
 const PurchaseDetailPage = chunk(
   () => import('./pages/PurchaseDetailPage.js'),
   'PurchaseDetailPage',
@@ -87,7 +86,7 @@ function landingFor(user: SessionUser | null, permissions: string[]): string {
   if (may('customers.view')) return '/customers';
   if (may('companies.view')) return '/customers';
   if (may('damages.view')) return '/damages';
-  if (may('purchases.view')) return '/purchases';
+  if (may('accounts.view')) return '/accounts';
   if (user?.role === 'admin') return '/users';
   if (may('history.view')) return '/history';
   return '/settings';
@@ -236,10 +235,13 @@ export function App() {
             <Route path="/companies" element={<Navigate to="/customers" replace />} />
             <Route path="/companies/new" element={<Navigate to="/customers/new" replace />} />
             <Route path="/companies/:id" element={<CompanyRedirect />} />
-            <Route path="/purchases" element={<PurchasesPage />} />
-            <Route path="/purchases/new" element={<PurchaseFormPage mode="create" />} />
+            {/* The accountant page took the Purchases page's place (D-062); buying is done in
+                Materials now, so the old purchase form's links land there. A buy's own page stays. */}
+            <Route path="/accounts" element={<AccountsPage />} />
+            <Route path="/purchases" element={<Navigate to="/accounts" replace />} />
+            <Route path="/purchases/new" element={<Navigate to="/materials" replace />} />
             <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
-            <Route path="/purchases/:id/edit" element={<PurchaseFormPage mode="edit" />} />
+            <Route path="/purchases/:id/edit" element={<Navigate to="/materials" replace />} />
             <Route path="/damages" element={<DamagesPage />} />
             <Route path="/damages/new" element={<DamageFormPage mode="create" />} />
             <Route path="/damages/:id" element={<DamageDetailPage />} />

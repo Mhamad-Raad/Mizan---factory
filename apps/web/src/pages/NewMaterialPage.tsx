@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, NumberField, StickyFooter, TextField } from '@mizan/ui';
+import { Button, Card, DateField, NumberField, StickyFooter, TextField } from '@mizan/ui';
 import type { Rate } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
@@ -21,9 +21,10 @@ function toMoney(value: MoneyValue) {
 }
 
 /**
- * "New material" (FR-301, FR-302): create the item in the catalogue and, in the same form, give
- * it what it needs to be useful — a code, how much is in stock now, and this month's prices in
- * both currencies. A material is counted, so there is no per-piece / per-kg choice.
+ * "New material" (FR-301, FR-302, D-062): creating a material is buying it. The form names the
+ * material, records its first buy — how many came in and what each one cost — and, for those
+ * who set prices, this month's prices. The material and its first buy are one request, written
+ * together or not at all. A material is counted, so there is no per-piece / per-kg choice.
  */
 export function NewMaterialPage() {
   const { t } = useTranslation();
@@ -31,11 +32,15 @@ export function NewMaterialPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const maySetPrices = usePermission('materials.set_prices');
-  const mayRecordStock = usePermission('materials.opening_stock');
+  // The first buy is a buy: it needs the key buying needs (the API refuses it otherwise).
+  const mayBuy = usePermission('purchases.create');
 
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [quantity, setQuantity] = useState('');
+  const [unitCost, setUnitCost] = useState<MoneyValue>(emptyMoney);
+  const [boughtOn, setBoughtOn] = useState(() => formatter.today());
+  const [buyNote, setBuyNote] = useState('');
   const [sale, setSale] = useState<MoneyValue>(emptyMoney);
   const [bought, setBought] = useState<MoneyValue>(emptyMoney);
   const [idempotencyKey] = useState(newIdempotencyKey);
@@ -58,6 +63,13 @@ export function NewMaterialPage() {
           name: name.trim(),
           pricing_unit: 'per_piece',
           code: code.trim() === '' ? null : code.trim(),
+          buy: {
+            qty_count: Math.round(Number(quantity)),
+            qty_kg: null,
+            unit_price: toMoney(unitCost),
+            purchase_date: boughtOn,
+            note: buyNote.trim() === '' ? null : buyNote.trim(),
+          },
         },
       });
       const id = created.id;
@@ -70,19 +82,6 @@ export function NewMaterialPage() {
         });
       }
 
-      if (mayRecordStock && quantity.trim() !== '') {
-        await apiRequest(`/items/${id}/opening-stock`, {
-          method: 'POST',
-          idempotencyKey: newIdempotencyKey(),
-          body: {
-            entry_date: formatter.today(),
-            qty_count: Math.round(Number(quantity)),
-            qty_kg: null,
-            note: t('glossary:opening_stock'),
-          },
-        });
-      }
-
       return created;
     },
     onSuccess: async (created) => {
@@ -92,10 +91,18 @@ export function NewMaterialPage() {
   });
 
   const duplicate = create.error instanceof ApiError ? create.error.fieldError('name') : undefined;
+  const otherError =
+    create.error instanceof ApiError && !duplicate
+      ? t(create.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })
+      : null;
+
+  const quantityValid = quantity.trim() !== '' && Number(quantity) > 0;
+  const costValid = unitCost.amount !== null && unitCost.amount >= 0;
+  const ready = mayBuy && name.trim() !== '' && quantityValid && costValid && boughtOn !== '';
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (name.trim() !== '') create.mutate();
+    if (ready) create.mutate();
   };
 
   usePageTitle(t('materials:new_material'));
@@ -135,16 +142,53 @@ export function NewMaterialPage() {
               maxLength={40}
             />
 
-            {mayRecordStock ? (
-              <NumberField
-                label={t('glossary:quantity')}
-                hint={t('common:optional')}
-                unit={t('common:count_symbol')}
-                value={quantity}
-                onChange={(event) => setQuantity(event.target.value)}
-              />
-            ) : null}
           </div>
+        </div>
+      </Card>
+
+      {/* The first buy (D-062): a material comes into the warehouse by being bought. */}
+      <Card>
+        <div className="mz-stack">
+          <div>
+            <h2 className="mz-heading">{t('materials:first_buy')}</h2>
+            <p className="mz-muted">{t('materials:first_buy_hint')}</p>
+          </div>
+          {mayBuy ? (
+            <>
+              <div className="mz-form-grid">
+                <NumberField
+                  label={t('glossary:quantity')}
+                  unit={t('common:count_symbol')}
+                  value={quantity}
+                  onChange={(event) => setQuantity(event.target.value)}
+                />
+                <DateField
+                  label={t('materials:bought_on')}
+                  value={boughtOn}
+                  max={formatter.today()}
+                  onChange={(event) => setBoughtOn(event.target.value)}
+                />
+              </div>
+              <MoneyInput
+                label={t('materials:cost_per_unit')}
+                value={unitCost}
+                rate={rate}
+                sourceLabel={t('glossary:system_rate')}
+                onChange={setUnitCost}
+              />
+              <TextField
+                label={t('materials:buy_note')}
+                hint={t('common:optional')}
+                value={buyNote}
+                onChange={(event) => setBuyNote(event.target.value)}
+                maxLength={500}
+              />
+            </>
+          ) : (
+            <p className="mz-warning" role="status">
+              {t('materials:needs_buy_permission')}
+            </p>
+          )}
         </div>
       </Card>
 
@@ -176,8 +220,14 @@ export function NewMaterialPage() {
         </Card>
       ) : null}
 
+      {otherError ? (
+        <div className="mz-warning" role="alert">
+          {otherError}
+        </div>
+      ) : null}
+
       <StickyFooter>
-        <Button type="submit" block loading={create.isPending} disabled={name.trim() === ''}>
+        <Button type="submit" block loading={create.isPending} disabled={!ready}>
           {t('common:save')}
         </Button>
         <Button type="button" variant="ghost" block onClick={() => navigate('/materials')}>

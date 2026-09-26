@@ -22,7 +22,7 @@ export interface BalanceValue {
   kind: 'derived';
 }
 
-/** One account (D-054, D-055): a company we sell to and buy from. */
+/** One account (D-054, D-055, D-062): a company that buys from us. */
 export interface CustomerRow {
   id: string;
   name: string;
@@ -34,12 +34,8 @@ export interface CustomerRow {
   is_system: boolean;
   is_active: boolean;
   credit_limit: { amount_iqd: number; amount_usd_cents: number } | null;
-  /** What they owe us on the selling side; absent without `fields.see_customer_balances`. */
+  /** What they owe us; absent without `fields.see_customer_balances`. */
   balance?: BalanceValue | null;
-  /** What we owe them on the buying side; absent without `fields.see_company_balances`. */
-  payable?: BalanceValue | null;
-  /** They owe us − we owe them; null unless the caller may see both sides. */
-  net?: BalanceValue | null;
   /** Their own IQD-per-USD rate, or the global one when they have none. */
   rate: { rate_iqd_per_usd: string; since: string | null; is_customer_rate: boolean } | null;
   version: number;
@@ -48,11 +44,11 @@ export interface CustomerRow {
 type BalanceFilter = 'all' | 'owes' | 'settled' | 'credit';
 
 /**
- * The Companies page (D-054, D-055, FR-505, FR-709): every account the factory deals with.
+ * The Companies page (D-054, D-055, FR-505): every company that buys from us.
  *
- * A row carries the account's one balance — what it owes us less what we owe it — labelled by
- * which way it points. A caller who may see only one side sees that side's balance instead,
- * never a net they could work the other side out of.
+ * Buying stock is the factory's own business, never a company's (D-062), so a row carries one
+ * balance — what the company owes us — labelled by which way it points: owing, settled, or in
+ * credit when they have paid ahead.
  */
 export function CustomersPage() {
   const { t } = useTranslation();
@@ -170,7 +166,7 @@ export function CustomersPage() {
   );
 }
 
-/** "New company", for whoever may create an account on either side. */
+/** "New company", for whoever may create an account. */
 function NewPartyLink() {
   const { t } = useTranslation();
   const mayCreateCustomer = usePermission('customers.create');
@@ -211,44 +207,37 @@ export function InactiveChip({ row }: { row: Pick<CustomerRow, 'is_active'> }) {
   );
 }
 
-/**
- * The one balance, labelled by which way it points. The net when the caller may see both sides;
- * otherwise the one side they may see, labelled as that side.
- */
+/** What the company owes us, labelled by which way it points. */
 export function PartyBalance({ row }: { row: CustomerRow }) {
   const { t } = useTranslation();
-  const shown = balanceToShow(row);
-  if (!shown) return <span className="mz-muted">—</span>;
-  const direction = directionOf(shown);
+  if (!row.balance) return <span className="mz-muted">—</span>;
+  const direction = directionOf(row.balance);
   return (
     <span className="mz-cell__body">
-      <span className={direction === 'they_owe_us' ? 'mz-caption mz-owed' : 'mz-caption'}>
-        {t(`companies:${direction}`)}
+      <span className={direction === 'owes' ? 'mz-caption mz-owed' : 'mz-caption'}>
+        {t(DIRECTION_LABELS[direction])}
       </span>
       {/* The label says which way it points, so the amount reads as a size, never a sign. */}
       <DualAmount
-        amount_iqd={Math.abs(shown.value.amount_iqd)}
-        amount_usd_cents={Math.abs(shown.value.amount_usd_cents)}
-        primary={shown.value.currency}
+        amount_iqd={Math.abs(row.balance.amount_iqd)}
+        amount_usd_cents={Math.abs(row.balance.amount_usd_cents)}
+        primary={row.balance.currency}
         kind="derived"
       />
     </span>
   );
 }
 
-type Shown = { kind: 'net' | 'receivable' | 'payable'; value: BalanceValue };
+/** The label for each way a balance can point. */
+export const DIRECTION_LABELS: Record<'owes' | 'settled' | 'credit', string> = {
+  owes: 'companies:they_owe_us',
+  settled: 'companies:settled',
+  credit: 'customers:in_credit',
+};
 
-/** Which way a balance points. The buying side's ledger counts what *we* owe as positive. */
-export function directionOf(shown: Shown): 'they_owe_us' | 'we_owe_them' | 'settled' {
-  const amount = shown.value.currency === 'IQD' ? shown.value.amount_iqd : shown.value.amount_usd_cents;
+/** Which way what a company owes us points: owing, settled, or in credit (paid ahead). */
+export function directionOf(balance: BalanceValue): 'owes' | 'settled' | 'credit' {
+  const amount = balance.currency === 'IQD' ? balance.amount_iqd : balance.amount_usd_cents;
   if (amount === 0) return 'settled';
-  const weOwe = shown.kind === 'payable' ? amount > 0 : amount < 0;
-  return weOwe ? 'we_owe_them' : 'they_owe_us';
-}
-
-export function balanceToShow(row: CustomerRow): Shown | null {
-  if (row.net) return { kind: 'net', value: row.net };
-  if (row.balance) return { kind: 'receivable', value: row.balance };
-  if (row.payable) return { kind: 'payable', value: row.payable };
-  return null;
+  return amount > 0 ? 'owes' : 'credit';
 }

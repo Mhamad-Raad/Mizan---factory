@@ -2,21 +2,18 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, DateField, TextField, Toast, Toggle } from '@mizan/ui';
+import { BottomSheet, Button, Card, Chip, DateField, Icon, TextField, Toast } from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
-import { MoneyInput } from '../components/MoneyInput.js';
-import type { MoneyValue } from '../components/MoneyInput.js';
 import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
 import { useCursorPaging } from '../lib/paging.js';
-import { AttributionChip, ReturnStatusChip } from '../components/chips.js';
 import { useFormatter, usePermission } from '../lib/store.js';
-import { quantityOf } from './DamagesPage.js';
+import { CompensationChip, quantityOf } from './DamagesPage.js';
 import type { DamageDetail } from './DamagesPage.js';
 
-type Sheet = 'return' | 'written_off' | 'company_credit' | 'customer_credit' | 'return_to_stock' | 'void';
+type Sheet = 'money' | 'materials' | 'void';
 
 interface DamageHistory {
   next_cursor: string | null;
@@ -24,24 +21,22 @@ interface DamageHistory {
 }
 
 /**
- * The damage record (FR-803 to FR-806, spec 3.3).
+ * The damage record, in the warehouse model (D-062).
  *
- * The header says what happened and what it did to stock; then come the four actions the
- * specification names — Mark returned, Written off, Record credit, Return to stock — each
- * present only where it is meaningful and only for whoever holds its key, and each leaving a
- * line in History. A record attributed to a customer order says in so many words that the
- * customer's balance has not moved, because that is the question it raises (FR-806).
+ * The header says what was damaged, how much, when, what it cost us and who did it. Our own
+ * damage is a loss and there is nothing more to do. A company's damage is on their account —
+ * they owe us what it cost — until someone confirms they paid it back: in money (a payment
+ * clears it) or in materials (they replaced the goods, the stock comes back). Only then does it
+ * stop counting as a cost. A record that was paid back cannot be voided; the money stays.
  */
 export function DamageDetailPage() {
   const { id = '' } = useParams();
   const { t } = useTranslation();
   const formatter = useFormatter();
   const queryClient = useQueryClient();
-  const mayMarkReturned = usePermission('damages.mark_returned');
+  const mayMarkPaid = usePermission('damages.mark_returned');
   const mayEdit = usePermission('damages.edit');
   const mayVoid = usePermission('damages.void');
-  const mayCreditCompany = usePermission('companies.record_credit');
-  const mayCreditCustomer = usePermission('orders.credit');
 
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [tab, setTab] = useState<'overview' | 'history'>('overview');
@@ -65,39 +60,19 @@ export function DamageDetailPage() {
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['damages'] });
     await queryClient.invalidateQueries({ queryKey: ['items'] });
-    await queryClient.invalidateQueries({ queryKey: ['companies'] });
     await queryClient.invalidateQueries({ queryKey: ['customers'] });
   };
 
-  const markReturn = useMutation({
-    mutationFn: (body: unknown) =>
-      apiRequest(`/damages/${id}/return`, { method: 'POST', body, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: async () => {
-      setSheet(null);
-      setToast(t('damages:mark_returned'));
-      await invalidate();
-    },
-  });
-
-  const customerCredit = useMutation({
-    mutationFn: (body: unknown) =>
-      apiRequest(`/customers/${damage.data?.customer_id ?? ''}/credits`, {
+  const paidBack = useMutation({
+    mutationFn: (body: { method: 'money' | 'materials'; entry_date: string; note: string | null }) =>
+      apiRequest(`/damages/${id}/paid-back`, {
         method: 'POST',
-        body,
+        body: { ...body, version: damage.data?.version },
         idempotencyKey: newIdempotencyKey(),
       }),
-    onSuccess: async () => {
+    onSuccess: async (_, body) => {
       setSheet(null);
-      await invalidate();
-    },
-  });
-
-  const returnToStock = useMutation({
-    mutationFn: (body: unknown) =>
-      apiRequest(`/damages/${id}/return-to-stock`, { method: 'POST', body, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: async () => {
-      setSheet(null);
-      setToast(t('damages:returned_to_stock'));
+      setToast(body.method === 'money' ? t('damages:paid_back_money') : t('damages:paid_back_materials'));
       await invalidate();
     },
   });
@@ -117,45 +92,65 @@ export function DamageDetailPage() {
   });
 
   const record = damage.data;
-  const isPending = record?.return_status === 'pending';
-  const isCompany = record?.attribution === 'company';
-  const isCustomerOrder = record?.attribution === 'customer_order';
+  const active = record?.doc_status === 'active';
+  const isCompany = record?.attribution === 'company' && Boolean(record.company_id);
+  const isPaid = record?.compensation === 'paid_money' || record?.compensation === 'paid_materials';
+  const value =
+    record?.cost && record.cost.est_value_iqd !== null ? (
+      <DualAmount amount_iqd={record.cost.est_value_iqd} amount_usd_cents={record.cost.est_value_usd_cents ?? 0} />
+    ) : null;
 
   usePageTitle(record ? t('damages:number', { number: formatter.number(record.number) }) : t('damages:title'));
 
   return (
-    <>
-      <div className="mz-stack">
-        <QueryStates query={damage}>
-          {record ? (
-            <>
-              {record.doc_status === 'void' ? (
-                <div className="mz-warning" role="status">
-                  {t('damages:void_banner', {
-                    employee: record.voided_by_name ?? '',
-                    reason: record.void_reason ?? '',
-                  })}
-                </div>
-              ) : null}
+    <div className="mz-stack">
+      <QueryStates query={damage}>
+        {record ? (
+          <>
+            {record.doc_status === 'void' ? (
+              <div className="mz-warning" role="status">
+                {t('damages:void_banner', { employee: record.voided_by_name ?? '', reason: record.void_reason ?? '' })}
+              </div>
+            ) : null}
 
-              <Card>
-                <h2 className="mz-title">
-                  <Link to={`/materials/${record.item_id}`}><bdi>{record.item_name}</bdi></Link>
-                </h2>
-                <span className="mz-caption" style={{ display: 'block' }} data-tabular>
-                  {quantityOf(record, formatter, t)} · {formatter.date(record.damage_date)}
-                  {record.acting_user_name ? ` · ${record.acting_user_name}` : ''}
+            <Card>
+              <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+                <div className="mz-stack" style={{ gap: '2px', minInlineSize: 0 }}>
+                  <h2 className="mz-title">{t('damages:number', { number: formatter.number(record.number) })}</h2>
+                  <Link to={`/materials/${record.item_id}`} className="mz-caption">
+                    <bdi>{record.item_name}</bdi>
+                  </Link>
+                  <span className="mz-caption" style={{ display: 'block' }} data-tabular>
+                    {quantityOf(record, formatter, t)} · {formatter.date(record.damage_date)}
+                    {record.acting_user_name ? ` · ${t('glossary:done_by')}: ${record.acting_user_name}` : ''}
+                  </span>
+                  {record.reason ? (
+                    <span className="mz-caption" style={{ display: 'block' }}>
+                      <bdi>{record.reason}</bdi>
+                    </span>
+                  ) : null}
+                </div>
+                <span className="mz-row" style={{ gap: 'var(--space-1)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <CompensationChip compensation={record.compensation} />
+                  {record.doc_status === 'void' ? (
+                    <Chip tone="danger" icon="close">
+                      {t('glossary:void')}
+                    </Chip>
+                  ) : null}
                 </span>
-                {record.reason ? <span className="mz-caption">{record.reason}</span> : null}
-                <div className="mz-row" style={{ gap: 'var(--space-2)', marginBlockStart: 'var(--space-2)' }}>
-                  <AttributionChip attribution={record.attribution} />
-                  <ReturnStatusChip status={record.return_status} />
-                </div>
+              </div>
 
-                {/* What it did to stock, in the same words the form used (FR-804). */}
-                <div className="mz-row mz-row--between" style={{ marginBlockStart: 'var(--space-3)' }}>
-                  <span className="mz-caption">{t('glossary:stock')}</span>
-                  <span>
+              <hr className="mz-divider" />
+
+              <div className="mz-detail-summary">
+                <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
+                  <span className="mz-figure__label">{t('damages:cost_label')}</span>
+                  {record.cost ? (
+                    (value ?? <span className="mz-caption">{t('materials:no_price_yet')}</span>)
+                  ) : (
+                    <span className="mz-muted">—</span>
+                  )}
+                  <span className="mz-caption">
                     {record.stock_effect === 'none'
                       ? t('damages:stock_unchanged')
                       : record.stock_effect === 'returned_in'
@@ -163,469 +158,263 @@ export function DamageDetailPage() {
                         : t('damages:stock_fell', { quantity: quantityOf(record, formatter, t) })}
                   </span>
                 </div>
+                <div className="mz-detail-figures">
+                  <div className="mz-figure">
+                    <span className="mz-figure__label">{t('damages:who_did_it')}</span>
+                    <span className="mz-figure__value">
+                      {isCompany ? (
+                        <Link to={`/customers/${record.company_id}`} className="mz-quiet-link">
+                          <bdi>{record.company_name}</bdi>
+                        </Link>
+                      ) : (
+                        t('damages:who.us')
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </Card>
 
-                {record.cost ? (
-                  <div className="mz-row mz-row--between">
-                    <span className="mz-caption">{t('glossary:estimated_value')}</span>
-                    {record.cost.est_value_iqd === null ? (
-                      <span className="mz-caption">{t('materials:no_price_yet')}</span>
-                    ) : (
-                      <DualAmount
-                        amount_iqd={record.cost.est_value_iqd}
-                        amount_usd_cents={record.cost.est_value_usd_cents ?? 0}
-                      />
-                    )}
+            {/* A company's damage: owed until confirmed paid back, then how and when (D-062). */}
+            {isCompany && record.compensation !== 'none' ? (
+              <Card className="mz-damage-owed" data-state={isPaid ? 'paid' : 'owed'}>
+                {isPaid ? (
+                  <div className="mz-row" style={{ gap: 'var(--space-2)' }}>
+                    <Icon name="check" size={18} />
+                    <strong>
+                      {t(record.compensation === 'paid_money' ? 'damages:paid_back_money_on' : 'damages:paid_back_materials_on', {
+                        date: record.compensated_at ? formatter.date(record.compensated_at.slice(0, 10)) : '',
+                      })}
+                    </strong>
                   </div>
-                ) : null}
-
-                {/* The documents it is attributed to, as links (FR-802). */}
-                {record.order_id ? (
-                  <div className="mz-row mz-row--between">
-                    <span className="mz-caption">{t('glossary:order')}</span>
-                    <Link to={`/orders/${record.order_id}`}>
-                      {t('orders:number', { number: formatter.number(record.order_number ?? 0) })}
-                      {record.customer_name ? ` · ${record.customer_name}` : ''}
-                    </Link>
+                ) : (
+                  <div className="mz-stack">
+                    <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                      <strong>
+                        {t('damages:owed_by', { company: record.company_name ?? '' })}
+                      </strong>
+                      {value}
+                    </div>
+                    <p className="mz-caption">{t('damages:owed_hint')}</p>
+                    {active && mayMarkPaid ? (
+                      <div className="mz-actions">
+                        <div className="mz-actions__group mz-actions__group--primary">
+                          <Button icon="check" onClick={() => setSheet('money')}>
+                            {t('damages:paid_back_money')}
+                          </Button>
+                          <Button variant="secondary" icon="materials" onClick={() => setSheet('materials')}>
+                            {t('damages:paid_back_materials')}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-                {record.company_id ? (
-                  <div className="mz-row mz-row--between">
-                    <span className="mz-caption">{t('glossary:company')}</span>
-                    <Link to={`/companies/${record.company_id}`}><bdi>{record.company_name}</bdi></Link>
-                  </div>
-                ) : null}
-                {record.purchase_id ? (
-                  <div className="mz-row mz-row--between">
-                    <span className="mz-caption">{t('glossary:purchase')}</span>
-                    <Link to={`/purchases/${record.purchase_id}`}>
-                      {t('purchases:number', { number: formatter.number(record.purchase_number ?? 0) })}
-                    </Link>
-                  </div>
-                ) : null}
-
-                {isCustomerOrder && !record.credited ? (
-                  <p className="mz-caption">{t('damages:customer_balance_unchanged')}</p>
-                ) : null}
+                )}
               </Card>
+            ) : null}
 
-              {record.doc_status === 'active' ? (
-                <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                  {isPending && mayMarkReturned ? (
-                    <Button onClick={() => setSheet('return')}>{t('damages:mark_returned')}</Button>
-                  ) : null}
-                  {isPending && mayMarkReturned ? (
-                    <Button variant="secondary" onClick={() => setSheet('written_off')}>
-                      {t('damages:mark_written_off')}
-                    </Button>
-                  ) : null}
-                  {isCompany && record.return_status === 'returned' && mayCreditCompany ? (
-                    <Button variant="secondary" onClick={() => setSheet('company_credit')}>
-                      {t('damages:record_company_credit')}
-                    </Button>
-                  ) : null}
-                  {isCustomerOrder && !record.credited && mayCreditCustomer ? (
-                    <Button variant="secondary" onClick={() => setSheet('customer_credit')}>
-                      {t('damages:record_customer_credit')}
-                    </Button>
-                  ) : null}
-                  {isCustomerOrder && record.stock_effect !== 'returned_in' && mayEdit ? (
-                    <Button variant="secondary" onClick={() => setSheet('return_to_stock')}>
-                      {t('damages:return_to_stock')}
-                    </Button>
-                  ) : null}
-                  {mayEdit && (isPending || record.return_status === 'not_returnable') ? (
-                    <Link to={`/damages/${id}/edit`} className="mz-button mz-button--ghost">
+            {active && ((mayEdit && !isPaid) || (mayVoid && !isPaid)) ? (
+              <div className="mz-actions">
+                <div className="mz-actions__group">
+                  {mayEdit ? (
+                    <Link to={`/damages/${id}/edit`} className="mz-button mz-button--secondary">
+                      <Icon name="edit" />
                       {t('common:edit')}
                     </Link>
                   ) : null}
-                  {mayVoid ? (
-                    <Button variant="ghost" onClick={() => setSheet('void')}>
+                </div>
+                {mayVoid ? (
+                  <div className="mz-actions__group mz-actions__group--end">
+                    <Button variant="danger" icon="trash" onClick={() => setSheet('void')}>
                       {t('damages:void_record')}
                     </Button>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <div className="mz-row" style={{ gap: 'var(--space-2)' }}>
-                <Button variant={tab === 'overview' ? 'secondary' : 'ghost'} onClick={() => setTab('overview')}>
-                  {t('companies:tab_overview')}
-                </Button>
-                <Button variant={tab === 'history' ? 'secondary' : 'ghost'} onClick={() => setTab('history')}>
-                  {t('glossary:history')}
-                </Button>
+                  </div>
+                ) : null}
               </div>
-
-              {tab === 'overview' ? (
-                <Card>
-                  <h3 className="mz-heading">{t('damages:credits')}</h3>
-                  {record.credits.length === 0 ? (
-                    <p className="mz-caption">{t('damages:no_credits')}</p>
-                  ) : (
-                    <ul className="mz-list">
-                      {record.credits.map((credit) => (
-                        <li key={credit.entry_id} className="mz-list__item">
-                          <span className="mz-list__body">
-                            <span className="mz-list__title">
-                              <Link
-                                to={
-                                  credit.side === 'company'
-                                    ? `/companies/${credit.owner_id}`
-                                    : `/customers/${credit.owner_id}`
-                                }
-                              >
-                                {credit.owner_name}
-                              </Link>
-                            </span>
-                            <span className="mz-caption">
-                              {formatter.date(credit.entry_date)}
-                              {credit.note ? ` · ${credit.note}` : ''}
-                            </span>
-                          </span>
-                          {credit.cost ? (
-                            <DualAmount
-                              amount_iqd={credit.cost.amount_iqd}
-                              amount_usd_cents={credit.cost.amount_usd_cents}
-                              primary={credit.settlement_currency}
-                            />
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </Card>
-              ) : null}
-
-              {tab === 'history' ? (
-                <QueryStates
-                  query={history}
-                  isEmpty={(history.data?.items.length ?? 0) === 0}
-                  emptyTitle={t('history:empty')}
-                >
-                  <Card>
-                    <ul className="mz-list">
-                      {(history.data?.items ?? []).map((row) => (
-                        <li key={row.id} className="mz-list__item">
-                          <span className="mz-list__body">
-                            <span className="mz-list__title">{t(`history:action.${row.action}`)}</span>
-                            <span className="mz-caption">
-                              {formatter.timestamp(new Date(row.occurred_at))}
-                              {row.actor_display_name ? ` · ${row.actor_display_name}` : ''}
-                              {row.note ? ` · ${row.note}` : ''}
-                            </span>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Pager
-                      page={historyPaging.page}
-                      pageSize={historyPaging.pageSize}
-                      hasNext={Boolean(historyNext)}
-                      onPage={(page) =>
-                        page > historyPaging.page && historyNext ? historyPaging.next(historyNext) : historyPaging.previous()
-                      }
-                      onPageSize={historyPaging.setPageSize}
-                    />
-                  </Card>
-                </QueryStates>
-              ) : null}
-            </>
-          ) : null}
-        </QueryStates>
-
-        {/* "Mark returned", with "and record a credit" pre-ticked for an accountant (3.5.5). */}
-        {sheet === 'return' && record ? (
-          <MarkReturnedSheet
-            record={record}
-            mayCredit={isCompany && mayCreditCompany}
-            saving={markReturn.isPending}
-            error={
-              markReturn.error instanceof ApiError
-                ? t(markReturn.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })
-                : undefined
-            }
-            onClose={() => setSheet(null)}
-            onSave={(body) => markReturn.mutate(body)}
-          />
-        ) : null}
-
-        {sheet === 'written_off' && record ? (
-          <NoteSheet
-            title={t('damages:mark_written_off')}
-            saving={markReturn.isPending}
-            onClose={() => setSheet(null)}
-            onSave={(note) => markReturn.mutate({ status: 'written_off', note })}
-          />
-        ) : null}
-
-        {sheet === 'company_credit' && record ? (
-          <MarkReturnedSheet
-            record={record}
-            mayCredit
-            creditOnly
-            saving={markReturn.isPending}
-            error={
-              markReturn.error instanceof ApiError
-                ? t(markReturn.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })
-                : undefined
-            }
-            onClose={() => setSheet(null)}
-            onSave={(body) => markReturn.mutate(body)}
-          />
-        ) : null}
-
-        {sheet === 'customer_credit' && record ? (
-          <CustomerCreditSheet
-            record={record}
-            saving={customerCredit.isPending}
-            error={
-              customerCredit.error instanceof ApiError
-                ? t(customerCredit.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })
-                : undefined
-            }
-            onClose={() => setSheet(null)}
-            onSave={(body) => customerCredit.mutate(body)}
-          />
-        ) : null}
-
-        {sheet === 'return_to_stock' ? (
-          <NoteSheet
-            title={t('damages:return_to_stock')}
-            saving={returnToStock.isPending}
-            onClose={() => setSheet(null)}
-            onSave={(note) => returnToStock.mutate({ note })}
-          />
-        ) : null}
-
-        {sheet === 'void' && record ? (
-          <NoteSheet
-            title={t('damages:void_record')}
-            body={t('damages:void_explanation')}
-            required
-            saving={voidRecord.isPending}
-            onClose={() => setSheet(null)}
-            onSave={(note) => voidRecord.mutate(note)}
-          />
-        ) : null}
-
-        {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
-      </div>
-    </>
-  );
-}
-
-/**
- * "Mark returned" (FR-803) and the supplier credit of FR-805 in one sheet, because on the floor
- * they are one decision: the goods went back and this is what we are owed for them. The amount
- * arrives pre-filled from the purchase line, and the sheet says where the figure came from.
- */
-function MarkReturnedSheet({
-  record,
-  mayCredit,
-  creditOnly,
-  saving,
-  error,
-  onClose,
-  onSave,
-}: {
-  record: DamageDetail;
-  mayCredit: boolean;
-  creditOnly?: boolean;
-  saving: boolean;
-  error?: string;
-  onClose: () => void;
-  onSave: (body: unknown) => void;
-}) {
-  const { t } = useTranslation();
-  const formatter = useFormatter();
-  const prefill = record.credit_prefill;
-  const [withCredit, setWithCredit] = useState(Boolean(creditOnly) || (mayCredit && Boolean(prefill)));
-  const [amount, setAmount] = useState<MoneyValue>({
-    amount: prefill ? (prefill.entered_currency === 'IQD' ? prefill.amount_iqd : prefill.amount_usd_cents) : null,
-    currency: prefill?.entered_currency ?? 'IQD',
-    other_amount: null,
-  });
-  const [date, setDate] = useState(formatter.today());
-  const [note, setNote] = useState('');
-
-  return (
-    <BottomSheet
-      title={creditOnly ? t('damages:record_company_credit') : t('damages:mark_returned')}
-      open
-      onClose={onClose}
-      closeLabel={t('common:close')}
-    >
-      <div className="mz-stack">
-        {!creditOnly ? (
-          <DateField
-            label={t('glossary:date_paid')}
-            value={date}
-            max={formatter.today()}
-            onChange={(event) => setDate(event.target.value)}
-          />
-        ) : null}
-
-        {mayCredit ? (
-          <>
-            {!creditOnly ? (
-              <Toggle label={t('damages:and_record_credit')} checked={withCredit} onChange={setWithCredit} />
             ) : null}
-            {withCredit ? (
-              <>
-                {prefill ? (
-                  <span className="mz-caption">
-                    {t('damages:credit_prefill', { source: t(`damages:source.${prefill.source}`) })}
-                    {prefill.from_month ? ` · ${formatter.month(prefill.from_month.slice(0, 7))}` : ''}
-                  </span>
-                ) : (
-                  <span className="mz-caption">{t('damages:no_price_to_prefill')}</span>
-                )}
-                <MoneyInput
-                  label={t('companies:amount')}
-                  value={amount}
-                  rate={prefill?.rate_iqd_per_usd ?? '1310.0000'}
-                  onChange={setAmount}
-                  error={error}
-                />
-              </>
+
+            <div className="mz-row" style={{ gap: 'var(--space-2)' }}>
+              <Button variant={tab === 'overview' ? 'secondary' : 'ghost'} onClick={() => setTab('overview')}>
+                {t('companies:tab_overview')}
+              </Button>
+              <Button variant={tab === 'history' ? 'secondary' : 'ghost'} onClick={() => setTab('history')}>
+                {t('glossary:history')}
+              </Button>
+            </div>
+
+            {tab === 'overview' && record.credits.length > 0 ? (
+              <Card>
+                <h3 className="mz-heading">{t('damages:account_entries')}</h3>
+                <ul className="mz-list">
+                  {record.credits.map((credit) => (
+                    <li key={credit.entry_id} className="mz-list__item">
+                      <span className="mz-list__body">
+                        <span className="mz-list__title">
+                          <Link to={`/customers/${credit.owner_id}`} className="mz-quiet-link">
+                            <bdi>{credit.owner_name}</bdi>
+                          </Link>
+                        </span>
+                        <span className="mz-caption">
+                          {formatter.date(credit.entry_date)}
+                          {credit.note ? ` · ${credit.note}` : ''}
+                        </span>
+                      </span>
+                      {credit.cost ? (
+                        <DualAmount
+                          amount_iqd={credit.cost.amount_iqd}
+                          amount_usd_cents={credit.cost.amount_usd_cents}
+                          primary={credit.settlement_currency}
+                        />
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ) : null}
+
+            {tab === 'history' ? (
+              <QueryStates query={history} isEmpty={(history.data?.items.length ?? 0) === 0} emptyTitle={t('history:empty')}>
+                <Card>
+                  <ul className="mz-list">
+                    {(history.data?.items ?? []).map((row) => (
+                      <li key={row.id} className="mz-list__item">
+                        <span className="mz-list__body">
+                          <span className="mz-list__title">{t(`history:action.${row.action}`)}</span>
+                          <span className="mz-caption">
+                            {formatter.timestamp(new Date(row.occurred_at))}
+                            {row.actor_display_name ? ` · ${row.actor_display_name}` : ''}
+                            {row.note ? ` · ${row.note}` : ''}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <Pager
+                    page={historyPaging.page}
+                    pageSize={historyPaging.pageSize}
+                    hasNext={Boolean(historyNext)}
+                    onPage={(page) =>
+                      page > historyPaging.page && historyNext ? historyPaging.next(historyNext) : historyPaging.previous()
+                    }
+                    onPageSize={historyPaging.setPageSize}
+                  />
+                </Card>
+              </QueryStates>
             ) : null}
           </>
         ) : null}
+      </QueryStates>
 
-        <TextField label={t('common:note')} value={note} onChange={(event) => setNote(event.target.value)} />
-
-        <Button
-          block
-          loading={saving}
-          disabled={withCredit && (amount.amount === null || amount.amount <= 0)}
-          onClick={() =>
-            onSave({
-              status: 'returned',
-              returned_at: creditOnly ? null : date,
-              note: note.trim() === '' ? null : note.trim(),
-              credit: withCredit
-                ? {
-                    amount: amount.amount,
-                    currency: amount.currency,
-                    other_amount: amount.other_amount ?? null,
-                    note: note.trim() === '' ? null : note.trim(),
-                  }
-                : null,
-            })
+      {(sheet === 'money' || sheet === 'materials') && record ? (
+        <PaidBackSheet
+          method={sheet}
+          saving={paidBack.isPending}
+          error={
+            paidBack.error instanceof ApiError
+              ? t(paidBack.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })
+              : undefined
           }
-        >
-          {t('common:save')}
-        </Button>
-      </div>
-    </BottomSheet>
+          onClose={() => setSheet(null)}
+          onSave={(body) => paidBack.mutate({ method: sheet, ...body })}
+        />
+      ) : null}
+
+      {sheet === 'void' && record ? (
+        <VoidSheet
+          saving={voidRecord.isPending}
+          error={
+            voidRecord.error instanceof ApiError
+              ? t(voidRecord.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })
+              : undefined
+          }
+          onClose={() => setSheet(null)}
+          onSave={(reason) => voidRecord.mutate(reason)}
+        />
+      ) : null}
+
+      {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
+    </div>
   );
 }
 
-/** The customer credit of FR-806 / FR-506: explicit, linked to the damage and its order. */
-function CustomerCreditSheet({
-  record,
+/** "Paid back in money" or "Replaced with materials": what it does, the date, an optional note. */
+function PaidBackSheet({
+  method,
   saving,
   error,
   onClose,
   onSave,
 }: {
-  record: DamageDetail;
+  method: 'money' | 'materials';
   saving: boolean;
   error?: string;
   onClose: () => void;
-  onSave: (body: unknown) => void;
+  onSave: (body: { entry_date: string; note: string | null }) => void;
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const [amount, setAmount] = useState<MoneyValue>({
-    amount: record.cost?.est_value_iqd ?? null,
-    currency: 'IQD',
-    other_amount: null,
-  });
   const [date, setDate] = useState(formatter.today());
   const [note, setNote] = useState('');
-
-  return (
-    <BottomSheet
-      title={t('damages:record_customer_credit')}
-      open
-      onClose={onClose}
-      closeLabel={t('common:close')}
-    >
-      <div className="mz-stack">
-        <MoneyInput
-          label={t('customers:amount')}
-          value={amount}
-          rate="1310.0000"
-          onChange={setAmount}
-          error={error}
-        />
-        <DateField
-          label={t('common:date')}
-          value={date}
-          max={formatter.today()}
-          onChange={(event) => setDate(event.target.value)}
-        />
-        <TextField
-          label={t('common:note')}
-          value={note}
-          hint={t('materials:note_required')}
-          onChange={(event) => setNote(event.target.value)}
-        />
-        <Button
-          block
-          loading={saving}
-          disabled={amount.amount === null || amount.amount <= 0 || note.trim() === ''}
-          onClick={() =>
-            onSave({
-              amount: amount.amount,
-              currency: amount.currency,
-              other_amount: amount.other_amount ?? null,
-              entry_date: date,
-              note: note.trim(),
-              order_id: record.order_id,
-              damage_id: record.id,
-            })
-          }
-        >
-          {t('common:save')}
-        </Button>
-      </div>
-    </BottomSheet>
-  );
-}
-
-/** One note, one button: written off, returned to stock, and the void with its explanation. */
-function NoteSheet({
-  title,
-  body,
-  required,
-  saving,
-  onClose,
-  onSave,
-}: {
-  title: string;
-  body?: string;
-  required?: boolean;
-  saving: boolean;
-  onClose: () => void;
-  onSave: (note: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [note, setNote] = useState('');
+  const title = method === 'money' ? t('damages:paid_back_money') : t('damages:paid_back_materials');
 
   return (
     <BottomSheet title={title} open onClose={onClose} closeLabel={t('common:close')}>
       <div className="mz-stack">
-        {body ? <p>{body}</p> : null}
+        <p>{method === 'money' ? t('damages:confirm_money') : t('damages:confirm_materials')}</p>
+        <DateField label={t('common:date')} value={date} max={formatter.today()} onChange={(event) => setDate(event.target.value)} />
         <TextField
-          label={required ? t('glossary:reason') : t('common:note')}
+          label={t('common:note')}
+          hint={t('common:optional')}
           value={note}
-          hint={required ? t('materials:note_required') : t('common:optional')}
           onChange={(event) => setNote(event.target.value)}
           maxLength={2000}
         />
-        <Button block loading={saving} disabled={required && note.trim() === ''} onClick={() => onSave(note.trim())}>
+        {error ? (
+          <div className="mz-warning" role="alert">
+            {error}
+          </div>
+        ) : null}
+        <Button block loading={saving} onClick={() => onSave({ entry_date: date, note: note.trim() === '' ? null : note.trim() })}>
           {title}
+        </Button>
+      </div>
+    </BottomSheet>
+  );
+}
+
+/** The void, with its reason required and what it will undo said first. */
+function VoidSheet({
+  saving,
+  error,
+  onClose,
+  onSave,
+}: {
+  saving: boolean;
+  error?: string;
+  onClose: () => void;
+  onSave: (reason: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [reason, setReason] = useState('');
+
+  return (
+    <BottomSheet title={t('damages:void_record')} open onClose={onClose} closeLabel={t('common:close')}>
+      <div className="mz-stack">
+        <p>{t('damages:void_explanation')}</p>
+        <TextField
+          label={t('glossary:reason')}
+          hint={t('materials:note_required')}
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          maxLength={2000}
+        />
+        {error ? (
+          <div className="mz-warning" role="alert">
+            {error}
+          </div>
+        ) : null}
+        <Button block variant="danger" loading={saving} disabled={reason.trim() === ''} onClick={() => onSave(reason.trim())}>
+          {t('damages:void_record')}
         </Button>
       </div>
     </BottomSheet>

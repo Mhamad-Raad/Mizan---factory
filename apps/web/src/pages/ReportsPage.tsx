@@ -11,7 +11,6 @@ export const REPORTS = [
   { key: 'profit', path: '/reports/profit', flag: 'fields.see_profit' },
   { key: 'stock', path: '/reports/stock', flag: null },
   { key: 'receivables', path: '/reports/receivables', flag: 'fields.see_customer_balances' },
-  { key: 'payables', path: '/reports/payables', flag: 'fields.see_company_balances' },
   { key: 'damage', path: '/reports/damage', flag: null },
   { key: 'employee_activity', path: '/reports/employee-activity', flag: null },
   // Proposed — not requested (FR-1013): the owner's nightly question.

@@ -56,8 +56,8 @@
   "name": "الاسم",
   "all_balances": "أي رصيد",
   "filter_owes": "لنا عليهم",
-  "filter_credit": "علينا لهم",
-  "in_credit": "علينا لهم",
+  "filter_credit": "رصيد دائن",
+  "in_credit": "رصيد دائن — دفعوا مقدماً",
   "net_balance": "الرصيد",
   "from_sales": "من المبيعات: لنا عليهم",
   "from_purchases": "من المشتريات: علينا لهم",
@@ -72,7 +72,7 @@
   "credit_from_them": "رصيد منهم",
   "tab_sales_ledger": "حساب المبيعات",
   "tab_purchase_ledger": "حساب المشتريات",
-  "statement_sales": "كشف حساب المبيعات",
+  "statement_sales": "كشف الحساب",
   "statement_purchases": "كشف حساب المشتريات",
   "rate_own": "سعرهم الخاص",
   "rate_label": "سعرهم",
@@ -96,5 +96,6 @@
   "history_status": "الإخفاء والإظهار",
   "rate_changed": "السعر {{old}} ← {{new}}",
   "rate_set": "تم تعيين السعر {{new}}",
-  "entry.damage": "تلف"
+  "entry.damage": "تلف",
+  "tab_account": "الحساب"
 }

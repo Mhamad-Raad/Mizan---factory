@@ -36,6 +36,7 @@ export interface PurchaseListRow extends PurchaseRow {
   acting_user_name: string | null;
   voided_by_name: string | null;
   line_count: string;
+  item_names: string | null;
 }
 
 export interface PurchaseLineRow {
@@ -146,7 +147,11 @@ const LINE_COLUMNS = `l.id, l.purchase_id, l.line_no, l.item_id, l.qty_count, l.
 const LIST_COLUMNS = `co.name AS company_name, co.settlement_currency::text AS settlement_currency,
                       u.display_name AS acting_user_name, v.display_name AS voided_by_name,
                       (SELECT count(*)::text FROM purchase_lines l
-                        WHERE l.purchase_id = p.id AND l.deleted_at IS NULL) AS line_count`;
+                        WHERE l.purchase_id = p.id AND l.deleted_at IS NULL) AS line_count,
+                      -- What was bought, by name, so a list of buys says what they were (D-062).
+                      (SELECT string_agg(i.name, ', ' ORDER BY l.line_no) FROM purchase_lines l
+                         JOIN items i ON i.id = l.item_id
+                        WHERE l.purchase_id = p.id AND l.deleted_at IS NULL) AS item_names`;
 
 @Injectable()
 export class PurchasesRepository {

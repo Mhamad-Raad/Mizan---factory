@@ -28,6 +28,7 @@ import { QuantityInput } from '../components/QuantityInput.js';
 import { QueryStates } from '../components/states.js';
 import { TotalsFooter } from '../components/TotalsFooter.js';
 import { PriceFromMonth } from '../components/chips.js';
+import type { Lot } from './MaterialDetailPage.js';
 import { clearDraft, readDraft, writeDraft } from '../lib/drafts.js';
 import { customerName } from '../lib/customers.js';
 import { useFormatter, usePermission } from '../lib/store.js';
@@ -587,6 +588,8 @@ function OrderForm({
             </span>
           </div>
 
+          <LotHint itemId={line.item_id} pricedMeasure={line.priced_measure} />
+
           <QuantityInput
             priced_measure={line.priced_measure}
             value={{ qty_count: line.qty_count, qty_kg: line.qty_kg }}
@@ -867,4 +870,37 @@ export interface OrderDetail {
   }[];
   stock_warnings?: { item_id: string; item_name: string; available: string; requested: string }[];
   credit_limit_warning?: { limit: number; balance_after: number; currency: Currency } | null;
+}
+
+/**
+ * The stock a line will sell from, split by what we paid for it (D-062): "120 at IQD 1,310 ·
+ * 200 at IQD 1,965", oldest first — the order a sale takes them in. Whoever may not see bought
+ * prices sees only how much is left of each buy.
+ */
+function LotHint({ itemId, pricedMeasure }: { itemId: string; pricedMeasure: Measure }) {
+  const { t } = useTranslation();
+  const formatter = useFormatter();
+  const maySeeCost = usePermission('fields.see_bought_price');
+  const lots = useQuery({
+    queryKey: ['items', itemId, 'lots'],
+    queryFn: () => apiRequest<{ items: Lot[] }>(`/items/${itemId}/lots`),
+    staleTime: 30_000,
+  });
+  const live = (lots.data?.items ?? []).filter((lot) => Number(lot.remaining) > 0);
+  if (live.length === 0) return null;
+
+  const decimals = pricedMeasure === 'kg' ? 3 : 0;
+  const parts = live.map((lot) => {
+    // Pieces are whole: the API's "125.000" reads "125" (a string keeps its own decimals).
+    const left = pricedMeasure === 'kg' ? formatter.number(lot.remaining, decimals) : formatter.number(Number(lot.remaining));
+    if (!maySeeCost || lot.unit_cost_iqd === undefined || lot.unit_cost_usd_cents === undefined) return left;
+    const unit = lot.entered_currency === 'IQD' ? lot.unit_cost_iqd : lot.unit_cost_usd_cents;
+    return t('materials:lot_at', { quantity: left, price: formatter.money(unit, lot.entered_currency) });
+  });
+
+  return (
+    <p className="mz-caption mz-lot-hint" data-tabular>
+      {maySeeCost ? t('materials:stock_by_price_short', { lots: parts.join(' · ') }) : t('materials:stock_left_short', { lots: parts.join(' · ') })}
+    </p>
+  );
 }

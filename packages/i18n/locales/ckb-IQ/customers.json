@@ -56,8 +56,8 @@
   "name": "ناو",
   "all_balances": "هەموو باڵانسێک",
   "filter_owes": "قەرزی ئەوان بۆ ئێمە",
-  "filter_credit": "قەرزی ئێمە بۆ ئەوان",
-  "in_credit": "قەرزی ئێمە بۆ ئەوان",
+  "filter_credit": "پارەی پێشوەخت",
+  "in_credit": "پارەیان پێشوەختە داوە",
   "net_balance": "باڵانس",
   "from_sales": "لە فرۆشتن: قەرزی ئەوان بۆ ئێمە",
   "from_purchases": "لە کڕین: قەرزی ئێمە بۆ ئەوان",
@@ -72,7 +72,7 @@
   "credit_from_them": "باڵانس لەوانەوە",
   "tab_sales_ledger": "حیسابی فرۆشتن",
   "tab_purchase_ledger": "حیسابی کڕین",
-  "statement_sales": "کەشفی فرۆشتن",
+  "statement_sales": "کەشفی حساب",
   "statement_purchases": "کەشفی کڕین",
   "rate_own": "نرخی تایبەتی خۆیان",
   "rate_label": "نرخی ئەوان",
@@ -96,5 +96,6 @@
   "history_status": "شاردنەوە و پیشاندان",
   "rate_changed": "نرخ {{old}} ← {{new}}",
   "rate_set": "نرخ دانرا بە {{new}}",
-  "entry.damage": "زیان"
+  "entry.damage": "زیان",
+  "tab_account": "حساب"
 }

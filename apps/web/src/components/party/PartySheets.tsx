@@ -13,7 +13,7 @@ import type { CustomerRow } from '../../pages/CustomersPage.js';
 /**
  * Edit the account itself (FR-501, FR-701, D-055): its name, contact details and its own
  * conversion rate. A changed rate is written as a new rate — the old one is never edited — so
- * every order and purchase already saved keeps the rate it was made at, and History says who
+ * every order already saved keeps the rate it was made at, and History says who
  * changed it and when.
  */
 export function EditPartySheet({

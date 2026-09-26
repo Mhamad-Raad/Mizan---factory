@@ -11,7 +11,6 @@ import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
 import { usePaging } from '../lib/paging.js';
-import { AttributionChip, ReturnStatusChip } from '../components/chips.js';
 import type { DamageAttribution, ReturnStatus } from '../components/chips.js';
 import { FilterChip } from './MaterialsPage.js';
 import { useFormatter } from '../lib/store.js';
@@ -49,11 +48,17 @@ export interface DamageRow {
   voided_by_name: string | null;
   version: number;
   created_at: string;
+  /**
+   * A company's damage is owed by that company until it is marked paid back, in money or in
+   * materials (D-062); our own damage is simply a loss (`none`).
+   */
+  compensation: 'none' | 'owed' | 'paid_money' | 'paid_materials';
+  compensated_at: string | null;
   /** Absent for a caller without `fields.see_bought_price` (FR-807). */
   cost?: {
     est_value_iqd: number | null;
     est_value_usd_cents: number | null;
-    est_value_source: 'month' | 'fallback' | 'none';
+    est_value_source: 'month' | 'fallback' | 'lots' | 'none';
   } | null;
 }
 
@@ -90,18 +95,16 @@ export interface DamageTotals {
 type DateFilter = 'all' | 'month';
 
 /**
- * The Damaged items page (FR-801, FR-807, spec 3.3): the chips an owner scans with — what is
- * still expected back, what can go back at all, this period — the period totals of FR-807, and
- * rows that lead with the material and its quantity. The value appears only for those allowed
- * to see bought prices; the quantities never disappear.
+ * The Damaged items page (FR-801, FR-807, spec 3.3; D-062): the period totals of FR-807, and
+ * rows that lead with the material and its quantity, then who did it — ours, or the company
+ * that owes us for it — and whether that company has paid it back. The value appears only for
+ * those allowed to see bought prices; the quantities never disappear.
  */
 export function DamagesPage() {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const [query, setQuery] = useState('');
   const [dates, setDates] = useState<DateFilter>('month');
-  const [pending, setPending] = useState(false);
-  const [returnable, setReturnable] = useState(false);
   const [voided, setVoided] = useState(false);
   const [filters, setFilters] = useState(false);
   const [doneBy, setDoneBy] = useState('');
@@ -128,8 +131,6 @@ export function DamagesPage() {
       query,
       range.from,
       range.to,
-      pending,
-      returnable,
       voided,
       doneBy,
       attribution,
@@ -145,8 +146,6 @@ export function DamagesPage() {
       query,
       range.from,
       range.to,
-      pending,
-      returnable,
       voided,
       doneBy,
       attribution,
@@ -163,8 +162,6 @@ export function DamagesPage() {
       if (linked.item_id) params.set('item_id', linked.item_id);
       if (linked.order_id) params.set('order_id', linked.order_id);
       if (linked.purchase_id) params.set('purchase_id', linked.purchase_id);
-      if (pending) params.set('return_status', 'pending');
-      if (returnable) params.set('returnable', 'true');
       if (voided) params.set('include_void', 'true');
       if (doneBy) params.set('done_by', doneBy);
       if (attribution) params.set('attribution', attribution);
@@ -199,12 +196,6 @@ export function DamagesPage() {
         />
 
         <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          <FilterChip active={pending} onClick={() => setPending(!pending)}>
-            {t('damages:filter_pending')}
-          </FilterChip>
-          <FilterChip active={returnable} onClick={() => setReturnable(!returnable)}>
-            {t('damages:filter_returnable')}
-          </FilterChip>
           {!isLinked ? (
             <FilterChip active={dates === 'month'} onClick={() => setDates(dates === 'month' ? 'all' : 'month')}>
               {t('common:this_month')}
@@ -279,8 +270,15 @@ export function DamagesPage() {
                     </span>
                     {damage.reason ? <span className="mz-caption">{damage.reason}</span> : null}
                     <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                      <AttributionChip attribution={damage.attribution} />
-                      <ReturnStatusChip status={damage.return_status} />
+                      {/* Who did it — ours, or the company that owes us for it (D-062). */}
+                      <Chip tone="neutral">
+                        {damage.attribution === 'company' && damage.company_name ? (
+                          <bdi>{damage.company_name}</bdi>
+                        ) : (
+                          t('damages:ours_label')
+                        )}
+                      </Chip>
+                      <CompensationChip compensation={damage.compensation} />
                       {damage.doc_status === 'void' ? (
                         <Chip tone="danger" icon="close">
                           {t('glossary:void')}
@@ -323,9 +321,9 @@ export function DamagesPage() {
                   onChange={(event) => setAttribution(event.target.value as DamageAttribution | '')}
                 >
                   <option value="">{t('common:all')}</option>
-                  {(['customer_order', 'us', 'company', 'none'] as DamageAttribution[]).map((value) => (
+                  {(['us', 'company'] as DamageAttribution[]).map((value) => (
                     <option key={value} value={value}>
-                      {t(`damages:attribution.${value}`)}
+                      {t(`damages:who.${value}`)}
                     </option>
                   ))}
                 </select>
@@ -368,4 +366,25 @@ export function quantityOf(
   if (damage.qty_kg !== null) parts.push(`${formatter.number(damage.qty_kg, 3)} ${t('common:kg_symbol')}`);
   if (damage.qty_count !== null) parts.push(`${formatter.number(damage.qty_count)} ${t('common:count_symbol')}`);
   return damage.priced_measure === 'kg' ? parts.join(' · ') : parts.reverse().join(' · ');
+}
+
+/**
+ * Where a company's damage stands (D-062): owed until it is paid back. Our own damage has no
+ * chip — it is a loss, and there is nothing to wait for. Icon and word, never colour alone.
+ */
+export function CompensationChip({ compensation }: { compensation: DamageRow['compensation'] }) {
+  const { t } = useTranslation();
+  if (compensation === 'none') return null;
+  if (compensation === 'owed') {
+    return (
+      <Chip tone="warning" icon="clock">
+        {t('damages:compensation.owed')}
+      </Chip>
+    );
+  }
+  return (
+    <Chip tone="success" icon="check">
+      {t('damages:compensation.paid')}
+    </Chip>
+  );
 }

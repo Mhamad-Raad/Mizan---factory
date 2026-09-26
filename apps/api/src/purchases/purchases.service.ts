@@ -109,6 +109,8 @@ export interface PurchaseDto {
   voided_by_name: string | null;
   voided_at: string | null;
   line_count: number;
+  /** The materials bought, by name (D-062). */
+  item_names: string | null;
   cost: {
     discount_iqd: number;
     discount_usd_cents: number;
@@ -1047,6 +1049,7 @@ function toPurchaseDto(row: PurchaseListRow, lines: readonly PurchaseLineRow[]):
     voided_by_name: row.voided_by_name,
     voided_at: row.voided_at?.toISOString() ?? null,
     line_count: Number(row.line_count ?? 0),
+    item_names: row.item_names ?? null,
     cost: {
       discount_iqd: Number(row.discount_iqd),
       discount_usd_cents: Number(row.discount_usd_cents),

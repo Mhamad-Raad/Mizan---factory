@@ -909,3 +909,43 @@ storage".
 
 Relied on: the client's instruction; FR-1103 (appearance is per device); rule 9 (identity
 through tokens); spec 3.7.1 (self-hosted fonts).
+
+## D-062 · 2026-09-26 · client review · A warehouse with an accountant page
+
+The client rethought what the system is for: "the system will become a giant warehouse that has
+an accountant page, and keeps track of orders and companies that buy from us."
+
+- **Buying is ours alone, and it happens in Materials.** Creating a material is buying it — the
+  first quantity and what each one cost travel with it and are written in one transaction — and
+  "Add stock" on a material buys more. No company is involved; the separate purchase form and
+  the Purchases list are gone from the screens (the API keeps them: a buy is still a purchase
+  with one line and no company). "Opening stock" and "Correct stock" are removed from the
+  material page: stock arrives by buying it, and what is lost is damage.
+- **Every buy keeps its own price.** Bottles bought at $1.00 and bottles bought at $1.50 are one
+  material on one row; the material page splits its stock by what we paid, and the order form
+  shows that split under a line. A sale takes stock from the **oldest buy first**
+  (`lot_allocations`, append-only like every ledger: giving stock back is a negative row), and
+  its cost is what those units cost us — summed per buy, never an average times the quantity
+  (the margin kernel takes the exact total, `cost_source = 'lots'`). Selling past every buy
+  costs the rest at the latest buy's price. A buy whose stock has gone out can no longer be
+  voided or edited (`BUY_IN_USE`), or the sales that took from it would change cost.
+- **Damage is ours or a buying company's.** Ours is a loss. A company's puts its cost — from the
+  buys, like a sale — on that company's account as a `damage` entry (they owe us), and it stays
+  a cost until someone marks it **paid back**: in money (a payment clears it) or in materials (a
+  credit clears it and the stock returns to the very buys it came from). A booked damage's
+  quantity, attribution and date are not rewritten; it is voided and recorded again.
+- **The accountant page replaces Purchases.** For a period (1st of the month → today by
+  default): sold, cost of what was sold, profit (margins less discounts), bought, the
+  accountant's own expenses (new `expenses` table: an amount in both currencies with its rate,
+  voided with a reason, never edited), damage still a cost, damage paid back, and what is left
+  (profit − expenses − damage). Tabs list the orders with their profit, the buys, each
+  material's sold/cost/profit/bought/stock, and the expenses — each searchable and paged.
+  New permissions `accounts.view` (brings the bought-price and profit flags), `expenses.create`,
+  `expenses.void`; the accountant preset gains the first two (voiding is never preset).
+- **Companies only buy from us.** The buying side of a company — its purchases, "we owe them",
+  paying them — is gone from the screens; its balance is what it owes us.
+
+Demo data was wiped and reseeded in this shape. The monthly *bought* price remains only as the
+suggestion a buy opens with; the monthly *sale* price is unchanged.
+
+Relied on: the client's instructions (2026-09-26); rules 1–3 and 10; 2.4.1.

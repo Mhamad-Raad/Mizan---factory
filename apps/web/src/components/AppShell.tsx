@@ -44,14 +44,14 @@ const DESTINATIONS: Destination[] = [
     group: 'home',
     permission: 'dashboard.view',
   },
-  // What we sell and what we buy, side by side.
+  // What we sell, and the accountant's page of what it all came to (D-062).
   { to: '/orders', labelKey: 'orders:title', icon: 'orders', group: 'trade', permission: 'orders.view' },
   {
-    to: '/purchases',
-    labelKey: 'purchases:title',
+    to: '/accounts',
+    labelKey: 'purchases:accounts_title',
     icon: 'purchases',
     group: 'trade',
-    permission: 'purchases.view',
+    permission: 'accounts.view',
   },
   // The things and the accounts those documents are about.
   {

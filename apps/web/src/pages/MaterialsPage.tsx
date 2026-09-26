@@ -178,16 +178,11 @@ export function MaterialsPage() {
             />
           </div>
 
-          {/* The warehouse's primary action here is a purchase, not a new material (spec 3.3). */}
+          {/* Buying happens here (D-062): a new material is its first buy, and more of one is
+              "Add stock" on its own page. */}
           <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-            <Can permission="purchases.create">
-              <Link to="/purchases/new" className="mz-button mz-button--primary">
-                <Icon name="purchases" />
-                {t('purchases:add_material')}
-              </Link>
-            </Can>
             <Can permission="materials.create">
-              <Link to="/materials/new" className="mz-button mz-button--secondary">
+              <Link to="/materials/new" className="mz-button mz-button--primary">
                 <Icon name="plus" />
                 {t('materials:new_material')}
               </Link>
