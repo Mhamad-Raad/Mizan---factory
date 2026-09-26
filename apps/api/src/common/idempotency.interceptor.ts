@@ -13,6 +13,12 @@ const WAIT_FOR_IN_FLIGHT_MS = 5_000;
 const POLL_INTERVAL_MS = 100;
 /** `response_status = 0` marks a reservation: the work is running, no response yet. */
 const IN_FLIGHT = 0;
+/**
+ * What a key may look like: the web client sends `crypto.randomUUID()`; any client may send up to
+ * 128 letters, digits, `-` and `_`. Anything else is refused before it is stored (security
+ * review, finding 17) — the key is a column in a table every write passes through.
+ */
+const KEY_FORMAT = /^[A-Za-z0-9_-]{8,128}$/;
 
 interface StoredResponse {
   request_hash: string;
@@ -43,6 +49,16 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
     const key = request.headers[IDEMPOTENCY_HEADER];
     if (typeof key !== 'string' || key.length === 0) return next.handle();
+    if (!KEY_FORMAT.test(key)) {
+      throw ApiError.validation([
+        {
+          path: 'Idempotency-Key',
+          code: 'INVALID',
+          message_key: 'errors:idempotency_key_invalid',
+          params: { max: 128 },
+        },
+      ]);
+    }
     const userId = request.context?.userId;
     if (!userId) return next.handle();
 
@@ -54,7 +70,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
     // Ownership is recorded on the request so the error filter releases a reservation only
     // when *this* request made it. Releasing on any failure would let a duplicate that was
     // told to try again shortly delete the reservation the first copy is still working under.
-    if (reserved) request.idempotencyKeyOwned = key;
+    if (reserved) request.idempotencyKeyOwned = { key, userId };
     if (!reserved) {
       const stored = await this.awaitStored(key, userId);
       if (stored.request_hash !== requestHash) throw new ApiError('IDEMPOTENCY_MISMATCH');
@@ -70,7 +86,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
     return next.handle().pipe(
       switchMap((body) => {
         const status = context.switchToHttp().getResponse().statusCode as number;
-        return from(this.complete(key, status, body).then(() => body));
+        return from(this.complete(key, userId, status, body).then(() => body));
       }),
     );
   }
@@ -80,25 +96,25 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const { rowCount } = await this.database.query(
       `INSERT INTO idempotency_keys (key, user_id, request_hash, response_status, response_body, expires_at)
        VALUES ($1, $2, $3, ${IN_FLIGHT}, 'null'::jsonb, now() + make_interval(hours => ${TTL_HOURS}))
-       ON CONFLICT (key) DO NOTHING`,
+       ON CONFLICT (user_id, key) DO NOTHING`,
       [key, userId, requestHash],
     );
     return (rowCount ?? 0) > 0;
   }
 
-  private async complete(key: string, status: number, body: unknown): Promise<void> {
+  private async complete(key: string, userId: string, status: number, body: unknown): Promise<void> {
     await this.database.query(
-      'UPDATE idempotency_keys SET response_status = $2, response_body = $3 WHERE key = $1',
-      [key, status, JSON.stringify(body ?? null)],
+      'UPDATE idempotency_keys SET response_status = $3, response_body = $4 WHERE key = $1 AND user_id = $2',
+      [key, userId, status, JSON.stringify(body ?? null)],
     );
   }
 
   /** A failed request releases its key, so the user can correct the problem and retry. */
-  private async release(key: string): Promise<void> {
-    await this.database.query('DELETE FROM idempotency_keys WHERE key = $1 AND response_status = $2', [
-      key,
-      IN_FLIGHT,
-    ]);
+  private async release(key: string, userId: string): Promise<void> {
+    await this.database.query(
+      'DELETE FROM idempotency_keys WHERE key = $1 AND user_id = $2 AND response_status = $3',
+      [key, userId, IN_FLIGHT],
+    );
   }
 
   private async awaitStored(key: string, userId: string): Promise<StoredResponse> {
@@ -122,7 +138,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
   /** Exposed for the error filter: a request that failed must not hold the key it reserved. */
   async releaseFor(request: RequestWithContext): Promise<void> {
-    const key = request.idempotencyKeyOwned;
-    if (key) await this.release(key);
+    const owned = request.idempotencyKeyOwned;
+    if (owned) await this.release(owned.key, owned.userId);
   }
 }

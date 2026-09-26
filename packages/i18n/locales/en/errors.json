@@ -64,5 +64,6 @@
   "malformed_id": "This link does not point to any record — check it, or open the record from its list",
   "field.number_too_small": "Must be {{min}} or more",
   "field.number_too_big": "Must be {{max}} or less",
-  "field.number_above": "Must be more than {{min}}"
+  "field.number_above": "Must be more than {{min}}",
+  "idempotency_key_invalid": "This request could not be sent safely — reload the page and try again"
 }

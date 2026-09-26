@@ -64,5 +64,6 @@
   "malformed_id": "هذا الرابط لا يشير إلى أي سجل — تحقق منه، أو افتح السجل من قائمته",
   "field.number_too_small": "يجب أن يكون {{min}} أو أكثر",
   "field.number_too_big": "يجب أن يكون {{max}} أو أقل",
-  "field.number_above": "يجب أن يكون أكثر من {{min}}"
+  "field.number_above": "يجب أن يكون أكثر من {{min}}",
+  "idempotency_key_invalid": "تعذّر إرسال هذا الطلب بأمان — أعد تحميل الصفحة وحاول مرة أخرى"
 }
