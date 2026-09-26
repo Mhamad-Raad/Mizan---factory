@@ -1149,6 +1149,37 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
   });
 
   describe('the orders list (FR-611)', () => {
+    it('adds up the whole filter for the cards above the list: sold, and still owed', async () => {
+      // 100 kg of copper at 850, borrowed, 30,000 of it paid: 85,000 sold, 55,000 still owed.
+      const borrowed = await createOrder(sales, { lines: [{ item_id: copper, qty_kg: '100.000' }] }).expect(201);
+      await as(ctx.http, sales)
+        .post(`/api/v1/orders/${borrowed.body.id}/payments`)
+        .send({ amount: 30_000, currency: 'IQD', entry_date: today() })
+        .expect(201);
+      // One sheet of steel for cash: 18,000 sold, nothing owed.
+      await as(ctx.http, sales)
+        .post('/api/v1/orders')
+        .send({
+          customer_id: walkIn,
+          order_date: today(),
+          payment_type: 'cash',
+          received_currency: 'IQD',
+          lines: [{ item_id: steel, qty_count: 1 }],
+        })
+        .expect(201);
+
+      const list = await as(ctx.http, sales).get('/api/v1/orders?page_size=1').expect(200);
+      expect(list.body.items).toHaveLength(1);
+      expect(list.body.totals).toMatchObject({ orders: 2, total_iqd: 103_000, owing: 1 });
+      expect(list.body.totals.balance.owed_iqd).toBe(55_000);
+
+      // Whoever may not see what customers owe gets the counts, never the owed amount.
+      const viewer = await seedUser({ username: 'viewer.orders', permissions: ['orders.view'] });
+      const plain = await as(ctx.http, await signIn(ctx.http, viewer)).get('/api/v1/orders').expect(200);
+      expect(plain.body.totals.owing).toBe(1);
+      expect('balance' in plain.body.totals).toBe(false);
+    });
+
     it('filters by status, payment type, customer, employee and free text', async () => {
       const borrowed = await createOrder(sales, {
         lines: [{ item_id: copper, qty_kg: '10.000' }],

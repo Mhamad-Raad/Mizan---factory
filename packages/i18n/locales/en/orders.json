@@ -53,5 +53,8 @@
   "credit_limit_warning": "This takes the company past its credit limit of {{limit}} to {{balance}}",
   "void_explanation": "Stock for {{count}} materials will be restored and {{amount}} will come off the company balance. Payments already received stay on its account.",
   "search_hint": "Number, company or notes",
-  "new_order_hint": "Record a sale — the company, what they bought, and how they paid."
+  "new_order_hint": "Record a sale — the company, what they bought, and how they paid.",
+  "tile_orders": "Orders",
+  "tile_sold": "Sold",
+  "tile_to_collect": "Still to collect"
 }

@@ -37,7 +37,7 @@ import { StockService } from '../stock/stock.service.js';
 import { LotsService } from '../lots/lots.service.js';
 import type { Plan } from '../lots/lots.service.js';
 import { OrdersRepository } from './orders.repository.js';
-import type { NewOrderLine, OrderFilters, OrderListRow } from './orders.repository.js';
+import type { NewOrderLine, OrderFilters, OrderListRow, OrderTotals } from './orders.repository.js';
 import type { OrderDto, OrderLineDto, OrderLineRow, PaymentType } from './order.types.js';
 
 /** How long the creator may undo an order from the save toast (FR-610). */
@@ -106,9 +106,9 @@ export class OrdersService {
   async list(
     context: RequestContext,
     filters: OrderFilters,
-  ): Promise<{ items: OrderDto[]; total: number }> {
-    const { rows, total } = await this.orders.list(filters);
-    return { items: rows.map((row) => toOrderDto(row, [])), total };
+  ): Promise<{ items: OrderDto[]; total: number; totals: OrderTotals }> {
+    const { rows, total, totals } = await this.orders.list(filters);
+    return { items: rows.map((row) => toOrderDto(row, [])), total, totals };
   }
 
   async get(context: RequestContext, id: string): Promise<OrderDto> {
