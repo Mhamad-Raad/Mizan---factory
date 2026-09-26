@@ -588,7 +588,7 @@ function OrderForm({
             </span>
           </div>
 
-          <LotHint itemId={line.item_id} pricedMeasure={line.priced_measure} />
+          <LotHint itemId={line.item_id} />
 
           <QuantityInput
             priced_measure={line.priced_measure}
@@ -877,7 +877,7 @@ export interface OrderDetail {
  * 200 at IQD 1,965", oldest first — the order a sale takes them in. Whoever may not see bought
  * prices sees only how much is left of each buy.
  */
-function LotHint({ itemId, pricedMeasure }: { itemId: string; pricedMeasure: Measure }) {
+function LotHint({ itemId }: { itemId: string }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const maySeeCost = usePermission('fields.see_bought_price');
