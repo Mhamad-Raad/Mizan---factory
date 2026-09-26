@@ -1,0 +1,7 @@
+# The backup container (compose.yml `backup`). The stock postgres image carries pg_dump but
+# neither `openssl` nor the `aws` client, so the nightly job could dump but not encrypt, and the
+# off-site copy — the point of the whole exercise — could never happen (security review,
+# finding 10). Same PostgreSQL major as the database, so pg_dump matches the server.
+FROM postgres:15-alpine
+RUN apk add --no-cache aws-cli openssl ca-certificates \
+ && aws --version && openssl version

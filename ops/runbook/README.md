@@ -129,9 +129,19 @@ copies it encrypted are still in retention, which is thirteen months.
 ## Backups
 
 Nightly at 03:00 Asia/Baghdad the `backup` container dumps, **verifies the dump is readable**,
-encrypts with AES-256, uploads to `BACKUP_BUCKET`, and prunes to 30 daily and 12 monthly
-copies. WAL segments are archived continuously with `archive_timeout=900`, which bounds loss
-at fifteen minutes (NFR-08: RPO 15 minutes, RTO 4 hours).
+encrypts with AES-256, writes an HMAC-SHA256 integrity tag beside it (`<file>.hmac`, keyed from
+`BACKUP_ENCRYPTION_KEY`), uploads both to `BACKUP_BUCKET`, syncs the WAL, and prunes to 30 daily
+and 12 monthly copies. WAL segments are archived continuously with `archive_timeout=900`, which
+bounds loss at fifteen minutes (NFR-08: RPO 15 minutes, RTO 4 hours), and leave the host every
+five minutes.
+
+The container is built from `ops/docker/Dockerfile.backup` (pg_dump, `openssl`, the `aws`
+client) and needs the off-site store's credentials in `.env`: `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, and for Backblaze B2 / Wasabi / any other
+S3-compatible store `AWS_ENDPOINT_URL`. **There is no "local only" mode**: if the copy cannot
+leave the host — client missing, bucket or credentials wrong, upload refused — the run fails
+with a `FAILED:` line naming the cause and sends **no** heartbeat, and the loop logs `ERROR:` on
+every WAL sync it cannot do. A missed heartbeat is therefore always a real problem.
 
 Set `BACKUP_HEARTBEAT_URL` to a dead-man's-switch monitor. **Silence is the alert**: a backup
 that quietly stopped working is otherwise discovered on the day it is needed.
@@ -139,8 +149,9 @@ that quietly stopped working is otherwise discovered on the day it is needed.
 Check it is working:
 
 ```sh
-docker compose logs backup | tail -20                      # a "done:" line each night
-aws s3 ls "$BACKUP_BUCKET/daily/" | tail -5
+docker compose logs backup | tail -20                      # a "done:" line each night, no "ERROR:"
+aws s3 ls "$BACKUP_BUCKET/daily/" | tail -5                # each .dump.enc with its .dump.enc.hmac
+docker compose exec backup sh /opt/mizan/backup.sh         # run one now, e.g. after changing credentials
 ```
 
 ## Restore
@@ -149,10 +160,14 @@ Rehearsed before go-live and every quarter (I6). Record each rehearsal in
 `ops/runbook/restore-drills.md`.
 
 ```sh
-# 1 — fetch and decrypt the chosen copy
+# 1 — fetch the chosen copy with its integrity tag, check the tag, decrypt
 aws s3 cp "$BACKUP_BUCKET/daily/mizan-<stamp>.dump.enc" .
-openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
-  -in mizan-<stamp>.dump.enc -out mizan.dump -pass env:BACKUP_ENCRYPTION_KEY
+aws s3 cp "$BACKUP_BUCKET/daily/mizan-<stamp>.dump.enc.hmac" .
+sh ops/backup/restore-decrypt.sh mizan-<stamp>.dump.enc mizan.dump
+#   "REFUSED" means the copy was damaged or altered (or the key is wrong): take another copy.
+#   Copies from before the tag existed have no .hmac and are decrypted with a warning.
+#   The script needs `openssl`; the backup container has it:
+#   docker compose run --rm --entrypoint sh -v "$PWD:/restore" -w /restore backup /opt/mizan/restore-decrypt.sh …
 
 # 2 — restore into a fresh database (never over a live one)
 createdb -O mizan_migrate mizan_restore

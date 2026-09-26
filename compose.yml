@@ -101,7 +101,11 @@ services:
     restart: unless-stopped
 
   backup:
-    image: postgres:15-alpine
+    # pg_dump plus `openssl` and the `aws` client: the stock postgres image has neither, and a
+    # backup that cannot leave the host fails instead of pretending (security review, 10).
+    build:
+      context: ops/docker
+      dockerfile: Dockerfile.backup
     environment:
       PGHOST: db
       PGDATABASE: ${POSTGRES_DB:-mizan}
@@ -110,6 +114,12 @@ services:
       BACKUP_BUCKET: ${BACKUP_BUCKET:?}
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:?}
       BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
+      # The off-site store's credentials. For Backblaze B2, Wasabi or any S3-compatible store,
+      # also set AWS_ENDPOINT_URL to its endpoint.
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?the off-site backup store's access key}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?the off-site backup store's secret key}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
       TZ: Asia/Baghdad
     entrypoint: ['/bin/sh', '/opt/mizan/cron.sh']
     volumes:
