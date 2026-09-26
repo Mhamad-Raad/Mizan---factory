@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, Icon } from '@mizan/ui';
+import { Card, Icon, Menu } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import { LANGUAGE_NAMES, LOCALES, directionOf } from '@mizan/i18n';
 import { FONT_SCALES, THEMES, resolveTheme } from '../lib/preferences.js';
@@ -299,4 +299,32 @@ export function useAppearanceMenus() {
       onSelect: () => setPreference('fontScale', scale),
     })),
   };
+}
+
+/**
+ * The bar's three appearance menus — language, theme, text size — as one piece, so the app bar
+ * and the doorway screens (sign-in, lock, change password) offer them identically.
+ */
+export function AppearanceMenus() {
+  const { t } = useTranslation();
+  const lang = useApp((state) => state.preferences.lang);
+  const setPreference = useApp((state) => state.setPreference);
+  const { themeIcon, themeItems, textItems } = useAppearanceMenus();
+
+  return (
+    <>
+      <Menu
+        label={t('common:language_menu')}
+        icon="language"
+        items={LOCALES.map((locale) => ({
+          label: LANGUAGE_NAMES[locale],
+          lang: locale,
+          current: locale === lang,
+          onSelect: () => setPreference('lang', locale),
+        }))}
+      />
+      <Menu label={t('common:theme_menu')} icon={themeIcon} items={themeItems} />
+      <Menu label={t('common:text_size_menu')} icon="text" items={textItems} />
+    </>
+  );
 }

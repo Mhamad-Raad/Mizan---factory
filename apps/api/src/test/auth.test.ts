@@ -1,6 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
-import { as, auditRows, createTestApp, resetDatabase, seedUser, signIn } from './harness.js';
+import {
+  as,
+  auditRows,
+  createTestApp,
+  resetDatabase,
+  seedUser,
+  signIn,
+  withDatabase,
+} from './harness.js';
 import type { TestApp } from './harness.js';
 
 describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
@@ -57,22 +65,71 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
     expect(wrongUser.body.error.params).toEqual(wrongPassword.body.error.params);
   });
 
-  it('locks a username out after five failures in fifteen minutes, and records it', async () => {
-    const user = await seedUser({ username: 'sara' });
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      await request(ctx.http)
-        .post('/api/v1/auth/login')
-        .send({ username_or_phone: 'sara', password: 'wrong-but-long-enough' })
-        .expect(401);
-    }
+  describe('sign-in throttling (2.8)', () => {
+    const attempt = (username: string, password: string) =>
+      request(ctx.http).post('/api/v1/auth/login').send({ username_or_phone: username, password });
 
-    const locked = await request(ctx.http)
-      .post('/api/v1/auth/login')
-      .send({ username_or_phone: 'sara', password: user.password })
-      .expect(429);
-    expect(locked.body.error.code).toBe('RATE_LIMITED');
-    expect(locked.body.error.params.minutes).toBe(15);
-    expect((await auditRows({ action: 'lockout' })).length).toBeGreaterThan(0);
+    /** Moves every recorded attempt back in time, as if the minutes had passed. */
+    const minutesPass = (minutes: number) =>
+      withDatabase((client) =>
+        client.query(
+          `UPDATE login_attempts SET attempted_at = attempted_at - make_interval(mins => $1)`,
+          [minutes],
+        ),
+      );
+
+    it('says how many attempts are left after each wrong password', async () => {
+      await seedUser({ username: 'sara' });
+      const left: number[] = [];
+      for (let i = 0; i < 4; i += 1) {
+        const response = await attempt('sara', 'wrong-but-long-enough').expect(401);
+        left.push(response.body.error.params.attempts_left);
+        expect(response.body.error.params.lockout_minutes).toBe(15);
+      }
+      expect(left).toEqual([4, 3, 2, 1]);
+    });
+
+    it('locks on the fifth wrong password, says so at once, and records it', async () => {
+      const user = await seedUser({ username: 'sara' });
+      for (let i = 0; i < 4; i += 1) await attempt('sara', 'wrong-but-long-enough').expect(401);
+
+      const fifth = await attempt('sara', 'wrong-but-long-enough').expect(429);
+      expect(fifth.body.error.code).toBe('RATE_LIMITED');
+      expect(fifth.body.error.params.minutes).toBe(15);
+
+      // Even the right password is refused while the lockout lasts.
+      await attempt('sara', user.password).expect(429);
+      expect((await auditRows({ action: 'lockout' })).length).toBeGreaterThan(0);
+    });
+
+    it('does not extend the lockout when somebody keeps trying', async () => {
+      const user = await seedUser({ username: 'sara' });
+      for (let i = 0; i < 5; i += 1) await attempt('sara', 'wrong-but-long-enough');
+
+      await minutesPass(10);
+      for (let i = 0; i < 3; i += 1) {
+        const refused = await attempt('sara', 'wrong-but-long-enough').expect(429);
+        expect(refused.body.error.params.minutes).toBe(5);
+      }
+
+      // Fifteen minutes after the fifth failure the door opens, however often it was knocked on.
+      await minutesPass(5);
+      await attempt('sara', user.password).expect(200);
+    });
+
+    it('gives a full five attempts again after a successful sign-in', async () => {
+      const user = await seedUser({ username: 'sara' });
+      for (let i = 0; i < 3; i += 1) await attempt('sara', 'wrong-but-long-enough');
+      await attempt('sara', user.password).expect(200);
+
+      const next = await attempt('sara', 'wrong-but-long-enough').expect(401);
+      expect(next.body.error.params.attempts_left).toBe(4);
+    });
+
+    it('locks a username that does not exist the same way', async () => {
+      for (let i = 0; i < 4; i += 1) await attempt('nobody', 'whatever-long-enough').expect(401);
+      await attempt('nobody', 'whatever-long-enough').expect(429);
+    });
   });
 
   it('refuses a deactivated account with its own message', async () => {
@@ -131,6 +188,22 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
         .send({ password: 'not-the-password' })
         .expect(422);
       await as(ctx.http, session).get('/api/v1/users').expect(423);
+    });
+
+    it('shares the sign-in lockout, and refuses even the right password while it lasts', async () => {
+      const user = await seedUser({ username: 'sara', role: 'admin' });
+      const session = await signIn(ctx.http, user);
+      await as(ctx.http, session).post('/api/v1/auth/lock').expect(204);
+
+      const unlock = (password: string) =>
+        as(ctx.http, session).post('/api/v1/auth/unlock').send({ password });
+      const first = await unlock('not-the-password').expect(422);
+      expect(first.body.error.fields[0].params.attempts_left).toBe(4);
+      for (let i = 0; i < 3; i += 1) await unlock('not-the-password').expect(422);
+
+      const fifth = await unlock('not-the-password').expect(429);
+      expect(fifth.body.error.params.minutes).toBe(15);
+      await unlock(user.password).expect(429);
     });
   });
 

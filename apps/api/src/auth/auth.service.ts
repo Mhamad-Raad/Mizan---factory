@@ -11,10 +11,28 @@ import { PasswordService, checkPasswordRules } from './password.service.js';
 import { SessionService } from './session.service.js';
 import type { SessionWithUser } from './session.service.js';
 
-/** Sign-in throttling of specification 2.8 / FR-101. */
+/**
+ * Sign-in throttling of specification 2.8 / FR-101: five wrong passwords within fifteen minutes
+ * lock the username for fifteen minutes, counted from the fifth. The window and the lockout are
+ * the same length, so once a lockout ends none of the failures that caused it are still counted.
+ */
 const MAX_FAILURES = 5;
 const FAILURE_WINDOW_MINUTES = 15;
 const LOCKOUT_MINUTES = 15;
+
+type FailureState = { recent: number; run: number; lastFailureAt: Date | null };
+
+/** When a lockout ends, or null when there is none: a fixed time after the failure that caused it. */
+function lockedUntil(state: FailureState): Date | null {
+  if (state.run < MAX_FAILURES || !state.lastFailureAt) return null;
+  const until = new Date(state.lastFailureAt.getTime() + LOCKOUT_MINUTES * 60_000);
+  return until.getTime() > Date.now() ? until : null;
+}
+
+/** Whole minutes left, rounded up, so the message never says "0 min" while still locked. */
+function minutesUntil(until: Date): number {
+  return Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60_000));
+}
 
 export interface LoginInput {
   username_or_phone: string;
@@ -63,38 +81,38 @@ export class AuthService {
     const user = await this.users.findByUsernameOrPhone(identifier);
 
     // Throttling is keyed on what was typed, so it also protects a username that does not exist.
-    const failures = await this.users.recentFailures(
-      identifier.toLowerCase(),
-      FAILURE_WINDOW_MINUTES,
-    );
-    if (failures >= MAX_FAILURES) {
-      await this.recordFailure(identifier, user?.id ?? null, ctx, 'lockout');
-      throw new ApiError('RATE_LIMITED', { minutes: LOCKOUT_MINUTES });
+    const key = identifier.toLowerCase();
+    const state = await this.failureState(key);
+    const until = lockedUntil(state);
+    if (until) {
+      // Recorded in History, but not as a failure: trying a locked door does not move when it opens.
+      await this.recordFailure(identifier, user?.id ?? null, ctx, 'locked_out', false);
+      throw new ApiError('RATE_LIMITED', { minutes: minutesUntil(until) });
     }
 
-    if (!user) {
-      await this.recordFailure(identifier, null, ctx, 'unknown_user');
-      throw new ApiError('UNAUTHENTICATED', { reason: 'invalid_credentials' });
-    }
-
-    if (user.locked_until && user.locked_until.getTime() > Date.now()) {
-      const minutes = Math.ceil((user.locked_until.getTime() - Date.now()) / 60_000);
-      throw new ApiError('RATE_LIMITED', { minutes });
-    }
-
-    const correct = await this.passwords.verify(user.password_hash, input.password);
-    if (!correct) {
-      const nextFailureCount = failures + 1;
-      const lockUntil =
-        nextFailureCount >= MAX_FAILURES ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null;
-      await this.users.registerFailure(user.id, lockUntil);
+    const correct = user ? await this.passwords.verify(user.password_hash, input.password) : false;
+    if (!user || !correct) {
+      // A wrong username and a wrong password are answered identically, down to the count.
+      const attemptsLeft = MAX_FAILURES - (state.recent + 1);
+      const locking = attemptsLeft <= 0;
+      if (user) {
+        await this.users.registerFailure(
+          user.id,
+          locking ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null,
+        );
+      }
       await this.recordFailure(
         identifier,
-        user.id,
+        user?.id ?? null,
         ctx,
-        lockUntil ? 'lockout' : 'invalid_password',
+        locking ? 'lockout' : user ? 'invalid_password' : 'unknown_user',
       );
-      throw new ApiError('UNAUTHENTICATED', { reason: 'invalid_credentials' });
+      if (locking) throw new ApiError('RATE_LIMITED', { minutes: LOCKOUT_MINUTES });
+      throw new ApiError('UNAUTHENTICATED', {
+        reason: 'invalid_credentials',
+        attempts_left: attemptsLeft,
+        lockout_minutes: LOCKOUT_MINUTES,
+      });
     }
 
     // A deactivated user is told plainly — that is not credential disclosure, and the
@@ -241,13 +259,23 @@ export class AuthService {
     const user = await this.users.findById(context.userId);
     if (!user) throw new ApiError('UNAUTHENTICATED');
 
+    // The same lockout as the Login page: while it lasts, the password is not even checked.
+    const until = lockedUntil(await this.failureState(user.username));
+    if (until) throw new ApiError('RATE_LIMITED', { minutes: minutesUntil(until) });
+
     if (
       !credentials.password ||
       !(await this.passwords.verify(user.password_hash, credentials.password))
     ) {
-      await this.chargeWrongPassword(user, context);
+      const attemptsLeft = await this.chargeWrongPassword(user, context);
+      if (attemptsLeft <= 0) throw new ApiError('RATE_LIMITED', { minutes: LOCKOUT_MINUTES });
       throw ApiError.validation([
-        { path: 'password', code: 'INVALID', message_key: 'auth:invalid_credentials', params: {} },
+        {
+          path: 'password',
+          code: 'INVALID',
+          message_key: 'auth:invalid_credentials',
+          params: { attempts_left: attemptsLeft, lockout_minutes: LOCKOUT_MINUTES },
+        },
       ]);
     }
 
@@ -263,17 +291,16 @@ export class AuthService {
   }
 
   /**
-   * A wrong password, wherever it was typed: the Login page, the lock screen's password
-   * fallback, or the PIN form (2.8 rate limiting).
+   * A wrong password typed on the lock screen (2.8 rate limiting). It is the same credential
+   * as the Login page's, so it counts toward the same five-in-fifteen lockout — counting only
+   * the Login page left a stolen **locked** tablet as an unlimited password oracle (I5 review).
    *
-   * All three are the same credential, so all three count toward the same five-in-fifteen
-   * lockout. Counting only the Login page left a stolen **locked** tablet as an unlimited
-   * password oracle, and the PIN form as another (I5 review).
+   * Answers how many attempts are left; zero or less means this one started the lockout.
    */
-  private async chargeWrongPassword(user: UserRow, context: RequestContext): Promise<void> {
-    const failures = await this.users.recentFailures(user.username, FAILURE_WINDOW_MINUTES);
+  private async chargeWrongPassword(user: UserRow, context: RequestContext): Promise<number> {
+    const state = await this.failureState(user.username);
     const lockUntil =
-      failures + 1 >= MAX_FAILURES ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null;
+      state.recent + 1 >= MAX_FAILURES ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null;
     await this.users.registerFailure(user.id, lockUntil);
     await this.users.recordLoginAttempt({
       username: user.username,
@@ -295,6 +322,15 @@ export class AuthService {
       user_agent: context.userAgent,
       related: { user_id: user.id },
     });
+    return MAX_FAILURES - (state.recent + 1);
+  }
+
+  private failureState(username: string): Promise<FailureState> {
+    return this.users.failureState(
+      username,
+      FAILURE_WINDOW_MINUTES,
+      FAILURE_WINDOW_MINUTES + LOCKOUT_MINUTES,
+    );
   }
 
   private async recordFailure(
@@ -302,13 +338,16 @@ export class AuthService {
     userId: string | null,
     ctx: LoginContext,
     reason: string,
+    counts = true,
   ): Promise<void> {
-    await this.users.recordLoginAttempt({
-      username: identifier.toLowerCase(),
-      userId,
-      ip: ctx.ip,
-      succeeded: false,
-    });
+    if (counts) {
+      await this.users.recordLoginAttempt({
+        username: identifier.toLowerCase(),
+        userId,
+        ip: ctx.ip,
+        succeeded: false,
+      });
+    }
     await this.audit.recordAnonymous({
       actor_user_id: userId,
       action: reason === 'lockout' ? 'lockout' : 'login_failed',

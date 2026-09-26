@@ -137,19 +137,71 @@ input[type='tel'] {
   white-space: nowrap;
 }
 
-.mz-login-band {
+/*
+ * The doorway — sign in, the lock screen, the forced password change.
+ *
+ * One card of a form's width centred on the page, as the land-allocation system has it: a text
+ * field the width of a monitor is nobody's idea of a sign-in. The appearance menus take their
+ * own row at the top rather than floating over the page, so on a short phone in landscape the
+ * card can never slide under them. At 360 px the card is the screen less a 16 px gutter.
+ */
+.mz-doorway {
+  background: var(--color-bg);
+}
+
+.mz-doorway__tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  padding: var(--space-2);
+}
+
+.mz-doorway__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding-block: var(--space-2) var(--space-6);
+  padding-inline: var(--space-4);
+}
+
+.mz-doorway .mz-doorway__card {
+  inline-size: 100%;
+  max-inline-size: 24rem;
+  padding: var(--space-5);
+}
+
+.mz-doorway__head {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
-  background: var(--color-header);
-  padding-block: var(--space-5);
-  color: var(--color-on-header);
+  gap: var(--space-1);
+  margin-block-end: var(--space-5);
+  text-align: center;
 }
 
-.mz-login-band__name {
+.mz-doorway__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-block-end: var(--space-2);
+  border-radius: var(--radius-lg);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  inline-size: 48px;
+  block-size: 48px;
+}
+
+.mz-doorway__title {
+  margin: 0;
   font-size: 1.25rem;
   font-weight: 600;
+}
+
+.mz-doorway__subtitle {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
 }
 
 /*
@@ -157,8 +209,7 @@ input[type='tel'] {
  * that carries the identity — without it the header and the page are the same colour and the
  * app loses the "which application am I in" cue at a glance (spec 3.2.4).
  */
-[data-theme='dark'] .mz-header,
-[data-theme='dark'] .mz-login-band {
+[data-theme='dark'] .mz-header {
   border-block-end: 2px solid var(--color-primary);
 }
 
@@ -1647,8 +1698,7 @@ html[data-mirroring='true'] body {
      *
      * A 1,100 px cap is right for prose and wrong for this: the screens here are tables an
      * office reads across, and capping them left a monitor's worth of empty page beside the
-     * work. Forms keep their own width (`mz-main--narrow`), because a text field the width of
-     * a monitor is nobody's idea of a form.
+     * work. The doorway screens keep a card of a form's width (`.mz-doorway__card`).
      */
     padding-block: var(--space-6);
     padding-inline: var(--space-6);

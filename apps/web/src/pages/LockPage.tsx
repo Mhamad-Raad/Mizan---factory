@@ -2,15 +2,17 @@ import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Avatar, Button, Card, MizanMark, PasswordField } from '@mizan/ui';
-import { ApiError, apiRequest } from '../lib/api.js';
+import { Avatar, Button, PasswordField } from '@mizan/ui';
+import { Doorway } from '../components/Doorway.js';
+import { apiRequest } from '../lib/api.js';
+import { signInError } from '../lib/signInError.js';
+import type { SignInError } from '../lib/signInError.js';
 import { clearAllDrafts } from '../lib/drafts.js';
 import { useMotionAllowed, staggerDelay } from '../lib/motion.js';
 import { readRecentUsers, rememberUser } from '../lib/preferences.js';
 import type { RecentUser } from '../lib/preferences.js';
 import { useApp } from '../lib/store.js';
 import type { SessionUser } from '../lib/store.js';
-import { LanguageChips } from '../components/LanguageChips.js';
 
 interface SwitchResponse {
   user: SessionUser;
@@ -45,7 +47,7 @@ export function LockPage() {
   /** Who is being asked for a credential: the signed-in user, or somebody taking over. */
   const [switching, setSwitching] = useState<RecentUser | null>(null);
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SignInError | null>(null);
   const [busy, setBusy] = useState(false);
 
   const motion = useMotionAllowed();
@@ -71,10 +73,7 @@ export function LockPage() {
       reset();
       navigate('/');
     } catch (caught) {
-      if (caught instanceof ApiError) {
-        const field = caught.fields?.[0];
-        setError(field ? t(field.message_key, field.params) : t('auth:invalid_credentials'));
-      } else setError(t('errors:INTERNAL'));
+      setError(signInError(t, caught));
     } finally {
       setBusy(false);
     }
@@ -111,14 +110,7 @@ export function LockPage() {
       reset();
       navigate(response.user.must_change_password ? '/change-password' : '/');
     } catch (caught) {
-      if (caught instanceof ApiError) {
-        const reason = caught.params.reason as string | undefined;
-        if (reason === 'deactivated') {
-          setError(t('auth:account_deactivated'));
-        } else if (caught.code === 'RATE_LIMITED') {
-          setError(t('auth:locked_out', { minutes: caught.params.minutes as number }));
-        } else setError(t('auth:invalid_credentials'));
-      } else setError(t('errors:INTERNAL'));
+      setError(signInError(t, caught));
     } finally {
       setBusy(false);
     }
@@ -143,95 +135,88 @@ export function LockPage() {
   };
 
   return (
-    <div className="mz-app mz-app--doorway">
-      <header className="mz-login-band">
-        <MizanMark size={64} title={t('common:app_name')} />
-        <p className="mz-login-band__name">{t('common:app_name')}</p>
-      </header>
-      <main className="mz-main mz-main--narrow">
-        <Card>
-          <div className="mz-stack">
-            <div className="mz-row">
-              <Avatar name={who.displayName} />
-              <div>
-                <p className="mz-heading">{who.displayName}</p>
-                <p className="mz-muted">
-                  {switching ? t('auth:switch_user') : t('auth:locked_title')}
-                </p>
-              </div>
-            </div>
-
-            <form className="mz-stack" onSubmit={submitPassword} noValidate>
-              <PasswordField
-                label={t('auth:password')}
-                hint={t('auth:unlock_with_password')}
-                showLabel={t('auth:show_password')}
-                hideLabel={t('auth:hide_password')}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="current-password"
-                autoFocus
-                required
-              />
-              {error ? (
-                <p className="mz-field__error" role="alert">
-                  {error}
-                </p>
-              ) : null}
-              <Button type="submit" block loading={busy} disabled={!password}>
-                {switching ? t('auth:sign_in') : t('auth:unlock')}
-              </Button>
-            </form>
-
-            {recent.length > 0 ? (
-              <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
-                <p className="mz-caption">{t('auth:recent_users')}</p>
-                <ul className="mz-list">
-                  {(switching
-                    ? [{ username: '', displayName: who.displayName } as RecentUser]
-                    : recent
-                  ).map((entry, index) => (
-                    <li
-                      key={entry.username || 'current'}
-                      className={motion ? 'mz-switcher__card' : undefined}
-                      style={{
-                        ['--mz-stagger' as string]: staggerDelay(index, recent.length, motion),
-                      }}
-                    >
-                      <button
-                        type="button"
-                        className="mz-list__item mz-list__item--interactive"
-                        style={{
-                          inlineSize: '100%',
-                          background: 'none',
-                          border: 0,
-                          textAlign: 'start',
-                        }}
-                        onClick={() => choose(switching ? null : entry)}
-                        disabled={busy}
-                      >
-                        <span className="mz-list__body">
-                          <span className="mz-list__title">
-                            {switching
-                              ? t('auth:signed_in_as', { name: user?.display_name ?? '' })
-                              : entry.displayName}
-                          </span>
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            <Button variant="ghost" block onClick={() => void signOut()}>
-              {t('auth:sign_out')}
-            </Button>
-
-            <LanguageChips />
+    <Doorway>
+      <div className="mz-stack">
+        <div className="mz-row">
+          <Avatar name={who.displayName} />
+          <div>
+            <p className="mz-heading">{who.displayName}</p>
+            <p className="mz-muted">{switching ? t('auth:switch_user') : t('auth:locked_title')}</p>
           </div>
-        </Card>
-      </main>
-    </div>
+        </div>
+
+        <form className="mz-stack" onSubmit={submitPassword} noValidate>
+          <PasswordField
+            label={t('auth:password')}
+            hint={t('auth:unlock_with_password')}
+            showLabel={t('auth:show_password')}
+            hideLabel={t('auth:hide_password')}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="current-password"
+            autoFocus
+            required
+          />
+          {error ? (
+            <p className="mz-field__error" role="alert">
+              {error.message}
+            </p>
+          ) : null}
+          {error?.warning ? (
+            <div className="mz-warning" role="status">
+              {error.warning}
+            </div>
+          ) : null}
+          <Button type="submit" block loading={busy} disabled={!password}>
+            {switching ? t('auth:sign_in') : t('auth:unlock')}
+          </Button>
+        </form>
+
+        {recent.length > 0 ? (
+          <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
+            <p className="mz-caption">{t('auth:recent_users')}</p>
+            <ul className="mz-list">
+              {(switching
+                ? [{ username: '', displayName: who.displayName } as RecentUser]
+                : recent
+              ).map((entry, index) => (
+                <li
+                  key={entry.username || 'current'}
+                  className={motion ? 'mz-switcher__card' : undefined}
+                  style={{
+                    ['--mz-stagger' as string]: staggerDelay(index, recent.length, motion),
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="mz-list__item mz-list__item--interactive"
+                    style={{
+                      inlineSize: '100%',
+                      background: 'none',
+                      border: 0,
+                      textAlign: 'start',
+                    }}
+                    onClick={() => choose(switching ? null : entry)}
+                    disabled={busy}
+                  >
+                    <span className="mz-list__body">
+                      <span className="mz-list__title">
+                        {switching
+                          ? t('auth:signed_in_as', { name: user?.display_name ?? '' })
+                          : entry.displayName}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <Button variant="ghost" block onClick={() => void signOut()}>
+          {t('auth:sign_out')}
+        </Button>
+      </div>
+    </Doorway>
   );
 }

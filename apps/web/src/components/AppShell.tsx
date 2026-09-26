@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BottomSheet, Icon, IconButton, Menu, MizanMark } from '@mizan/ui';
-import { LANGUAGE_NAMES, LOCALES } from '@mizan/i18n';
 import type { IconName } from '@mizan/ui';
 import { useApp } from '../lib/store.js';
-import { useAppearanceMenus } from './Appearance.js';
+import { AppearanceMenus } from './Appearance.js';
 import { apiRequest } from '../lib/api.js';
 
 type NavGroup = 'daily' | 'records' | 'insight' | 'admin';
@@ -135,12 +134,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const clearSession = useApp((state) => state.clearSession);
   /** The lock screen is for a device other people pick up; a desk does not need it. */
   const isSharedDevice = useApp((state) => state.preferences.sharedDevice);
-  const preferences = useApp((state) => state.preferences);
-  /*
-   * The bar's appearance menus come from the same lists the Settings cards are built from, so
-   * the two can never offer different modes or different names for them (3.7.4).
-   */
-  const { themeIcon, themeItems, textItems } = useAppearanceMenus();
   const [moreOpen, setMoreOpen] = useState(false);
   const title = useApp((state) => state.pageTitle);
   const collapsed = useApp((state) => state.preferences.sidebarCollapsed);
@@ -185,18 +178,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
          * shows the same three choices as pictures, and keeps the numerals and the
          * shared-device flag, which are decided once.
          */}
-        <Menu
-          label={t('common:language_menu')}
-          icon="language"
-          items={LOCALES.map((locale) => ({
-            label: LANGUAGE_NAMES[locale],
-            lang: locale,
-            current: locale === preferences.lang,
-            onSelect: () => setPreference('lang', locale),
-          }))}
-        />
-        <Menu label={t('common:theme_menu')} icon={themeIcon} items={themeItems} />
-        <Menu label={t('common:text_size_menu')} icon="text" items={textItems} />
+        <AppearanceMenus />
         {/* The sidebar carries the account on a desktop; on a phone this is where it lives. */}
         <span className="mz-header__account">
           <Menu
