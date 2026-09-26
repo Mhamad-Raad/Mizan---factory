@@ -23,10 +23,9 @@ process.env.DATABASE_MIGRATE_URL = TEST_MIGRATE_URL;
 process.env.SESSION_PEPPER ??= 'test-pepper-not-a-secret-0123456789';
 process.env.NODE_ENV = 'test';
 process.env.APP_BASE_URL ??= 'http://localhost:5173';
-// The suite signs in hundreds of times from one address; the per-address sign-in ceiling has
-// its own test, which lowers these for its own application.
-process.env.SIGN_IN_LIMIT_PER_MINUTE ??= '100000';
-process.env.SIGN_IN_LIMIT_PER_HOUR ??= '100000';
+// The suite types wrong passwords on purpose, all from one address; the per-address ceiling has
+// its own test, which lowers it for its own application.
+process.env.SIGN_IN_FAILURES_PER_HOUR ??= '100000';
 
 export interface TestApp {
   app: INestApplication;

@@ -62,9 +62,8 @@ export default defineConfig({
             APP_BASE_URL: 'http://localhost:5173',
             NODE_ENV: 'development',
             TZ: 'Asia/Baghdad',
-            // The suite signs in far more often than a factory does, all from this machine.
-            SIGN_IN_LIMIT_PER_MINUTE: '100000',
-            SIGN_IN_LIMIT_PER_HOUR: '100000',
+            // The suite types wrong passwords on purpose, all from this machine.
+            SIGN_IN_FAILURES_PER_HOUR: '100000',
           },
         },
         {

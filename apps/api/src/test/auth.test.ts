@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import {
   as,
@@ -10,6 +10,8 @@ import {
   withDatabase,
 } from './harness.js';
 import type { TestApp } from './harness.js';
+import { PasswordService } from '../auth/password.service.js';
+import { Database } from '../database/pool.js';
 
 describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
   let ctx: TestApp;
@@ -149,7 +151,12 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
     });
 
     it('counts the spellings of an unknown phone number as one', async () => {
-      for (const spelling of ['07709999999', '+964 770 999 9999', '009647709999999', '0770-999-9999']) {
+      for (const spelling of [
+        '07709999999',
+        '+964 770 999 9999',
+        '009647709999999',
+        '0770-999-9999',
+      ]) {
         await attempt(spelling, 'whatever-long-enough').expect(401);
       }
       await attempt('(0770) 999 9999', 'whatever-long-enough').expect(429);
@@ -171,6 +178,45 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
       );
       expect(Number(recorded.rows[0]?.count)).toBe(5);
     });
+  });
+
+  it('holds no database connection while the password is checked', async () => {
+    const user = await seedUser({ username: 'sara', role: 'admin' });
+    const database = ctx.app.get(Database);
+    const passwords = ctx.app.get(PasswordService);
+    let open = 0;
+    const seen: number[] = [];
+    const transaction = database.transaction.bind(database);
+    const transactionSpy = vi.spyOn(database, 'transaction').mockImplementation(async (work) => {
+      open += 1;
+      try {
+        return await transaction(work);
+      } finally {
+        open -= 1;
+      }
+    });
+    const verify = passwords.verify.bind(passwords);
+    const verifySpy = vi.spyOn(passwords, 'verify').mockImplementation(async (hash, password) => {
+      seen.push(open);
+      return verify(hash, password);
+    });
+    try {
+      await request(ctx.http)
+        .post('/api/v1/auth/login')
+        .send({ username_or_phone: 'sara', password: 'wrong-but-long-enough' })
+        .expect(401);
+      const session = await signIn(ctx.http, user);
+      await as(ctx.http, session).post('/api/v1/auth/lock').expect(204);
+      await as(ctx.http, session)
+        .post('/api/v1/auth/unlock')
+        .send({ password: user.password })
+        .expect(204);
+    } finally {
+      transactionSpy.mockRestore();
+      verifySpy.mockRestore();
+    }
+    expect(seen).toHaveLength(3);
+    expect(seen.every((count) => count === 0)).toBe(true);
   });
 
   it('refuses a deactivated account with its own message', async () => {
@@ -212,7 +258,10 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
       const me = await as(ctx.http, session).get('/api/v1/auth/me').expect(200);
       expect(me.body.is_locked).toBe(true);
 
-      await as(ctx.http, session).post('/api/v1/auth/unlock').send({ password: user.password }).expect(204);
+      await as(ctx.http, session)
+        .post('/api/v1/auth/unlock')
+        .send({ password: user.password })
+        .expect(204);
       await as(ctx.http, session).get('/api/v1/users').expect(200);
 
       const actions = (await auditRows()).map((row) => row.action);
@@ -289,7 +338,9 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
       const user = await seedUser({ username: 'sara', role: 'admin' });
       const session = await signIn(ctx.http, user);
       const change = (current: string) =>
-        as(ctx.http, session).post('/api/v1/auth/change-password').send({ current, new: 'a-brand-new-password' });
+        as(ctx.http, session)
+          .post('/api/v1/auth/change-password')
+          .send({ current, new: 'a-brand-new-password' });
 
       const first = await change('wrong-but-long-enough').expect(422);
       expect(first.body.error.fields[0].params.attempts_left).toBe(4);
@@ -329,10 +380,7 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
         message_key: 'errors:PASSWORD_CHANGE_REQUIRED',
       });
       await as(ctx.http, session).get('/api/v1/history/me').expect(403);
-      await as(ctx.http, session)
-        .post('/api/v1/customers')
-        .send({ name: 'Not yet' })
-        .expect(403);
+      await as(ctx.http, session).post('/api/v1/customers').send({ name: 'Not yet' }).expect(403);
 
       // What the change-password screen needs stays open.
       const me = await as(ctx.http, session).get('/api/v1/auth/me').expect(200);
@@ -382,7 +430,9 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
       const employeeSession = await signIn(ctx.http, employee);
       const adminSession = await signIn(ctx.http, admin);
 
-      const target = await as(ctx.http, adminSession).get(`/api/v1/users/${employee.id}`).expect(200);
+      const target = await as(ctx.http, adminSession)
+        .get(`/api/v1/users/${employee.id}`)
+        .expect(200);
       await as(ctx.http, adminSession)
         .post(`/api/v1/users/${employee.id}/deactivate`)
         .send({ version: target.body.version })
@@ -416,7 +466,10 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
 
       // The app's own pages pass, and so does a client that sends neither header.
       await lock().set('Referer', 'http://localhost:5173/orders').expect(204);
-      await as(ctx.http, session).post('/api/v1/auth/unlock').send({ password: user.password }).expect(204);
+      await as(ctx.http, session)
+        .post('/api/v1/auth/unlock')
+        .send({ password: user.password })
+        .expect(204);
       await lock().expect(204);
     });
 
@@ -428,7 +481,10 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
         .set('Cookie', session.cookies)
         .set('X-CSRF-Token', 'forged')
         .expect(403);
-      expect(refused.body.error).toMatchObject({ code: 'PERMISSION_DENIED', message_key: 'errors:csrf_refused' });
+      expect(refused.body.error).toMatchObject({
+        code: 'PERMISSION_DENIED',
+        message_key: 'errors:csrf_refused',
+      });
     });
 
     it('allows a safe method without the header', async () => {

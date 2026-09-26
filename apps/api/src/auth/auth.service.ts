@@ -12,6 +12,7 @@ import { toUserDto } from '../users/user.types.js';
 import type { UserDto, UserRow } from '../users/user.types.js';
 import { PasswordService, checkPasswordRules } from './password.service.js';
 import { SessionService } from './session.service.js';
+import { SignInAddressLimiter } from './sign-in-throttle.js';
 import type { SessionWithUser } from './session.service.js';
 
 /**
@@ -66,9 +67,9 @@ function looksLikePhone(typed: string): boolean {
 }
 
 /**
- * One sign-in check at a time per throttle key, in this process. The database lock below is
- * what makes the count correct across replicas; this queue keeps a burst of parallel guesses
- * from each holding a pooled connection while it waits for that lock.
+ * One sign-in check at a time per throttle key, in this process: it is what gives a parallel
+ * burst exactly five checks without holding a pooled connection across the password check. The
+ * database lock in `attemptPassword` keeps the count correct across replicas.
  */
 class KeyedQueue {
   private readonly tails = new Map<string, Promise<unknown>>();
@@ -94,6 +95,12 @@ type LoginOutcome =
   | { kind: 'invalid'; attemptsLeft: number }
   | { kind: 'deactivated' }
   | { kind: 'signed_in'; token: string };
+
+type PasswordCheck =
+  | { kind: 'ok' }
+  | { kind: 'locked'; minutes: number }
+  | { kind: 'lockout' }
+  | { kind: 'invalid'; attemptsLeft: number };
 
 export interface LoginInput {
   username_or_phone: string;
@@ -125,6 +132,7 @@ export class AuthService {
     private readonly passwords: PasswordService,
     private readonly sessions: SessionService,
     private readonly audit: AuditService,
+    private readonly addresses: SignInAddressLimiter,
   ) {}
 
   private readonly queue = new KeyedQueue();
@@ -143,18 +151,53 @@ export class AuthService {
   }
 
   /**
-   * Check the throttle, try the password and record the result as one step per key (security
-   * review, finding 5). Without it, parallel requests each read "fewer than five failures"
+   * Check the lockout, try the password and record the result as one step per key (security
+   * review, finding 5), without holding a database connection while Argon2 runs (its
+   * follow-up). Without the serialising, parallel requests each read "fewer than five failures"
    * before any of them was recorded, and a burst got as many guesses as it had requests.
-   * `pg_advisory_xact_lock` holds across replicas and is released with the transaction.
+   *
+   * 1. A short read of the key's failures; while it is locked, the password is not checked.
+   * 2. The address ceiling (`SignInAddressLimiter`) and the password check, outside any
+   *    transaction: Argon2 takes 64 MB and tens of milliseconds, and the pool has ten
+   *    connections.
+   * 3. A short transaction under `pg_advisory_xact_lock(hashtext(key))` that reads the
+   *    failures again and records the result. If another replica locked the key meanwhile, the
+   *    attempt is answered as locked whatever the password was.
+   *
+   * The in-process queue runs the three steps for one key one attempt at a time, so on one
+   * replica a burst gets exactly five checks. Across replicas the lock in step 3 keeps the
+   * count exact, and at most one check per other replica can be under way when the fifth
+   * failure lands.
    */
-  private serialised<T>(key: string, work: (tx: Db) => Promise<T>): Promise<T> {
-    return this.queue.run(key, () =>
-      this.database.transaction(async (tx) => {
+  private attemptPassword<T>(
+    key: string,
+    ip: string | null,
+    verify: () => Promise<boolean>,
+    onLocked: (minutes: number, db: Db) => Promise<T>,
+    onResult: (correct: boolean, state: FailureState, tx: Db) => Promise<T>,
+  ): Promise<T> {
+    return this.queue.run(key, async () => {
+      const before = lockedUntil(await this.failureState(key, this.database));
+      if (before) return onLocked(minutesUntil(before), this.database);
+
+      const settle = this.addresses.begin(ip);
+      let correct: boolean;
+      try {
+        correct = await verify();
+      } catch (error) {
+        settle(false);
+        throw error;
+      }
+      settle(!correct);
+
+      return this.database.transaction(async (tx) => {
         await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`mizan:sign-in:${key}`]);
-        return work(tx);
-      }),
-    );
+        const state = await this.failureState(key, tx);
+        const until = lockedUntil(state);
+        if (until) return onLocked(minutesUntil(until), tx);
+        return onResult(correct, state, tx);
+      });
+    });
   }
 
   /**
@@ -172,83 +215,87 @@ export class AuthService {
     const user = await this.users.findByUsernameOrPhone(identifier);
     const key = throttleKeyFor(identifier, user);
 
-    const outcome = await this.serialised(key, async (tx): Promise<LoginOutcome> => {
-      const state = await this.failureState(key, tx);
-      const until = lockedUntil(state);
-      if (until) {
+    const outcome = await this.attemptPassword<LoginOutcome>(
+      key,
+      ctx.ip,
+      () => this.verifyOrDummy(user, input.password),
+      async (minutes, db) => {
         // Recorded in History, but not as a failure: trying a locked door does not move when it opens.
-        await this.recordFailure(key, identifier, user?.id ?? null, ctx, 'locked_out', false, tx);
-        return { kind: 'locked', minutes: minutesUntil(until) };
-      }
-
-      const correct = await this.verifyOrDummy(user, input.password);
-      if (!user || !correct) {
-        // A wrong username and a wrong password are answered identically, down to the count.
-        const attemptsLeft = MAX_FAILURES - (state.recent + 1);
-        const locking = attemptsLeft <= 0;
-        if (user) {
-          await this.users.registerFailure(
-            user.id,
-            locking ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null,
+        await this.recordFailure(key, identifier, user?.id ?? null, ctx, 'locked_out', false, db);
+        return { kind: 'locked', minutes };
+      },
+      async (correct, state, tx) => {
+        if (!user || !correct) {
+          // A wrong username and a wrong password are answered identically, down to the count.
+          const attemptsLeft = MAX_FAILURES - (state.recent + 1);
+          const locking = attemptsLeft <= 0;
+          if (user) {
+            await this.users.registerFailure(
+              user.id,
+              locking ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null,
+              tx,
+            );
+          }
+          await this.recordFailure(
+            key,
+            identifier,
+            user?.id ?? null,
+            ctx,
+            locking ? 'lockout' : user ? 'invalid_password' : 'unknown_user',
+            true,
             tx,
           );
+          return locking ? { kind: 'lockout' } : { kind: 'invalid', attemptsLeft };
         }
-        await this.recordFailure(
-          key,
-          identifier,
-          user?.id ?? null,
-          ctx,
-          locking ? 'lockout' : user ? 'invalid_password' : 'unknown_user',
-          true,
+
+        // A deactivated user is told plainly — that is not credential disclosure, and the
+        // alternative is an employee standing at a tablet with no idea why (FR-101).
+        if (!user.is_active) {
+          await this.recordFailure(key, identifier, user.id, ctx, 'deactivated', true, tx);
+          return { kind: 'deactivated' };
+        }
+
+        const created = await this.sessions.create(
+          {
+            userId: user.id,
+            isSharedDevice: input.is_shared_device ?? false,
+            deviceLabel: input.device_label ?? null,
+            authMethod: 'password',
+            ip: ctx.ip,
+            userAgent: ctx.userAgent,
+          },
           tx,
         );
-        return locking ? { kind: 'lockout' } : { kind: 'invalid', attemptsLeft };
-      }
-
-      // A deactivated user is told plainly — that is not credential disclosure, and the
-      // alternative is an employee standing at a tablet with no idea why (FR-101).
-      if (!user.is_active) {
-        await this.recordFailure(key, identifier, user.id, ctx, 'deactivated', true, tx);
-        return { kind: 'deactivated' };
-      }
-
-      const created = await this.sessions.create(
-        {
-          userId: user.id,
-          isSharedDevice: input.is_shared_device ?? false,
-          deviceLabel: input.device_label ?? null,
-          authMethod: 'password',
-          ip: ctx.ip,
-          userAgent: ctx.userAgent,
-        },
-        tx,
-      );
-      await this.users.markSignedIn(user.id, tx);
-      // Under the throttle key, so a success clears the failures of every alias of the account.
-      await this.users.recordLoginAttempt({ username: key, userId: user.id, ip: ctx.ip, succeeded: true }, tx);
-      await this.audit.recordAnonymous(
-        {
-          actor_user_id: user.id,
-          action: 'login',
-          entity_type: 'session',
-          entity_id: created.session.id,
-          entity_label: `Sign-in: ${user.display_name}`,
-          changes: {
-            shared_device: input.is_shared_device ?? false,
-            device_label: input.device_label ?? null,
+        await this.users.markSignedIn(user.id, tx);
+        // Under the throttle key, so a success clears the failures of every alias of the account.
+        await this.users.recordLoginAttempt(
+          { username: key, userId: user.id, ip: ctx.ip, succeeded: true },
+          tx,
+        );
+        await this.audit.recordAnonymous(
+          {
+            actor_user_id: user.id,
+            action: 'login',
+            entity_type: 'session',
+            entity_id: created.session.id,
+            entity_label: `Sign-in: ${user.display_name}`,
+            changes: {
+              shared_device: input.is_shared_device ?? false,
+              device_label: input.device_label ?? null,
+              auth_method: 'password',
+            },
+            request_id: ctx.requestId,
+            session_id: created.session.id,
             auth_method: 'password',
+            ip: ctx.ip,
+            user_agent: ctx.userAgent,
+            related: { user_id: user.id },
           },
-          request_id: ctx.requestId,
-          session_id: created.session.id,
-          auth_method: 'password',
-          ip: ctx.ip,
-          user_agent: ctx.userAgent,
-          related: { user_id: user.id },
-        },
-        tx,
-      );
-      return { kind: 'signed_in', token: created.token };
-    });
+          tx,
+        );
+        return { kind: 'signed_in', token: created.token };
+      },
+    );
 
     // Thrown after the transaction has committed, so the failure it records is kept.
     switch (outcome.kind) {
@@ -342,7 +389,12 @@ export class AuthService {
         tx,
       );
       if (!updated) throw new ApiError('VERSION_CONFLICT', { current_version: user.version });
-      const signedOut = await this.sessions.revokeOthersForUser(user.id, context.sessionId, 'password_change', tx);
+      const signedOut = await this.sessions.revokeOthersForUser(
+        user.id,
+        context.sessionId,
+        'password_change',
+        tx,
+      );
       await this.audit.record(
         context,
         {
@@ -419,48 +471,53 @@ export class AuthService {
     user: UserRow,
     context: RequestContext,
     password: string,
-  ): Promise<{ kind: 'ok' } | { kind: 'locked'; minutes: number } | { kind: 'lockout' } | { kind: 'invalid'; attemptsLeft: number }> {
+  ): Promise<PasswordCheck> {
     const key = throttleKeyFor(user.username, user);
-    return this.serialised(key, async (tx) => {
-      const state = await this.failureState(key, tx);
-      const until = lockedUntil(state);
-      if (until) return { kind: 'locked' as const, minutes: minutesUntil(until) };
-      if (password && (await this.passwords.verify(user.password_hash, password))) return { kind: 'ok' as const };
+    return this.attemptPassword<PasswordCheck>(
+      key,
+      context.ip,
+      async () => password !== '' && (await this.passwords.verify(user.password_hash, password)),
+      async (minutes) => ({ kind: 'locked', minutes }),
+      async (correct, state, tx) => {
+        if (correct) return { kind: 'ok' };
 
-      const lockUntil =
-        state.recent + 1 >= MAX_FAILURES ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null;
-      await this.users.registerFailure(user.id, lockUntil, tx);
-      await this.users.recordLoginAttempt(
-        { username: key, userId: user.id, ip: context.ip, succeeded: false },
-        tx,
-      );
-      await this.audit.recordAnonymous(
-        {
-          actor_user_id: user.id,
-          action: lockUntil ? 'lockout' : 'login_failed',
-          entity_type: 'session',
-          entity_id: user.username,
-          entity_label: `Failed sign-in: ${user.username}`,
-          changes: { reason: lockUntil ? 'lockout' : 'invalid_password' },
-          request_id: context.requestId,
-          session_id: context.sessionId || null,
-          auth_method: 'password',
-          ip: context.ip,
-          user_agent: context.userAgent,
-          related: { user_id: user.id },
-        },
-        tx,
-      );
-      return lockUntil ? { kind: 'lockout' as const } : { kind: 'invalid' as const, attemptsLeft: MAX_FAILURES - (state.recent + 1) };
-    });
+        const lockUntil =
+          state.recent + 1 >= MAX_FAILURES ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null;
+        await this.users.registerFailure(user.id, lockUntil, tx);
+        await this.users.recordLoginAttempt(
+          { username: key, userId: user.id, ip: context.ip, succeeded: false },
+          tx,
+        );
+        await this.audit.recordAnonymous(
+          {
+            actor_user_id: user.id,
+            action: lockUntil ? 'lockout' : 'login_failed',
+            entity_type: 'session',
+            entity_id: user.username,
+            entity_label: `Failed sign-in: ${user.username}`,
+            changes: { reason: lockUntil ? 'lockout' : 'invalid_password' },
+            request_id: context.requestId,
+            session_id: context.sessionId || null,
+            auth_method: 'password',
+            ip: context.ip,
+            user_agent: context.userAgent,
+            related: { user_id: user.id },
+          },
+          tx,
+        );
+        return lockUntil
+          ? { kind: 'lockout' }
+          : { kind: 'invalid', attemptsLeft: MAX_FAILURES - (state.recent + 1) };
+      },
+    );
   }
 
-  private failureState(key: string, tx: Db): Promise<FailureState> {
+  private failureState(key: string, db: Db): Promise<FailureState> {
     return this.users.failureState(
       key,
       FAILURE_WINDOW_MINUTES,
       FAILURE_WINDOW_MINUTES + LOCKOUT_MINUTES,
-      tx,
+      db,
     );
   }
 
@@ -474,7 +531,10 @@ export class AuthService {
     tx: Db,
   ): Promise<void> {
     if (counts) {
-      await this.users.recordLoginAttempt({ username: key, userId, ip: ctx.ip, succeeded: false }, tx);
+      await this.users.recordLoginAttempt(
+        { username: key, userId, ip: ctx.ip, succeeded: false },
+        tx,
+      );
     }
     await this.audit.recordAnonymous(
       {

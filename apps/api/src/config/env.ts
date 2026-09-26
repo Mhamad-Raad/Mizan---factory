@@ -32,9 +32,10 @@ const schema = z.object({
       if (/^\d+$/.test(trimmed)) return Number(trimmed);
       return trimmed;
     }),
-  /** Sign-in attempts per address per door (auth/sign-in-throttle.ts). */
-  SIGN_IN_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(30),
-  SIGN_IN_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(200),
+  /** Wrong passwords per network address per hour, across every account (auth/sign-in-throttle.ts). */
+  SIGN_IN_FAILURES_PER_HOUR: z.coerce.number().int().positive().default(100),
+  /** How long an address that reached that ceiling is refused; doubles per further block in a day. */
+  SIGN_IN_BLOCK_MINUTES: z.coerce.number().int().positive().default(5),
 });
 
 export type Env = z.infer<typeof schema>;
