@@ -29,8 +29,6 @@ export interface CustomerRow {
   address: string | null;
   notes: string | null;
   settlement_currency: Currency;
-  assigned_user_id: string | null;
-  assigned_user_name: string | null;
   is_system: boolean;
   is_active: boolean;
   credit_limit: { amount_iqd: number; amount_usd_cents: number } | null;
@@ -135,16 +133,6 @@ export function CustomersPage() {
                 ),
               },
               {
-                header: t('glossary:assigned_to'),
-                secondary: true,
-                cell: (row) =>
-                  row.assigned_user_name ? (
-                    <bdi>{row.assigned_user_name}</bdi>
-                  ) : (
-                    <span className="mz-muted">—</span>
-                  ),
-              },
-              {
                 header: t('customers:net_balance'),
                 numeric: true,
                 cell: (row) => <PartyBalance row={row} />,
@@ -185,7 +173,7 @@ function NewPartyLink() {
   );
 }
 
-/** The contact, the phone and who it is assigned to, as one quiet line. */
+/** The contact and the phone, as one quiet line. */
 function PartyCaption({ row }: { row: CustomerRow }) {
   const parts = [row.contact_name, row.phone].filter((part): part is string => Boolean(part));
   if (parts.length === 0) return null;

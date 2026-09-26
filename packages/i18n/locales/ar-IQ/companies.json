@@ -14,8 +14,6 @@
   "settled": "مسدّد",
   "duplicate_name": "توجد شركة بالاسم {{name}} بالفعل.",
   "open_existing": "افتحها",
-  "assign": "إسناد",
-  "unassigned": "غير مُسنَدة",
   "rate_since": "منذ {{date}}",
   "rate_is_global": "يستخدم السعر العام",
   "set_rate": "تحديد سعر صرف الشركة",

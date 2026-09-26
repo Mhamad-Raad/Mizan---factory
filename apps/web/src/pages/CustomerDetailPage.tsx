@@ -28,7 +28,7 @@ import type { OrderRow } from './OrdersPage.js';
 
 type Tab = 'overview' | 'orders' | 'purchases' | 'sales' | 'account' | 'history';
 type EntryKind = 'credit' | 'refund' | 'adjustment' | 'opening';
-type Sheet = 'payment' | 'assign' | 'rate' | 'rate_history' | 'currency' | 'edit' | 'statement';
+type Sheet = 'payment' | 'rate' | 'rate_history' | 'currency' | 'edit' | 'statement';
 
 interface HistoryRow {
   id: string;
@@ -43,7 +43,7 @@ interface HistoryRow {
   } | null;
 }
 
-type HistoryAction = 'all' | 'rate_change' | 'ledger_entry' | 'update' | 'create' | 'assignment_change' | 'status_change';
+type HistoryAction = 'all' | 'rate_change' | 'ledger_entry' | 'update' | 'create' | 'status_change';
 
 /** The kinds of change the History tab can narrow to, in the order an accountant asks for them. */
 const HISTORY_ACTIONS: { value: HistoryAction; label: string }[] = [
@@ -52,7 +52,6 @@ const HISTORY_ACTIONS: { value: HistoryAction; label: string }[] = [
   { value: 'ledger_entry', label: 'customers:history_money' },
   { value: 'update', label: 'customers:history_edits' },
   { value: 'create', label: 'customers:history_created' },
-  { value: 'assignment_change', label: 'customers:history_assignment' },
   { value: 'status_change', label: 'customers:history_status' },
 ];
 
@@ -80,8 +79,6 @@ export function CustomerDetailPage() {
   const maySetCompanyRate = usePermission('companies.set_rate');
   const mayEditCustomer = usePermission('customers.edit');
   const mayEditCompany = usePermission('companies.edit');
-  const mayAssignCustomer = usePermission('customers.assign');
-  const mayAssignCompany = usePermission('companies.assign');
 
   const [tab, setTab] = useState<Tab>('overview');
   const [sheet, setSheet] = useState<Sheet | null>(null);
@@ -142,12 +139,6 @@ export function CustomerDetailPage() {
     enabled: sheet === 'statement',
   });
 
-  const directory = useQuery({
-    queryKey: ['users', 'directory'],
-    queryFn: () => apiRequest<{ id: string; display_name: string; is_active: boolean }[]>('/users/directory'),
-    enabled: sheet === 'assign',
-  });
-
   const settlement: Currency = data?.settlement_currency ?? 'IQD';
   const rate = data?.rate?.rate_iqd_per_usd ?? '1310.0000';
   const inSettlement = (value: BalanceValue | null | undefined) =>
@@ -183,10 +174,6 @@ export function CustomerDetailPage() {
       setLandedVersion((version) => version + 1);
     },
   });
-  const assign = useMutation({
-    mutationFn: (userId: string | null) => post('/assignment', 'PUT')({ user_id: userId }),
-    onSuccess: () => done(),
-  });
   const setRate = useMutation({
     mutationFn: post('/rates'),
     onSuccess: () => done(t('customers:rate_saved')),
@@ -217,7 +204,6 @@ export function CustomerDetailPage() {
 
   const mayRate = maySetCustomerRate || maySetCompanyRate;
   const mayEdit = !walkIn && (mayEditCustomer || mayEditCompany);
-  const mayAssign = !walkIn && (mayAssignCustomer || mayAssignCompany);
   const sellingActions = selling && !walkIn && (mayRecordPayment || mayCredit || mayOpeningBalance);
 
   const moreItems: MenuItem[] = [
@@ -233,7 +219,6 @@ export function CustomerDetailPage() {
     ...companySide.menuItems,
     ...(mayRate && !walkIn ? [{ label: t('customers:set_rate'), onSelect: () => setSheet('rate') }] : []),
     { label: t('companies:rate_history'), onSelect: () => setSheet('rate_history') },
-    ...(mayAssign ? [{ label: t('customers:assign'), onSelect: () => setSheet('assign') }] : []),
     ...(isAdmin && !walkIn
       ? [{ label: t('companies:settlement_currency_change'), onSelect: () => setSheet('currency') }]
       : []),
@@ -265,11 +250,6 @@ export function CustomerDetailPage() {
                       <a href={`tel:${data.phone}`} className="mz-caption" dir="ltr">
                         {data.phone}
                       </a>
-                    ) : null}
-                    {data.assigned_user_name ? (
-                      <span className="mz-caption">
-                        {t('glossary:assigned_to')}: <bdi>{data.assigned_user_name}</bdi>
-                      </span>
                     ) : null}
                   </div>
                   <InactiveChip row={data} />
@@ -324,11 +304,14 @@ export function CustomerDetailPage() {
                 options={[
                   { value: 'overview', label: t('materials:tab_overview') },
                   ...(selling ? [{ value: 'orders' as Tab, label: t('orders:title') }] : []),
-                  ...(buying ? [{ value: 'purchases' as Tab, label: t('companies:tab_purchases') }] : []),
+                  ...(companySide.maySeePurchases
+                    ? [{ value: 'purchases' as Tab, label: t('companies:tab_purchases') }]
+                    : []),
                   ...(selling && maySeeSelling && !walkIn
                     ? [{ value: 'sales' as Tab, label: t('customers:tab_sales_ledger') }]
                     : []),
-                  ...(buying && data.payable !== undefined
+                  // Hidden without `fields.see_company_balances`: the API sends that side as null.
+                  ...(buying && data.payable != null
                     ? [{ value: 'account' as Tab, label: t('customers:tab_purchase_ledger') }]
                     : []),
                   { value: 'history', label: t('glossary:history') },
@@ -353,7 +336,7 @@ export function CustomerDetailPage() {
                       </QueryStates>
                     </Card>
                   ) : null}
-                  {buying ? (
+                  {companySide.maySeePurchases ? (
                     <Card>
                       <h3 className="mz-heading">{t('companies:tab_purchases')}</h3>
                       {companySide.recentPurchases}
@@ -498,35 +481,6 @@ export function CustomerDetailPage() {
           />
         ) : null}
 
-        {sheet === 'assign' ? (
-          <BottomSheet title={t('customers:assign')} open onClose={() => setSheet(null)} closeLabel={t('common:close')}>
-            <ul className="mz-list">
-              <li>
-                <button
-                  type="button"
-                  className="mz-list__item mz-list__item--interactive"
-                  onClick={() => assign.mutate(null)}
-                >
-                  {t('customers:unassigned')}
-                </button>
-              </li>
-              {(directory.data ?? [])
-                .filter((user) => user.is_active)
-                .map((user) => (
-                  <li key={user.id}>
-                    <button
-                      type="button"
-                      className="mz-list__item mz-list__item--interactive"
-                      onClick={() => assign.mutate(user.id)}
-                    >
-                      <bdi>{user.display_name}</bdi>
-                    </button>
-                  </li>
-                ))}
-            </ul>
-          </BottomSheet>
-        ) : null}
-
         {sheet === 'statement' && salesStatement.data ? (
           <ShareDocumentSheet
             title={t('customers:statement_sales')}
@@ -611,6 +565,12 @@ function PartyFigure({ party }: { party: CustomerRow }) {
         kind="derived"
         size="large"
       />
+      {/* One side only: say so, or a company we owe millions reads as "settled" (D-056). */}
+      {shown.kind !== 'net' && !party.is_system ? (
+        <span className="mz-caption">
+          {t(shown.kind === 'payable' ? 'customers:purchases_side_only' : 'customers:sales_side_only')}
+        </span>
+      ) : null}
       {bothSides ? (
         <span className="mz-stack" style={{ gap: '2px' }}>
           <span className="mz-caption" data-tabular>

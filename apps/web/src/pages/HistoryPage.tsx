@@ -86,7 +86,6 @@ export function HistoryPage() {
 
   const [searchParams] = useSearchParams();
   const [doneBy, setDoneBy] = useState(searchParams.get('done_by') ?? '');
-  const [assignedTo, setAssignedTo] = useState(searchParams.get('assigned_to') ?? '');
   const [entityType, setEntityType] = useState(searchParams.get('entity_type') ?? '');
   const [preset, setPreset] = useState<DatePreset>(
     (searchParams.get('preset') as DatePreset) ?? 'today',
@@ -107,12 +106,11 @@ export function HistoryPage() {
 
   const range = rangeFor(preset, formatter.today(), custom);
   const history = useInfiniteQuery({
-    queryKey: ['history', doneBy, assignedTo, entityType, preset, custom.from, custom.to],
+    queryKey: ['history', doneBy, entityType, preset, custom.from, custom.to],
     initialPageParam: '',
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ limit: '25' });
       if (doneBy) params.set('done_by', doneBy);
-      if (assignedTo) params.set('assigned_to', assignedTo);
       if (entityType) params.set('entity_type', entityType);
       if (range.from) params.set('from', range.from);
       if (range.to) params.set('to', range.to);
@@ -165,21 +163,6 @@ export function HistoryPage() {
                 className="mz-field__control"
                 value={doneBy}
                 onChange={(event) => setDoneBy(event.target.value)}
-              >
-                <option value="">{t('history:everyone')}</option>
-                {employees.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    <bdi>{entry.display_name}</bdi>
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="mz-field">
-              <span className="mz-field__label">{t('history:filter_assigned_to')}</span>
-              <select
-                className="mz-field__control"
-                value={assignedTo}
-                onChange={(event) => setAssignedTo(event.target.value)}
               >
                 <option value="">{t('history:everyone')}</option>
                 {employees.map((entry) => (

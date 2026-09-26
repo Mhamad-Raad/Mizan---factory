@@ -65,6 +65,7 @@ export function useCompanySide(input: {
   const formatter = useFormatter();
   const queryClient = useQueryClient();
   const maySeeBalance = usePermission('fields.see_company_balances');
+  const maySeePurchases = usePermission('purchases.view');
   const mayRecordPayment = usePermission('companies.record_payment');
   const mayAdjust = usePermission('companies.adjust_owed');
   const mayCredit = usePermission('companies.record_credit');
@@ -105,7 +106,7 @@ export function useCompanySide(input: {
   const purchases = useQuery({
     queryKey: ['companies', id, 'purchases'],
     queryFn: () => apiRequest<{ items: PurchaseRow[]; total: number }>(`/companies/${id}/purchases`),
-    enabled: enabled && (tab === 'purchases' || tab === 'overview'),
+    enabled: enabled && maySeePurchases && (tab === 'purchases' || tab === 'overview'),
   });
 
   const statementData = useQuery({
@@ -419,6 +420,8 @@ export function useCompanySide(input: {
   );
 
   return {
+    /** Whether this caller may see the account's purchases at all (`purchases.view`). */
+    maySeePurchases: enabled && maySeePurchases,
     primaryAction,
     menuItems,
     purchasesTab: purchaseList(),

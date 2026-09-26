@@ -34,7 +34,7 @@ interface ReportResponse {
   from: string;
   to: string;
   group_by: string;
-  pinned?: { filter: 'done_by' | 'assigned_to'; user_id: string };
+  pinned?: { filter: 'done_by'; user_id: string };
   basis?: string;
   groups: ReportGroup[];
   /** How many groups the period had, and whether the response was capped (I4 review, D-032). */
@@ -62,7 +62,7 @@ const SHAPES: Record<
 > = {
   sales: {
     titleKey: 'reports:sales',
-    groupings: ['month', 'day', 'customer', 'item', 'employee', 'assigned'],
+    groupings: ['month', 'day', 'customer', 'item', 'employee'],
     amounts: [
       ['reports:revenue', 'total_iqd', 'total_usd_cents'],
       ['reports:cash', 'cash_iqd', 'cash_usd_cents'],

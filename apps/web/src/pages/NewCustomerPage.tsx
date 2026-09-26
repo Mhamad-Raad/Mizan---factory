@@ -13,7 +13,6 @@ import { useFormatter, usePermission } from '../lib/store.js';
 interface Duplicate {
   id: string;
   name: string;
-  assigned_user_name: string | null;
 }
 
 /**
@@ -22,19 +21,15 @@ interface Duplicate {
  * One kind of account: a company we sell to and buy from. Its own conversion rate is typed here,
  * on the same form — empty means the system-wide rate — because every order and purchase with it
  * is priced at that rate and keeps it. The duplicate check runs while the name is typed and over
- * *every* account, whatever this employee may see: when the twin belongs to a colleague the
- * warning says to ask the admin instead of offering a record they cannot open.
+ * *every* account, and offers to open the one that already exists instead.
  */
 export function NewCustomerPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const formatter = useFormatter();
-  const mayAssignCustomer = usePermission('customers.assign');
-  const mayAssignCompany = usePermission('companies.assign');
   const maySetCustomerRate = usePermission('customers.set_rate');
   const maySetCompanyRate = usePermission('companies.set_rate');
-  const canAssign = mayAssignCustomer || mayAssignCompany;
   const maySetRate = maySetCustomerRate || maySetCompanyRate;
 
   const [name, setName] = useState('');
@@ -44,19 +39,12 @@ export function NewCustomerPage() {
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
   const [currency, setCurrency] = useState<'IQD' | 'USD'>('IQD');
-  const [assignee, setAssignee] = useState('');
   const [creditLimit, setCreditLimit] = useState<MoneyValue>({ amount: null, currency: 'IQD', other_amount: null });
   const [idempotencyKey] = useState(newIdempotencyKey);
 
   const rate = useQuery({
     queryKey: ['global-rate'],
     queryFn: () => apiRequest<{ current: { rate_iqd_per_usd: string } | null }>('/settings/global-rates'),
-  });
-
-  const directory = useQuery({
-    queryKey: ['users', 'directory'],
-    queryFn: () => apiRequest<{ id: string; display_name: string; is_active: boolean }[]>('/users/directory'),
-    enabled: canAssign,
   });
 
   const duplicates = useQuery({
@@ -79,7 +67,6 @@ export function NewCustomerPage() {
           address: address.trim() === '' ? null : address.trim(),
           notes: notes.trim() === '' ? null : notes.trim(),
           settlement_currency: currency,
-          assigned_user_id: assignee === '' ? null : assignee,
           credit_limit:
             creditLimit.amount === null
               ? null
@@ -127,18 +114,8 @@ export function NewCustomerPage() {
             {matches.length > 0 ? (
               <div className="mz-warning mz-form-grid__wide" role="status">
                 <span>
-                  {matches[0]?.assigned_user_name
-                    ? t('customers:duplicate_assigned', {
-                        name: matches[0].name,
-                        employee: matches[0].assigned_user_name,
-                      })
-                    : t('customers:duplicate_open', { name: matches[0]?.name ?? '' })}
-                  {matches[0] && !matches[0].assigned_user_name ? (
-                    <>
-                      {' '}
-                      <Link to={`/customers/${matches[0].id}`}>{t('customers:open_existing')}</Link>
-                    </>
-                  ) : null}
+                  {t('customers:duplicate_open', { name: matches[0]?.name ?? '' })}{' '}
+                  <Link to={`/customers/${matches[0]?.id ?? ''}`}>{t('customers:open_existing')}</Link>
                 </span>
               </div>
             ) : null}
@@ -195,26 +172,6 @@ export function NewCustomerPage() {
               { value: 'USD', label: t('glossary:usd') },
             ]}
           />
-
-          {canAssign ? (
-            <label className="mz-field">
-              <span className="mz-field__label">{t('glossary:assigned_to')}</span>
-              <select
-                className="mz-field__control"
-                value={assignee}
-                onChange={(event) => setAssignee(event.target.value)}
-              >
-                <option value="">{t('customers:unassigned')}</option>
-                {(directory.data ?? [])
-                  .filter((user) => user.is_active)
-                  .map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.display_name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-          ) : null}
 
           {/* Proposed — not requested (FR-616): a warning on a borrowed order, never a block. */}
           <MoneyInput

@@ -14,8 +14,6 @@
   "settled": "یەکلاکراوە",
   "duplicate_name": "کۆمپانیایەک بە ناوی {{name}} پێشتر هەیە.",
   "open_existing": "بکەرەوە",
-  "assign": "سپاردن",
-  "unassigned": "نەسپێردراو",
   "rate_since": "لە {{date}}ـەوە",
   "rate_is_global": "نرخی گشتی بەکاردێت",
   "set_rate": "دانانی نرخی ئاڵوگۆڕی کۆمپانیا",
