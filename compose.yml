@@ -24,6 +24,9 @@ services:
     restart: unless-stopped
 
   api:
+    # One tag for the API and the migrate job, so the migrations that run are the ones the API
+    # was built with (`MIZAN_IMAGE_TAG`, e.g. the release tag; `local` when unset).
+    image: mizan-api:${MIZAN_IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: ops/docker/Dockerfile.api
@@ -55,6 +58,7 @@ services:
   # only container that is handed the migrate role. `docker compose run --rm migrate`; the
   # profile keeps `docker compose up` from starting it.
   migrate:
+    image: mizan-api:${MIZAN_IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: ops/docker/Dockerfile.api
