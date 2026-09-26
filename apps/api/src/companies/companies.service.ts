@@ -2,9 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { completePair, convert, formatRate, settleInFull } from '@mizan/money';
 import type { Currency, MoneyPair, Rate, RateSource } from '@mizan/money';
 import { allocateOldestFirst, balanceAsOf, balanceOf } from '@mizan/ledger';
-import { normalizeForSearch } from '@mizan/text';
 import type { AllocationResult, LedgerEntry, LedgerGroup } from '@mizan/ledger';
-import { AuditService, diffOf } from '../audit/audit.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import { ApiError } from '../common/errors.js';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
@@ -24,16 +23,6 @@ export interface MoneyInput {
   currency: Currency;
   /** The calculated side, when the user overwrote it — stored as a manual rate (2.3.2). */
   other_amount?: number | null;
-}
-
-export interface CreateCompanyInput {
-  name: string;
-  contact_name?: string | null;
-  phone?: string | null;
-  address?: string | null;
-  notes?: string | null;
-  settlement_currency?: Currency;
-  assigned_user_id?: string | null;
 }
 
 export interface CompanyPaymentInput extends MoneyInput {
@@ -217,333 +206,6 @@ export class CompaniesService {
     const own = await this.companies.currentRate(id, tx);
     if (own) return { rate: formatRate(own.rate), source: 'company' };
     return { rate: await this.rates.requireCurrent(tx), source: 'global' };
-  }
-
-  async create(context: RequestContext, input: CreateCompanyInput): Promise<CompanyDto> {
-    const name = input.name.trim();
-    const existing = await this.companies.findByNormalizedName(normalizeForSearch(name));
-    if (existing) {
-      // Unlike a customer, a company name is unique: two rows for one supplier would split the
-      // account it exists to keep (FR-701).
-      throw ApiError.validation([
-        {
-          path: 'name',
-          code: 'DUPLICATE_NAME',
-          message_key: 'errors:duplicate_company',
-          params: { name: existing.name, id: existing.id },
-        },
-      ]);
-    }
-
-    const created = await this.database.transaction(async (tx) => {
-      const row = await this.companies.create(
-        {
-          name,
-          contact_name: input.contact_name?.trim() || null,
-          phone: input.phone?.trim() || null,
-          address: input.address?.trim() || null,
-          notes: input.notes?.trim() || null,
-          settlement_currency: input.settlement_currency ?? 'IQD',
-          assigned_user_id: input.assigned_user_id ?? null,
-          created_by: context.userId,
-        },
-        tx,
-      );
-
-      await this.audit.record(
-        context,
-        {
-          action: 'create',
-          entity_type: 'company',
-          entity_id: row.id,
-          entity_label: `Company: ${row.name}`,
-          changes: {
-            name: { old: null, new: row.name },
-            settlement_currency: { old: null, new: row.settlement_currency },
-            assigned_user_id: { old: null, new: row.assigned_user_id },
-          },
-          related: { company_id: row.id, assigned_user_id: row.assigned_user_id },
-        },
-        tx,
-      );
-      return row;
-    });
-
-    return this.detailOf(created);
-  }
-
-  async update(
-    context: RequestContext,
-    id: string,
-    input: Partial<CreateCompanyInput> & { version: number },
-  ): Promise<CompanyDto> {
-    const updated = await this.database.transaction(async (tx) => {
-      const before = await this.companies.lock(id, tx);
-      if (!before) throw ApiError.notFound();
-
-      const patch: Record<string, unknown> = {};
-      if (input.name !== undefined) {
-        const name = input.name.trim();
-        if (normalizeForSearch(name) !== before.name_normalized) {
-          const clash = await this.companies.findByNormalizedName(normalizeForSearch(name), tx);
-          if (clash && clash.id !== id) {
-            throw ApiError.validation([
-              {
-                path: 'name',
-                code: 'DUPLICATE_NAME',
-                message_key: 'errors:duplicate_company',
-                params: { name: clash.name, id: clash.id },
-              },
-            ]);
-          }
-        }
-        patch.name = name;
-      }
-      if (input.contact_name !== undefined) patch.contact_name = input.contact_name?.trim() || null;
-      if (input.phone !== undefined) patch.phone = input.phone?.trim() || null;
-      if (input.address !== undefined) patch.address = input.address?.trim() || null;
-      if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
-
-      const row = await this.companies.update(id, input.version, patch, context.userId, tx);
-      if (!row) throw await this.versionConflict(id);
-
-      const changes = diffOf({ ...before } as Record<string, unknown>, patch, [
-        'name',
-        'contact_name',
-        'phone',
-        'address',
-        'notes',
-      ]);
-      if (Object.keys(changes).length > 0) {
-        await this.audit.record(
-          context,
-          {
-            action: 'update',
-            entity_type: 'company',
-            entity_id: id,
-            entity_label: `Company: ${row.name}`,
-            changes,
-            related: { company_id: id },
-          },
-          tx,
-        );
-      }
-      return row;
-    });
-
-    return this.detailOf(updated);
-  }
-
-  /**
-   * A company that still owes (or is owed) money may be deactivated, with a note: the debt
-   * does not disappear because the relationship ended, and Payables keeps showing it (FR-710).
-   */
-  async setActive(
-    context: RequestContext,
-    id: string,
-    isActive: boolean,
-    input: { version: number; note?: string | null },
-  ): Promise<CompanyDto> {
-    const updated = await this.database.transaction(async (tx) => {
-      const before = await this.companies.lock(id, tx);
-      if (!before) throw ApiError.notFound();
-      if (before.is_active === isActive) return before;
-
-      const balance = await this.companies.balanceOf(id, tx);
-      if (!isActive && balance !== 0 && !input.note?.trim()) {
-        throw ApiError.validation([
-          {
-            path: 'note',
-            code: 'NOTE_REQUIRED',
-            message_key: 'errors:note_required_balance',
-            params: { balance, currency: before.settlement_currency },
-          },
-        ]);
-      }
-
-      const row = await this.companies.update(
-        id,
-        input.version,
-        { is_active: isActive },
-        context.userId,
-        tx,
-      );
-      if (!row) throw await this.versionConflict(id);
-
-      await this.audit.record(
-        context,
-        {
-          action: 'status_change',
-          entity_type: 'company',
-          entity_id: id,
-          entity_label: `Company: ${row.name}`,
-          changes: {
-            is_active: { old: before.is_active, new: isActive },
-            balance: { old: { amount: balance, currency: before.settlement_currency }, new: null },
-          },
-          note: input.note?.trim() || null,
-          related: { company_id: id },
-        },
-        tx,
-      );
-      return row;
-    });
-
-    return this.detailOf(updated);
-  }
-
-  async softDelete(context: RequestContext, id: string, version: number): Promise<void> {
-    await this.database.transaction(async (tx) => {
-      const before = await this.companies.lock(id, tx);
-      if (!before) throw ApiError.notFound();
-      if (await this.companies.isReferenced(id, tx)) {
-        throw ApiError.validation([
-          { path: 'id', code: 'REFERENCED', message_key: 'errors:record_referenced', params: {} },
-        ]);
-      }
-
-      const row = await this.companies.softDelete(id, version, context.userId, tx);
-      if (!row) throw await this.versionConflict(id);
-
-      await this.audit.record(
-        context,
-        {
-          action: 'delete',
-          entity_type: 'company',
-          entity_id: id,
-          entity_label: `Company: ${before.name}`,
-          changes: { snapshot: { old: { ...before }, new: null } },
-          related: { company_id: id },
-        },
-        tx,
-      );
-    });
-  }
-
-  /** Assignment is for filtering and reporting only; it scopes nothing (FR-711). */
-  async assign(
-    context: RequestContext,
-    id: string,
-    input: { user_id: string | null; note?: string | null; version?: number },
-  ): Promise<CompanyDto> {
-    const updated = await this.database.transaction(async (tx) => {
-      const before = await this.companies.lock(id, tx);
-      if (!before) throw ApiError.notFound();
-      if (input.user_id) {
-        const { rowCount } = await tx.query(
-          'SELECT 1 FROM users WHERE id = $1 AND deleted_at IS NULL AND is_active = true',
-          [input.user_id],
-        );
-        if (!rowCount) {
-          throw ApiError.validation([
-            {
-              path: 'user_id',
-              code: 'NOT_FOUND',
-              message_key: 'errors:field.required',
-              params: {},
-            },
-          ]);
-        }
-      }
-
-      const row = await this.companies.update(
-        id,
-        input.version ?? before.version,
-        { assigned_user_id: input.user_id },
-        context.userId,
-        tx,
-      );
-      if (!row) throw await this.versionConflict(id);
-
-      await this.audit.record(
-        context,
-        {
-          action: 'assignment_change',
-          entity_type: 'company',
-          entity_id: id,
-          entity_label: `Company: ${row.name}`,
-          changes: { assigned_user_id: { old: before.assigned_user_id, new: input.user_id } },
-          note: input.note?.trim() || null,
-          related: { company_id: id, assigned_user_id: input.user_id },
-        },
-        tx,
-      );
-      return row;
-    });
-
-    return this.detailOf(updated);
-  }
-
-  // ─────────────────────────────── the rate (FR-703) ───────────────────────────────
-
-  async rateHistoryOf(id: string) {
-    await this.requireCompany(id);
-    const [current, history] = await Promise.all([
-      this.companies.currentRate(id),
-      this.companies.rateHistory(id),
-    ]);
-    return {
-      current: current
-        ? { rate_iqd_per_usd: formatRate(current.rate), since: current.since.toISOString() }
-        : null,
-      items: history.map((row) => ({
-        id: row.id,
-        rate_iqd_per_usd: formatRate(row.rate_iqd_per_usd),
-        effective_from: row.effective_from.toISOString(),
-        note: row.note,
-        created_by_name: row.created_by_name,
-      })),
-    };
-  }
-
-  /**
-   * A new rate takes effect immediately for new documents and never touches a stored one
-   * (FR-703).
-   */
-  async setRate(
-    context: RequestContext,
-    id: string,
-    input: { rate_iqd_per_usd: string; note?: string | null },
-  ): Promise<{ rate_iqd_per_usd: Rate; since: string }> {
-    const company = await this.requireCompany(id);
-    const rate = formatRate(input.rate_iqd_per_usd);
-    if (Number(rate) <= 0) {
-      throw ApiError.validation([
-        {
-          path: 'rate_iqd_per_usd',
-          code: 'INVALID',
-          message_key: 'errors:field.required',
-          params: {},
-        },
-      ]);
-    }
-
-    const previous = await this.companies.currentRate(id);
-
-    await this.database.transaction(async (tx) => {
-      await this.companies.insertRate(
-        { company_id: id, rate, note: input.note?.trim() || null, created_by: context.userId },
-        tx,
-      );
-      await this.audit.record(
-        context,
-        {
-          action: 'rate_change',
-          entity_type: 'company',
-          entity_id: id,
-          entity_label: `Company: ${company.name}`,
-          changes: {
-            rate_iqd_per_usd: { old: previous ? formatRate(previous.rate) : null, new: rate },
-          },
-          note: input.note?.trim() || null,
-          related: { company_id: id },
-        },
-        tx,
-      );
-    });
-
-    const current = (await this.companies.currentRate(id)) as { rate: string; since: Date };
-    return { rate_iqd_per_usd: formatRate(current.rate), since: current.since.toISOString() };
   }
 
   // ──────────────────────────── the accounting tab (FR-704) ────────────────────────────
@@ -1032,95 +694,55 @@ export class CompaniesService {
    * Changing the settlement currency (2.3.5, FR-702): always one re-basing entry, so the new
    * column is never a sum at mixed historical rates.
    */
-  async setSettlementCurrency(
+  /**
+   * Re-bases the buying side's ledger when the business changes its settlement currency
+   * (2.3.5). The business itself is changed by the customers side, which owns the record and
+   * calls this inside its own transaction and at the same agreed rate (D-054) — so both ledgers
+   * of one business always sum in the same currency and the net figure is honest.
+   */
+  async rebaseBook(
     context: RequestContext,
-    id: string,
-    input: { currency: Currency; note: string; rebase_rate?: string | null; version?: number },
-  ): Promise<CompanyDto> {
-    const updated = await this.database.transaction(async (tx) => {
-      const before = await this.companies.lock(id, tx);
-      if (!before) throw ApiError.notFound();
-      if (before.settlement_currency === input.currency) {
-        throw ApiError.validation([
-          { path: 'currency', code: 'UNCHANGED', message_key: 'errors:field.required', params: {} },
-        ]);
-      }
+    tx: Db,
+    party: { id: string; name: string; settlement_currency: Currency },
+    currency: Currency,
+    rate: Rate,
+    note: string,
+  ): Promise<{ old: { amount: number; currency: Currency }; new: { amount: number; currency: Currency } }> {
+    const account: LedgerAccount = {
+      id: party.id,
+      name: party.name,
+      settlement_currency: party.settlement_currency,
+    };
+    const entries = await this.ledger.entriesFor(tx, party.id);
+    const balanceOld = balanceOf(entries, party.settlement_currency);
+    const sumNewColumn = balanceOf(entries, currency);
+    const worthInNewCurrency = balanceOld === 0 ? 0 : convert(balanceOld, party.settlement_currency, rate);
+    const delta = worthInNewCurrency - sumNewColumn;
 
-      const account = toAccount(before);
-      const entries = await this.ledger.entriesFor(tx, id);
-      const balanceOld = balanceOf(entries, before.settlement_currency);
-      const sumNewColumn = balanceOf(entries, input.currency);
-
-      if (balanceOld !== 0 && !input.rebase_rate) {
-        throw new ApiError('REBASE_RATE_REQUIRED', {
-          balance: balanceOld,
-          currency: before.settlement_currency,
-        });
-      }
-
-      const rate = input.rebase_rate ?? (await this.rateFor(id, tx)).rate;
-      const worthInNewCurrency =
-        balanceOld === 0 ? 0 : convert(balanceOld, before.settlement_currency, rate);
-      const delta = worthInNewCurrency - sumNewColumn;
-
-      const money: MoneyPair = {
-        amount_iqd: input.currency === 'IQD' ? delta : 0,
-        amount_usd_cents: input.currency === 'USD' ? delta : 0,
-        entered_currency: null,
-        rate_iqd_per_usd: formatRate(rate),
-        rate_source: 'manual',
-      };
-
-      const result = await this.ledger.write(
-        context,
-        tx,
-        account,
-        {
-          entry_type: 'settlement_change',
-          money,
-          entry_date: this.period.today(),
-          note: input.note,
-          performed_by_user_id: context.userId,
+    await this.ledger.write(
+      context,
+      tx,
+      account,
+      {
+        entry_type: 'settlement_change',
+        money: {
+          amount_iqd: currency === 'IQD' ? delta : 0,
+          amount_usd_cents: currency === 'USD' ? delta : 0,
+          entered_currency: null,
+          rate_iqd_per_usd: formatRate(rate),
+          rate_source: 'manual',
         },
-        { audit_note: input.note },
-      );
+        entry_date: this.period.today(),
+        note,
+        performed_by_user_id: context.userId,
+      },
+      { audit_note: note },
+    );
 
-      const row = await this.companies.update(
-        id,
-        input.version ?? before.version,
-        { settlement_currency: input.currency },
-        context.userId,
-        tx,
-      );
-      if (!row) throw await this.versionConflict(id);
-
-      await this.audit.record(
-        context,
-        {
-          action: 'update',
-          entity_type: 'company',
-          entity_id: id,
-          entity_label: `Company: ${row.name}`,
-          changes: {
-            settlement_currency: { old: before.settlement_currency, new: input.currency },
-            balance: {
-              old: { amount: balanceOld, currency: before.settlement_currency },
-              new: {
-                amount: sumNewColumn + delta,
-                currency: input.currency,
-                rate: formatRate(rate),
-              },
-            },
-          },
-          note: input.note,
-          related: { company_id: id, ledger_entry_id: result.entry.id },
-        },
-        tx,
-      );
-      return row;
-    });
-
-    return this.detailOf(updated);
+    return {
+      old: { amount: balanceOld, currency: party.settlement_currency },
+      new: { amount: sumNewColumn + delta, currency },
+    };
   }
 
   async historyOf(id: string, options: { cursor?: string; limit?: number }) {
@@ -1318,14 +940,6 @@ export class CompaniesService {
       { audit_note: input.note, related: { company_id: account.id } },
     );
     return toWriteResult(result);
-  }
-
-  private async versionConflict(id: string): Promise<ApiError> {
-    const current = await this.companies.findById(id);
-    return new ApiError('VERSION_CONFLICT', {
-      entity: 'company',
-      version: current?.version ?? null,
-    });
   }
 
   /** Whether the caller may see any company money at all (FR-704). */

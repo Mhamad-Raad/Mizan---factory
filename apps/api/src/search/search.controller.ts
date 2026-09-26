@@ -10,7 +10,7 @@ import { zodBody } from '../common/zod.pipe.js';
 const searchSchema = z.object({ q: z.string().min(1).max(200) });
 
 export interface SearchHit {
-  kind: 'item' | 'customer' | 'company' | 'order' | 'purchase';
+  kind: 'item' | 'customer' | 'order' | 'purchase';
   id: string;
   title: string;
   subtitle: string | null;
@@ -47,8 +47,8 @@ export class SearchController {
 
     const sections: Promise<SearchHit[]>[] = [];
     if (can(context, 'materials.view')) sections.push(this.items(normalized));
+    // One record per business (D-054): a supplier is found here too, for whoever may see suppliers.
     if (can(context, 'customers.view')) sections.push(this.customers(context, normalized, phone));
-    if (can(context, 'companies.view')) sections.push(this.companies(normalized, phone));
     if (number !== null && can(context, 'orders.view')) sections.push(this.orders(context, number));
     if (number !== null && can(context, 'purchases.view')) sections.push(this.purchases(number));
 
@@ -66,31 +66,21 @@ export class SearchController {
     return rows.map((row) => ({ kind: 'item', id: row.id, title: row.name, subtitle: row.code }));
   }
 
-  /** The customer scope of 2.6.4 applies here exactly as it does on the Customers page. */
+  /** The scope of 2.6.4 applies here exactly as it does on the Customers page. */
   private async customers(context: RequestContext, normalized: string, phone: string): Promise<SearchHit[]> {
     const scoped = can(context, 'customers.view_all') ? null : context.userId;
+    const seesSuppliers = can(context, 'companies.view');
     const { rows } = await this.database.query<{ id: string; name: string; phone: string | null }>(
       `SELECT id, name, phone FROM customers
         WHERE deleted_at IS NULL
           AND (name_normalized LIKE $1
                OR ($2::text <> '' AND phone_normalized LIKE '%' || $2 || '%'))
-          AND ($3::uuid IS NULL OR assigned_user_id = $3::uuid OR is_system = true)
+          AND ($3::uuid IS NULL OR assigned_user_id = $3::uuid OR is_system = true
+               OR (is_supplier AND $4::boolean))
         ORDER BY name ASC LIMIT 5`,
-      [normalized, phone, scoped],
+      [normalized, phone, scoped, seesSuppliers],
     );
     return rows.map((row) => ({ kind: 'customer', id: row.id, title: row.name, subtitle: row.phone }));
-  }
-
-  private async companies(normalized: string, phone: string): Promise<SearchHit[]> {
-    const { rows } = await this.database.query<{ id: string; name: string; phone: string | null }>(
-      `SELECT id, name, phone FROM companies
-        WHERE deleted_at IS NULL
-          AND (name_normalized LIKE $1
-               OR ($2::text <> '' AND phone_normalized LIKE '%' || $2 || '%'))
-        ORDER BY name ASC LIMIT 5`,
-      [normalized, phone],
-    );
-    return rows.map((row) => ({ kind: 'company', id: row.id, title: row.name, subtitle: row.phone }));
   }
 
   private async orders(context: RequestContext, number: number): Promise<SearchHit[]> {
@@ -122,7 +112,7 @@ export class SearchController {
     }>(
       `SELECT p.id, p.number::text AS number, co.name,
               to_char(p.purchase_date, 'YYYY-MM-DD') AS purchase_date
-         FROM purchases p LEFT JOIN companies co ON co.id = p.company_id
+         FROM purchases p LEFT JOIN customers co ON co.id = p.company_id
         WHERE p.deleted_at IS NULL AND p.number = $1::bigint
         LIMIT 3`,
       [number],

@@ -15,6 +15,7 @@ import type { LedgerCustomer } from '../ledger/customer-ledger.service.js';
 import { RatesService } from '../rates/rates.service.js';
 import { PeriodService } from '../settings/period.service.js';
 import { SettingsService } from '../settings/settings.service.js';
+import { CompaniesService } from '../companies/companies.service.js';
 import { CustomersRepository } from './customers.repository.js';
 import type { CustomerFilters, CustomerScope } from './customers.repository.js';
 import type {
@@ -34,6 +35,10 @@ export interface MoneyInput {
 
 export interface CreateCustomerInput {
   name: string;
+  contact_name?: string | null;
+  /** The sides of the business this record takes part in (D-054); a customer by default. */
+  is_customer?: boolean;
+  is_supplier?: boolean;
   phone?: string | null;
   address?: string | null;
   notes?: string | null;
@@ -111,10 +116,64 @@ export class CustomersService {
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
     private readonly history: HistoryRepository,
+    private readonly suppliers: CompaniesService,
   ) {}
 
   scopeOf(context: RequestContext): CustomerScope {
-    return { userId: context.userId, viewAll: can(context, 'customers.view_all') };
+    return {
+      userId: context.userId,
+      viewAll: can(context, 'customers.view_all'),
+      seesSuppliers: can(context, 'companies.view'),
+    };
+  }
+
+  /**
+   * Which balances this caller may read (FR-503, FR-704). The net figure needs both: from the
+   * net and one side anybody could work out the side they may not see.
+   */
+  private sightOf(context: RequestContext): { selling: boolean; buying: boolean } {
+    return {
+      selling: can(context, 'fields.see_customer_balances'),
+      buying: can(context, 'fields.see_company_balances'),
+    };
+  }
+
+  /**
+   * A record takes part in the selling side, the buying side or both, and each side keeps the
+   * permission it always had: creating or editing a customer needs `customers.<action>`, a
+   * supplier `companies.<action>`, and a record that is both needs both (D-054).
+   */
+  private requireSides(
+    context: RequestContext,
+    sides: { is_customer: boolean; is_supplier: boolean },
+    action: 'create' | 'edit' | 'assign',
+  ): void {
+    const missing =
+      (sides.is_customer && !can(context, `customers.${action}`)) ||
+      (sides.is_supplier && !can(context, `companies.${action}`));
+    if (missing) {
+      throw ApiError.permissionDenied(
+        sides.is_supplier && !can(context, `companies.${action}`)
+          ? `companies.${action}`
+          : `customers.${action}`,
+      );
+    }
+    if (!sides.is_customer && !sides.is_supplier) {
+      throw ApiError.validation([
+        { path: 'is_customer', code: 'NO_SIDE', message_key: 'errors:customer_no_side', params: {} },
+      ]);
+    }
+  }
+
+  /**
+   * The rate every calculated amount for this business is filled at — its orders, its payments
+   * and credits, and its purchases on the buying side: its own rate, else the global one
+   * (2.3.3, D-054). The own rate is stored as `company`, the source label for "this party's rate".
+   */
+  async rateFor(id: string, tx?: Db): Promise<{ rate: Rate; source: 'company' | 'global' }> {
+    const own = await this.customers.currentRate(id, tx);
+    if (own) return { rate: formatRate(own.rate), source: 'company' };
+    return { rate: await this.rates.requireCurrent(tx), source: 'global' };
   }
 
   async list(
@@ -122,6 +181,7 @@ export class CustomersService {
     filters: CustomerFilters,
   ): Promise<{ items: CustomerDto[]; total: number }> {
     const { rows, total } = await this.customers.list(filters, this.scopeOf(context));
+    const sight = this.sightOf(context);
     // The list values balances at the global rate; a customer's own rate is applied on the
     // detail, where a single per-row lookup is not thousands of them.
     const globalRate = await this.rates.current();
@@ -133,7 +193,9 @@ export class CustomersService {
         toCustomerDto(row, {
           assigned_user_name: row.assigned_user_name,
           balance: Number(row.balance),
+          payable: Number(row.payable),
           rate: rateInfo,
+          sight,
         }),
       ),
       total,
@@ -142,13 +204,18 @@ export class CustomersService {
 
   async get(context: RequestContext, id: string): Promise<CustomerDto> {
     const row = await this.requireCustomer(context, id);
-    return this.detailOf(row);
+    return this.detailOf(row, this.sightOf(context));
   }
 
-  private async detailOf(row: CustomerRow, tx?: Db): Promise<CustomerDto> {
+  private async detailOf(
+    row: CustomerRow,
+    sight: { selling: boolean; buying: boolean },
+    tx?: Db,
+  ): Promise<CustomerDto> {
     const db = tx ?? this.database;
-    const [balance, customerRate, globalRate, assignee] = await Promise.all([
+    const [balance, payable, customerRate, globalRate, assignee] = await Promise.all([
       this.customers.balanceOf(row.id, db),
+      this.customers.payableOf(row.id, db),
       this.customers.currentRate(row.id, db),
       this.rates.current(db),
       this.assigneeName(db, row.assigned_user_id),
@@ -163,7 +230,7 @@ export class CustomersService {
       : globalRate
         ? { rate_iqd_per_usd: globalRate.rate_iqd_per_usd, since: null, is_customer_rate: false }
         : null;
-    return toCustomerDto(row, { assigned_user_name: assignee, balance, rate: rateInfo });
+    return toCustomerDto(row, { assigned_user_name: assignee, balance, payable, rate: rateInfo, sight });
   }
 
   private async assigneeName(db: Db, userId: string | null): Promise<string | null> {
@@ -209,6 +276,8 @@ export class CustomersService {
   async create(context: RequestContext, input: CreateCustomerInput): Promise<CustomerDto> {
     const name = input.name.trim();
     const scope = this.scopeOf(context);
+    const sides = { is_customer: input.is_customer ?? true, is_supplier: input.is_supplier ?? false };
+    this.requireSides(context, sides, 'create');
 
     // A customer created by someone who sees only their own is assigned to them, or they
     // could not use the record they just made (FR-501).
@@ -230,6 +299,8 @@ export class CustomersService {
       const row = await this.customers.create(
         {
           name,
+          contact_name: input.contact_name?.trim() || null,
+          ...sides,
           phone: input.phone?.trim() || null,
           address: input.address?.trim() || null,
           notes: input.notes?.trim() || null,
@@ -251,6 +322,8 @@ export class CustomersService {
           entity_label: `Customer: ${row.name}`,
           changes: {
             name: { old: null, new: row.name },
+            is_customer: { old: null, new: row.is_customer },
+            is_supplier: { old: null, new: row.is_supplier },
             phone: { old: null, new: row.phone },
             settlement_currency: { old: null, new: row.settlement_currency },
             assigned_user_id: { old: null, new: row.assigned_user_id },
@@ -262,7 +335,7 @@ export class CustomersService {
       return row;
     });
 
-    return this.detailOf(created);
+    return this.detailOf(created, this.sightOf(context));
   }
 
   async update(
@@ -287,8 +360,18 @@ export class CustomersService {
         ]);
       }
 
+      const sides = {
+        is_customer: input.is_customer ?? before.is_customer,
+        is_supplier: input.is_supplier ?? before.is_supplier,
+      };
+      this.requireSides(context, sides, 'edit');
+      await this.assertSidesStillFree(before, sides, tx);
+
       const patch: Record<string, unknown> = {};
       if (input.name !== undefined) patch.name = input.name.trim();
+      if (input.contact_name !== undefined) patch.contact_name = input.contact_name?.trim() || null;
+      if (sides.is_customer !== before.is_customer) patch.is_customer = sides.is_customer;
+      if (sides.is_supplier !== before.is_supplier) patch.is_supplier = sides.is_supplier;
       if (input.phone !== undefined) patch.phone = input.phone?.trim() || null;
       if (input.address !== undefined) patch.address = input.address?.trim() || null;
       if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
@@ -306,6 +389,9 @@ export class CustomersService {
 
       const changes = diffOf({ ...before } as Record<string, unknown>, patch, [
         'name',
+        'contact_name',
+        'is_customer',
+        'is_supplier',
         'phone',
         'address',
         'notes',
@@ -329,7 +415,7 @@ export class CustomersService {
       return row;
     });
 
-    return this.detailOf(updated);
+    return this.detailOf(updated, this.sightOf(context));
   }
 
   /**
@@ -347,6 +433,7 @@ export class CustomersService {
     const updated = await this.database.transaction(async (tx) => {
       const before = await this.customers.lock(id, tx);
       if (!before) throw ApiError.notFound();
+      this.requireSides(context, before, 'edit');
       if (before.is_system) {
         throw ApiError.validation([
           {
@@ -399,7 +486,7 @@ export class CustomersService {
       return row;
     });
 
-    return this.detailOf(updated);
+    return this.detailOf(updated, this.sightOf(context));
   }
 
   async softDelete(context: RequestContext, id: string, version: number): Promise<void> {
@@ -439,6 +526,7 @@ export class CustomersService {
     const updated = await this.database.transaction(async (tx) => {
       const before = await this.customers.lock(id, tx);
       if (!before) throw ApiError.notFound();
+      this.requireSides(context, before, 'assign');
       if (before.is_system) {
         throw ApiError.validation([
           {
@@ -491,7 +579,7 @@ export class CustomersService {
       return row;
     });
 
-    return this.detailOf(updated);
+    return this.detailOf(updated, this.sightOf(context));
   }
 
   /**
@@ -525,14 +613,15 @@ export class CustomersService {
       const balanceOld = balanceOf(entries, before.settlement_currency);
       const sumNewColumn = balanceOf(entries, input.currency);
 
-      if (balanceOld !== 0 && !input.rebase_rate) {
+      const payableOld = before.is_supplier ? await this.customers.payableOf(id, tx) : 0;
+      if ((balanceOld !== 0 || payableOld !== 0) && !input.rebase_rate) {
         throw new ApiError('REBASE_RATE_REQUIRED', {
-          balance: balanceOld,
+          balance: balanceOld - payableOld,
           currency: before.settlement_currency,
         });
       }
 
-      const rate = input.rebase_rate ?? (await this.rates.requireCurrent(tx));
+      const rate = input.rebase_rate ?? (await this.rateFor(id, tx)).rate;
       const worthInNewCurrency =
         balanceOld === 0 ? 0 : convert(balanceOld, before.settlement_currency, rate);
       const delta = worthInNewCurrency - sumNewColumn;
@@ -561,6 +650,13 @@ export class CustomersService {
         { audit_note: input.note },
       );
 
+      // One settlement currency per business (D-054): the buying side's ledger is re-based in the
+      // same transaction and at the same agreed rate, or the net figure would subtract a balance
+      // in dollars from one in dinars.
+      const supplierSide = before.is_supplier
+        ? await this.suppliers.rebaseBook(context, tx, before, input.currency, rate, input.note)
+        : null;
+
       const row = await this.customers.update(
         id,
         input.version ?? before.version,
@@ -583,6 +679,7 @@ export class CustomersService {
               old: { amount: balanceOld, currency: before.settlement_currency },
               new: { amount: sumNewColumn + delta, currency: input.currency, rate },
             },
+            ...(supplierSide ? { payable: supplierSide } : {}),
           },
           note: input.note,
           related: { customer_id: id, ledger_entry_id: result.entry.id },
@@ -592,7 +689,7 @@ export class CustomersService {
       return row;
     });
 
-    return this.detailOf(updated);
+    return this.detailOf(updated, this.sightOf(context));
   }
 
   /** The Ledger tab (FR-503): grouped rows in posting order with their running balance. */
@@ -719,7 +816,7 @@ export class CustomersService {
     // even after its customer was reassigned.
     if (!options.authorisedByOrder) await this.requireCustomer(context, id);
 
-    const rate = await this.rates.requireCurrent();
+    const { rate, source: rateSource } = await this.rateFor(id);
     const tolerance = {
       settle_tolerance_iqd: await this.settings.get('settle_tolerance_iqd'),
       settle_tolerance_usd_cents: await this.settings.get('settle_tolerance_usd_cents'),
@@ -739,7 +836,7 @@ export class CustomersService {
             amount: -Math.abs(part.amount),
             currency: part.currency,
             rate,
-            rate_source: 'global',
+            rate_source: rateSource,
             other_amount:
               part.other_amount === undefined || part.other_amount === null
                 ? undefined
@@ -784,7 +881,7 @@ export class CustomersService {
             received_currency: input.currency,
             received_amount: Math.abs(input.amount),
             rate,
-            rate_source: 'global',
+            rate_source: rateSource,
             tolerance,
           });
         } catch {
@@ -854,7 +951,7 @@ export class CustomersService {
         amount: -received,
         currency: input.currency,
         rate,
-        rate_source: 'global',
+        rate_source: rateSource,
         other_amount:
           input.other_amount === undefined || input.other_amount === null
             ? undefined
@@ -902,7 +999,7 @@ export class CustomersService {
       ]);
     }
 
-    const rate = await this.rates.requireCurrent();
+    const { rate, source: rateSource } = await this.rateFor(id);
 
     return this.database.transaction(async (tx) => {
       const customer = await this.lockFor(tx, id);
@@ -917,7 +1014,7 @@ export class CustomersService {
         amount: signed,
         currency: input.currency,
         rate,
-        rate_source: 'global',
+        rate_source: rateSource,
         other_amount:
           input.other_amount === undefined || input.other_amount === null
             ? undefined
@@ -1007,7 +1104,7 @@ export class CustomersService {
     options: { cursor?: string; limit?: number },
   ) {
     await this.requireCustomer(context, id);
-    return this.history.list({ entity_type: 'customer', entity_id: id, ...options });
+    return this.history.list({ about_party: id, ...options });
   }
 
   /**
@@ -1293,13 +1390,56 @@ export class CustomersService {
     };
   }
 
-  /** Give the customer its own IQD-per-USD rate (append-only, like a company's — never edited). */
+  /**
+   * A side may be switched off only while nothing on it names the record: a customer with orders
+   * or selling-side entries stays a customer, a supplier with purchases, buying-side entries or
+   * damage returns stays a supplier. Otherwise the record would own documents it no longer shows.
+   */
+  private async assertSidesStillFree(
+    before: CustomerRow,
+    sides: { is_customer: boolean; is_supplier: boolean },
+    tx: Db,
+  ): Promise<void> {
+    const checks: { off: boolean; path: string; sql: string }[] = [
+      {
+        off: before.is_customer && !sides.is_customer,
+        path: 'is_customer',
+        sql: `SELECT EXISTS (SELECT 1 FROM orders WHERE customer_id = $1)
+                  OR EXISTS (SELECT 1 FROM customer_ledger WHERE customer_id = $1) AS used`,
+      },
+      {
+        off: before.is_supplier && !sides.is_supplier,
+        path: 'is_supplier',
+        sql: `SELECT EXISTS (SELECT 1 FROM purchases WHERE company_id = $1)
+                  OR EXISTS (SELECT 1 FROM company_ledger WHERE company_id = $1)
+                  OR EXISTS (SELECT 1 FROM damages WHERE company_id = $1) AS used`,
+      },
+    ];
+    for (const check of checks) {
+      if (!check.off) continue;
+      const { rows } = await tx.query<{ used: boolean }>(check.sql, [before.id]);
+      if (rows[0]?.used) {
+        throw ApiError.validation([
+          { path: check.path, code: 'SIDE_IN_USE', message_key: 'errors:customer_side_in_use', params: {} },
+        ]);
+      }
+    }
+  }
+
+  /** Give the business its own IQD-per-USD rate (append-only — never edited, D-054). */
   async setRate(
     context: RequestContext,
     id: string,
     input: { rate_iqd_per_usd: string; note?: string | null },
   ): Promise<{ rate_iqd_per_usd: Rate; since: string }> {
     const row = await this.requireCustomer(context, id);
+    // One rate per business (D-054): either side's permission may set it, for a record on that side.
+    const mayRate =
+      (row.is_customer && can(context, 'customers.set_rate')) ||
+      (row.is_supplier && can(context, 'companies.set_rate'));
+    if (!mayRate) {
+      throw ApiError.permissionDenied(row.is_customer ? 'customers.set_rate' : 'companies.set_rate');
+    }
     const rate = formatRate(input.rate_iqd_per_usd);
     if (Number(rate) <= 0) {
       throw ApiError.validation([
@@ -1398,33 +1538,34 @@ function toCustomerDto(
   extra: {
     assigned_user_name: string | null;
     balance: number;
+    payable: number;
     rate: CustomerRateInfo | null;
+    sight: { selling: boolean; buying: boolean };
   },
 ): CustomerDto {
   const rateValue = extra.rate?.rate_iqd_per_usd ?? null;
-  const balance: BalanceDto | null =
+  // The settlement currency carries the fact; the other side is a conversion at the business's
+  // own rate (or the global one), which the client renders with "≈".
+  const asBalance = (amount: number): BalanceDto | null =>
     rateValue === null
       ? null
       : {
-          // The settlement currency carries the fact; the other side is a conversion at the
-          // customer's own rate (or the global one), which the client renders with "≈".
-          amount_iqd:
-            row.settlement_currency === 'IQD'
-              ? extra.balance
-              : convert(extra.balance, 'USD', rateValue),
+          amount_iqd: row.settlement_currency === 'IQD' ? amount : convert(amount, 'USD', rateValue),
           amount_usd_cents:
-            row.settlement_currency === 'USD'
-              ? extra.balance
-              : convert(extra.balance, 'IQD', rateValue),
+            row.settlement_currency === 'USD' ? amount : convert(amount, 'IQD', rateValue),
           currency: row.settlement_currency,
           rate_iqd_per_usd: rateValue,
           kind: 'derived',
         };
+  const balance = asBalance(extra.balance);
 
   return {
     rate: extra.rate,
     id: row.id,
     name: row.name,
+    contact_name: row.contact_name,
+    is_customer: row.is_customer,
+    is_supplier: row.is_supplier,
     phone: row.phone,
     address: row.address,
     notes: row.notes,
@@ -1441,6 +1582,9 @@ function toCustomerDto(
           },
     is_active: row.is_active,
     balance,
+    payable: row.is_supplier && extra.sight.buying ? asBalance(extra.payable) : null,
+    net:
+      extra.sight.selling && extra.sight.buying ? asBalance(extra.balance - extra.payable) : null,
     version: row.version,
   };
 }

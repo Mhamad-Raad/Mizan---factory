@@ -7,13 +7,10 @@ import type { Currency, Rate, RateSource } from '@mizan/money';
 import { apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
-import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
-import { OrderStatusChip, PaymentTypeChip } from '../components/chips.js';
 import { FilterChip } from './MaterialsPage.js';
-import { customerName } from '../lib/customers.js';
 import { useFormatter } from '../lib/store.js';
-import { DataList } from '../components/DataList.js';
+import { OrderTable } from '../components/OrderTable.js';
 
 export interface OrderRow {
   id: string;
@@ -203,112 +200,7 @@ export function OrdersPage() {
           }
         >
           <div className="mz-refreshable" data-busy={refreshing ? 'true' : undefined} aria-busy={refreshing}>
-          <DataList
-            rows={rows}
-            rowKey={(order) => order.id}
-            href={(order) => `/orders/${order.id}`}
-            columns={[
-              {
-                // Order number over its date, so a row is anchored by what people call it.
-                header: t('common:number_column'),
-                cell: (order) => (
-                  <span className="mz-cell__body">
-                    <strong>{t('orders:number', { number: formatter.number(order.number) })}</strong>
-                    <span className="mz-caption">{formatter.date(order.order_date)}</span>
-                  </span>
-                ),
-              },
-              {
-                // Customer, with who recorded the sale beneath it.
-                header: t('glossary:customer'),
-                cell: (order) => (
-                  <span className="mz-cell__body">
-                    <span>
-                      {customerName(
-                        { name: order.customer_name, is_system: order.customer_is_system },
-                        t,
-                      )}
-                    </span>
-                    {order.acting_user_name ? (
-                      <span
-                        className="mz-caption"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                      >
-                        <Icon name="user" size={12} />
-                        {order.acting_user_name}
-                      </span>
-                    ) : null}
-                  </span>
-                ),
-              },
-              {
-                header: t('glossary:total'),
-                numeric: true,
-                cell: (order) => (
-                  <DualAmount
-                    amount_iqd={order.total_iqd}
-                    amount_usd_cents={order.total_usd_cents}
-                    primary={order.settlement_currency}
-                  />
-                ),
-              },
-              {
-                // What is still owed — the number an office actually chases.
-                header: t('orders:remaining'),
-                numeric: true,
-                cell: (order) =>
-                  order.remaining > 0 ? (
-                    <span className="mz-owed" data-tabular>
-                      {formatter.money(order.remaining, order.settlement_currency)}
-                    </span>
-                  ) : (
-                    <span className="mz-muted">—</span>
-                  ),
-              },
-              {
-                header: t('glossary:payment_type'),
-                secondary: true,
-                cell: (order) => <PaymentTypeChip type={order.payment_type} />,
-              },
-              { header: t('common:status'), cell: (order) => <OrderStatusChip status={order.status} /> },
-            ]}
-            card={(order) => (
-              <span className="mz-rowcard">
-                <span className="mz-rowcard__head">
-                  <span className="mz-list__title">
-                    {t('orders:number', { number: formatter.number(order.number) })}
-                  </span>
-                  <span className="mz-rowcard__chips">
-                    <PaymentTypeChip type={order.payment_type} />
-                    <OrderStatusChip status={order.status} />
-                  </span>
-                </span>
-                <span className="mz-caption">
-                  <bdi>{customerName({ name: order.customer_name, is_system: order.customer_is_system }, t)}</bdi>
-                  {' · '}
-                  {formatter.date(order.order_date)}
-                  {order.acting_user_name ? (
-                    <>
-                      {' · '}
-                      <bdi>{order.acting_user_name}</bdi>
-                    </>
-                  ) : null}
-                </span>
-                <span className="mz-rowcard__foot">
-                  <DualAmount
-                    amount_iqd={order.total_iqd}
-                    amount_usd_cents={order.total_usd_cents}
-                    primary={order.settlement_currency}
-                  />
-                  {order.remaining > 0 ? (
-                    <span className="mz-caption mz-owed" data-tabular>
-                      {t('orders:remaining')}: {formatter.money(order.remaining, order.settlement_currency)}
-                    </span>
-                  ) : null}
-                </span>
-              </span>
-            )}
-          />
+          <OrderTable rows={rows} />
           </div>
         </QueryStates>
       </div>

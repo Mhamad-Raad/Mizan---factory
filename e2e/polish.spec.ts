@@ -145,9 +145,9 @@ test.describe('a screen whose chunk does not arrive', () => {
     // The failure this reproduces is ordinary: the tablet lost signal, or the server was
     // deployed while this tab stayed open and the content-hashed file is no longer there. Both
     // asks fail, because the chunk is asked for twice (`src/lib/chunk.ts`).
-    const chunkOfCompanies = (url: URL) => /CompaniesPage|companies-/i.test(url.pathname);
-    await page.route(chunkOfCompanies, (route) => route.abort('failed'));
-    await page.getByRole('link', { name: 'Companies' }).first().click();
+    const chunkOfCustomers = (url: URL) => /CustomersPage|customers-/i.test(url.pathname);
+    await page.route(chunkOfCustomers, (route) => route.abort('failed'));
+    await page.getByRole('link', { name: 'Customers & companies' }).first().click();
 
     // Not a white screen: the error state, the reload that fixes it, and the tab bar still there.
     await expect(page.getByText("Couldn't load this")).toBeVisible({ timeout: 15_000 });
@@ -159,7 +159,7 @@ test.describe('a screen whose chunk does not arrive', () => {
 
     // And leaving works without a reload: the failure stayed on the screen that failed, and the
     // boundary clears itself when the route changes.
-    await page.unroute(chunkOfCompanies);
+    await page.unroute(chunkOfCustomers);
     await back.click();
     await expect(page.locator('nav.mz-tabbar')).toBeVisible();
     await page.getByRole('link', { name: 'Materials' }).first().click();

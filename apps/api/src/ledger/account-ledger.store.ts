@@ -14,7 +14,8 @@ export interface LedgerShape {
   /** The document a row may belong to: an order on the customer side, a purchase on the other. */
   documentColumn: 'order_id' | 'purchase_id';
   /** The table holding the counterparty, locked before a balance is computed (2.9.5). */
-  ownerTable: 'customers' | 'companies';
+  /** Both ledgers belong to the one record per business (D-054). */
+  ownerTable: 'customers';
 }
 
 interface LedgerRow {

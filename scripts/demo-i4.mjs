@@ -221,9 +221,11 @@ const cashOrder = await call(rebaz.session, '/orders', {
   },
 });
 
-const alNoor = await call(nazdar.session, '/companies', {
+const alNoor = await call(nazdar.session, '/customers', {
   method: 'POST',
-  body: { name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
+  body: {
+    is_customer: false,
+    is_supplier: true, name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
 });
 const purchase = await call(admin, '/purchases', {
   method: 'POST',

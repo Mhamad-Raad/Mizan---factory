@@ -59,7 +59,7 @@ const SCREENS: { path: string; who: { username: string; password: string }; name
   { path: '/orders/new', who: SALES, name: 'new order' },
   { path: '/customers', who: SALES, name: 'customers' },
   { path: '/materials', who: SALES, name: 'materials' },
-  { path: '/companies', who: ACCOUNTANT, name: 'companies' },
+  { path: '/customers?side=supplier', who: ACCOUNTANT, name: 'companies' },
   { path: '/purchases', who: ACCOUNTANT, name: 'purchases' },
   { path: '/damages', who: ACCOUNTANT, name: 'damaged items' },
   { path: '/reports', who: ACCOUNTANT, name: 'reports hub' },

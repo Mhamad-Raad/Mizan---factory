@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BottomSheet, Icon, IconButton, Menu, MizanMark } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
@@ -61,13 +61,6 @@ const DESTINATIONS: Destination[] = [
     permission: 'customers.view',
   },
   {
-    to: '/companies',
-    labelKey: 'companies:title',
-    icon: 'companies',
-    group: 'records',
-    permission: 'companies.view',
-  },
-  {
     to: '/damages',
     labelKey: 'damages:tab_label',
     icon: 'warning',
@@ -127,6 +120,7 @@ const VISIBLE_TABS = 4;
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const user = useApp((state) => state.user);
   const permissions = useApp((state) => state.permissions);
   const isOnline = useApp((state) => state.isOnline);
@@ -154,6 +148,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     navigate('/login');
   };
 
+  // A page below a section — `/orders/123`, `/customers/new` — goes back to where it was opened
+  // from, or to its section's list when it was opened directly (a link, a bookmark, a reload).
+  const segments = location.pathname.split('/').filter(Boolean);
+  const showBack = segments.length > 1;
+  const goBack = () => {
+    const index = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+    if (index > 0) navigate(-1);
+    else navigate(`/${segments[0] ?? ''}`);
+  };
+
   const lock = async () => {
     await apiRequest('/auth/lock', { method: 'POST' });
     setLocked(true);
@@ -163,6 +167,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mz-app mz-app--shell" data-sidebar={collapsed ? 'collapsed' : 'open'}>
       <header className="mz-header">
+        {/*
+         * Back, where there is somewhere to go back to: every page below a section — a detail,
+         * a form, an edit — has it in the same place, at the start of the bar, instead of a
+         * button at the foot of a page somebody has to scroll to find.
+         */}
+        {showBack ? <IconButton icon="back" label={t('common:back')} onClick={goBack} /> : null}
         {/* No mark here: the brand is in the sidebar, and on a phone the page's own name is
             what the bar is for. */}
         <h1 className="mz-header__title">

@@ -1183,6 +1183,90 @@ a.mz-button {
   padding-inline: var(--space-3);
 }
 
+/*
+ * An account read as a statement (LedgerList). A negative amount — money that lowers the
+ * balance — and a negative balance are the danger colour, the converted side a lighter shade of
+ * it; a small key above the list says which way the side's balance points.
+ */
+.mz-amount--negative,
+.mz-amount--negative .mz-dual {
+  color: var(--color-danger);
+}
+
+.mz-amount--negative .mz-caption {
+  color: color-mix(in srgb, var(--color-danger) 75%, var(--color-surface));
+}
+
+.mz-ledger-key {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.mz-ledger-key__swatch {
+  flex: none;
+  border-radius: 2px;
+  background: var(--color-danger);
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+}
+
+.mz-ledger-table td {
+  vertical-align: top;
+}
+
+.mz-ledger-table .mz-ledger-row--marker td {
+  background: var(--color-surface-2);
+}
+
+.mz-ledger-table__underlying td {
+  background: var(--color-surface-2);
+  padding-block: var(--space-2);
+}
+
+/* On a phone: what and when on the first lines, then how much and the balance after it on a
+   line of their own — beside the label, the amount squeezed it to a word per line. */
+.mz-ledger-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+}
+
+.mz-ledger-card__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.mz-ledger-card__money {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+}
+
+.mz-ledger-card__underlying {
+  grid-column: 1 / -1;
+}
+
+/* A button that reads as a link: "show the 3 underlying rows". */
+.mz-link-button {
+  align-self: flex-start;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  padding: 0;
+  min-block-size: var(--tap-target);
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: start;
+}
+
 .mz-price-month {
   display: grid;
   grid-template-columns: auto 1fr 1fr;
@@ -2133,6 +2217,12 @@ html[data-mirroring='true'] body {
   grid-column: 1 / -1;
 }
 
+/* In a phone's two-column grid a long filter label wraps inside its button rather than off it. */
+.mz-toolbar__filters .mz-filter-chip {
+  white-space: normal;
+  text-align: center;
+}
+
 /* The label above a toolbar control is noise beside its own placeholder; it stays for readers. */
 .mz-toolbar__search .mz-field__label {
   position: absolute;
@@ -2169,6 +2259,10 @@ html[data-mirroring='true'] body {
     inline-size: auto;
   }
 
+  .mz-toolbar__filters .mz-filter-chip {
+    white-space: nowrap;
+  }
+
   /* The page's action keeps its label on one line at the end of the first row. */
   .mz-toolbar > :not(.mz-toolbar__filters) {
     flex: none;
@@ -2192,8 +2286,10 @@ html[data-mirroring='true'] body {
 }
 
 @media (width >= 64rem) {
-  .mz-toolbar__filters {
-    flex-wrap: nowrap;
+  /* One row when the filters fit, which is most pages; a page with more of them wraps rather
+     than squeezing the labels into one another. */
+  .mz-toolbar__filters > :not(.mz-toolbar__search) {
+    flex: none;
   }
 
   .mz-toolbar__search {
@@ -2812,6 +2908,10 @@ html[data-mirroring='true'] body {
   background: var(--color-surface);
   padding: var(--space-1);
   min-inline-size: 11rem;
+
+  /* A row reads on one line when the screen has room for it, and wraps only on a phone. */
+  inline-size: max-content;
+  max-inline-size: min(20rem, calc(100vw - 2 * var(--space-4)));
   inset-block-start: calc(100% + var(--space-1));
   box-shadow: var(--shadow-sheet);
 }

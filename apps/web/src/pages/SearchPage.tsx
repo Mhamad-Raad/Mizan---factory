@@ -9,7 +9,7 @@ import { usePageTitle } from '../lib/page-title.js';
 import { QueryStates } from '../components/states.js';
 
 interface Hit {
-  kind: 'item' | 'customer' | 'company' | 'order' | 'purchase';
+  kind: 'item' | 'customer' | 'order' | 'purchase';
   id: string;
   title: string;
   subtitle: string | null;
@@ -18,12 +18,11 @@ interface Hit {
 const PATHS: Record<Hit['kind'], string> = {
   item: '/materials',
   customer: '/customers',
-  company: '/companies',
   order: '/orders',
   purchase: '/purchases',
 };
 
-const ORDER: Hit['kind'][] = ['item', 'customer', 'company', 'order', 'purchase'];
+const ORDER: Hit['kind'][] = ['item', 'customer', 'order', 'purchase'];
 
 /**
  * Global search (FR-1310, **Proposed — not requested**): one field, results grouped by what

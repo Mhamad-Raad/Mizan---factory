@@ -285,9 +285,11 @@ const imported = await call(admin, '/imports/customer_opening_balance', {
 });
 check(imported.body?.created === 2, 'the two opening debts are imported as ledger entries, attributed to the admin');
 
-const alNoor = await call(nazdar.session, '/companies', {
+const alNoor = await call(nazdar.session, '/customers', {
   method: 'POST',
-  body: { name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
+  body: {
+    is_customer: false,
+    is_supplier: true, name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
 });
 await call(nazdar.session, `/companies/${alNoor.body.id}/opening-balance`, {
   method: 'POST',

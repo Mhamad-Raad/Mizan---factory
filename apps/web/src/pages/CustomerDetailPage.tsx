@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, DateField, SegmentedControl, TextField, Toast } from '@mizan/ui';
+import { BottomSheet, Button, Card, DateField, Icon, Menu, SegmentedControl, TextField, Toast } from '@mizan/ui';
+import type { IconName, MenuItem } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
@@ -16,279 +17,282 @@ import { PaymentSheet } from '../components/PaymentSheet.js';
 import { SetRateSheet } from '../components/SetRateSheet.js';
 import { ShareDocumentSheet } from '../components/ShareDocumentSheet.js';
 import { QueryStates } from '../components/states.js';
-import { OrderStatusChip, PaymentTypeChip } from '../components/chips.js';
+import { OrderTable } from '../components/OrderTable.js';
+import { statementWindow, useCompanySide } from '../components/party/CompanySide.js';
+import { EditPartySheet, RateHistorySheet, SettlementCurrencySheet } from '../components/party/PartySheets.js';
 import { customerName } from '../lib/customers.js';
-import { useFormatter, usePermission } from '../lib/store.js';
-import type { CustomerRow } from './CustomersPage.js';
+import { useApp, useFormatter, usePermission } from '../lib/store.js';
+import { SideChips, balanceToShow, directionOf } from './CustomersPage.js';
+import type { BalanceValue, CustomerRow } from './CustomersPage.js';
 import type { OrderRow } from './OrdersPage.js';
 
-type Tab = 'overview' | 'orders' | 'ledger' | 'history';
+type Tab = 'overview' | 'orders' | 'purchases' | 'sales' | 'account' | 'history';
 type EntryKind = 'credit' | 'refund' | 'adjustment' | 'opening';
+type Sheet = 'payment' | 'assign' | 'rate' | 'rate_history' | 'currency' | 'edit' | 'statement';
 
-/**
- * The customer profile (FR-503): the balance on the header card in both currencies with "≈"
- * on the converted side, then their orders, their ledger with its running balance, and their
- * History. The walk-in customer has no ledger tab at all — its net is always zero (2.4.5).
- */
-/**
- * A statement covers the last twelve months, not the whole history.
- *
- * Asking for everything returned **15.8 MB** for a ten-year account — five minutes of download
- * on the reference connection of NFR-03 — and a statement is a document somebody prints or
- * sends, not an archive. Anything older is inside the opening balance, which the server
- * computes over the whole history, so the arithmetic on the page is still complete.
- */
-function statementWindow(): { from: string; to: string } {
-  const today = new Date();
-  const from = new Date(today);
-  from.setFullYear(from.getFullYear() - 1);
-  return { from: from.toISOString().slice(0, 10), to: today.toISOString().slice(0, 10) };
+interface HistoryRow {
+  id: string;
+  action: string;
+  entity_type: string;
+  occurred_at: string;
+  actor_display_name: string | null;
+  note: string | null;
+  changes: { entry?: { type: string; amount_iqd: number; amount_usd_cents: number } } | null;
 }
 
+/**
+ * One business (D-054, FR-503, FR-704): a customer, a company we buy from, or both.
+ *
+ * The header card carries what anybody looks for first — the one balance, labelled by which way
+ * it points, with what each side contributes when there are two; the one rate every amount is
+ * filled at; the settlement currency. Below it the actions in three groups — selling, buying,
+ * the record itself — and then one tab per thing the business has: its orders, its purchases,
+ * each side's account, and History across both. A side the business does not take part in, or
+ * the caller may not see, is simply not there.
+ */
 export function CustomerDetailPage() {
   const { id = '' } = useParams();
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isAdmin = useApp((state) => state.user?.role === 'admin');
   const mayRecordPayment = usePermission('orders.record_payment');
   const mayCredit = usePermission('orders.credit');
   const mayOpeningBalance = usePermission('customers.opening_balance');
-  const maySetRate = usePermission('customers.set_rate');
-  const maySeeBalance = usePermission('fields.see_customer_balances');
+  const maySeeSelling = usePermission('fields.see_customer_balances');
+  const maySetCustomerRate = usePermission('customers.set_rate');
+  const maySetCompanyRate = usePermission('companies.set_rate');
+  const mayEditCustomer = usePermission('customers.edit');
+  const mayEditCompany = usePermission('companies.edit');
+  const mayAssignCustomer = usePermission('customers.assign');
+  const mayAssignCompany = usePermission('companies.assign');
 
   const [tab, setTab] = useState<Tab>('overview');
-  const [paying, setPaying] = useState(false);
+  const [sheet, setSheet] = useState<Sheet | null>(null);
   const [entrySheet, setEntrySheet] = useState<EntryKind | null>(null);
-  const [assigning, setAssigning] = useState(false);
-  const [statement, setStatement] = useState(false);
-  const [ratingSheet, setRatingSheet] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  /** Bumped by every write that puts a row in the sales ledger (signature moment 3, 3.6.2). */
+  const [landedVersion, setLandedVersion] = useState(0);
 
-  const customer = useQuery({
+  const party = useQuery({
     queryKey: ['customers', id],
     queryFn: () => apiRequest<CustomerRow>(`/customers/${id}`),
   });
-
-  const rate = useQuery({
-    queryKey: ['global-rate'],
-    queryFn: () => apiRequest<{ current: { rate_iqd_per_usd: string } | null }>('/settings/global-rates'),
-  });
+  const data = party.data;
+  const selling = Boolean(data?.is_customer);
+  const buying = Boolean(data?.is_supplier);
+  const walkIn = Boolean(data?.is_system);
 
   const orders = useQuery({
     queryKey: ['customers', id, 'orders'],
     queryFn: () => apiRequest<{ items: OrderRow[]; total: number }>(`/customers/${id}/orders`),
-    enabled: tab === 'orders' || tab === 'overview',
+    enabled: selling && (tab === 'orders' || tab === 'overview'),
   });
 
-  const ledger = useQuery({
+  const salesLedger = useQuery({
     queryKey: ['customers', id, 'ledger'],
     queryFn: () =>
-      apiRequest<{
-        customer: { settlement_currency: Currency };
-        balance: number;
-        items: LedgerRow[];
-      }>(`/customers/${id}/ledger`),
-    enabled: tab === 'ledger' && maySeeBalance && !customer.data?.is_system,
+      apiRequest<{ customer: { settlement_currency: Currency }; balance: number; items: LedgerRow[] }>(
+        `/customers/${id}/ledger`,
+      ),
+    enabled: tab === 'sales' && selling && maySeeSelling && !walkIn,
   });
 
   const history = useQuery({
     queryKey: ['customers', id, 'history'],
-    queryFn: () =>
-      apiRequest<{
-        items: { id: string; action: string; occurred_at: string; actor_display_name: string | null; note: string | null }[];
-      }>(`/customers/${id}/history`),
+    queryFn: () => apiRequest<{ items: HistoryRow[] }>(`/customers/${id}/history`),
     enabled: tab === 'history',
   });
 
-  const statementData = useQuery({
+  const salesStatement = useQuery({
     queryKey: ['customers', id, 'statement'],
-    queryFn: () =>
-      apiRequest<{
+    queryFn: () => {
+      const window = statementWindow();
+      return apiRequest<{
         customer: { name: string; settlement_currency: Currency };
         opening_balance: number;
         closing_balance: number;
         items: LedgerRow[];
         item_count: number;
         has_more: boolean;
-      }>(`/customers/${id}/statement?from=${statementWindow().from}&to=${statementWindow().to}`),
-    enabled: statement,
-  });
-
-  /**
-   * Bumped by every write that puts a row in the ledger, so the newest row carries the
-   * highlight when the refreshed list arrives (signature moment 3, spec 3.6.2).
-   */
-  const [landedVersion, setLandedVersion] = useState(0);
-
-  const invalidate = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['customers'] });
-    await queryClient.invalidateQueries({ queryKey: ['orders'] });
-  };
-
-  const invalidateAndLand = async () => {
-    await invalidate();
-    setLandedVersion((version) => version + 1);
-  };
-
-  const payment = useMutation({
-    mutationFn: (body: unknown) =>
-      apiRequest(`/customers/${id}/payments`, { method: 'POST', body, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: async () => {
-      setPaying(false);
-      setToast(t('customers:payment_recorded'));
-      await invalidateAndLand();
+      }>(`/customers/${id}/statement?from=${window.from}&to=${window.to}`);
     },
-  });
-
-  const entry = useMutation({
-    mutationFn: (input: { kind: EntryKind; body: unknown }) =>
-      apiRequest(`/customers/${id}/${pathOf(input.kind)}`, {
-        method: 'POST',
-        body: input.body,
-        idempotencyKey: newIdempotencyKey(),
-      }),
-    onSuccess: async () => {
-      setEntrySheet(null);
-      setToast(t('customers:entry_recorded'));
-      await invalidateAndLand();
-    },
-  });
-
-  const assign = useMutation({
-    mutationFn: (userId: string | null) =>
-      apiRequest(`/customers/${id}/assignment`, {
-        method: 'PUT',
-        body: { user_id: userId },
-        idempotencyKey: newIdempotencyKey(),
-      }),
-    onSuccess: async () => {
-      setAssigning(false);
-      await invalidate();
-    },
-  });
-
-  const setRate = useMutation({
-    mutationFn: (body: { rate_iqd_per_usd: string; note: string | null }) =>
-      apiRequest(`/customers/${id}/rates`, {
-        method: 'POST',
-        body,
-        idempotencyKey: newIdempotencyKey(),
-      }),
-    onSuccess: async () => {
-      setRatingSheet(false);
-      setToast(t('customers:rate_saved'));
-      await invalidate();
-    },
+    enabled: sheet === 'statement',
   });
 
   const directory = useQuery({
     queryKey: ['users', 'directory'],
     queryFn: () => apiRequest<{ id: string; display_name: string; is_active: boolean }[]>('/users/directory'),
-    enabled: assigning,
+    enabled: sheet === 'assign',
   });
 
-  const currentRate = rate.data?.current?.rate_iqd_per_usd ?? '1310.0000';
-  const balance = customer.data?.balance ?? null;
-  const settlement = customer.data?.settlement_currency ?? 'IQD';
+  const settlement: Currency = data?.settlement_currency ?? 'IQD';
+  const rate = data?.rate?.rate_iqd_per_usd ?? '1310.0000';
+  const inSettlement = (value: BalanceValue | null | undefined) =>
+    value ? (settlement === 'IQD' ? value.amount_iqd : value.amount_usd_cents) : 0;
+  const owedToUs = inSettlement(data?.balance);
+  const weOwe = inSettlement(data?.payable);
+
+  const refresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['customers'] });
+    await queryClient.invalidateQueries({ queryKey: ['companies'] });
+    await queryClient.invalidateQueries({ queryKey: ['orders'] });
+  };
+  const done = async (message?: string) => {
+    setSheet(null);
+    setEntrySheet(null);
+    if (message) setToast(message);
+    await refresh();
+  };
+  const post = (path: string, method: 'POST' | 'PUT' | 'PATCH' = 'POST') => (body: unknown) =>
+    apiRequest(`/customers/${id}${path}`, { method, body, idempotencyKey: newIdempotencyKey() });
+
+  const payment = useMutation({
+    mutationFn: post('/payments'),
+    onSuccess: async () => {
+      await done(t('customers:payment_recorded'));
+      setLandedVersion((version) => version + 1);
+    },
+  });
+  const entry = useMutation({
+    mutationFn: (input: { kind: EntryKind; body: unknown }) => post(`/${pathOf(input.kind)}`)(input.body),
+    onSuccess: async () => {
+      await done(t('customers:entry_recorded'));
+      setLandedVersion((version) => version + 1);
+    },
+  });
+  const assign = useMutation({
+    mutationFn: (userId: string | null) => post('/assignment', 'PUT')({ user_id: userId }),
+    onSuccess: () => done(),
+  });
+  const setRate = useMutation({
+    mutationFn: post('/rates'),
+    onSuccess: () => done(t('customers:rate_saved')),
+  });
+  const setCurrency = useMutation({
+    mutationFn: post('/settlement-currency', 'PUT'),
+    onSuccess: () => done(),
+  });
+  const update = useMutation({
+    mutationFn: post('', 'PATCH'),
+    onSuccess: () => done(),
+  });
+
+  const companySide = useCompanySide({
+    id,
+    enabled: buying,
+    tab,
+    settlement,
+    owed: weOwe,
+    rate,
+    onRecorded: (message) => setToast(message),
+  });
+
+  const errorOf = (error: unknown) =>
+    error instanceof ApiError ? t(error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') }) : undefined;
   const excessNeeded =
     payment.error instanceof ApiError && payment.error.fieldError('amount')?.code === 'EXCEEDS_REMAINING';
 
-  usePageTitle(customer.data ? customerName(customer.data, t) : t('customers:title'));
+  const mayRate = (selling && maySetCustomerRate) || (buying && maySetCompanyRate);
+  const mayEdit = !walkIn && ((selling && mayEditCustomer) || (buying && mayEditCompany));
+  const mayAssign = !walkIn && ((selling && mayAssignCustomer) || (buying && mayAssignCompany));
+  const sellingActions = selling && !walkIn && (mayRecordPayment || mayCredit || mayOpeningBalance);
+
+  const moreItems: MenuItem[] = [
+    ...(sellingActions && mayCredit
+      ? [
+          { label: t('glossary:credit'), onSelect: () => setEntrySheet('credit') },
+          { label: t('glossary:refund'), onSelect: () => setEntrySheet('refund') },
+        ]
+      : []),
+    ...(sellingActions && mayOpeningBalance
+      ? [{ label: t('customers:opening_theirs'), onSelect: () => setEntrySheet('opening') }]
+      : []),
+    ...companySide.menuItems,
+    ...(mayRate && !walkIn ? [{ label: t('customers:set_rate'), onSelect: () => setSheet('rate') }] : []),
+    { label: t('companies:rate_history'), onSelect: () => setSheet('rate_history') },
+    ...(mayAssign ? [{ label: t('customers:assign'), onSelect: () => setSheet('assign') }] : []),
+    ...(isAdmin && !walkIn
+      ? [{ label: t('companies:settlement_currency_change'), onSelect: () => setSheet('currency') }]
+      : []),
+    ...(selling && maySeeSelling && !walkIn
+      ? [{ label: t('customers:statement_sales'), onSelect: () => setSheet('statement') }]
+      : []),
+  ];
+
+  usePageTitle(data ? customerName(data, t) : t('customers:title'));
 
   return (
     <>
       <div className="mz-stack">
-        <QueryStates query={customer}>
-          {customer.data ? (
+        <QueryStates query={party}>
+          {data ? (
             <>
               <Card>
-                <div className="mz-row mz-row--between">
-                  <div>
-                    <h2 className="mz-title">{customerName(customer.data, t)}</h2>
-                    {customer.data.phone ? (
-                      <a href={`tel:${customer.data.phone}`} className="mz-caption" dir="ltr">
-                        {customer.data.phone}
+                <div className="mz-row mz-row--between" style={{ alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                  <div className="mz-stack" style={{ gap: '2px' }}>
+                    <h2 className="mz-title">
+                      <bdi>{customerName(data, t)}</bdi>
+                    </h2>
+                    {data.contact_name ? (
+                      <span className="mz-caption">
+                        <bdi>{data.contact_name}</bdi>
+                      </span>
+                    ) : null}
+                    {data.phone ? (
+                      <a href={`tel:${data.phone}`} className="mz-caption" dir="ltr">
+                        {data.phone}
                       </a>
                     ) : null}
-                    {customer.data.assigned_user_name ? (
-                      <span className="mz-caption" style={{ display: 'block' }}>
-                        {t('glossary:assigned_to')}: {customer.data.assigned_user_name}
+                    {data.assigned_user_name ? (
+                      <span className="mz-caption">
+                        {t('glossary:assigned_to')}: <bdi>{data.assigned_user_name}</bdi>
                       </span>
                     ) : null}
                   </div>
-                  {!customer.data.is_active ? <Chip icon="close">{t('common:deactivated')}</Chip> : null}
+                  <SideChips row={data} />
                 </div>
 
-                {balance ? (
-                  <div style={{ marginBlockStart: 'var(--space-3)' }}>
-                    <span className="mz-caption" style={{ display: 'block' }}>
-                      {balance.amount_iqd >= 0 ? t('glossary:owed_to_us') : t('customers:in_credit')}
-                    </span>
-                    <DualAmount
-                      amount_iqd={balance.amount_iqd}
-                      amount_usd_cents={balance.amount_usd_cents}
-                      primary={balance.currency}
-                      kind="derived"
-                      size="large"
-                    />
-                  </div>
-                ) : null}
+                <hr className="mz-divider" />
 
-                {/* The IQD/USD rate this customer's orders are valued at (2.3.3). */}
-                {customer.data.rate ? (
-                  <div
-                    className="mz-row mz-row--between"
-                    style={{ marginBlockStart: 'var(--space-3)' }}
-                  >
-                    <span className="mz-caption">
-                      {customer.data.rate.is_customer_rate
-                        ? t('customers:rate_own')
-                        : t('customers:rate_is_global')}
-                    </span>
-                    <span data-tabular>
-                      {formatter.rate(customer.data.rate.rate_iqd_per_usd)}
-                    </span>
+                <div className="mz-detail-summary">
+                  <PartyFigure party={data} />
+                  <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
+                    {/* The rate every amount for this business is filled at, on both sides (2.3.3). */}
+                    <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)' }}>
+                      <span className="mz-caption">
+                        {data.rate?.is_customer_rate ? t('customers:rate_own') : t('customers:rate_is_global')}
+                      </span>
+                      <span data-tabular>{formatter.rate(rate)}</span>
+                    </div>
+                    <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)' }}>
+                      <span className="mz-caption">{t('glossary:settlement_currency')}</span>
+                      <span>{t(`glossary:${settlement.toLowerCase()}`)}</span>
+                    </div>
                   </div>
-                ) : null}
+                </div>
               </Card>
 
-              <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                {mayRecordPayment && !customer.data.is_system ? (
-                  <Button onClick={() => setPaying(true)}>{t('customers:record_payment')}</Button>
-                ) : null}
-                {mayCredit && !customer.data.is_system ? (
-                  <>
-                    <Button variant="secondary" onClick={() => setEntrySheet('credit')}>
-                      {t('glossary:credit')}
-                    </Button>
-                    <Button variant="secondary" onClick={() => setEntrySheet('refund')}>
-                      {t('glossary:refund')}
-                    </Button>
-                  </>
-                ) : null}
-                {mayOpeningBalance && !customer.data.is_system ? (
-                  <Button variant="secondary" onClick={() => setEntrySheet('opening')}>
-                    {t('glossary:opening_balance')}
-                  </Button>
-                ) : null}
-                <Can permission="customers.assign">
-                  {!customer.data.is_system ? (
-                    <Button variant="secondary" onClick={() => setAssigning(true)}>
-                      {t('customers:assign')}
+              {/* The everyday actions stay on the page — money in, money out, the record itself —
+                  and everything else is one "More" away, so a phone shows the tabs, not a wall of
+                  buttons. */}
+              <div className="mz-actions">
+                <div className="mz-actions__group mz-actions__group--primary">
+                  {selling && !walkIn && mayRecordPayment ? (
+                    <Button icon="check" onClick={() => setSheet('payment')}>
+                      {t('customers:receive_payment')}
                     </Button>
                   ) : null}
-                </Can>
-                {maySeeBalance && !customer.data.is_system ? (
-                  <Button variant="ghost" onClick={() => setStatement(true)}>
-                    {t('glossary:statement')}
-                  </Button>
-                ) : null}
-                {maySetRate && !customer.data.is_system ? (
-                  <Button variant="secondary" onClick={() => setRatingSheet(true)}>
-                    {t('customers:set_rate')}
-                  </Button>
-                ) : null}
+                  {companySide.primaryAction}
+                </div>
+                <div className="mz-actions__group">
+                  {mayEdit ? (
+                    <Button variant="secondary" icon="edit" onClick={() => setSheet('edit')}>
+                      {t('common:edit')}
+                    </Button>
+                  ) : null}
+                  <Menu variant="button" icon="more" label={t('common:more')} items={moreItems} />
+                </div>
               </div>
 
               <SegmentedControl
@@ -297,52 +301,43 @@ export function CustomerDetailPage() {
                 onChange={setTab}
                 options={[
                   { value: 'overview', label: t('materials:tab_overview') },
-                  { value: 'orders', label: t('orders:title') },
-                  ...(customer.data.is_system || !maySeeBalance
-                    ? []
-                    : [{ value: 'ledger' as Tab, label: t('customers:tab_ledger') }]),
+                  ...(selling ? [{ value: 'orders' as Tab, label: t('orders:title') }] : []),
+                  ...(buying ? [{ value: 'purchases' as Tab, label: t('companies:tab_purchases') }] : []),
+                  ...(selling && maySeeSelling && !walkIn
+                    ? [{ value: 'sales' as Tab, label: t('customers:tab_sales_ledger') }]
+                    : []),
+                  ...(buying && data.payable !== undefined
+                    ? [{ value: 'account' as Tab, label: t('customers:tab_purchase_ledger') }]
+                    : []),
                   { value: 'history', label: t('glossary:history') },
                 ]}
               />
 
               {tab === 'overview' ? (
-                <Card>
-                  <h3 className="mz-heading">{t('customers:unpaid_first')}</h3>
-                  <QueryStates
-                    query={orders}
-                    isEmpty={(orders.data?.items.length ?? 0) === 0}
-                    emptyTitle={t('customers:no_orders')}
-                    skeletonLines={3}
-                  >
-                    <ul className="mz-list">
-                      {(orders.data?.items ?? [])
-                        .filter((order) => order.status !== 'paid')
-                        .slice(0, 5)
-                        .map((order) => (
-                          <li key={order.id}>
-                            <Link to={`/orders/${order.id}`} className="mz-list__item mz-list__item--interactive">
-                              <span className="mz-list__body">
-                                <span className="mz-list__title">
-                                  {t('orders:number', { number: formatter.number(order.number) })}
-                                </span>
-                                <span className="mz-caption" style={{ display: 'block' }}>
-                                  {formatter.date(order.order_date)}
-                                </span>
-                                <DualAmount
-                                  amount_iqd={order.total_iqd}
-                                  amount_usd_cents={order.total_usd_cents}
-                                  primary={settlement}
-                                />
-                              </span>
-                              <span className="mz-list__end">
-                                <OrderStatusChip status={order.status} />
-                              </span>
-                            </Link>
-                          </li>
-                        ))}
-                    </ul>
-                  </QueryStates>
-                </Card>
+                <>
+                  {selling ? (
+                    <Card>
+                      <h3 className="mz-heading">{t('customers:unpaid_first')}</h3>
+                      <QueryStates
+                        query={orders}
+                        isEmpty={(orders.data?.items ?? []).every((order) => order.status === 'paid')}
+                        emptyTitle={t('customers:no_orders')}
+                        skeletonLines={3}
+                      >
+                        <OrderTable
+                          rows={(orders.data?.items ?? []).filter((order) => order.status !== 'paid').slice(0, 5)}
+                          showCustomer={false}
+                        />
+                      </QueryStates>
+                    </Card>
+                  ) : null}
+                  {buying ? (
+                    <Card>
+                      <h3 className="mz-heading">{t('companies:tab_purchases')}</h3>
+                      {companySide.recentPurchases}
+                    </Card>
+                  ) : null}
+                </>
               ) : null}
 
               {tab === 'orders' ? (
@@ -358,49 +353,29 @@ export function CustomerDetailPage() {
                     </Can>
                   }
                 >
-                  <ul className="mz-list">
-                    {(orders.data?.items ?? []).map((order) => (
-                      <li key={order.id}>
-                        <Link to={`/orders/${order.id}`} className="mz-list__item mz-list__item--interactive">
-                          <span className="mz-list__body">
-                            <span className="mz-list__title">
-                              {t('orders:number', { number: formatter.number(order.number) })}
-                            </span>
-                            <span className="mz-caption" style={{ display: 'block' }}>
-                              {formatter.date(order.order_date)}
-                            </span>
-                            <DualAmount
-                              amount_iqd={order.total_iqd}
-                              amount_usd_cents={order.total_usd_cents}
-                              primary={settlement}
-                            />
-                          </span>
-                          <span className="mz-list__end">
-                            <PaymentTypeChip type={order.payment_type} />
-                            <OrderStatusChip status={order.status} />
-                          </span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
+                  <OrderTable rows={orders.data?.items ?? []} showCustomer={false} />
                 </QueryStates>
               ) : null}
 
-              {tab === 'ledger' ? (
+              {tab === 'purchases' ? companySide.purchasesTab : null}
+
+              {tab === 'sales' ? (
                 <QueryStates
-                  query={ledger}
-                  isEmpty={(ledger.data?.items.length ?? 0) === 0}
+                  query={salesLedger}
+                  isEmpty={(salesLedger.data?.items.length ?? 0) === 0}
                   emptyTitle={t('customers:no_entries')}
                 >
                   <Card>
                     <LedgerList
-                      items={ledger.data?.items ?? []}
-                      settlement_currency={ledger.data?.customer.settlement_currency ?? settlement}
+                      items={salesLedger.data?.items ?? []}
+                      settlement_currency={salesLedger.data?.customer.settlement_currency ?? settlement}
                       landedVersion={landedVersion}
                     />
                   </Card>
                 </QueryStates>
               ) : null}
+
+              {tab === 'account' ? companySide.accountTab : null}
 
               {tab === 'history' ? (
                 <QueryStates
@@ -408,42 +383,27 @@ export function CustomerDetailPage() {
                   isEmpty={(history.data?.items.length ?? 0) === 0}
                   emptyTitle={t('history:empty')}
                 >
-                  <Card>
-                    <ul className="mz-list">
-                      {(history.data?.items ?? []).map((row) => (
-                        <li key={row.id} className="mz-list__item">
-                          <span className="mz-list__body">
-                            <span className="mz-list__title">{t(`history:action.${row.action}`)}</span>
-                            <span className="mz-caption">
-                              {formatter.timestamp(new Date(row.occurred_at))}
-                              {row.actor_display_name ? ` · ${row.actor_display_name}` : ''}
-                              {row.note ? ` · ${row.note}` : ''}
-                            </span>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </Card>
+                  <ul className="mz-list">
+                    {(history.data?.items ?? []).map((row) => (
+                      <HistoryItem key={row.id} row={row} settlement={settlement} />
+                    ))}
+                  </ul>
                 </QueryStates>
               ) : null}
             </>
           ) : null}
         </QueryStates>
 
-        {paying && customer.data ? (
+        {sheet === 'payment' && data ? (
           <PaymentSheet
             open
-            remaining={Math.max(balance ? (settlement === 'IQD' ? balance.amount_iqd : balance.amount_usd_cents) : 0, 0)}
+            remaining={Math.max(owedToUs, 0)}
             settlement_currency={settlement}
-            rate={currentRate}
+            rate={rate}
             saving={payment.isPending}
             needsExcessConfirmation={excessNeeded}
-            error={
-              payment.error instanceof ApiError && !excessNeeded
-                ? t(payment.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })
-                : undefined
-            }
-            onClose={() => setPaying(false)}
+            error={excessNeeded ? undefined : errorOf(payment.error)}
+            onClose={() => setSheet(null)}
             onSave={(body) => payment.mutate(body)}
           />
         ) : null}
@@ -451,19 +411,60 @@ export function CustomerDetailPage() {
         {entrySheet ? (
           <LedgerEntrySheet
             kind={entrySheet}
-            rate={currentRate}
+            rate={rate}
             saving={entry.isPending}
-            error={entry.error instanceof ApiError ? t('errors:VALIDATION_FAILED') : undefined}
+            error={errorOf(entry.error)}
             onClose={() => setEntrySheet(null)}
             onSave={(body) => entry.mutate({ kind: entrySheet, body })}
           />
         ) : null}
 
-        {assigning ? (
-          <BottomSheet title={t('customers:assign')} open onClose={() => setAssigning(false)} closeLabel={t('common:close')}>
+        {sheet === 'edit' && data ? (
+          <EditPartySheet
+            party={data}
+            saving={update.isPending}
+            error={errorOf(update.error)}
+            onClose={() => setSheet(null)}
+            onSave={(body) => update.mutate(body)}
+          />
+        ) : null}
+
+        {sheet === 'rate' ? (
+          <SetRateSheet
+            title={t('customers:set_rate')}
+            label={t('customers:rate_label')}
+            hint={t('customers:rate_hint')}
+            current={data?.rate?.is_customer_rate ? data.rate.rate_iqd_per_usd : null}
+            saving={setRate.isPending}
+            onClose={() => setSheet(null)}
+            onSave={(body) => setRate.mutate(body)}
+          />
+        ) : null}
+
+        {sheet === 'rate_history' ? <RateHistorySheet id={id} onClose={() => setSheet(null)} /> : null}
+
+        {sheet === 'currency' && data ? (
+          <SettlementCurrencySheet
+            current={settlement}
+            hasMoney={owedToUs !== 0 || weOwe !== 0}
+            balance={inSettlement(data.net ?? data.balance ?? data.payable)}
+            rate={rate}
+            saving={setCurrency.isPending}
+            error={errorOf(setCurrency.error)}
+            onClose={() => setSheet(null)}
+            onSave={(body) => setCurrency.mutate(body)}
+          />
+        ) : null}
+
+        {sheet === 'assign' ? (
+          <BottomSheet title={t('customers:assign')} open onClose={() => setSheet(null)} closeLabel={t('common:close')}>
             <ul className="mz-list">
               <li>
-                <button type="button" className="mz-list__item mz-list__item--interactive" onClick={() => assign.mutate(null)}>
+                <button
+                  type="button"
+                  className="mz-list__item mz-list__item--interactive"
+                  onClick={() => assign.mutate(null)}
+                >
                   {t('customers:unassigned')}
                 </button>
               </li>
@@ -484,39 +485,41 @@ export function CustomerDetailPage() {
           </BottomSheet>
         ) : null}
 
-        {statement && statementData.data ? (
+        {sheet === 'statement' && salesStatement.data ? (
           <ShareDocumentSheet
-            title={t('glossary:statement')}
+            title={t('customers:statement_sales')}
             open
-            onClose={() => setStatement(false)}
-            text={statementText(statementData.data, formatter, t)}
+            onClose={() => setSheet(null)}
+            text={statementText(salesStatement.data, formatter, t)}
           >
             <div className="mz-receipt">
-              <strong><bdi>{statementData.data.customer.name}</bdi></strong>
+              <strong>
+                <bdi>{salesStatement.data.customer.name}</bdi>
+              </strong>
               <p className="mz-caption">{t('common:statement_window')}</p>
-              {statementData.data.has_more ? (
+              {salesStatement.data.has_more ? (
                 <p className="mz-caption">
                   {t('common:statement_capped', {
-                    shown: statementData.data.items.length,
-                    total: statementData.data.item_count,
+                    shown: salesStatement.data.items.length,
+                    total: salesStatement.data.item_count,
                   })}
                 </p>
               ) : null}
               <div className="mz-receipt__line">
                 <span>{t('glossary:opening_balance')}</span>
                 <span data-tabular>
-                  {formatter.money(statementData.data.opening_balance, statementData.data.customer.settlement_currency)}
+                  {formatter.money(salesStatement.data.opening_balance, salesStatement.data.customer.settlement_currency)}
                 </span>
               </div>
-              {statementData.data.items.map((row) => (
+              {salesStatement.data.items.map((row) => (
                 <div key={row.entry_id} className="mz-receipt__line">
                   <span>
                     {formatter.date(row.entry_date)} · {t(`customers:entry.${row.entry_type}`)}
                   </span>
                   <span data-tabular>
                     {formatter.money(
-                      statementData.data.customer.settlement_currency === 'IQD' ? row.amount_iqd : row.amount_usd_cents,
-                      statementData.data.customer.settlement_currency,
+                      salesStatement.data.customer.settlement_currency === 'IQD' ? row.amount_iqd : row.amount_usd_cents,
+                      salesStatement.data.customer.settlement_currency,
                     )}
                   </span>
                 </div>
@@ -524,35 +527,101 @@ export function CustomerDetailPage() {
               <div className="mz-receipt__line">
                 <strong>{t('glossary:balance')}</strong>
                 <strong data-tabular>
-                  {formatter.money(statementData.data.closing_balance, statementData.data.customer.settlement_currency)}
+                  {formatter.money(salesStatement.data.closing_balance, salesStatement.data.customer.settlement_currency)}
                 </strong>
               </div>
             </div>
           </ShareDocumentSheet>
         ) : null}
 
-        {ratingSheet ? (
-          <SetRateSheet
-            title={t('customers:set_rate')}
-            label={t('customers:rate_label')}
-            hint={t('customers:rate_hint')}
-            current={
-              customer.data?.rate?.is_customer_rate
-                ? (customer.data.rate.rate_iqd_per_usd ?? null)
-                : null
-            }
-            saving={setRate.isPending}
-            onClose={() => setRatingSheet(false)}
-            onSave={(body) => setRate.mutate(body)}
-          />
-        ) : null}
+        {companySide.sheets}
 
         {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
-        <Button variant="ghost" onClick={() => navigate('/customers')}>
-          {t('common:back')}
-        </Button>
       </div>
     </>
+  );
+}
+
+/**
+ * The one balance, large, labelled by which way it points — and, for a business on both sides
+ * that the caller may see in full, what each side contributes to it (D-054).
+ */
+function PartyFigure({ party }: { party: CustomerRow }) {
+  const { t } = useTranslation();
+  const formatter = useFormatter();
+  const shown = balanceToShow(party);
+  if (!shown) return <span />;
+  const direction = directionOf(shown);
+  const settlement = party.settlement_currency;
+  const side = (value: BalanceValue | null | undefined) =>
+    value ? (settlement === 'IQD' ? value.amount_iqd : value.amount_usd_cents) : 0;
+  const bothSides = party.net && party.is_customer && party.is_supplier;
+
+  return (
+    <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
+      <span className={direction === 'they_owe_us' ? 'mz-figure__label mz-owed' : 'mz-figure__label'}>
+        {t(`companies:${direction}`)}
+      </span>
+      <DualAmount
+        amount_iqd={Math.abs(shown.value.amount_iqd)}
+        amount_usd_cents={Math.abs(shown.value.amount_usd_cents)}
+        primary={shown.value.currency}
+        kind="derived"
+        size="large"
+      />
+      {bothSides ? (
+        <span className="mz-stack" style={{ gap: '2px' }}>
+          <span className="mz-caption" data-tabular>
+            {t('customers:from_sales')}: {formatter.money(side(party.balance), settlement)}
+          </span>
+          <span className="mz-caption" data-tabular>
+            {t('customers:from_purchases')}: {formatter.money(side(party.payable), settlement)}
+          </span>
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * One row of the business's History, across both sides. A money entry names what it was and
+ * how much; everything else names the action, and the buying side says so.
+ */
+function HistoryItem({ row, settlement }: { row: HistoryRow; settlement: Currency }) {
+  const { t } = useTranslation();
+  const formatter = useFormatter();
+  const money = row.changes?.entry;
+  const namespace = row.entity_type === 'company' ? 'companies' : 'customers';
+  const icon: IconName = money ? 'check' : row.action === 'create' ? 'plus' : row.action === 'update' ? 'edit' : 'clock';
+  return (
+    <li className="mz-list__item mz-list__item--detail">
+      <span className="mz-row-lead">
+        <Icon name={icon} size={18} />
+      </span>
+      <span className="mz-list__body">
+        <span className="mz-list__title">
+          {money ? t(`${namespace}:entry.${money.type}`) : t(`history:action.${row.action}`)}
+        </span>
+        <span className="mz-caption">
+          {formatter.timestamp(new Date(row.occurred_at))}
+          {row.actor_display_name ? ` · ${row.actor_display_name}` : ''}
+        </span>
+        {row.note ? (
+          <span className="mz-caption" style={{ display: 'block' }}>
+            <bdi>{row.note}</bdi>
+          </span>
+        ) : null}
+      </span>
+      {money ? (
+        <span className="mz-list__end">
+          <DualAmount
+            amount_iqd={Math.abs(money.amount_iqd)}
+            amount_usd_cents={Math.abs(money.amount_usd_cents)}
+            primary={settlement}
+          />
+        </span>
+      ) : null}
+    </li>
   );
 }
 
@@ -581,8 +650,8 @@ function statementText(
 }
 
 /**
- * Credit, refund, adjustment and the opening balance (FR-504, FR-506). All four need a note,
- * because all four are somebody deciding to change a balance by hand.
+ * Credit, refund, adjustment and the opening balance on the selling side (FR-504, FR-506). All
+ * four need a note, because all four are somebody deciding to change a balance by hand.
  */
 function LedgerEntrySheet({
   kind,
@@ -609,7 +678,12 @@ function LedgerEntrySheet({
     <BottomSheet title={t(`customers:sheet.${kind}`)} open onClose={onClose} closeLabel={t('common:close')}>
       <div className="mz-stack">
         <MoneyInput label={t('customers:amount')} value={amount} rate={rate} onChange={setAmount} error={error} />
-        <DateField label={t('common:date')} value={date} max={formatter.today()} onChange={(event) => setDate(event.target.value)} />
+        <DateField
+          label={t('common:date')}
+          value={date}
+          max={formatter.today()}
+          onChange={(event) => setDate(event.target.value)}
+        />
         <TextField
           label={t('common:note')}
           value={note}

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect } from 'react';
 import type { ComponentType } from 'react';
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Button, ErrorState, Skeleton } from '@mizan/ui';
@@ -51,9 +51,6 @@ const CustomerDetailPage = chunk(
   'CustomerDetailPage',
 );
 const NewCustomerPage = chunk(() => import('./pages/NewCustomerPage.js'), 'NewCustomerPage');
-const CompaniesPage = chunk(() => import('./pages/CompaniesPage.js'), 'CompaniesPage');
-const CompanyDetailPage = chunk(() => import('./pages/CompanyDetailPage.js'), 'CompanyDetailPage');
-const NewCompanyPage = chunk(() => import('./pages/NewCompanyPage.js'), 'NewCompanyPage');
 const PurchasesPage = chunk(() => import('./pages/PurchasesPage.js'), 'PurchasesPage');
 const PurchaseFormPage = chunk(() => import('./pages/PurchaseFormPage.js'), 'PurchaseFormPage');
 const PurchaseDetailPage = chunk(
@@ -87,7 +84,7 @@ function landingFor(user: SessionUser | null, permissions: string[]): string {
   if (may('orders.view')) return '/orders';
   if (may('materials.view')) return '/materials';
   if (may('customers.view')) return '/customers';
-  if (may('companies.view')) return '/companies';
+  if (may('companies.view')) return '/customers';
   if (may('damages.view')) return '/damages';
   if (may('purchases.view')) return '/purchases';
   if (user?.role === 'admin') return '/users';
@@ -231,9 +228,10 @@ export function App() {
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/customers/new" element={<NewCustomerPage />} />
             <Route path="/customers/:id" element={<CustomerDetailPage />} />
-            <Route path="/companies" element={<CompaniesPage />} />
-            <Route path="/companies/new" element={<NewCompanyPage />} />
-            <Route path="/companies/:id" element={<CompanyDetailPage />} />
+            {/* Companies are businesses on the Customers page now (D-054); old links still land. */}
+            <Route path="/companies" element={<Navigate to="/customers?side=supplier" replace />} />
+            <Route path="/companies/new" element={<Navigate to="/customers/new?side=supplier" replace />} />
+            <Route path="/companies/:id" element={<CompanyRedirect />} />
             <Route path="/purchases" element={<PurchasesPage />} />
             <Route path="/purchases/new" element={<PurchaseFormPage mode="create" />} />
             <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
@@ -277,4 +275,10 @@ export function App() {
       </RouteBoundary>
     </AppShell>
   );
+}
+
+/** A company's old address, kept working: the business lives on its customer page now (D-054). */
+function CompanyRedirect() {
+  const { id = '' } = useParams();
+  return <Navigate to={`/customers/${id}`} replace />;
 }

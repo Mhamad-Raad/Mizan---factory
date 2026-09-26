@@ -1,18 +1,6 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpCode,
-  Param,
-  Patch,
-  Post,
-  Put,
-  Query,
-  Req,
-} from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
-import { AdminOnly, RequirePermission } from '../common/decorators.js';
+import { RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
@@ -20,7 +8,6 @@ import { zodBody } from '../common/zod.pipe.js';
 import { CompaniesService } from './companies.service.js';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const rate = z.string().regex(/^\d+(\.\d{1,4})?$/);
 const money = z.object({
   amount: z.number().int(),
   currency: z.enum(['IQD', 'USD']),
@@ -35,44 +22,6 @@ const listSchema = z.object({
   sort: z.enum(['name', 'balance']).optional(),
   page: z.coerce.number().int().positive().optional(),
   page_size: z.coerce.number().int().positive().max(100).optional(),
-});
-
-const createSchema = z.object({
-  name: z.string().min(1).max(200),
-  contact_name: z.string().max(200).nullish(),
-  phone: z.string().max(40).nullish(),
-  address: z.string().max(500).nullish(),
-  notes: z.string().max(2000).nullish(),
-  settlement_currency: z.enum(['IQD', 'USD']).optional(),
-  assigned_user_id: z.string().uuid().nullish(),
-});
-
-const updateSchema = createSchema
-  .omit({ settlement_currency: true, assigned_user_id: true })
-  .partial()
-  .extend({ version: z.number().int().positive() });
-
-const statusSchema = z.object({
-  version: z.number().int().positive(),
-  note: z.string().max(2000).nullish(),
-});
-
-const assignSchema = z.object({
-  user_id: z.string().uuid().nullable(),
-  note: z.string().max(2000).nullish(),
-  version: z.number().int().positive().optional(),
-});
-
-const currencySchema = z.object({
-  currency: z.enum(['IQD', 'USD']),
-  note: z.string().min(1).max(2000),
-  rebase_rate: rate.nullish(),
-  version: z.number().int().positive().optional(),
-});
-
-const rateSchema = z.object({
-  rate_iqd_per_usd: z.union([rate, z.number().positive()]),
-  note: z.string().max(2000).nullish(),
 });
 
 const paymentSchema = money.extend({
@@ -171,123 +120,10 @@ export class CompaniesController {
     });
   }
 
-  @Post('companies')
-  @RequirePermission('companies.create')
-  @HttpCode(201)
-  async create(
-    @Req() request: RequestWithContext,
-    @Body(zodBody(createSchema)) body: z.infer<typeof createSchema>,
-  ) {
-    return this.companies.create(contextOf(request), {
-      name: body.name,
-      contact_name: body.contact_name ?? null,
-      phone: body.phone ?? null,
-      address: body.address ?? null,
-      notes: body.notes ?? null,
-      settlement_currency: body.settlement_currency,
-      assigned_user_id: body.assigned_user_id ?? null,
-    });
-  }
-
   @Get('companies/:id')
   @RequirePermission('companies.view')
   async get(@Param('id') id: string) {
     return this.companies.get(id);
-  }
-
-  @Patch('companies/:id')
-  @RequirePermission('companies.edit')
-  async update(
-    @Req() request: RequestWithContext,
-    @Param('id') id: string,
-    @Body(zodBody(updateSchema)) body: z.infer<typeof updateSchema>,
-  ) {
-    return this.companies.update(contextOf(request), id, {
-      ...body,
-      contact_name: body.contact_name ?? undefined,
-      phone: body.phone ?? undefined,
-      address: body.address ?? undefined,
-      notes: body.notes ?? undefined,
-    });
-  }
-
-  @Post('companies/:id/deactivate')
-  @RequirePermission('companies.edit')
-  @HttpCode(200)
-  async deactivate(
-    @Req() request: RequestWithContext,
-    @Param('id') id: string,
-    @Body(zodBody(statusSchema)) body: z.infer<typeof statusSchema>,
-  ) {
-    return this.companies.setActive(contextOf(request), id, false, body);
-  }
-
-  @Post('companies/:id/reactivate')
-  @RequirePermission('companies.edit')
-  @HttpCode(200)
-  async reactivate(
-    @Req() request: RequestWithContext,
-    @Param('id') id: string,
-    @Body(zodBody(statusSchema)) body: z.infer<typeof statusSchema>,
-  ) {
-    return this.companies.setActive(contextOf(request), id, true, body);
-  }
-
-  /** Delete sets `deleted_at`; rows are never physically removed (A-32). */
-  @Delete('companies/:id')
-  @AdminOnly()
-  @HttpCode(204)
-  async remove(
-    @Req() request: RequestWithContext,
-    @Param('id') id: string,
-    @Body(zodBody(z.object({ version: z.number().int().positive() }))) body: { version: number },
-  ) {
-    await this.companies.softDelete(contextOf(request), id, body.version);
-  }
-
-  @Put('companies/:id/assignment')
-  @RequirePermission('companies.assign')
-  async assign(
-    @Req() request: RequestWithContext,
-    @Param('id') id: string,
-    @Body(zodBody(assignSchema)) body: z.infer<typeof assignSchema>,
-  ) {
-    return this.companies.assign(contextOf(request), id, body);
-  }
-
-  @Put('companies/:id/settlement-currency')
-  @AdminOnly()
-  async setSettlementCurrency(
-    @Req() request: RequestWithContext,
-    @Param('id') id: string,
-    @Body(zodBody(currencySchema)) body: z.infer<typeof currencySchema>,
-  ) {
-    return this.companies.setSettlementCurrency(contextOf(request), id, {
-      currency: body.currency,
-      note: body.note,
-      rebase_rate: body.rebase_rate ?? null,
-      version: body.version,
-    });
-  }
-
-  @Get('companies/:id/rates')
-  @RequirePermission('companies.view')
-  async rates(@Param('id') id: string) {
-    return this.companies.rateHistoryOf(id);
-  }
-
-  @Post('companies/:id/rates')
-  @RequirePermission('companies.set_rate')
-  @HttpCode(201)
-  async setRate(
-    @Req() request: RequestWithContext,
-    @Param('id') id: string,
-    @Body(zodBody(rateSchema)) body: z.infer<typeof rateSchema>,
-  ) {
-    return this.companies.setRate(contextOf(request), id, {
-      rate_iqd_per_usd: String(body.rate_iqd_per_usd),
-      note: body.note ?? null,
-    });
   }
 
   @Get('companies/:id/ledger')

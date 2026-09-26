@@ -141,6 +141,12 @@ export class OrdersService {
       this.customersService.scopeOf(context),
     );
     if (!customer) throw ApiError.notFound();
+    // A business we only buy from is not somebody an order can be written to (D-054).
+    if (!customer.is_customer) {
+      throw ApiError.validation([
+        { path: 'customer_id', code: 'NOT_A_CUSTOMER', message_key: 'errors:not_a_customer', params: {} },
+      ]);
+    }
     if (!customer.is_active) {
       throw ApiError.validation([
         {
@@ -735,10 +741,9 @@ export class OrdersService {
   // ───────────────────────────── the pieces the writes share ─────────────────────────────
 
   /**
-   * The rate for this document (2.3.3): the one typed for this deal, else the customer's own
-   * rate when they have one, else the global rate. The customer side keeps only `global` or
-   * `manual` (schema), so the customer's own rate is stored as a `manual` rate for the order —
-   * a specific rate applied to this deal, snapshotted so a later rate change never moves it.
+   * The rate for this document (2.3.3): the one typed for this deal, else the business's own
+   * rate when it has one (`company`, D-054), else the global rate — snapshotted on the order so a
+   * later rate change never moves it.
    */
   private async rateFor(
     typed?: string | null,
@@ -760,7 +765,7 @@ export class OrdersService {
     }
     if (customerId) {
       const own = await this.customers.currentRate(customerId);
-      if (own) return { rate: formatRate(own.rate), rateSource: 'manual' };
+      if (own) return { rate: formatRate(own.rate), rateSource: 'company' };
     }
     return { rate: await this.rates.requireCurrent(), rateSource: 'global' };
   }

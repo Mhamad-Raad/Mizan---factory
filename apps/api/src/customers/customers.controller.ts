@@ -22,6 +22,7 @@ const rateSchema = z.object({
 
 const listSchema = z.object({
   q: z.string().max(200).optional(),
+  side: z.enum(['customer', 'supplier']).optional(),
   assigned_to: z.string().uuid().optional(),
   balance: z.enum(['owes', 'settled', 'credit']).optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
@@ -32,6 +33,9 @@ const listSchema = z.object({
 
 const createSchema = z.object({
   name: z.string().min(1).max(200),
+  contact_name: z.string().max(200).nullish(),
+  is_customer: z.boolean().optional(),
+  is_supplier: z.boolean().optional(),
   phone: z.string().max(40).nullish(),
   address: z.string().max(500).nullish(),
   notes: z.string().max(2000).nullish(),
@@ -108,6 +112,7 @@ export class CustomersController {
   async list(@Req() request: RequestWithContext, @Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
     return this.customers.list(contextOf(request), {
       q: query.q,
+      side: query.side,
       assigned_to: query.assigned_to,
       balance: query.balance,
       include_inactive: query.include_inactive === 'true',
@@ -122,17 +127,25 @@ export class CustomersController {
    * customer, so it sits behind `customers.create` rather than `customers.view_all`.
    */
   @Get('customers/duplicates')
-  @RequirePermission('customers.create')
+  @RequirePermission('customers.view')
   async duplicates(@Query(zodBody(z.object({ name: z.string().min(1).max(200) }))) query: { name: string }) {
     return this.customers.checkDuplicates(query.name);
   }
 
+  /*
+   * The routes that change the record itself are open to anybody who may see it; the service
+   * then asks for the permission of each side the record takes part in — `customers.<action>`
+   * for a customer, `companies.<action>` for a supplier, both for both (D-054).
+   */
   @Post('customers')
-  @RequirePermission('customers.create')
+  @RequirePermission('customers.view')
   @HttpCode(201)
   async create(@Req() request: RequestWithContext, @Body(zodBody(createSchema)) body: z.infer<typeof createSchema>) {
     return this.customers.create(contextOf(request), {
       name: body.name,
+      contact_name: body.contact_name ?? null,
+      is_customer: body.is_customer,
+      is_supplier: body.is_supplier,
       phone: body.phone ?? null,
       address: body.address ?? null,
       notes: body.notes ?? null,
@@ -149,7 +162,7 @@ export class CustomersController {
   }
 
   @Patch('customers/:id')
-  @RequirePermission('customers.edit')
+  @RequirePermission('customers.view')
   async update(
     @Req() request: RequestWithContext,
     @Param('id') id: string,
@@ -157,6 +170,7 @@ export class CustomersController {
   ) {
     return this.customers.update(contextOf(request), id, {
       ...body,
+      contact_name: body.contact_name ?? undefined,
       phone: body.phone ?? undefined,
       address: body.address ?? undefined,
       notes: body.notes ?? undefined,
@@ -165,7 +179,7 @@ export class CustomersController {
   }
 
   @Post('customers/:id/deactivate')
-  @RequirePermission('customers.edit')
+  @RequirePermission('customers.view')
   @HttpCode(200)
   async deactivate(
     @Req() request: RequestWithContext,
@@ -176,7 +190,7 @@ export class CustomersController {
   }
 
   @Post('customers/:id/reactivate')
-  @RequirePermission('customers.edit')
+  @RequirePermission('customers.view')
   @HttpCode(200)
   async reactivate(
     @Req() request: RequestWithContext,
@@ -198,7 +212,7 @@ export class CustomersController {
   }
 
   @Put('customers/:id/assignment')
-  @RequirePermission('customers.assign')
+  @RequirePermission('customers.view')
   async assign(
     @Req() request: RequestWithContext,
     @Param('id') id: string,
@@ -229,7 +243,7 @@ export class CustomersController {
   }
 
   @Post('customers/:id/rates')
-  @RequirePermission('customers.set_rate')
+  @RequirePermission('customers.view')
   @HttpCode(201)
   async setRate(
     @Req() request: RequestWithContext,

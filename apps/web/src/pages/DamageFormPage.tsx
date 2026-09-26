@@ -14,7 +14,7 @@ import { QueryStates } from '../components/states.js';
 import { clearDraft, readDraft, writeDraft } from '../lib/drafts.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
 import type { DamageAttribution } from '../components/chips.js';
-import type { CompanyRow } from './CompaniesPage.js';
+import type { CustomerRow } from './CustomersPage.js';
 import type { DamageDetail } from './DamagesPage.js';
 import type { ItemRow } from './MaterialsPage.js';
 import type { OrderRow } from './OrdersPage.js';
@@ -491,11 +491,11 @@ function DamageForm({
           searchLabel={t('companies:search_placeholder')}
           emptyTitle={t('companies:empty')}
           toItem={(row: never) => {
-            const company = row as unknown as CompanyRow;
+            const company = row as unknown as CustomerRow;
             return { id: company.id, title: company.name, subtitle: company.phone ?? undefined };
           }}
           onPick={(pickedId, row) => {
-            const company = row as unknown as CompanyRow;
+            const company = row as unknown as CustomerRow;
             setPicking(null);
             setForm((current) => ({
               ...current,

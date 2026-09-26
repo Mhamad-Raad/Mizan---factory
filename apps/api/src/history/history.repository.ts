@@ -36,6 +36,11 @@ export interface HistoryFilters {
    * `audit_log_entity_idx` and the GIN index on `related`.
    */
   about_order?: string;
+  /**
+   * Everything about one business (D-054): the rows of the record itself and of its selling
+   * side are filed as `customer`, the rows of its buying side as `company`, all under its id.
+   */
+  about_party?: string;
   action?: string;
   /** Collapse an edit storm into one entry per record (spec 2.4.5, last row). */
   group_edits?: boolean;
@@ -100,6 +105,10 @@ export class HistoryRepository {
       conditions.push(
         `((a.entity_type = 'order' AND a.entity_id = $${values.length - 1}) OR a.related @> $${values.length}::jsonb)`,
       );
+    }
+    if (filters.about_party) {
+      values.push(filters.about_party);
+      conditions.push(`a.entity_type IN ('customer', 'company') AND a.entity_id = $${values.length}`);
     }
     if (filters.action) {
       values.push(filters.action);
