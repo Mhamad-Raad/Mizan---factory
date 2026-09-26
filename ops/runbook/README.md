@@ -129,8 +129,8 @@ copies it encrypted are still in retention, which is thirteen months.
 ## Backups
 
 Nightly at 03:00 Asia/Baghdad the `backup` container dumps, **verifies the dump is readable**,
-encrypts with AES-256, writes an HMAC-SHA256 integrity tag beside it (`<file>.hmac`, keyed from
-`BACKUP_ENCRYPTION_KEY`), uploads both to `BACKUP_BUCKET`, syncs the WAL, and prunes to 30 daily
+encrypts with AES-256, writes an HMAC-SHA256 integrity tag beside it (`<file>.hmac`, its key
+stretched from `BACKUP_ENCRYPTION_KEY` with PBKDF2 and distinct from the encryption key), uploads both to `BACKUP_BUCKET`, syncs the WAL, and prunes to 30 daily
 and 12 monthly copies. WAL segments are archived continuously with `archive_timeout=900`, which
 bounds loss at fifteen minutes (NFR-08: RPO 15 minutes, RTO 4 hours), and leave the host every
 five minutes.
@@ -164,8 +164,10 @@ Rehearsed before go-live and every quarter (I6). Record each rehearsal in
 aws s3 cp "$BACKUP_BUCKET/daily/mizan-<stamp>.dump.enc" .
 aws s3 cp "$BACKUP_BUCKET/daily/mizan-<stamp>.dump.enc.hmac" .
 sh ops/backup/restore-decrypt.sh mizan-<stamp>.dump.enc mizan.dump
-#   "REFUSED" means the copy was damaged or altered (or the key is wrong): take another copy.
-#   Copies from before the tag existed have no .hmac and are decrypted with a warning.
+#   "REFUSED … does not match" means the copy was damaged or altered (or the key is wrong):
+#   take another copy. "REFUSED … not found" means the .hmac was not fetched: fetch it. Only
+#   for a copy that truly has no tag (made before tags existed, or the tag is lost) add
+#   --allow-untagged before the file names; it is then only as trustworthy as where it came from.
 #   The script needs `openssl`; the backup container has it:
 #   docker compose run --rm --entrypoint sh -v "$PWD:/restore" -w /restore backup /opt/mizan/restore-decrypt.sh …
 

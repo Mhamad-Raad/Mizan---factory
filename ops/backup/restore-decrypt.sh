@@ -1,19 +1,27 @@
 #!/bin/sh
 # Decrypt one backup copy for a restore, checking its integrity tag first (runbook, "Restore").
 #
-#   BACKUP_ENCRYPTION_KEY=… sh ops/backup/restore-decrypt.sh mizan-<stamp>.dump.enc mizan.dump
+#   BACKUP_ENCRYPTION_KEY=… sh ops/backup/restore-decrypt.sh [--allow-untagged] mizan-<stamp>.dump.enc mizan.dump
 #
-# Copies written since the integrity tag was added (security review, finding 18) have a
-# `<file>.hmac` beside them, and a copy whose tag does not match is refused: it was damaged or
-# altered, and restoring it would put that into the ledgers. Older copies have no tag; they are
-# still decrypted, with a warning, so the thirteen months of retention stay restorable.
+# Every copy is written with a `<file>.hmac` tag beside it (security review, finding 18), and a
+# copy whose tag does not match is refused: it was damaged or altered, and restoring it would
+# put that into the ledgers. A copy *without* a tag is refused too — deleting the tag must not be
+# a way around the check. `--allow-untagged` decrypts one anyway, for a copy made before tags
+# existed or whose tag was lost; the operator says so explicitly, and the copy is then only as
+# trustworthy as where it came from.
 set -eu
 
 HERE="$(dirname "$0")"
 . "$HERE/lib.sh"
 
-ENCRYPTED="${1:?usage: restore-decrypt.sh <file.dump.enc> <out.dump>}"
-OUT="${2:?usage: restore-decrypt.sh <file.dump.enc> <out.dump>}"
+USAGE="usage: restore-decrypt.sh [--allow-untagged] <file.dump.enc> <out.dump>"
+ALLOW_UNTAGGED=0
+if [ "${1:-}" = "--allow-untagged" ]; then
+  ALLOW_UNTAGGED=1
+  shift
+fi
+ENCRYPTED="${1:?$USAGE}"
+OUT="${2:?$USAGE}"
 TAG="$ENCRYPTED.hmac"
 
 [ -f "$ENCRYPTED" ] || { echo "no such file: $ENCRYPTED" >&2; exit 1; }
@@ -27,8 +35,14 @@ if [ -f "$TAG" ]; then
     exit 1
   fi
   echo "integrity tag verified"
+elif [ "$ALLOW_UNTAGGED" = 1 ]; then
+  echo "WARNING: $TAG not found — decrypting without an integrity check, as --allow-untagged asked" >&2
 else
-  echo "WARNING: $TAG not found — a copy from before integrity tags; decrypting without that check" >&2
+  echo "REFUSED: $TAG not found, so nothing shows this copy is intact and unaltered." >&2
+  echo "Fetch the .hmac file from the same place as the copy and run this again. Only for a copy" >&2
+  echo "made before integrity tags, or whose tag is truly lost, add --allow-untagged:" >&2
+  echo "  sh ops/backup/restore-decrypt.sh --allow-untagged $ENCRYPTED $OUT" >&2
+  exit 1
 fi
 
 openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
