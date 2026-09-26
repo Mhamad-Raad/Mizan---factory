@@ -728,3 +728,33 @@ never reached its orders because the order side did not know companies existed.
 is the Customers page, and each record says which sides it takes part in. The new strings are
 listed for the glossary review (Q-26). Relied on: the client's instruction; 2.2.6 (balances
 are sums), 2.3.3 (the document's rate), 2.3.5 (re-basing), 2.6.4 (scope in repositories).
+
+## D-055 · 2026-09-26 · client review · One kind of account: a company, with its rate on its form
+
+The client, on D-054's two flags: "the term we buy from them or we sell to them does not matter
+… there is no customer or company, there is only company", and the checkbox choosing between
+them was "more work for no reason".
+
+**Choice:**
+
+- **The flags are gone** (migration 0024). Every account is a company we sell to and buy from;
+  its orders, its purchases and both ledgers hang off the one record, and its balance is the
+  net of the two (D-054, unchanged). The one exception is the walk-in customer (`is_system`):
+  cash at the counter, never a purchase — every check that asked "is this a supplier?" now asks
+  "is this a real account?".
+- **Visibility.** Whoever may see the companies (`companies.view`) sees every account, as the
+  buying side always did (FR-711); somebody with the customer keys alone still sees only the
+  accounts assigned to them, plus the walk-in (2.6.4). Creating, editing or assigning an
+  account needs that permission on either side.
+- **The account's own rate is on its form.** New company and Edit carry "Conversion rate — IQD
+  for $1"; empty means the system-wide rate. A changed rate is a **new** rate row, never an
+  edit, so every order and purchase keeps the rate it was made at (it is snapshotted on the
+  document, 2.3.3), and the order's chip now says which rate it was — the company's, the
+  system's, or one typed for that order. Setting a rate still needs `set_rate` on either side.
+- **History filters by action** on the account's page — rate changes, money, edits, creation,
+  assignment, hidden/shown — and a rate change reads "Rate 1,315 → 1,325" with who and when.
+- **Words.** "Customer" reads "Company" wherever the glossary is used (the walk-in keeps its
+  name); the page is Companies. For the glossary review (Q-26).
+
+Relied on: the client's instruction; 2.3.3 (the document's rate), 2.6.4 (scope in repositories),
+rule 3 (every change in History).

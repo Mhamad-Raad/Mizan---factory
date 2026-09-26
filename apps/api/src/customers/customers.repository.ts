@@ -13,8 +13,6 @@ function customerColumns(alias = 'customers'): string {
     'name',
     'name_normalized',
     'contact_name',
-    'is_customer',
-    'is_supplier',
     'phone',
     'phone_normalized',
     'address',
@@ -40,28 +38,21 @@ function customerColumns(alias = 'customers'): string {
  */
 export interface CustomerScope {
   userId: string;
-  /** `customers.view_all`: sees every customer. Otherwise only their own, plus the walk-in. */
-  viewAll: boolean;
   /**
-   * `companies.view`: sees every supplier. Suppliers were never scoped (FR-711) and still are
-   * not — a warehouse employee records purchases from any of them — so a record that is a
-   * supplier is visible to them even when it is also somebody else's customer (D-054).
+   * Sees every account: `customers.view_all`, or `companies.view` — the buying side was never
+   * scoped (FR-711), a warehouse employee records purchases from any company, and every account
+   * is a company now (D-055). Otherwise only their own accounts, plus the walk-in.
    */
-  seesSuppliers: boolean;
+  viewAll: boolean;
 }
 
-/** The scope predicate over alias `c`, with the caller's values at `$userParam`, `$suppliersParam`. */
-function scopeCondition(alias: string, userParam: number, suppliersParam: number): string {
-  return (
-    `(${alias}.is_system OR ${alias}.assigned_user_id = $${userParam}::uuid` +
-    ` OR (${alias}.is_supplier AND $${suppliersParam}::boolean))`
-  );
+/** The scope predicate over alias `c`, with the caller's id at `$userParam`. */
+function scopeCondition(alias: string, userParam: number): string {
+  return `(${alias}.is_system OR ${alias}.assigned_user_id = $${userParam}::uuid)`;
 }
 
 export interface CustomerFilters {
   q?: string;
-  /** One side of the business: the order form asks for customers, the purchase form suppliers. */
-  side?: 'customer' | 'supplier';
   assigned_to?: string;
   /** On the net figure: `owes` = they owe us, `credit` = we owe them, `settled` = zero (FR-505). */
   balance?: 'owes' | 'settled' | 'credit';
@@ -91,8 +82,8 @@ export class CustomersRepository {
     const { rows } = await (tx ?? this.database).query<CustomerRow>(
       `SELECT ${customerColumns()} FROM customers
         WHERE id = $1 AND deleted_at IS NULL
-          AND ($2::boolean OR ${scopeCondition('customers', 3, 4)})`,
-      [id, scope.viewAll, scope.userId, scope.seesSuppliers],
+          AND ($2::boolean OR ${scopeCondition('customers', 3)})`,
+      [id, scope.viewAll, scope.userId],
     );
     return rows[0] ?? null;
   }
@@ -156,11 +147,9 @@ export class CustomersRepository {
 
     // Scope first, so every later condition narrows an already-permitted set (spec 2.6.4).
     if (!scope.viewAll) {
-      values.push(scope.userId, scope.seesSuppliers);
-      conditions.push(scopeCondition('c', values.length - 1, values.length));
+      values.push(scope.userId);
+      conditions.push(scopeCondition('c', values.length));
     }
-    if (filters.side === 'customer') conditions.push('c.is_customer');
-    if (filters.side === 'supplier') conditions.push('c.is_supplier');
     if (!filters.include_inactive) conditions.push('c.is_active = true');
     if (filters.assigned_to) {
       values.push(filters.assigned_to);
@@ -235,7 +224,7 @@ export class CustomersRepository {
     return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0) };
   }
 
-  /** What we owe this business on the buying side (0 when it has never been a supplier). */
+  /** What we owe this account on the buying side (0 when we have never bought from it). */
   async payableOf(id: string, tx?: Db): Promise<number> {
     const { rows } = await (tx ?? this.database).query<{ payable: string }>(
       `SELECT payable::text AS payable FROM party_balances WHERE customer_id = $1`,
@@ -257,8 +246,6 @@ export class CustomersRepository {
     input: {
       name: string;
       contact_name: string | null;
-      is_customer: boolean;
-      is_supplier: boolean;
       phone: string | null;
       address: string | null;
       notes: string | null;
@@ -274,8 +261,8 @@ export class CustomersRepository {
       `INSERT INTO customers (name, name_normalized, phone, phone_normalized, address, notes,
                               settlement_currency, assigned_user_id, credit_limit_iqd,
                               credit_limit_usd_cents, created_by, updated_by,
-                              contact_name, is_customer, is_supplier)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::currency, $8, $9, $10, $11, $11, $12, $13, $14)
+                              contact_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::currency, $8, $9, $10, $11, $11, $12)
        RETURNING ${customerColumns()}`,
       [
         input.name,
@@ -290,8 +277,6 @@ export class CustomersRepository {
         input.credit_limit_usd_cents,
         input.created_by,
         input.contact_name,
-        input.is_customer,
-        input.is_supplier,
       ],
     );
     return rows[0] as CustomerRow;
@@ -303,8 +288,6 @@ export class CustomersRepository {
     patch: Partial<{
       name: string;
       contact_name: string | null;
-      is_customer: boolean;
-      is_supplier: boolean;
       phone: string | null;
       address: string | null;
       notes: string | null;

@@ -12,7 +12,7 @@ export class CompanyLedgerService extends AccountLedgerService {
     ownerColumn: 'company_id',
     entryTypeEnum: 'company_entry_type',
     documentColumn: 'purchase_id',
-    // The buying side of a business: its owner is a `customers` row with `is_supplier` (D-054).
+    // The buying side of an account: its owner is a `customers` row (D-054, D-055).
     ownerTable: 'customers',
   };
 

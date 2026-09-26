@@ -113,9 +113,7 @@ await call(admin, `/items/${copper.body.id}/prices/${month}`, {
 
 const alNoor = await call(nazdar.session, '/customers', {
   method: 'POST',
-  body: {
-    is_customer: false,
-    is_supplier: true, name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
+  body: { name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
 });
 await call(nazdar.session, `/customers/${alNoor.body.id}/rates`, {
   method: 'POST',

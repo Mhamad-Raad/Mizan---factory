@@ -68,17 +68,16 @@ export class SearchController {
 
   /** The scope of 2.6.4 applies here exactly as it does on the Customers page. */
   private async customers(context: RequestContext, normalized: string, phone: string): Promise<SearchHit[]> {
-    const scoped = can(context, 'customers.view_all') ? null : context.userId;
-    const seesSuppliers = can(context, 'companies.view');
+    // Every account is a company, and whoever may see the companies sees them all (D-055).
+    const scoped = can(context, 'customers.view_all') || can(context, 'companies.view') ? null : context.userId;
     const { rows } = await this.database.query<{ id: string; name: string; phone: string | null }>(
       `SELECT id, name, phone FROM customers
         WHERE deleted_at IS NULL
           AND (name_normalized LIKE $1
                OR ($2::text <> '' AND phone_normalized LIKE '%' || $2 || '%'))
-          AND ($3::uuid IS NULL OR assigned_user_id = $3::uuid OR is_system = true
-               OR (is_supplier AND $4::boolean))
+          AND ($3::uuid IS NULL OR assigned_user_id = $3::uuid OR is_system = true)
         ORDER BY name ASC LIMIT 5`,
-      [normalized, phone, scoped, seesSuppliers],
+      [normalized, phone, scoped],
     );
     return rows.map((row) => ({ kind: 'customer', id: row.id, title: row.name, subtitle: row.phone }));
   }

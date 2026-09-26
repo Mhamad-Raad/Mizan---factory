@@ -127,10 +127,10 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     body: Record<string, unknown>,
     session: Session = accountant,
   ): Promise<string> {
-    // A company is a business we buy from (D-054): created on the one record, as a supplier.
+    // A company is an account like any other (D-055).
     const created = await as(ctx.http, session)
       .post('/api/v1/customers')
-      .send({ is_customer: false, is_supplier: true, ...body })
+      .send({ ...body })
       .expect(201);
     return created.body.id as string;
   }

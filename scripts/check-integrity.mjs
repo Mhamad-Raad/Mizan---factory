@@ -94,15 +94,15 @@ const { rows: companyDrift } = await client.query(
        FROM customers co
        LEFT JOIN company_ledger l ON l.company_id = co.id
        LEFT JOIN company_balances b ON b.company_id = co.id
-      WHERE co.is_supplier
+      WHERE NOT co.is_system
       GROUP BY co.id, co.settlement_currency
    ) sums
    WHERE coalesce(from_view, 0) <> computed`,
 );
 check(companyDrift[0].n === 0, `every company balance equals its ledger (${companyDrift[0].n} disagree)`);
 
-// One record per business (D-054): its net is its two ledgers' difference, and the buying
-// side's money only ever belongs to a business that is a company.
+// One kind of account (D-054, D-055): its net is its two ledgers' difference, and the buying
+// side's money never belongs to the walk-in customer, which we never buy from.
 const { rows: netDrift } = await client.query(
   `SELECT count(*)::int AS n
      FROM party_balances p
@@ -115,9 +115,9 @@ check(netDrift[0].n === 0, `every net balance is what they owe less what we owe 
 const { rows: strayBuying } = await client.query(
   `SELECT count(*)::int AS n FROM company_ledger l
      JOIN customers c ON c.id = l.company_id
-    WHERE NOT c.is_supplier`,
+    WHERE c.is_system`,
 );
-check(strayBuying[0].n === 0, `no buying-side entry belongs to a business that is not a company (${strayBuying[0].n})`);
+check(strayBuying[0].n === 0, `no buying-side entry belongs to the walk-in customer (${strayBuying[0].n})`);
 
 const { rows: stockDrift } = await client.query(
   `SELECT count(*)::int AS n FROM (

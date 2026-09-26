@@ -211,8 +211,6 @@ async function createCompany(
   session: Headers,
 ): Promise<string> {
   const created = (await post(context, session, '/customers', {
-    is_customer: false,
-    is_supplier: true,
     name: 'Al-Noor Steel Co.',
     contact_name: 'Abu Ahmad',
     phone: '0751 222 3344',

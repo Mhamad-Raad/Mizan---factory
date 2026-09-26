@@ -22,7 +22,6 @@ const rateSchema = z.object({
 
 const listSchema = z.object({
   q: z.string().max(200).optional(),
-  side: z.enum(['customer', 'supplier']).optional(),
   assigned_to: z.string().uuid().optional(),
   balance: z.enum(['owes', 'settled', 'credit']).optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
@@ -33,9 +32,9 @@ const listSchema = z.object({
 
 const createSchema = z.object({
   name: z.string().min(1).max(200),
+  /** The account's own rate, typed on the form; empty means the system-wide rate (D-055). */
+  rate_iqd_per_usd: rate.nullish(),
   contact_name: z.string().max(200).nullish(),
-  is_customer: z.boolean().optional(),
-  is_supplier: z.boolean().optional(),
   phone: z.string().max(40).nullish(),
   address: z.string().max(500).nullish(),
   notes: z.string().max(2000).nullish(),
@@ -91,6 +90,18 @@ const ledgerSchema = z.object({
 
 const statementSchema = z.object({ from: isoDate.optional(), to: isoDate.optional() });
 const historySchema = z.object({
+  /** One kind of action — "rate changes", "money", "edits" — for the account's History tab. */
+  action: z
+    .enum([
+      'create',
+      'update',
+      'rate_change',
+      'ledger_entry',
+      'assignment_change',
+      'status_change',
+      'delete',
+    ])
+    .optional(),
   cursor: z.string().max(200).optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
 });
@@ -112,7 +123,6 @@ export class CustomersController {
   async list(@Req() request: RequestWithContext, @Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
     return this.customers.list(contextOf(request), {
       q: query.q,
-      side: query.side,
       assigned_to: query.assigned_to,
       balance: query.balance,
       include_inactive: query.include_inactive === 'true',
@@ -133,9 +143,9 @@ export class CustomersController {
   }
 
   /*
-   * The routes that change the record itself are open to anybody who may see it; the service
-   * then asks for the permission of each side the record takes part in — `customers.<action>`
-   * for a customer, `companies.<action>` for a supplier, both for both (D-054).
+   * The routes that change the account itself are open to anybody who may see it; the service
+   * then asks for either side's permission — `customers.<action>` or `companies.<action>` —
+   * because every account is a company on both sides (D-055).
    */
   @Post('customers')
   @RequirePermission('customers.view')
@@ -144,8 +154,7 @@ export class CustomersController {
     return this.customers.create(contextOf(request), {
       name: body.name,
       contact_name: body.contact_name ?? null,
-      is_customer: body.is_customer,
-      is_supplier: body.is_supplier,
+      rate_iqd_per_usd: body.rate_iqd_per_usd ?? null,
       phone: body.phone ?? null,
       address: body.address ?? null,
       notes: body.notes ?? null,

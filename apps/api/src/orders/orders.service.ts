@@ -141,12 +141,6 @@ export class OrdersService {
       this.customersService.scopeOf(context),
     );
     if (!customer) throw ApiError.notFound();
-    // A business we only buy from is not somebody an order can be written to (D-054).
-    if (!customer.is_customer) {
-      throw ApiError.validation([
-        { path: 'customer_id', code: 'NOT_A_CUSTOMER', message_key: 'errors:not_a_customer', params: {} },
-      ]);
-    }
     if (!customer.is_active) {
       throw ApiError.validation([
         {

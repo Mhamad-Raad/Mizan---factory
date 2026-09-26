@@ -570,8 +570,8 @@ export class ReportsRepository {
 
   async payables(filters: ReportFilters) {
     const values: unknown[] = [filters.from, filters.to];
-    // A company is a business with `is_supplier` (D-054).
-    const conditions = ['co.deleted_at IS NULL', 'co.is_supplier'];
+    // Every account but the walk-in is a company (D-055).
+    const conditions = ['co.deleted_at IS NULL', 'NOT co.is_system'];
     if (filters.company_id) {
       values.push(filters.company_id);
       conditions.push(`co.id = $${values.length}::uuid`);

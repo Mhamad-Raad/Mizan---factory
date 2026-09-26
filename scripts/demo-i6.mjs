@@ -287,9 +287,7 @@ check(imported.body?.created === 2, 'the two opening debts are imported as ledge
 
 const alNoor = await call(nazdar.session, '/customers', {
   method: 'POST',
-  body: {
-    is_customer: false,
-    is_supplier: true, name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
+  body: { name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
 });
 await call(nazdar.session, `/companies/${alNoor.body.id}/opening-balance`, {
   method: 'POST',

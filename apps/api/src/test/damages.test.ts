@@ -112,7 +112,7 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     // order that took some of it away again — the three things damage can be attributed to.
     const company = await as(ctx.http, admin)
       .post('/api/v1/customers')
-      .send({ is_customer: false, is_supplier: true, name: 'Al-Noor Steel Co.' })
+      .send({ name: 'Al-Noor Steel Co.' })
       .expect(201);
     alNoor = company.body.id;
     await as(ctx.http, admin)
@@ -371,7 +371,7 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     it('refuses a purchase that belongs to another company', async () => {
       const other = await as(ctx.http, admin)
         .post('/api/v1/customers')
-        .send({ is_customer: false, is_supplier: true, name: 'Zagros Metals' })
+        .send({ name: 'Zagros Metals' })
         .expect(201);
 
       const response = await recordDamage(warehouse, {

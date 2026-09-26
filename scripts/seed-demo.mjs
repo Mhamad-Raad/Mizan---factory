@@ -11,7 +11,7 @@
  * What it makes:
  *   · three employees (sales, warehouse, accountant) with passwords printed at the end;
  *   · eight materials with prices for this month and the two before it;
- *   · ten businesses — five customers, three companies we buy from, and two that are both, so
+ *   · ten companies — accounts we sell to, buy from, or both, so
  *     the net balance has something to net — some with their own rate;
  *   · six weeks of purchases, cash and borrowed orders, payments both ways, a supplier credit,
  *     opening balances on both sides, and two damage records.
@@ -70,8 +70,9 @@ const monthOf = (isoDate) => isoDate.slice(0, 7);
 const admin = jar();
 console.log(`Mizan — demo data against ${BASE}`);
 await post(admin, '/auth/login', { username_or_phone: ADMIN, password: ADMIN_PASSWORD });
-const existing = await call(admin, '/customers?page_size=5&side=supplier');
-if (existing.total > 0) {
+const existing = await call(admin, '/customers?page_size=5');
+// The walk-in customer is always there; anything more means this is not an empty database.
+if (existing.total > 1) {
   console.error('✗ this database already has businesses in it — seed an empty one');
   process.exit(1);
 }
@@ -124,73 +125,65 @@ for (const [name, unit, sale, bought] of MATERIALS) {
 }
 console.log(`✓ ${MATERIALS.length} materials, priced for ${months.join(', ')}`);
 
-// ── the businesses: customers, companies, and both ──────────────────────────────────────
+// ── the companies — one kind of account; some we only sell to so far, some we only buy from ──
 
-async function business(body, rate) {
-  const created = await post(admin, '/customers', body);
-  if (rate) await post(admin, `/customers/${created.id}/rates`, { rate_iqd_per_usd: rate, note: 'agreed rate' });
+async function company(body, rate) {
+  // Its own conversion rate is typed on the same form (D-055); without one the system rate applies.
+  const created = await post(admin, '/customers', rate ? { ...body, rate_iqd_per_usd: rate } : body);
   return created.id;
 }
-const kawa = await business(
+const kawa = await company(
   { name: 'Kawa Trading', phone: '0750 123 4567', address: 'Erbil, Industrial Area', assigned_user_id: rebaz },
   '1315',
 );
-const hawler = await business({
+const hawler = await company({
   name: 'Hawler Construction',
   phone: '0751 987 6543',
   settlement_currency: 'USD',
   assigned_user_id: rebaz,
 });
-const slemani = await business({ name: 'Slemani Build Co.', phone: '0770 222 1100', assigned_user_id: rebaz });
-const duhok = await business({ name: 'Duhok Fabrication', phone: '0750 444 7788' });
-const azadi = await business({ name: 'Azadi Workshop', phone: '0771 300 2020' });
+const slemani = await company({ name: 'Slemani Build Co.', phone: '0770 222 1100', assigned_user_id: rebaz });
+const duhok = await company({ name: 'Duhok Fabrication', phone: '0750 444 7788' });
+const azadi = await company({ name: 'Azadi Workshop', phone: '0771 300 2020' });
 
-const alNoor = await business(
+const alNoor = await company(
   {
     name: 'Al-Noor Steel Co.',
-    is_customer: false,
-    is_supplier: true,
     contact_name: 'Abu Ahmad',
     phone: '0751 222 3344',
   },
   '1305',
 );
-const gulf = await business(
-  { name: 'Gulf Steel FZE', is_customer: false, is_supplier: true, contact_name: 'Samir', settlement_currency: 'USD' },
+const gulf = await company(
+  { name: 'Gulf Steel FZE', contact_name: 'Samir', settlement_currency: 'USD' },
   '1300',
 );
-const zagros = await business({
+const zagros = await company({
   name: 'Zagros Metals Supply',
-  is_customer: false,
-  is_supplier: true,
   contact_name: 'Karwan',
   phone: '0770 555 1212',
 });
 
 // Both sides: we buy copper from Erbil Metal House and sell it steel; Baghdad Pipe Trading
 // sells us pipe and buys paint and profile back.
-const erbilMetal = await business(
+const erbilMetal = await company(
   {
     name: 'Erbil Metal House',
-    is_customer: true,
-    is_supplier: true,
     contact_name: 'Dilshad',
     phone: '0750 909 8080',
     assigned_user_id: rebaz,
   },
   '1312',
 );
-const baghdadPipe = await business(
+const baghdadPipe = await company(
   {
     name: 'Baghdad Pipe Trading',
-    is_customer: true,
-    is_supplier: true,
     contact_name: 'Haider',
     settlement_currency: 'USD',
   },
   '1310',
 );
-console.log('✓ ten businesses: five customers, three companies, two both');
+console.log('✓ ten companies, five with their own rate');
 
 // ── six weeks of buying ─────────────────────────────────────────────────────────────────
 

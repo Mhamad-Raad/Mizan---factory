@@ -5,9 +5,6 @@ export interface CustomerRow {
   name: string;
   name_normalized: string;
   contact_name: string | null;
-  /** Which sides of the business this record takes part in (D-054): at least one is true. */
-  is_customer: boolean;
-  is_supplier: boolean;
   phone: string | null;
   phone_normalized: string | null;
   address: string | null;
@@ -41,8 +38,6 @@ export interface CustomerDto {
   id: string;
   name: string;
   contact_name: string | null;
-  is_customer: boolean;
-  is_supplier: boolean;
   phone: string | null;
   address: string | null;
   notes: string | null;
@@ -60,8 +55,8 @@ export interface CustomerDto {
    */
   balance: BalanceDto | null;
   /**
-   * What we owe them on the buying side; null when the record is not a supplier. Stripped for a
-   * caller without `fields.see_company_balances` (FR-704).
+   * What we owe them on the buying side; null for the walk-in customer, which we never buy from.
+   * Stripped for a caller without `fields.see_company_balances` (FR-704).
    */
   payable: BalanceDto | null;
   /**

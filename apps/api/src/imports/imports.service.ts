@@ -272,8 +272,6 @@ export class ImportsService {
       case 'companies':
         await this.customers.create(context, {
           name: text(row.name) as string,
-          is_customer: false,
-          is_supplier: true,
           contact_name: text(row.contact_name),
           phone: text(row.phone),
           address: text(row.address),
@@ -404,9 +402,9 @@ function text(value: string | null | undefined): string | null {
 
 /**
  * Where a name is looked up. Customers and companies are one table (D-054): a company is a
- * business with `is_supplier`, so an opening debt to a company only finds suppliers — but a new
+ * ordinary account (not the walk-in, D-055), so an opening debt to a company finds any of them — and a new
  * row of either kind collides with any business of that name, because it would be the same one.
  */
 function sourceOf(table: 'items' | 'customers' | 'companies'): string {
-  return table === 'companies' ? 'customers WHERE is_supplier AND' : `${table} WHERE`;
+  return table === 'companies' ? 'customers WHERE NOT is_system AND' : `${table} WHERE`;
 }

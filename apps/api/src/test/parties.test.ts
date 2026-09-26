@@ -3,14 +3,15 @@ import { as, createTestApp, resetDatabase, seedUser, signIn, withDatabase } from
 import type { Session, TestApp } from './harness.js';
 
 /**
- * Customers and companies are one record per business (D-054).
+ * One kind of account: a company (D-054, D-055).
  *
- * The client's words: "companies and customers are one thing". A business may be a customer, a
- * company we buy from, or both; it has one rate, used on both sides; and one net balance — what
- * it owes us less what we owe it — while each side keeps its own append-only ledger, so nothing
- * the money kernel guarantees changes. These cases are the acceptance criteria of that change.
+ * The client's words: "companies and customers are one thing … there is only company". Every
+ * account can be sold to and bought from; it has one rate, used on both sides; and one net
+ * balance — what it owes us less what we owe it — while each side keeps its own append-only
+ * ledger, so nothing the money kernel guarantees changes. The walk-in customer is the one record
+ * that is not an ordinary account: cash at the counter, never a purchase.
  */
-describe('one record per business (D-054)', () => {
+describe('one kind of account (D-054, D-055)', () => {
   let ctx: TestApp;
   let admin: Session;
   /** Rebaz: sells, sees his own customers and their balances. */
@@ -21,12 +22,13 @@ describe('one record per business (D-054)', () => {
   let accountant: Session;
   let salesUserId: string;
   let copper: string;
-  /** A customer only, assigned to Rebaz. */
+  /** Assigned to Rebaz. */
   let kawa: string;
-  /** A customer *and* a company we buy from, assigned to nobody. */
+  /** Assigned to nobody; we both buy from it and sell to it. */
   let zagros: string;
-  /** A company only. */
+  /** Assigned to nobody. */
   let alNoor: string;
+  let walkIn: string;
 
   beforeAll(async () => {
     ctx = await createTestApp();
@@ -78,8 +80,16 @@ describe('one record per business (D-054)', () => {
       .expect(200);
 
     kawa = await createParty(admin, { name: 'Kawa Trading', assigned_user_id: salesUserId });
-    zagros = await createParty(admin, { name: 'Zagros Metals', is_customer: true, is_supplier: true });
-    alNoor = await createParty(admin, { name: 'Al-Noor Steel Co.', is_customer: false, is_supplier: true });
+    zagros = await createParty(admin, { name: 'Zagros Metals' });
+    alNoor = await createParty(admin, { name: 'Al-Noor Steel Co.' });
+    walkIn = await withDatabase(async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `INSERT INTO customers (name, name_normalized, is_system, created_by, updated_by)
+         VALUES ('Walk-in customer', 'walk-in customer', true, $1, $1) RETURNING id`,
+        [adminUser.id],
+      );
+      return rows[0]?.id as string;
+    });
   });
 
   async function createParty(session: Session, body: Record<string, unknown>): Promise<string> {
@@ -117,7 +127,7 @@ describe('one record per business (D-054)', () => {
       await sellTo(admin, zagros, '100.000').expect(201); // they owe us 85,000
 
       const detail = await as(ctx.http, admin).get(`/api/v1/customers/${zagros}`).expect(200);
-      expect(detail.body).toMatchObject({ is_customer: true, is_supplier: true });
+      expect(detail.body).not.toHaveProperty('is_customer');
       expect(detail.body.balance.amount_iqd).toBe(85_000);
       expect(detail.body.payable.amount_iqd).toBe(140_000);
       expect(detail.body.net.amount_iqd).toBe(-55_000);
@@ -190,76 +200,93 @@ describe('one record per business (D-054)', () => {
     });
   });
 
-  describe('who sees and makes which side', () => {
-    it('shows a warehouse employee every company and none of anybody else’s customers', async () => {
-      const seen = await as(ctx.http, warehouse).get('/api/v1/customers').expect(200);
-      expect(seen.body.items.map((row: { name: string }) => row.name).sort()).toEqual([
-        'Al-Noor Steel Co.',
-        'Zagros Metals',
-      ]);
+  describe('the rate on the account form (D-055)', () => {
+    it('takes the rate typed on the form, prices the orders at it, and keeps it on each order', async () => {
+      const created = await as(ctx.http, admin)
+        .post('/api/v1/customers')
+        .send({ name: 'Soran Steel', rate_iqd_per_usd: '1320' })
+        .expect(201);
+      expect(created.body.rate).toMatchObject({ rate_iqd_per_usd: '1320.0000', is_customer_rate: true });
 
-      const suppliers = await as(ctx.http, sales).get('/api/v1/customers').expect(200);
-      expect(suppliers.body.items.map((row: { name: string }) => row.name)).toEqual(['Kawa Trading']);
-    });
+      const first = await sellTo(admin, created.body.id, '10.000').expect(201);
+      expect(first.body).toMatchObject({ rate_iqd_per_usd: '1320.0000', rate_source: 'company' });
 
-    it('filters the list to one side', async () => {
-      const onlyCompanies = await as(ctx.http, admin)
-        .get('/api/v1/customers')
-        .query({ side: 'supplier' })
+      // A new rate on the edit form is a new row: the order made before it keeps its own.
+      await as(ctx.http, admin)
+        .patch(`/api/v1/customers/${created.body.id}`)
+        .send({ rate_iqd_per_usd: '1335', version: created.body.version })
         .expect(200);
-      expect(onlyCompanies.body.items.map((row: { name: string }) => row.name).sort()).toEqual([
-        'Al-Noor Steel Co.',
-        'Zagros Metals',
-      ]);
+      const second = await sellTo(admin, created.body.id, '10.000').expect(201);
+      expect(second.body.rate_iqd_per_usd).toBe('1335.0000');
+      const before = await as(ctx.http, admin).get(`/api/v1/orders/${first.body.id}`).expect(200);
+      expect(before.body.rate_iqd_per_usd).toBe('1320.0000');
     });
 
-    it('asks for the permission of each side the new record takes part in', async () => {
+    it('says who changed the rate, when and from what, and filters History to it', async () => {
+      await as(ctx.http, accountant)
+        .post(`/api/v1/customers/${zagros}/rates`)
+        .send({ rate_iqd_per_usd: '1320' })
+        .expect(201);
+      await as(ctx.http, accountant)
+        .post(`/api/v1/customers/${zagros}/rates`)
+        .send({ rate_iqd_per_usd: '1325', note: 'new agreement' })
+        .expect(201);
+      await sellTo(admin, zagros, '5.000').expect(201);
+
+      const rates = await as(ctx.http, admin)
+        .get(`/api/v1/customers/${zagros}/history`)
+        .query({ action: 'rate_change' })
+        .expect(200);
+      expect(rates.body.items.map((row: { action: string }) => row.action)).toEqual(['rate_change', 'rate_change']);
+      expect(rates.body.items[0]).toMatchObject({
+        actor_display_name: 'Nazdar',
+        note: 'new agreement',
+        changes: { rate_iqd_per_usd: { old: '1320.0000', new: '1325.0000' } },
+      });
+    });
+
+    it('refuses a rate on the form from somebody who may not set rates', async () => {
       await as(ctx.http, sales)
         .post('/api/v1/customers')
-        .send({ name: 'Somebody we buy from', is_customer: false, is_supplier: true })
+        .send({ name: 'Erbil Wire', rate_iqd_per_usd: '1400' })
         .expect(403);
-      await as(ctx.http, warehouse).post('/api/v1/customers').send({ name: 'A new customer' }).expect(403);
-      await as(ctx.http, warehouse)
-        .post('/api/v1/customers')
-        .send({ name: 'Erbil Wire', is_customer: false, is_supplier: true })
-        .expect(201);
-
-      const neither = await as(ctx.http, admin)
-        .post('/api/v1/customers')
-        .send({ name: 'Nobody', is_customer: false, is_supplier: false })
-        .expect(422);
-      expect(neither.body.error.fields[0].code).toBe('NO_SIDE');
     });
   });
 
-  describe('each side keeps its documents', () => {
-    it('refuses an order to a business we only buy from, and a purchase from one we only sell to', async () => {
-      const order = await sellTo(admin, alNoor, '1.000').expect(422);
-      expect(order.body.error.fields[0].code).toBe('NOT_A_CUSTOMER');
+  describe('who sees and makes an account', () => {
+    it('shows whoever may see the companies every account, and a salesman his own', async () => {
+      const seen = await as(ctx.http, warehouse).get('/api/v1/customers').expect(200);
+      expect(seen.body.items.map((row: { name: string }) => row.name).sort()).toEqual([
+        'Al-Noor Steel Co.',
+        'Kawa Trading',
+        'Walk-in customer',
+        'Zagros Metals',
+      ]);
 
-      const purchase = await buyFrom(admin, kawa, '1.000');
-      expect(purchase.status).not.toBe(201);
+      const own = await as(ctx.http, sales).get('/api/v1/customers').expect(200);
+      expect(own.body.items.map((row: { name: string }) => row.name).sort()).toEqual([
+        'Kawa Trading',
+        'Walk-in customer',
+      ]);
     });
 
-    it('will not switch off a side that already has documents on it', async () => {
-      await buyFrom(admin, zagros, '5.000').expect(201);
-      const current = await as(ctx.http, admin).get(`/api/v1/customers/${zagros}`).expect(200);
+    it('lets either side’s permission create an account, and refuses somebody with neither', async () => {
+      await as(ctx.http, sales).post('/api/v1/customers').send({ name: 'Erbil Wire' }).expect(201);
+      await as(ctx.http, warehouse).post('/api/v1/customers').send({ name: 'Duhok Steel' }).expect(201);
+      await as(ctx.http, accountant).post('/api/v1/customers').send({ name: 'Nobody' }).expect(403);
+    });
+  });
 
-      const refused = await as(ctx.http, admin)
-        .patch(`/api/v1/customers/${zagros}`)
-        .send({ is_supplier: false, version: current.body.version })
-        .expect(422);
-      expect(refused.body.error.fields[0]).toMatchObject({ path: 'is_supplier', code: 'SIDE_IN_USE' });
+  describe('every account on both sides', () => {
+    it('sells to and buys from any account, and never buys from the walk-in', async () => {
+      await sellTo(admin, alNoor, '1.000').expect(201);
+      await buyFrom(admin, kawa, '1.000').expect(201);
 
-      // The side with nothing on it can go.
-      const changed = await as(ctx.http, admin)
-        .patch(`/api/v1/customers/${zagros}`)
-        .send({ is_customer: false, version: current.body.version })
-        .expect(200);
-      expect(changed.body).toMatchObject({ is_customer: false, is_supplier: true });
+      const fromTheCounter = await buyFrom(admin, walkIn, '1.000');
+      expect(fromTheCounter.status).not.toBe(201);
     });
 
-    it('tells the whole story of the business in its History, both sides', async () => {
+    it('tells the whole story of the account in its History, both sides', async () => {
       await buyFrom(admin, zagros, '5.000').expect(201);
       await sellTo(admin, zagros, '5.000').expect(201);
 

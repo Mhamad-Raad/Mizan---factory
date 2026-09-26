@@ -761,7 +761,7 @@ export class DamagesService {
         ]);
       }
       const { rows } = await this.database.query<{ id: string }>(
-        'SELECT id FROM customers WHERE id = $1 AND is_supplier AND deleted_at IS NULL',
+        'SELECT id FROM customers WHERE id = $1 AND NOT is_system AND deleted_at IS NULL',
         [companyId],
       );
       if (!rows[0]) {

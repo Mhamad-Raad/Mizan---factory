@@ -64,7 +64,7 @@ function companyColumns(alias = 'companies'): string {
 
 /**
  * The buying side of a business, read from `customers` (D-054): a "company" is a business with
- * `is_supplier`, and the record itself — creating, editing, assigning, its rate and its
+ * an ordinary account (not the walk-in, D-055), and the record itself — creating, editing, assigning, its rate and its
  * settlement currency — belongs to the customers module. What stays here is what the buying
  * side reads: the supplier as the purchase and damage forms see it, its balance, its rate.
  *
@@ -78,7 +78,7 @@ export class CompaniesRepository {
 
   async findById(id: string, tx?: Db): Promise<CompanyRow | null> {
     const { rows } = await (tx ?? this.database).query<CompanyRow>(
-      `SELECT ${companyColumns()} FROM customers companies WHERE id = $1 AND is_supplier AND deleted_at IS NULL`,
+      `SELECT ${companyColumns()} FROM customers companies WHERE id = $1 AND NOT is_system AND deleted_at IS NULL`,
       [id],
     );
     return rows[0] ?? null;
@@ -86,14 +86,14 @@ export class CompaniesRepository {
 
   async lock(id: string, tx: Db): Promise<CompanyRow | null> {
     const { rows } = await tx.query<CompanyRow>(
-      `SELECT ${companyColumns()} FROM customers companies WHERE id = $1 AND is_supplier AND deleted_at IS NULL FOR UPDATE`,
+      `SELECT ${companyColumns()} FROM customers companies WHERE id = $1 AND NOT is_system AND deleted_at IS NULL FOR UPDATE`,
       [id],
     );
     return rows[0] ?? null;
   }
 
   async list(filters: CompanyFilters): Promise<{ rows: CompanyListRow[]; total: number }> {
-    const conditions = ['c.deleted_at IS NULL', 'c.is_supplier'];
+    const conditions = ['c.deleted_at IS NULL', 'NOT c.is_system'];
     const values: unknown[] = [];
 
     if (!filters.include_inactive) conditions.push('c.is_active = true');
