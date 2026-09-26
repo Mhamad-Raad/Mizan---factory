@@ -31,8 +31,9 @@ services:
       NODE_ENV: production
       PORT: 3000
       TZ: Asia/Baghdad
+      # The application role only: it reads the list of applied migrations to refuse to start
+      # on a pending one, and has no use for the role that owns the schema (security review, 9).
       DATABASE_URL: ${DATABASE_URL:?}
-      DATABASE_MIGRATE_URL: ${DATABASE_MIGRATE_URL:?}
       SESSION_PEPPER: ${SESSION_PEPPER:?}
       APP_BASE_URL: ${APP_BASE_URL:?}
       FIRST_ADMIN_USERNAME: ${FIRST_ADMIN_USERNAME:-admin}
@@ -47,6 +48,23 @@ services:
       retries: 5
       start_period: 20s
     restart: unless-stopped
+
+  # The one-off migration job (runbook, "Ordinary deployment"): the same image as the API, the
+  # only container that is handed the migrate role. `docker compose run --rm migrate`; the
+  # profile keeps `docker compose up` from starting it.
+  migrate:
+    build:
+      context: .
+      dockerfile: ops/docker/Dockerfile.api
+    profiles: ['tools']
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Baghdad
+      DATABASE_MIGRATE_URL: ${DATABASE_MIGRATE_URL:?}
+    command: ['node', 'apps/api/dist/database/migrate.js']
+    depends_on:
+      db: { condition: service_healthy }
+    restart: 'no'
 
   db:
     image: postgres:15-alpine

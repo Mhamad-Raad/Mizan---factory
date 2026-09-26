@@ -14,8 +14,12 @@ const env = loadEnv();
 const logger = new Logger('Bootstrap');
 
 // The API refuses to start on a pending migration (spec 2.14), so a deploy can never serve
-// requests against a schema it does not expect.
-const pending = await pendingMigrations(env.DATABASE_MIGRATE_URL ?? env.DATABASE_URL);
+// requests against a schema it does not expect. Checked as the application role: the API has
+// no use for the migrate role's credentials and is not given them (security review, 9).
+const pending = await pendingMigrations(env.DATABASE_URL).catch((error: Error) => {
+  logger.error(`refusing to start: ${error.message}`);
+  process.exit(1);
+});
 if (pending.length > 0) {
   logger.error(`refusing to start: ${pending.length} pending migration(s): ${pending.join(', ')}`);
   process.exit(1);

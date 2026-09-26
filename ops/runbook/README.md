@@ -18,12 +18,14 @@ which is what lets the session cookie stay `SameSite=Lax` with no cross-site exc
    `openssl rand -base64 32`.
 3. Set the CSP hash for the inline pre-paint script:
    `MIZAN_CSP_INLINE_HASH=$(sh ops/docker/csp-hash.sh)`.
-4. `docker compose up -d --build`.
-5. Run the migrations: `docker compose exec api node apps/api/dist/database/migrate.js`.
-6. Seed the first admin: `docker compose exec api node apps/api/dist/database/seed.js`,
+4. Build, migrate, then start: `docker compose --profile tools build`, `docker compose run --rm migrate`,
+   `docker compose up -d`. The API does not hold the migrate role's credentials — only the
+   one-off `migrate` job does — and it refuses to start while a migration is pending, so the
+   migrations go first.
+5. Seed the first admin: `docker compose exec api node apps/api/dist/database/seed.js`,
    then **sign in once and change the password** — the account is created with
    `must_change_password`, and the value in `.env` should be removed afterwards.
-7. Check `https://<domain>/api/v1/health` returns `{"status":"ok"}`.
+6. Check `https://<domain>/api/v1/health` returns `{"status":"ok"}`.
 
 ## Ordinary deployment
 
@@ -32,13 +34,31 @@ while a migration is pending — so a half-deployed schema cannot serve requests
 
 ```sh
 git pull                                                   # on a release tag
-docker compose build api web
-docker compose run --rm api node apps/api/dist/database/migrate.js
+docker compose build api web migrate
+docker compose run --rm migrate                            # the only container with the migrate role
 docker compose up -d api web
 docker compose logs -f api | head -40                      # expect "listening on 3000"
 ```
 
 Deploys go outside 07:00–19:00 Asia/Baghdad unless it is a hot fix (section 2.14).
+
+The API checks for pending migrations as the application role (`0027_app_reads_migrations`
+grants it `SELECT` on `mizan_migrations`, nothing else). If it logs "the application role may
+not read mizan_migrations", the migrate job has not run yet: run it, then start the API.
+
+**The migrate role and the superuser (one-time, by hand).** `compose.yml` creates the database
+with `POSTGRES_USER=mizan_migrate`, which makes the schema owner a PostgreSQL **superuser** — more
+than migrations need. On a new host, or at a planned maintenance window on an existing one:
+
+```sh
+docker compose exec db psql -U mizan_migrate -d mizan -c "CREATE ROLE pg_admin LOGIN SUPERUSER PASSWORD '<new, from openssl rand -base64 32>'"
+docker compose exec db psql -U pg_admin -d mizan -c "ALTER ROLE mizan_migrate NOSUPERUSER CREATEDB"
+```
+
+then keep the `pg_admin` password with the backup key (off the host) and use it only for
+restores and emergencies. Migrations, the nightly dump and the restore drill keep working as
+`mizan_migrate`, which still owns the schema. This is not automated because the init scripts of
+the `postgres` image run only on an empty volume, and the production volume is not empty.
 
 **Rolling back** is redeploying the previous tag. A migration is never rolled back by
 un-applying it: write a new forward migration. The runner refuses to re-apply a file whose

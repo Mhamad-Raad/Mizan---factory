@@ -77,20 +77,35 @@ export async function applyMigrations(connectionString: string, directory = MIGR
   return applied;
 }
 
-/** True when every migration on disk has been applied — checked at API start-up. */
+/**
+ * The migrations on disk not yet applied — checked at API start-up, as the **application** role
+ * (0027 grants it SELECT on the list and nothing else), so the API never needs the migrate
+ * role's credentials.
+ *
+ * A database that has never been migrated has no list at all: everything is pending. A list the
+ * role may not read is a different problem with a different fix, and says so rather than
+ * reporting every migration as pending.
+ */
 export async function pendingMigrations(connectionString: string, directory = MIGRATIONS_DIR): Promise<string[]> {
   const client = new Client({ connectionString });
   await client.connect();
   try {
-    const { rows } = await client.query<{ name: string }>(
-      "SELECT name FROM mizan_migrations",
-    );
+    const { rows } = await client.query<{ name: string }>('SELECT name FROM mizan_migrations');
     const applied = new Set(rows.map((row) => row.name));
     return loadMigrations(directory)
       .filter((migration) => !applied.has(migration.name))
       .map((migration) => migration.name);
-  } catch {
-    return loadMigrations(directory).map((migration) => migration.name);
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code === '42501') {
+      throw new Error(
+        'the application role may not read mizan_migrations — run the migrations as the migrate role ' +
+          '(0027_app_reads_migrations.sql grants the read), then start the API again',
+        { cause: error },
+      );
+    }
+    if (code === '42P01') return loadMigrations(directory).map((migration) => migration.name);
+    throw error;
   } finally {
     await client.end();
   }
