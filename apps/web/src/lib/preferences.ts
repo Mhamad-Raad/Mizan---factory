@@ -12,7 +12,18 @@ export const RECENT_USERS_KEY = 'mizan.recentUsers.v1';
 export type Theme = 'light' | 'dark' | 'auto';
 export type FontScale = 0.875 | 1 | 1.125 | 1.25;
 /** The colour the app wears (D-061): teal is Mizan's own, the rest are the same ramp turned. */
-export type Palette = 'teal' | 'ocean' | 'plum' | 'clay' | 'graphite';
+export type Palette =
+  | 'teal'
+  | 'ocean'
+  | 'sky'
+  | 'indigo'
+  | 'plum'
+  | 'rose'
+  | 'crimson'
+  | 'clay'
+  | 'amber'
+  | 'forest'
+  | 'graphite';
 /** The typeface of Kurdish and Arabic text (D-061); each carries every Sorani letter. */
 export type Typeface = 'vazirmatn' | 'plex' | 'noto' | 'kufi' | 'naskh';
 
@@ -50,7 +61,9 @@ const LOCALES: Locale[] = ['ckb-IQ', 'ar-IQ', 'en'];
  */
 export const THEMES: readonly Theme[] = ['light', 'dark', 'auto'];
 export const FONT_SCALES: readonly FontScale[] = [0.875, 1, 1.125, 1.25];
-export const PALETTES: readonly Palette[] = ['teal', 'ocean', 'plum', 'clay', 'graphite'];
+export const PALETTES: readonly Palette[] = [
+  'teal', 'ocean', 'sky', 'indigo', 'plum', 'rose', 'crimson', 'clay', 'amber', 'forest', 'graphite',
+];
 export const TYPEFACES: readonly Typeface[] = ['vazirmatn', 'plex', 'noto', 'kufi', 'naskh'];
 
 const SCALES = FONT_SCALES;

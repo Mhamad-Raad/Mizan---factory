@@ -74,5 +74,11 @@
   "typeface_kufi_hint": "Geometric and upright",
   "typeface_naskh_hint": "Traditional, like print",
   "typeface_sample": "کۆمپانیای زاگرۆس",
-  "typeface_letters": "ڵ ڕ ۆ ێ ە ڤ"
+  "typeface_letters": "ڵ ڕ ۆ ێ ە ڤ",
+  "palette_sky": "Sky",
+  "palette_indigo": "Indigo",
+  "palette_rose": "Rose",
+  "palette_crimson": "Crimson",
+  "palette_amber": "Amber",
+  "palette_forest": "Forest"
 }

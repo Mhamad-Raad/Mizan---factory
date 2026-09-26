@@ -74,5 +74,11 @@
   "typeface_kufi_hint": "هندسي ومستقيم",
   "typeface_naskh_hint": "تقليدي، كالمطبوع",
   "typeface_sample": "کۆمپانیای زاگرۆس",
-  "typeface_letters": "ڵ ڕ ۆ ێ ە ڤ"
+  "typeface_letters": "ڵ ڕ ۆ ێ ە ڤ",
+  "palette_sky": "سماوي",
+  "palette_indigo": "نيلي",
+  "palette_rose": "وردي",
+  "palette_crimson": "قرمزي",
+  "palette_amber": "كهرماني",
+  "palette_forest": "أخضر غابي"
 }

@@ -887,12 +887,15 @@ The client: "check the themes changing inside the item management system — the
 variation of fonts and themes — implement that here as well; all preferences saved in local
 storage".
 
-- **Colour:** five palettes — Teal (Mizan's own, the default), Ocean, Plum, Clay, Graphite. Each
+- **Colour:** eleven palettes — Teal (Mizan's own, the default), Ocean, Sky, Indigo, Plum, Rose,
+  Crimson, Clay, Amber, Forest, Graphite (the client asked for more, and for "a couple of red
+  ones": Rose, a pinkish red, and Crimson, a deep red turned away from the danger red so a
+  brand-red button never reads as the red of what is owed or of Void). Each
   is Mizan's ramp turned to another hue in OKLCH, brand steps and tinted greys alike, at the same
   lightness, in both themes. Paid/owed/warning colours, brass and the two chart series are not
   palette colours, so they keep their meaning in every palette; the single-series "who owes us
   most" bars take the palette's primary. `check:contrast` now measures every palette in both
-  themes (220 pairs).
+  themes (484 pairs).
 - **Typeface:** five faces for Kurdish and Arabic text, each carrying every Sorani letter, all
   self-hosted (`font-src 'self'`): Vazirmatn (default), IBM Plex Sans Arabic (which also sets the
   English text), Noto Sans Arabic, Noto Kufi, Noto Naskh. English otherwise stays in Inter. A face

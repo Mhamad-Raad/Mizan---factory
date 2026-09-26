@@ -74,5 +74,11 @@
   "typeface_kufi_hint": "ئەندازەیی و ڕاست",
   "typeface_naskh_hint": "کلاسیکی، وەک چاپ",
   "typeface_sample": "کۆمپانیای زاگرۆس",
-  "typeface_letters": "ڵ ڕ ۆ ێ ە ڤ"
+  "typeface_letters": "ڵ ڕ ۆ ێ ە ڤ",
+  "palette_sky": "ئاسمانی",
+  "palette_indigo": "نیلی",
+  "palette_rose": "پەمەیی",
+  "palette_crimson": "سووری تۆخ",
+  "palette_amber": "کارەبایی",
+  "palette_forest": "سەوزی دارستان"
 }
