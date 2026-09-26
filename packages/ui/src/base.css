@@ -4187,3 +4187,37 @@ html[data-mirroring='true'] body {
   background: var(--color-sidebar-hover);
   cursor: pointer;
 }
+
+/* ── Me: my own page (client review) ──────────────────────────────────────────────── */
+
+.mz-me__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.mz-me__avatar {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  inline-size: 4rem;
+  block-size: 4rem;
+  color: var(--color-on-primary-soft);
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+/* Details and password side by side on a desktop, one under the other on a phone. */
+.mz-me__grid {
+  display: grid;
+  align-items: start;
+  gap: var(--space-4);
+}
+
+@media (width >= 48rem) {
+  .mz-me__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

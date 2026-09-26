@@ -31,6 +31,12 @@ const createSchema = z.object({
   keys: z.array(z.string()).max(200).optional(),
 });
 
+const meSchema = z.object({
+  display_name: z.string().min(1).max(120).optional(),
+  phone: z.string().max(32).nullish(),
+  version: z.number().int().positive(),
+});
+
 const updateSchema = z.object({
   display_name: z.string().min(1).max(120).optional(),
   username: z
@@ -104,6 +110,28 @@ export class UsersController {
     @Body(zodBody(createSchema)) body: z.infer<typeof createSchema>,
   ) {
     return this.users.create(contextOf(request), body);
+  }
+
+  /**
+   * "Me" (client review): the signed-in person's own profile, and the two things they may change
+   * about themselves — the name everyone sees and their phone. Username and role stay with the
+   * admin; the password has its own route. Changes are recorded in History like any other.
+   */
+  @Get('me/profile')
+  @SessionOnly()
+  async myProfile(@Req() request: RequestWithContext) {
+    return this.users.get(contextOf(request).userId);
+  }
+
+  @Patch('me/profile')
+  @SessionOnly()
+  async updateMyProfile(@Req() request: RequestWithContext, @Body(zodBody(meSchema)) body: z.infer<typeof meSchema>) {
+    const context = contextOf(request);
+    return this.users.update(context, context.userId, {
+      display_name: body.display_name,
+      phone: body.phone,
+      version: body.version,
+    });
   }
 
   @Get('users/:id')

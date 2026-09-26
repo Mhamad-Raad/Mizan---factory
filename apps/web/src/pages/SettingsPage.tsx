@@ -42,81 +42,11 @@ export function SettingsPage() {
          */}
         <AppearanceCards />
 
-        <AccountCard />
-
         {/* A user who may set the rate sees that card even without the rest (spec 3.3). */}
         {user?.role === 'admin' || maySetRate ? <GlobalRateCard /> : null}
         {user?.role === 'admin' ? <SystemCard /> : null}
       </div>
     </>
-  );
-}
-
-function AccountCard() {
-  const { t } = useTranslation();
-  const [current, setCurrent] = useState('');
-  const [next, setNext] = useState('');
-  const [repeat, setRepeat] = useState('');
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const change = useMutation({
-    mutationFn: () =>
-      apiRequest('/auth/change-password', { method: 'POST', body: { current, new: next } }),
-    onSuccess: () => {
-      setMessage(t('auth:password_changed'));
-      setError(null);
-      setCurrent('');
-      setNext('');
-      setRepeat('');
-    },
-    onError: () => setError(t('auth:invalid_credentials')),
-  });
-
-  const mismatch = repeat.length > 0 && repeat !== next;
-
-  return (
-    <Card>
-      <div className="mz-stack">
-        <h2 className="mz-heading">{t('settings:my_account')}</h2>
-        <TextField
-          label={t('auth:current_password')}
-          type="password"
-          value={current}
-          onChange={(event) => setCurrent(event.target.value)}
-          autoComplete="current-password"
-        />
-        <TextField
-          label={t('auth:new_password')}
-          type="password"
-          value={next}
-          onChange={(event) => setNext(event.target.value)}
-          autoComplete="new-password"
-        />
-        <TextField
-          label={t('auth:confirm_password')}
-          type="password"
-          value={repeat}
-          onChange={(event) => setRepeat(event.target.value)}
-          error={mismatch ? t('errors:field.passwords_do_not_match') : undefined}
-          autoComplete="new-password"
-        />
-        {error ? (
-          <p className="mz-field__error" role="alert">
-            {error}
-          </p>
-        ) : null}
-        {message ? <p className="mz-muted">{message}</p> : null}
-        <Button
-          block
-          loading={change.isPending}
-          disabled={!current || !next || mismatch}
-          onClick={() => change.mutate()}
-        >
-          {t('auth:change_password')}
-        </Button>
-      </div>
-    </Card>
   );
 }
 

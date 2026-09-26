@@ -69,6 +69,7 @@ const HistoryPage = chunk(() => import('./pages/HistoryPage.js'), 'HistoryPage')
 const ReportsPage = chunk(() => import('./pages/ReportsPage.js'), 'ReportsPage');
 const DashboardPage = chunk(() => import('./pages/DashboardPage.js'), 'DashboardPage');
 const SettingsPage = chunk(() => import('./pages/SettingsPage.js'), 'SettingsPage');
+const MePage = chunk(() => import('./pages/MePage.js'), 'MePage');
 const FontCheckPage = chunk(() => import('./pages/FontCheckPage.js'), 'FontCheckPage');
 const ImportPage = chunk(() => import('./pages/ImportPage.js'), 'ImportPage');
 
@@ -254,6 +255,7 @@ export function App() {
             <Route path="/reports/:name" element={<ReportRedirect />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/me" element={<MePage />} />
             {/* A test fixture with a URL, deliberately not in the navigation (spec 3.7.1). */}
             <Route path="/font-check" element={<FontCheckPage />} />
             {/* Go-live import (FR-1312, Proposed — not requested); the API is admin-only. */}

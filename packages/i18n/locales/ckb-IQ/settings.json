@@ -80,5 +80,18 @@
   "palette_rose": "پەمەیی",
   "palette_crimson": "سووری تۆخ",
   "palette_amber": "کارەبایی",
-  "palette_forest": "سەوزی دارستان"
+  "palette_forest": "سەوزی دارستان",
+  "me_title": "من",
+  "me_recent": "ئەوەی دوایی کردم",
+  "me_all_history": "هەمووی لە مێژوو",
+  "me_no_recent": "هێشتا هیچ",
+  "me_profile": "زانیارییەکانم",
+  "me_profile_hint": "ئەو ناوەی هەمووان دەیبینن، و ژمارەیەک بۆ پەیوەندی",
+  "me_name": "ناو",
+  "me_phone": "تەلەفۆن",
+  "me_phone_hint": "ئارەزوومەندانە — دەتوانیت پێشی بچیتە ژوورەوە",
+  "me_saved": "پاشەکەوت کرا",
+  "me_save": "پاشەکەوتکردن",
+  "me_password": "وشەی نهێنی",
+  "me_password_hint": "سەرەتا وشەی نهێنی ئێستا، پاشان نوێکە دوو جار"
 }

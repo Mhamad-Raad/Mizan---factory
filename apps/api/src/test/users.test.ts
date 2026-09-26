@@ -361,4 +361,24 @@ describe('users and permissions (FR-102 to FR-108, FR-201 to FR-206)', () => {
       expect(permissions.body.keys).not.toContain('orders.create');
     });
   });
+
+  describe('my own profile (client review)', () => {
+    it('lets anyone change their own name and phone, and nothing else, with History keeping it', async () => {
+      const employee = await seedUser({ username: 'rebaz', displayName: 'Rebaz' });
+      const session = await signIn(ctx.http, employee);
+
+      const me = await as(ctx.http, session).get('/api/v1/me/profile').expect(200);
+      expect(me.body).toMatchObject({ display_name: 'Rebaz', username: 'rebaz' });
+
+      const changed = await as(ctx.http, session)
+        .patch('/api/v1/me/profile')
+        .send({ display_name: 'Rebaz Omar', phone: '0750 123 4567', role: 'admin', version: me.body.version })
+        .expect(200);
+      expect(changed.body).toMatchObject({ display_name: 'Rebaz Omar', role: 'employee' });
+      expect(changed.body.phone).toContain('750');
+
+      const rows = await auditRows({ entityId: employee.id, action: 'update' });
+      expect(rows[0]?.changes).toMatchObject({ display_name: { old: 'Rebaz', new: 'Rebaz Omar' } });
+    });
+  });
 });

@@ -80,5 +80,18 @@
   "palette_rose": "Rose",
   "palette_crimson": "Crimson",
   "palette_amber": "Amber",
-  "palette_forest": "Forest"
+  "palette_forest": "Forest",
+  "me_title": "Me",
+  "me_recent": "What I did lately",
+  "me_all_history": "All of it in History",
+  "me_no_recent": "Nothing yet",
+  "me_profile": "My details",
+  "me_profile_hint": "The name everyone sees, and a phone to reach you",
+  "me_name": "Name",
+  "me_phone": "Phone",
+  "me_phone_hint": "Optional — you can also sign in with it",
+  "me_saved": "Saved",
+  "me_save": "Save",
+  "me_password": "Password",
+  "me_password_hint": "Your current password first, then the new one twice"
 }
