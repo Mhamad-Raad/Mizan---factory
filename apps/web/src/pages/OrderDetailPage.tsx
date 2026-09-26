@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
+import type { IconName } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
@@ -15,30 +16,10 @@ import { useJustSettled } from '../lib/motion.js';
 import { customerName } from '../lib/customers.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import type { OrderDetail } from './OrderFormPage.js';
+import { timelineOf } from '../lib/order-timeline.js';
+import type { OrderHistory } from '../lib/order-timeline.js';
 
 type Tab = 'lines' | 'payments' | 'history';
-
-interface OrderHistory {
-  items: { id: string; action: string; occurred_at: string; actor_display_name: string | null; note: string | null }[];
-  payment_type_changes: {
-    id: string;
-    from_type: string;
-    to_type: string;
-    note: string;
-    changed_at: string;
-    changed_by_name: string | null;
-  }[];
-  ledger_entries: {
-    id: string;
-    entry_type: string;
-    entry_date: string;
-    amount_iqd: number;
-    amount_usd_cents: number;
-    note: string | null;
-    voucher_number: number | null;
-    reverses_entry_id: string | null;
-  }[];
-}
 
 /**
  * The order detail page (spec 3.3): the header with its chips, the totals and what is still
@@ -251,7 +232,7 @@ export function OrderDetailPage() {
               <div className="mz-actions">
                 {data.doc_status === 'active' &&
                 ((mayRecordPayment && data.status !== 'paid') || mayChangeType) ? (
-                  <div className="mz-actions__group">
+                  <div className="mz-actions__group mz-actions__group--primary">
                     {mayRecordPayment && data.status !== 'paid' ? (
                       <Button icon="check" onClick={() => setPaying(true)}>
                         {t('customers:record_payment')}
@@ -288,7 +269,7 @@ export function OrderDetailPage() {
                   ) : null}
                   {/* What came back damaged from this order (FR-802, FR-806). */}
                   <Can permission="damages.view">
-                    <Link to={`/damages?order=${id}`} className="mz-button mz-button--ghost">
+                    <Link to={`/damages?order=${id}`} className="mz-button mz-button--secondary">
                       <Icon name="warning" />
                       {t('glossary:damaged_items')}
                     </Link>
@@ -316,40 +297,42 @@ export function OrderDetailPage() {
               />
 
               {tab === 'lines' ? (
-                <Card>
-                  <ul className="mz-list">
-                    {data.lines.map((line) => (
-                      <li key={line.id} className="mz-list__item">
-                        <span className="mz-row-lead">
-                          <Icon name="materials" size={18} />
+                <ul className="mz-list">
+                  {data.lines.map((line) => (
+                    <li key={line.id} className="mz-list__item mz-list__item--detail">
+                      <span className="mz-row-lead">
+                        <Icon name="materials" size={18} />
+                      </span>
+                      <span className="mz-list__body">
+                        <span className="mz-list__title">
+                          <bdi>{line.item_name}</bdi>
                         </span>
-                        <span className="mz-list__body">
-                          <span className="mz-list__title"><bdi>{line.item_name}</bdi></span>
-                          <span className="mz-caption" style={{ display: 'block' }} data-tabular>
-                            {line.priced_measure === 'kg'
-                              ? `${formatter.number(line.qty_kg ?? '0', 3)} ${t('common:kg_symbol')}`
-                              : formatter.number(line.qty_count ?? 0)}
-                            {' × '}
-                            {formatter.money(
-                              line.price_entered_currency === 'IQD' ? line.unit_price_iqd : line.unit_price_usd_cents,
-                              line.price_entered_currency,
-                            )}
-                          </span>
-                          {line.price_source === 'override' ? (
-                            <Chip tone="warning">{t('orders:price_overridden')}</Chip>
-                          ) : null}
+                        <span className="mz-caption" style={{ display: 'block' }} data-tabular>
+                          {line.priced_measure === 'kg'
+                            ? `${formatter.number(line.qty_kg ?? '0', 3)} ${t('common:kg_symbol')}`
+                            : formatter.number(line.qty_count ?? 0)}
+                          {' × '}
+                          {formatter.money(
+                            line.price_entered_currency === 'IQD'
+                              ? line.unit_price_iqd
+                              : line.unit_price_usd_cents,
+                            line.price_entered_currency,
+                          )}
                         </span>
-                        <span className="mz-list__end">
-                          <DualAmount
-                            amount_iqd={line.line_total_iqd}
-                            amount_usd_cents={line.line_total_usd_cents}
-                            primary={data.settlement_currency}
-                          />
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
+                        {line.price_source === 'override' ? (
+                          <Chip tone="warning">{t('orders:price_overridden')}</Chip>
+                        ) : null}
+                      </span>
+                      <span className="mz-list__end">
+                        <DualAmount
+                          amount_iqd={line.line_total_iqd}
+                          amount_usd_cents={line.line_total_usd_cents}
+                          primary={data.settlement_currency}
+                        />
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               ) : null}
 
               {tab === 'payments' ? (
@@ -363,79 +346,111 @@ export function OrderDetailPage() {
                     ) : undefined
                   }
                 >
-                  <Card>
-                    <ul className="mz-list">
-                      {(history.data?.ledger_entries ?? [])
-                        .filter((entry) => entry.entry_type !== 'order')
-                        .map((entry) => (
-                          <li key={entry.id} className="mz-list__item">
-                            <span className="mz-row-lead">
-                              <Icon name="check" size={18} />
+                  <ul className="mz-list">
+                    {(history.data?.ledger_entries ?? [])
+                      .filter((entry) => entry.entry_type !== 'order')
+                      .map((entry) => (
+                        <li key={entry.id} className="mz-list__item mz-list__item--detail">
+                          <span className="mz-row-lead">
+                            <Icon name="check" size={18} />
+                          </span>
+                          <span className="mz-list__body">
+                            <span className="mz-list__title">
+                              {t(`customers:entry.${entry.entry_type}`)}
                             </span>
-                            <span className="mz-list__body">
-                              <span className="mz-list__title">{t(`customers:entry.${entry.entry_type}`)}</span>
-                              <span className="mz-caption">
-                                {formatter.date(entry.entry_date)}
-                                {entry.voucher_number
-                                  ? ` · ${t('customers:voucher_number', { number: formatter.number(entry.voucher_number) })}`
-                                  : ''}
-                                {entry.note ? ` · ${entry.note}` : ''}
-                              </span>
+                            <span className="mz-caption">
+                              {formatter.date(entry.entry_date)}
+                              {entry.voucher_number
+                                ? ` · ${t('customers:voucher_number', { number: formatter.number(entry.voucher_number) })}`
+                                : ''}
                             </span>
-                            <span className="mz-list__end">
-                              <DualAmount
-                                amount_iqd={entry.amount_iqd}
-                                amount_usd_cents={entry.amount_usd_cents}
-                                primary={data.settlement_currency}
-                              />
-                            </span>
-                          </li>
-                        ))}
-                    </ul>
-                  </Card>
+                            <RowNote note={entry.note} />
+                          </span>
+                          <span className="mz-list__end">
+                            {/* Stored signed (a payment lowers what is owed); the row's title says what
+                                it was, so the amount reads as the money that changed hands. */}
+                            <DualAmount
+                              amount_iqd={Math.abs(entry.amount_iqd)}
+                              amount_usd_cents={Math.abs(entry.amount_usd_cents)}
+                              primary={data.settlement_currency}
+                            />
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
                 </QueryStates>
               ) : null}
 
               {tab === 'history' ? (
-                <QueryStates query={history} isEmpty={(history.data?.items.length ?? 0) === 0} emptyTitle={t('history:empty')}>
-                  <Card>
-                    <ul className="mz-list">
-                      {(history.data?.payment_type_changes ?? []).map((change) => (
-                        <li key={change.id} className="mz-list__item">
+                <QueryStates
+                  query={history}
+                  isEmpty={
+                    (history.data?.items.length ?? 0) +
+                      (history.data?.payment_type_changes.length ?? 0) ===
+                    0
+                  }
+                  emptyTitle={t('history:empty')}
+                >
+                  <ul className="mz-list">
+                    {timelineOf(history.data).map((row) =>
+                      row.kind === 'type_change' ? (
+                        <li key={row.change.id} className="mz-list__item mz-list__item--detail">
                           <span className="mz-row-lead">
                             <Icon name="refresh" size={18} />
                           </span>
                           <span className="mz-list__body">
                             <span className="mz-list__title">
                               {t('orders:type_changed', {
-                                from: t(`glossary:${change.from_type}`),
-                                to: t(`glossary:${change.to_type}`),
+                                from: t(`glossary:${row.change.from_type}`),
+                                to: t(`glossary:${row.change.to_type}`),
                               })}
                             </span>
                             <span className="mz-caption">
-                              {formatter.timestamp(new Date(change.changed_at))}
-                              {change.changed_by_name ? ` · ${change.changed_by_name}` : ''} · {change.note}
+                              {formatter.timestamp(new Date(row.change.changed_at))}
+                              {row.change.changed_by_name ? ` · ${row.change.changed_by_name}` : ''}
                             </span>
+                            <RowNote note={row.change.note} />
                           </span>
                         </li>
-                      ))}
-                      {(history.data?.items ?? []).map((entry) => (
-                        <li key={entry.id} className="mz-list__item">
+                      ) : (
+                        <li key={row.entry.id} className="mz-list__item mz-list__item--detail">
                           <span className="mz-row-lead">
-                            <Icon name="clock" size={18} />
+                            <Icon name={historyIcon(row.entry)} size={18} />
                           </span>
                           <span className="mz-list__body">
-                            <span className="mz-list__title">{t(`history:action.${entry.action}`)}</span>
-                            <span className="mz-caption">
-                              {formatter.timestamp(new Date(entry.occurred_at))}
-                              {entry.actor_display_name ? ` · ${entry.actor_display_name}` : ''}
-                              {entry.note ? ` · ${entry.note}` : ''}
+                            <span className="mz-list__title">
+                              {row.entry.changes?.entry
+                                ? t(`customers:entry.${row.entry.changes.entry.type}`)
+                                : row.entry.entity_type === 'order'
+                                  ? t(`history:action.${row.entry.action}`)
+                                  : t(`history:entity.${row.entry.entity_type}`)}
                             </span>
+                            <span className="mz-caption">
+                              {row.entry.entity_type !== 'order' && !row.entry.changes?.entry
+                                ? `${t(`history:action.${row.entry.action}`)} · `
+                                : ''}
+                              {formatter.timestamp(new Date(row.entry.occurred_at))}
+                              {row.entry.actor_display_name
+                                ? ` · ${row.entry.actor_display_name}`
+                                : ''}
+                            </span>
+                            <RowNote note={row.entry.note} />
                           </span>
+                          {row.entry.changes?.entry ? (
+                            <span className="mz-list__end">
+                              <DualAmount
+                                amount_iqd={Math.abs(row.entry.changes.entry.amount_iqd)}
+                                amount_usd_cents={Math.abs(
+                                  row.entry.changes.entry.amount_usd_cents,
+                                )}
+                                primary={data.settlement_currency}
+                              />
+                            </span>
+                          ) : null}
                         </li>
-                      ))}
-                    </ul>
-                  </Card>
+                      ),
+                    )}
+                  </ul>
                 </QueryStates>
               ) : null}
             </>
@@ -628,6 +643,36 @@ export function OrderDetailPage() {
       </div>
     </>
   );
+}
+
+/**
+ * A note somebody typed, on a line of its own under the row's facts. It is isolated because it
+ * may be in any script: an English note inside a Kurdish caption otherwise reorders the words
+ * around it (2.10.6).
+ */
+function RowNote({ note }: { note: string | null }) {
+  if (!note) return null;
+  return (
+    <span className="mz-caption" style={{ display: 'block' }}>
+      <bdi>{note}</bdi>
+    </span>
+  );
+}
+
+/** The icon that says what kind of History row this is at a glance. */
+function historyIcon(entry: OrderHistory['items'][number]): IconName {
+  if (entry.changes?.entry) return entry.changes.entry.type === 'reversal' ? 'refresh' : 'check';
+  if (entry.entity_type === 'damage') return 'warning';
+  switch (entry.action) {
+    case 'create':
+      return 'plus';
+    case 'update':
+      return 'edit';
+    case 'void':
+      return 'trash';
+    default:
+      return 'clock';
+  }
 }
 
 /**

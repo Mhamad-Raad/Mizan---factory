@@ -676,7 +676,7 @@ export class OrdersService {
   ) {
     const order = await this.requireOrder(context, id);
     const [audit, paymentTypes, entries] = await Promise.all([
-      this.history.list({ entity_type: 'order', entity_id: id, ...options }),
+      this.history.list({ about_order: id, ...options }),
       this.orders.paymentTypeHistory(id),
       this.ledger.entriesFor(this.database, order.customer_id),
     ]);

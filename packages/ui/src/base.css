@@ -801,11 +801,97 @@ a.mz-button {
   margin-inline-start: auto;
 }
 
-@media (width >= 48rem) {
+/*
+ * Tablet and below: the bar becomes rows of equal buttons rather than a ragged wrap. Each group
+ * is its own row — money first, then the document, then Void apart at the end — and the buttons
+ * in a row share its width, so nothing is left hanging on a line of its own. On a phone the
+ * money actions take the full width (they are the ones a thumb reaches for) and the document
+ * actions sit two to a row.
+ */
+@media (width < 64rem) {
+  .mz-actions {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .mz-actions__group {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: var(--space-2);
+  }
+
+  .mz-actions__group--end {
+    display: flex;
+    justify-content: flex-end;
+    margin-inline-start: 0;
+  }
+}
+
+@media (width < 40rem) {
+  .mz-actions__group {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mz-actions__group--primary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* An odd one out takes the whole row rather than half of it beside a hole. */
+  .mz-actions__group > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .mz-actions__group--end > * {
+    flex: 1;
+  }
+}
+
+/* From a desktop up the bar is one line of groups, with a hairline between adjacent ones. */
+@media (width >= 64rem) {
   .mz-actions__group + .mz-actions__group:not(.mz-actions__group--end) {
     border-inline-start: 1px solid var(--color-border);
     padding-inline-start: var(--space-3);
   }
+}
+
+/*
+ * A row of a document's detail list — a line, a payment, a History entry: the kind of row, what
+ * it is, and its amount at the end. On a phone the amount would squeeze the name to a word per
+ * line, so it takes a line of its own under the name, still at the reading end so a column of
+ * amounts lines up.
+ */
+.mz-list__item--detail {
+  display: grid;
+  grid-template-areas: 'lead body end';
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: var(--space-3);
+}
+
+.mz-list__item--detail > .mz-row-lead {
+  grid-area: lead;
+}
+
+.mz-list__item--detail > .mz-list__body {
+  grid-area: body;
+}
+
+.mz-list__item--detail > .mz-list__end {
+  grid-area: end;
+
+  /* The column is sized by its content; a percentage cap here would be a share of itself. */
+  max-inline-size: none;
+}
+
+@media (width < 40rem) {
+  .mz-list__item--detail {
+    grid-template-areas:
+      'lead body'
+      'lead end';
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    row-gap: var(--space-1);
+  }
+
 }
 
 /* A detail-list row leads with a soft icon marking what kind of row it is, the way a picker row
@@ -2013,9 +2099,13 @@ html[data-mirroring='true'] body {
 
 /* ─────────────── the list's toolbar ───────────────
  *
- * Search and the Filter dropdown at the start, the page's actions gathered at the end — one row
- * on a desktop, stacked on a phone. The class carried no layout of its own, so the controls fell
- * into a bare column; this is the row an office expects above a table.
+ * Search, the filters and the page's own action, every control the same 44 px tall so they
+ * line up along one edge.
+ *
+ * - Phone: the search takes a line of its own and the filters sit two to a row under it, so
+ *   four filters cost two lines rather than four; an odd one out takes the whole last row.
+ * - Tablet: the search and the page's action share the first line, the filters wrap beneath.
+ * - Desktop: one row — search, filters, and the action at the end.
  */
 .mz-toolbar {
   display: flex;
@@ -2024,32 +2114,98 @@ html[data-mirroring='true'] body {
 }
 
 .mz-toolbar__filters {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
+}
+
+.mz-toolbar__filters > * {
+  min-inline-size: 0;
+}
+
+.mz-toolbar__search {
+  grid-column: 1 / -1;
+  inline-size: 100%;
+}
+
+/* The search is the first control, so an odd count of the rest leaves the last one alone. */
+.mz-toolbar__filters > :last-child:nth-child(even) {
+  grid-column: 1 / -1;
+}
+
+/* The label above a toolbar control is noise beside its own placeholder; it stays for readers. */
+.mz-toolbar__search .mz-field__label {
+  position: absolute;
+  clip-path: inset(50%);
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* A form field is 48 px of breathing room; in a toolbar it matches the selects beside it. */
+.mz-toolbar .mz-field__control {
+  padding-block: var(--space-2);
 }
 
 @media (width >= 48rem) {
   .mz-toolbar {
-    flex-flow: row wrap;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: row;
+    align-items: flex-start;
   }
 
   .mz-toolbar__filters {
-    flex-direction: row;
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
     align-items: center;
+  }
+
+  .mz-toolbar__search {
+    flex: 1 1 100%;
+  }
+
+  .mz-toolbar__filters .mz-select {
+    inline-size: auto;
+  }
+
+  /* The page's action keeps its label on one line at the end of the first row. */
+  .mz-toolbar > :not(.mz-toolbar__filters) {
+    flex: none;
+  }
+
+  /* …and is as tall as the controls it sits beside, so the row has one top and one bottom. */
+  .mz-toolbar > .mz-button {
+    padding-block: var(--space-2);
+    min-block-size: var(--tap-target);
+
+    /* A `--block` button fills a phone's width; beside the filters it is its own width. */
+    inline-size: auto;
+  }
+
+  /* A toggle in a toolbar is a control, not a row of a form. */
+  .mz-toolbar__filters .mz-toggle {
+    flex: none;
+    gap: var(--space-2);
+    inline-size: auto;
   }
 }
 
-/* A search box takes the width of a search box, not of the toolbar it sits in. */
-.mz-toolbar__search {
-  inline-size: 100%;
+@media (width >= 64rem) {
+  .mz-toolbar__filters {
+    flex-wrap: nowrap;
+  }
+
+  .mz-toolbar__search {
+    flex: 1 1 16rem;
+    max-inline-size: 24rem;
+  }
+
 }
 
-/* A compact select for a toolbar filter: full width when the filters stack on a phone, its own
-   content width when they sit in a row on a desktop. Its own chevron, set in from the edge, so
-   the arrow is not jammed against the border the way the browser's default one is. */
+/* A compact select for a toolbar filter, with its own chevron set in from the reading end so
+   the arrow is not jammed against the border the way the browser's default one is. The padding
+   is logical, so the room for the arrow is at the end in both directions. */
 .mz-select {
   appearance: none;
   border: 1px solid var(--color-border-strong);
@@ -2064,40 +2220,73 @@ html[data-mirroring='true'] body {
   color: var(--color-text);
   font: inherit;
   inline-size: 100%;
+  text-overflow: ellipsis;
 }
 
+/* The arrow moves to the left in Kurdish and Arabic; the padding above already follows it. */
 [dir='rtl'] .mz-select {
   background-position: left var(--space-3) center;
-  padding-inline: 2.25rem var(--space-3);
 }
 
-@media (width >= 48rem) {
-  .mz-toolbar__filters .mz-select {
-    inline-size: auto;
-  }
+/* A filter that is on or off: a pill the height of the selects beside it, tinted when on. */
+.mz-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  cursor: pointer;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding-inline: var(--space-3);
+  min-block-size: var(--tap-target);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-@media (width >= 64rem) {
-  .mz-toolbar__search {
-    inline-size: 20rem;
-  }
+.mz-filter-chip:hover {
+  background: var(--color-surface-2);
+}
 
-  /* The label above a toolbar control is noise beside its own placeholder. */
-  .mz-toolbar__search .mz-field__label {
-    position: absolute;
-    clip-path: inset(50%);
-    inline-size: 1px;
-    block-size: 1px;
-    overflow: hidden;
-    white-space: nowrap;
-  }
+.mz-filter-chip[aria-pressed='true'] {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-on-primary-soft);
+}
 
-  /* A toggle in a toolbar is a control, not a row of a form. */
-  .mz-toolbar__filters .mz-toggle {
-    flex: none;
-    gap: var(--space-2);
-    inline-size: auto;
-  }
+/*
+ * A document's row on a phone or tablet: what it is and its state on the first line, who and
+ * when on the second, the money on the third — the total at the start and what is still owed at
+ * the end, so a thumb-scroll down a list reads as two columns of figures.
+ */
+.mz-rowcard {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.mz-rowcard__head,
+.mz-rowcard__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+}
+
+.mz-rowcard__chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.mz-rowcard__foot {
+  align-items: baseline;
+  margin-block-start: var(--space-1);
 }
 
 /* ─────────────────────────────── checkboxes ───────────────────────────────

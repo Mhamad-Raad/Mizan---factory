@@ -244,13 +244,8 @@ export function FilterChip({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      className="mz-segmented__option"
-      aria-pressed={active}
-      onClick={onClick}
-      style={{ borderRadius: 'var(--radius-lg)' }}
-    >
+    <button type="button" className="mz-filter-chip" aria-pressed={active} onClick={onClick}>
+      {active ? <Icon name="check" size={16} /> : null}
       {children}
     </button>
   );

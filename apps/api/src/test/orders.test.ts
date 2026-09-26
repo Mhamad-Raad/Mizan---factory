@@ -568,6 +568,46 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       });
     });
 
+    it("lists the order's payments in its History, without the balance for those who may not see it", async () => {
+      const order = await createOrder(sales, {
+        lines: [{ item_id: copper, qty_kg: '100.000' }],
+      }).expect(201);
+      await as(ctx.http, sales)
+        .post(`/api/v1/orders/${order.body.id}/payments`)
+        .send({ amount: 30_000, currency: 'IQD', entry_date: today(), note: 'part at the gate' })
+        .expect(201);
+
+      type Row = { action: string; note: string | null; changes: Record<string, unknown> };
+      const history = await as(ctx.http, sales)
+        .get(`/api/v1/orders/${order.body.id}/history`)
+        .expect(200);
+      const rows = history.body.items as Row[];
+      expect(rows.some((row) => row.action === 'create')).toBe(true);
+      const paid = rows.find(
+        (row) =>
+          row.action === 'ledger_entry' &&
+          (row.changes.entry as { type: string }).type === 'payment',
+      );
+      expect(paid?.note).toBe('part at the gate');
+      expect((paid?.changes.entry as { amount_iqd: number }).amount_iqd).toBe(-30_000);
+      expect(paid?.changes).toHaveProperty('balance');
+
+      const plain = await seedUser({
+        username: 'plain',
+        displayName: 'Plain',
+        permissions: ['customers.view', 'customers.view_all', 'orders.view'],
+      });
+      const session = await signIn(ctx.http, plain);
+      const stripped = await as(ctx.http, session)
+        .get(`/api/v1/orders/${order.body.id}/history`)
+        .expect(200);
+      const strippedPaid = (stripped.body.items as Row[]).find(
+        (row) => row.action === 'ledger_entry',
+      );
+      expect(strippedPaid?.changes).not.toHaveProperty('balance');
+      expect(strippedPaid?.changes).toHaveProperty('entry');
+    });
+
     it('cash → borrowed reverses the settlement so the order is owed again', async () => {
       const order = await as(ctx.http, sales)
         .post('/api/v1/orders')

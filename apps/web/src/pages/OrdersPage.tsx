@@ -273,32 +273,40 @@ export function OrdersPage() {
               { header: t('common:status'), cell: (order) => <OrderStatusChip status={order.status} /> },
             ]}
             card={(order) => (
-              <>
-                <span className="mz-list__body">
+              <span className="mz-rowcard">
+                <span className="mz-rowcard__head">
                   <span className="mz-list__title">
                     {t('orders:number', { number: formatter.number(order.number) })}
                   </span>
-                  <span className="mz-caption" style={{ display: 'block' }}>
-                    {customerName({ name: order.customer_name, is_system: order.customer_is_system }, t)} ·{' '}
-                    {formatter.date(order.order_date)}
-                    {order.acting_user_name ? ` · ${order.acting_user_name}` : ''}
+                  <span className="mz-rowcard__chips">
+                    <PaymentTypeChip type={order.payment_type} />
+                    <OrderStatusChip status={order.status} />
                   </span>
+                </span>
+                <span className="mz-caption">
+                  <bdi>{customerName({ name: order.customer_name, is_system: order.customer_is_system }, t)}</bdi>
+                  {' · '}
+                  {formatter.date(order.order_date)}
+                  {order.acting_user_name ? (
+                    <>
+                      {' · '}
+                      <bdi>{order.acting_user_name}</bdi>
+                    </>
+                  ) : null}
+                </span>
+                <span className="mz-rowcard__foot">
                   <DualAmount
                     amount_iqd={order.total_iqd}
                     amount_usd_cents={order.total_usd_cents}
                     primary={order.settlement_currency}
                   />
                   {order.remaining > 0 ? (
-                    <span className="mz-caption mz-owed" style={{ display: 'block' }} data-tabular>
+                    <span className="mz-caption mz-owed" data-tabular>
                       {t('orders:remaining')}: {formatter.money(order.remaining, order.settlement_currency)}
                     </span>
                   ) : null}
                 </span>
-                <span className="mz-row" style={{ gap: 'var(--space-1)' }}>
-                  <PaymentTypeChip type={order.payment_type} />
-                  <OrderStatusChip status={order.status} />
-                </span>
-              </>
+              </span>
             )}
           />
           </div>

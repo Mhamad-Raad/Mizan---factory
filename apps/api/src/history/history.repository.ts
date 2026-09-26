@@ -29,6 +29,13 @@ export interface HistoryFilters {
   to?: string;
   entity_type?: string;
   entity_id?: string;
+  /**
+   * Everything that happened *about* one order: its own rows, and the rows filed under
+   * something else that name it in `related` — the payments and reversals recorded against it
+   * (filed under the customer), and the damage reported from it. Both halves are index scans:
+   * `audit_log_entity_idx` and the GIN index on `related`.
+   */
+  about_order?: string;
   action?: string;
   /** Collapse an edit storm into one entry per record (spec 2.4.5, last row). */
   group_edits?: boolean;
@@ -87,6 +94,12 @@ export class HistoryRepository {
     if (filters.entity_id) {
       values.push(filters.entity_id);
       conditions.push(`a.entity_id = $${values.length}`);
+    }
+    if (filters.about_order) {
+      values.push(filters.about_order, JSON.stringify({ order_id: filters.about_order }));
+      conditions.push(
+        `((a.entity_type = 'order' AND a.entity_id = $${values.length - 1}) OR a.related @> $${values.length}::jsonb)`,
+      );
     }
     if (filters.action) {
       values.push(filters.action);
