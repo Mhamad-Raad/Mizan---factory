@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, NumberField, SegmentedControl, TextField, Toggle } from '@mizan/ui';
+import { Button, Card, NumberField, TextField } from '@mizan/ui';
 import { apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
@@ -11,8 +10,9 @@ import { Pager } from '../components/Pager.js';
 import { usePaging } from '../lib/paging.js';
 
 /**
- * Settings (FR-1101 to FR-1107): appearance (language, theme, text size) is per device,
- * "My account" holds the password, and "System" is admin-only. Numbers always render in
+ * Settings (FR-1101 to FR-1107): how the app looks on this device, and the system's exchange
+ * rate. The password moved to Me; the admin's "System" card was taken out at the client's request
+ * (its values stay as they are on the server). Numbers always render in
  * Western digits (see store.ts formatterFor), so there is no per-device numerals choice.
  */
 export function SettingsPage() {
@@ -44,23 +44,11 @@ export function SettingsPage() {
 
         {/* A user who may set the rate sees that card even without the rest (spec 3.3). */}
         {user?.role === 'admin' || maySetRate ? <GlobalRateCard /> : null}
-        {user?.role === 'admin' ? <SystemCard /> : null}
       </div>
     </>
   );
 }
 
-interface SystemSettings {
-  idle_lock_shared_minutes: number;
-  idle_lock_default_minutes: number;
-  week_start: 'sat' | 'sun' | 'mon';
-  date_format: 'dd/MM/yyyy';
-  /** Iteration 1: the rules selling is subject to (FR-1107, A-34). */
-  allow_negative_stock: boolean;
-  default_customer_currency: 'IQD' | 'USD';
-  settle_tolerance_iqd: number;
-  settle_tolerance_usd_cents: number;
-}
 
 interface GlobalRate {
   current: { rate_iqd_per_usd: string; effective_from: string } | null;
@@ -186,96 +174,3 @@ function GlobalRateCard() {
   );
 }
 
-function SystemCard() {
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const [message, setMessage] = useState<string | null>(null);
-
-  const settings = useQuery({
-    queryKey: ['settings'],
-    queryFn: () => apiRequest<SystemSettings>('/settings'),
-  });
-
-  const save = useMutation({
-    mutationFn: (patch: Partial<SystemSettings>) =>
-      apiRequest<SystemSettings>('/settings', { method: 'PATCH', body: patch }),
-    onSuccess: async () => {
-      setMessage(t('settings:system_saved'));
-      await queryClient.invalidateQueries({ queryKey: ['settings'] });
-    },
-  });
-
-  if (!settings.data) return null;
-
-  return (
-    <Card>
-      <div className="mz-stack">
-        <h2 className="mz-heading">{t('settings:system')}</h2>
-
-        {/* Go-live import (FR-1312, Proposed — not requested): admin-only, like this card. */}
-        <Link to="/import" className="mz-button mz-button--ghost">
-          {t('imports:title')}
-        </Link>
-
-        <TextField
-          label={t('settings:idle_lock_shared')}
-          type="number"
-          inputMode="numeric"
-          defaultValue={settings.data.idle_lock_shared_minutes}
-          onBlur={(event) => save.mutate({ idle_lock_shared_minutes: Number(event.target.value) })}
-        />
-        <TextField
-          label={t('settings:idle_lock_default')}
-          type="number"
-          inputMode="numeric"
-          defaultValue={settings.data.idle_lock_default_minutes}
-          onBlur={(event) => save.mutate({ idle_lock_default_minutes: Number(event.target.value) })}
-        />
-        <SegmentedControl
-          label={t('settings:week_start')}
-          value={settings.data.week_start}
-          onChange={(value) => save.mutate({ week_start: value })}
-          options={[
-            { value: 'sat', label: t('settings:week_start_sat') },
-            { value: 'sun', label: t('settings:week_start_sun') },
-            { value: 'mon', label: t('settings:week_start_mon') },
-          ]}
-        />
-
-        {/* Iteration 1: the selling rules. Each one is a rule an employee's form obeys, so
-            each one is visible to them through `GET /settings` (FR-1107). */}
-        <Toggle
-          label={t('settings:allow_negative_stock')}
-          hint={t('settings:allow_negative_stock_hint')}
-          checked={settings.data.allow_negative_stock}
-          onChange={(checked) => save.mutate({ allow_negative_stock: checked })}
-        />
-        <SegmentedControl
-          label={t('settings:default_customer_currency')}
-          value={settings.data.default_customer_currency}
-          onChange={(value) => save.mutate({ default_customer_currency: value })}
-          options={[
-            { value: 'IQD', label: t('glossary:iqd') },
-            { value: 'USD', label: t('glossary:usd') },
-          ]}
-        />
-        <div className="mz-grid-2">
-          <NumberField
-            label={t('settings:settle_tolerance_iqd')}
-            unit={t('common:iqd_symbol')}
-            defaultValue={settings.data.settle_tolerance_iqd}
-            onBlur={(event) => save.mutate({ settle_tolerance_iqd: Number(event.target.value) })}
-          />
-          <NumberField
-            label={t('settings:settle_tolerance_usd')}
-            defaultValue={settings.data.settle_tolerance_usd_cents}
-            onBlur={(event) =>
-              save.mutate({ settle_tolerance_usd_cents: Number(event.target.value) })
-            }
-          />
-        </div>
-        {message ? <p className="mz-muted">{message}</p> : null}
-      </div>
-    </Card>
-  );
-}
