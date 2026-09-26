@@ -6,6 +6,7 @@ import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { ItemsService } from './items.service.js';
+import { limitField, pageFields } from '../common/paging.js';
 
 const uuid = z.string().uuid();
 const kg = z.string().regex(/^-?\d{1,9}(\.\d{1,3})?$/);
@@ -21,8 +22,7 @@ const listSchema = z.object({
   pricing_unit: z.enum(['per_piece', 'per_kg']).optional(),
   stock: z.enum(['in', 'out']).optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
-  page: z.coerce.number().int().positive().optional(),
-  page_size: z.coerce.number().int().positive().max(100).optional(),
+  ...pageFields,
 });
 
 const createSchema = z.object({
@@ -59,13 +59,12 @@ const movementSchema = z.object({
 });
 
 const pageSchema = z.object({
-  page: z.coerce.number().int().positive().optional(),
-  page_size: z.coerce.number().int().positive().max(100).optional(),
+  ...pageFields,
 });
 
 const historySchema = z.object({
   cursor: z.string().max(200).optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: limitField,
 });
 
 /**
@@ -180,8 +179,8 @@ export class ItemsController {
 
   @Get('items/:id/prices')
   @RequirePermission('materials.view')
-  async prices(@Param('id') id: string) {
-    return this.items.prices(id);
+  async prices(@Param('id') id: string, @Query(zodBody(pageSchema)) query: z.infer<typeof pageSchema>) {
+    return this.items.prices(id, query);
   }
 
   @Put('items/:id/prices/:month')

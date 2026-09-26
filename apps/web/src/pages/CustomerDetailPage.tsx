@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, DateField, Icon, Menu, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import type { IconName, MenuItem } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
@@ -18,6 +18,8 @@ import { SetRateSheet } from '../components/SetRateSheet.js';
 import { ShareDocumentSheet } from '../components/ShareDocumentSheet.js';
 import { QueryStates } from '../components/states.js';
 import { OrderTable } from '../components/OrderTable.js';
+import { Pager } from '../components/Pager.js';
+import { useCursorPaging, usePaging } from '../lib/paging.js';
 import { statementWindow, useCompanySide } from '../components/party/CompanySide.js';
 import { EditPartySheet, RateHistorySheet, SettlementCurrencySheet } from '../components/party/PartySheets.js';
 import { customerName } from '../lib/customers.js';
@@ -98,29 +100,48 @@ export function CustomerDetailPage() {
   const buying = Boolean(data) && !walkInRecord;
   const walkIn = Boolean(data?.is_system);
 
+  // Each list on this screen keeps its own page in the address (D-058).
+  const ordersPaging = usePaging({ storageKey: 'account-orders', prefix: 'orders_' });
   const orders = useQuery({
-    queryKey: ['customers', id, 'orders'],
-    queryFn: () => apiRequest<{ items: OrderRow[]; total: number }>(`/customers/${id}/orders`),
-    enabled: selling && (tab === 'orders' || tab === 'overview'),
+    queryKey: ['customers', id, 'orders', ordersPaging.page, ordersPaging.pageSize],
+    queryFn: () =>
+      apiRequest<{ items: OrderRow[]; total: number }>(`/customers/${id}/orders?${ordersPaging.query}`),
+    enabled: selling && tab === 'orders',
+    placeholderData: keepPreviousData,
   });
 
-  const salesLedger = useQuery({
-    queryKey: ['customers', id, 'ledger'],
+  // The overview asks the server for what is still owed, rather than filtering a page of orders.
+  const owing = useQuery({
+    queryKey: ['customers', id, 'orders', 'owing'],
     queryFn: () =>
-      apiRequest<{ customer: { settlement_currency: Currency }; balance: number; items: LedgerRow[] }>(
-        `/customers/${id}/ledger`,
-      ),
+      apiRequest<{ items: OrderRow[]; total: number }>(`/customers/${id}/orders?status=owing&page_size=5`),
+    enabled: selling && tab === 'overview',
+  });
+
+  const salesPaging = usePaging({ storageKey: 'account-ledger', prefix: 'sales_' });
+  const salesLedger = useQuery({
+    queryKey: ['customers', id, 'ledger', salesPaging.page, salesPaging.pageSize],
+    queryFn: () =>
+      apiRequest<{
+        customer: { settlement_currency: Currency };
+        balance: number;
+        items: LedgerRow[];
+        total: number;
+      }>(`/customers/${id}/ledger?${salesPaging.query}`),
     enabled: tab === 'sales' && selling && maySeeSelling && !walkIn,
+    placeholderData: keepPreviousData,
   });
 
   const [historyAction, setHistoryAction] = useState<HistoryAction>('all');
+  const historyPaging = useCursorPaging({ storageKey: 'history', resetOn: [id, historyAction] });
   const history = useQuery({
-    queryKey: ['customers', id, 'history', historyAction],
+    queryKey: ['customers', id, 'history', historyAction, historyPaging.cursor, historyPaging.pageSize],
     queryFn: () =>
-      apiRequest<{ items: HistoryRow[] }>(
-        `/customers/${id}/history${historyAction === 'all' ? '' : `?action=${historyAction}`}`,
+      apiRequest<{ items: HistoryRow[]; next_cursor: string | null }>(
+        `/customers/${id}/history?${historyPaging.query}${historyAction === 'all' ? '' : `&action=${historyAction}`}`,
       ),
     enabled: tab === 'history',
+    placeholderData: keepPreviousData,
   });
 
   const salesStatement = useQuery({
@@ -324,15 +345,12 @@ export function CustomerDetailPage() {
                     <Card>
                       <h3 className="mz-heading">{t('customers:unpaid_first')}</h3>
                       <QueryStates
-                        query={orders}
-                        isEmpty={(orders.data?.items ?? []).every((order) => order.status === 'paid')}
+                        query={owing}
+                        isEmpty={(owing.data?.items.length ?? 0) === 0}
                         emptyTitle={t('customers:no_orders')}
                         skeletonLines={3}
                       >
-                        <OrderTable
-                          rows={(orders.data?.items ?? []).filter((order) => order.status !== 'paid').slice(0, 5)}
-                          showCustomer={false}
-                        />
+                        <OrderTable rows={owing.data?.items ?? []} showCustomer={false} />
                       </QueryStates>
                     </Card>
                   ) : null}
@@ -359,6 +377,13 @@ export function CustomerDetailPage() {
                   }
                 >
                   <OrderTable rows={orders.data?.items ?? []} showCustomer={false} />
+                  <Pager
+                    page={ordersPaging.page}
+                    pageSize={ordersPaging.pageSize}
+                    total={orders.data?.total ?? 0}
+                    onPage={ordersPaging.setPage}
+                    onPageSize={ordersPaging.setPageSize}
+                  />
                 </QueryStates>
               ) : null}
 
@@ -375,6 +400,13 @@ export function CustomerDetailPage() {
                       items={salesLedger.data?.items ?? []}
                       settlement_currency={salesLedger.data?.customer.settlement_currency ?? settlement}
                       landedVersion={landedVersion}
+                    />
+                    <Pager
+                      page={salesPaging.page}
+                      pageSize={salesPaging.pageSize}
+                      total={salesLedger.data?.total ?? 0}
+                      onPage={salesPaging.setPage}
+                      onPageSize={salesPaging.setPageSize}
                     />
                   </Card>
                 </QueryStates>
@@ -412,6 +444,17 @@ export function CustomerDetailPage() {
                         <HistoryItem key={row.id} row={row} settlement={settlement} />
                       ))}
                     </ul>
+                    <Pager
+                      page={historyPaging.page}
+                      pageSize={historyPaging.pageSize}
+                      hasNext={Boolean(history.data?.next_cursor)}
+                      onPage={(next) => {
+                        const cursor = history.data?.next_cursor;
+                        if (next > historyPaging.page && cursor) historyPaging.next(cursor);
+                        else if (next < historyPaging.page) historyPaging.previous();
+                      }}
+                      onPageSize={historyPaging.setPageSize}
+                    />
                   </QueryStates>
                 </>
               ) : null}

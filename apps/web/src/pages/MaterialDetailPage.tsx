@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BottomSheet,
   Button,
@@ -19,6 +19,8 @@ import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { MonthPriceEditor } from '../components/MonthPriceEditor.js';
 import { QueryStates } from '../components/states.js';
+import { Pager } from '../components/Pager.js';
+import { useCursorPaging, usePaging } from '../lib/paging.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import { useIsWide } from '../lib/wide.js';
 import type { ItemRow } from './MaterialsPage.js';
@@ -83,22 +85,32 @@ export function MaterialDetailPage() {
       apiRequest<{ current: { rate_iqd_per_usd: string } | null }>('/settings/global-rates'),
   });
 
+  // Each tab pages on its own (D-058): prices and movements by page number in the address,
+  // the audit trail by cursor.
+  const pricesPaging = usePaging({ storageKey: 'material-prices', prefix: 'prices_', resetOn: [id] });
+  const movesPaging = usePaging({ storageKey: 'material-movements', prefix: 'moves_', resetOn: [id] });
+  const historyPaging = useCursorPaging({ storageKey: 'record-history', resetOn: [id] });
+
   const prices = useQuery({
-    queryKey: ['items', id, 'prices'],
-    queryFn: () => apiRequest<{ items: MonthPrice[] }>(`/items/${id}/prices`),
+    queryKey: ['items', id, 'prices', pricesPaging.page, pricesPaging.pageSize],
+    queryFn: () => apiRequest<{ items: MonthPrice[]; total: number }>(`/items/${id}/prices?${pricesPaging.query}`),
     enabled: tab === 'prices',
+    placeholderData: keepPreviousData,
   });
 
   const movements = useQuery({
-    queryKey: ['items', id, 'movements'],
-    queryFn: () => apiRequest<{ items: Movement[]; total: number }>(`/items/${id}/movements`),
+    queryKey: ['items', id, 'movements', movesPaging.page, movesPaging.pageSize],
+    queryFn: () =>
+      apiRequest<{ items: Movement[]; total: number }>(`/items/${id}/movements?${movesPaging.query}`),
     enabled: tab === 'movements',
+    placeholderData: keepPreviousData,
   });
 
   const history = useQuery({
-    queryKey: ['items', id, 'history'],
+    queryKey: ['items', id, 'history', historyPaging.cursor, historyPaging.pageSize],
     queryFn: () =>
       apiRequest<{
+        next_cursor: string | null;
         items: {
           id: string;
           action: string;
@@ -106,9 +118,11 @@ export function MaterialDetailPage() {
           actor_display_name: string | null;
           note: string | null;
         }[];
-      }>(`/items/${id}/history`),
+      }>(`/items/${id}/history?${historyPaging.query}`),
     enabled: tab === 'history',
+    placeholderData: keepPreviousData,
   });
+  const historyNext = history.data?.next_cursor ?? null;
 
   const savePrices = useMutation({
     mutationFn: (input: { month: string; body: unknown; version: number | null }) =>
@@ -381,6 +395,13 @@ export function MaterialDetailPage() {
                       </div>
                     ))}
                   </Card>
+                  <Pager
+                    page={pricesPaging.page}
+                    pageSize={pricesPaging.pageSize}
+                    total={prices.data?.total ?? 0}
+                    onPage={pricesPaging.setPage}
+                    onPageSize={pricesPaging.setPageSize}
+                  />
                 </QueryStates>
               ) : null}
 
@@ -453,6 +474,13 @@ export function MaterialDetailPage() {
                       </ul>
                     </Card>
                   )}
+                  <Pager
+                    page={movesPaging.page}
+                    pageSize={movesPaging.pageSize}
+                    total={movements.data?.total ?? 0}
+                    onPage={movesPaging.setPage}
+                    onPageSize={movesPaging.setPageSize}
+                  />
                 </QueryStates>
               ) : null}
 
@@ -519,6 +547,15 @@ export function MaterialDetailPage() {
                       </ul>
                     </Card>
                   )}
+                  <Pager
+                    page={historyPaging.page}
+                    pageSize={historyPaging.pageSize}
+                    hasNext={Boolean(historyNext)}
+                    onPage={(page) =>
+                      page > historyPaging.page && historyNext ? historyPaging.next(historyNext) : historyPaging.previous()
+                    }
+                    onPageSize={historyPaging.setPageSize}
+                  />
                 </QueryStates>
               ) : null}
             </>

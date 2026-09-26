@@ -3,6 +3,7 @@ import type { DamageAttribution, ReturnStatus, StockEffect } from '@mizan/ledger
 import type { PriceSource } from '@mizan/money';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
+import { pagingOf } from '../common/paging.js';
 
 export interface DamageRow {
   id: string;
@@ -269,8 +270,7 @@ export class DamagesRepository {
     // The list needs the names; the count and the totals need only the rows.
     const aggregateFrom = needsItems ? `FROM damages d JOIN items i ON i.id = d.item_id` : 'FROM damages d';
 
-    const pageSize = Math.min(filters.page_size ?? 25, 100);
-    const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
+    const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
     const [list, count, totals] = await Promise.all([

@@ -6,6 +6,7 @@ import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import type { OrderLineRow, OrderRow, PaymentType, PriceSource } from './order.types.js';
 import { countFrom } from '../common/count-from.js';
+import { pagingOf } from '../common/paging.js';
 
 function orderColumns(alias = 'orders'): string {
   return [
@@ -104,7 +105,8 @@ export interface OrderFilters {
   to?: string;
   done_by?: string;
   payment_type?: PaymentType;
-  status?: 'unpaid' | 'partially_paid' | 'paid' | 'void';
+  /** `owing` is unpaid or partially paid — the account overview's "still owed" list (D-058). */
+  status?: 'unpaid' | 'partially_paid' | 'paid' | 'void' | 'owing';
   q?: string;
   /** Void-by-undo rows are hidden unless the Void filter asks for them (2.4.5). */
   include_undone?: boolean;
@@ -215,8 +217,12 @@ export class OrdersRepository {
     if (filters.status) {
       // The status is derived, so filtering by it means deriving it for each candidate row —
       // which is why the date chips of FR-611 matter: they bound the candidate set first.
-      values.push(filters.status);
-      conditions.push(`${STATUS_EXPRESSION} = $${values.length}`);
+      if (filters.status === 'owing') {
+        conditions.push(`${STATUS_EXPRESSION} IN ('unpaid', 'partially_paid')`);
+      } else {
+        values.push(filters.status);
+        conditions.push(`${STATUS_EXPRESSION} = $${values.length}`);
+      }
     }
     if (!filters.include_undone) {
       // Orders voided through the 8-second undo are hidden by default (2.4.5, FR-610).
@@ -264,8 +270,7 @@ export class OrdersRepository {
     ]);
 
     const countValues = [...values];
-    const pageSize = Math.min(filters.page_size ?? 25, 100);
-    const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
+    const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
     const [list, count] = await Promise.all([

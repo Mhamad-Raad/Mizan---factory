@@ -3,6 +3,7 @@ import { normalizeForSearch } from '@mizan/text';
 import type { Currency, Measure, RateSource } from '@mizan/money';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
+import { pagingOf } from '../common/paging.js';
 
 export type PriceSource = 'month' | 'override';
 
@@ -232,8 +233,7 @@ export class PurchasesRepository {
     const where = `WHERE ${conditions.join(' AND ')}`;
 
     const countValues = [...values];
-    const pageSize = Math.min(filters.page_size ?? 25, 100);
-    const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
+    const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
     const [list, count] = await Promise.all([

@@ -6,6 +6,7 @@ import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { OrdersService } from './orders.service.js';
+import { limitField, pageFields } from '../common/paging.js';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const kg = z.string().regex(/^\d{1,9}(\.\d{1,3})?$/);
@@ -68,16 +69,15 @@ const listSchema = z.object({
   to: isoDate.optional(),
   done_by: z.string().uuid().optional(),
   payment_type: z.enum(['cash', 'borrowed']).optional(),
-  status: z.enum(['unpaid', 'partially_paid', 'paid', 'void']).optional(),
+  status: z.enum(['unpaid', 'partially_paid', 'paid', 'void', 'owing']).optional(),
   q: z.string().max(200).optional(),
   include_undone: z.enum(['true', 'false']).optional(),
-  page: z.coerce.number().int().positive().optional(),
-  page_size: z.coerce.number().int().positive().max(100).optional(),
+  ...pageFields,
 });
 
 const historySchema = z.object({
   cursor: z.string().max(200).optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: limitField,
 });
 
 /**

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, TextField } from '@mizan/ui';
 import type { Currency, Measure } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
@@ -9,6 +9,8 @@ import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
+import { Pager } from '../components/Pager.js';
+import { usePaging } from '../lib/paging.js';
 import { AttributionChip, ReturnStatusChip } from '../components/chips.js';
 import type { DamageAttribution, ReturnStatus } from '../components/chips.js';
 import { FilterChip } from './MaterialsPage.js';
@@ -120,6 +122,23 @@ export function DamagesPage() {
       ? { from: `${formatter.today().slice(0, 7)}-01`, to: formatter.today() }
       : {};
 
+  const paging = usePaging({
+    storageKey: 'damages',
+    resetOn: [
+      query,
+      range.from,
+      range.to,
+      pending,
+      returnable,
+      voided,
+      doneBy,
+      attribution,
+      linked.item_id,
+      linked.order_id,
+      linked.purchase_id,
+    ],
+  });
+
   const damages = useQuery({
     queryKey: [
       'damages',
@@ -134,6 +153,8 @@ export function DamagesPage() {
       linked.item_id,
       linked.order_id,
       linked.purchase_id,
+      paging.page,
+      paging.pageSize,
     ],
     queryFn: () => {
       const params = new URLSearchParams({ q: query });
@@ -148,9 +169,10 @@ export function DamagesPage() {
       if (doneBy) params.set('done_by', doneBy);
       if (attribution) params.set('attribution', attribution);
       return apiRequest<{ items: DamageRow[]; total: number; totals: DamageTotals }>(
-        `/damages?${params.toString()}`,
+        `/damages?${params.toString()}&${paging.query}`,
       );
     },
+    placeholderData: keepPreviousData,
   });
 
   const directory = useQuery({
@@ -276,6 +298,13 @@ export function DamagesPage() {
               </li>
             ))}
           </ul>
+          <Pager
+            page={paging.page}
+            pageSize={paging.pageSize}
+            total={damages.data?.total ?? 0}
+            onPage={paging.setPage}
+            onPageSize={paging.setPageSize}
+          />
         </QueryStates>
 
         {filters ? (

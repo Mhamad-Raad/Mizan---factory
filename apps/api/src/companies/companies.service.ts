@@ -17,6 +17,7 @@ import { PeriodService } from '../settings/period.service.js';
 import { SettingsService } from '../settings/settings.service.js';
 import { CompaniesRepository } from './companies.repository.js';
 import type { CompanyFilters, CompanyListRow, CompanyRow } from './companies.repository.js';
+import { pageOfArray, pagingOf } from '../common/paging.js';
 
 export interface MoneyInput {
   amount: number;
@@ -202,7 +203,7 @@ export class CompaniesService {
    *
    * The running balance is still computed over the **whole** ledger in posting order, because
    * that is what makes it the same number History recorded (2.4.1 rule 5); the filters and the
-   * limit decide only what is returned. Without the bound a supplier of fifteen years answers
+   * page decide only what is returned. Without the bound a supplier of fifteen years answers
    * this route with 1.7 MB of JSON to a phone, which is what the I2 review measured.
    */
   async ledgerOf(
@@ -216,15 +217,18 @@ export class CompaniesService {
       from?: string;
       to?: string;
       done_by?: string;
-      limit?: number;
+      page?: number;
+      page_size?: number;
     },
   ): Promise<{
     company: { id: string; name: string; settlement_currency: Currency };
     balance: number;
     balance_as_of: number | null;
     items: LedgerGroupDto[];
-    /** How many groups the filters matched, and whether the answer was cut at the limit. */
+    /** How many groups the filters matched, and whether there is a page after this one. */
     total: number;
+    page: number;
+    page_size: number;
     has_more: boolean;
   }> {
     const row = await this.requireCompany(id);
@@ -243,8 +247,8 @@ export class CompaniesService {
 
     // Newest first on screen; the running balance was computed in posting order (2.4.1).
     const newestFirst = [...matching].reverse();
-    const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
-    const page = newestFirst.slice(0, limit);
+    const paging = pagingOf(options);
+    const page = pageOfArray(newestFirst, paging);
     const names = await this.userNames(
       page.flatMap((group) => group.rows.map((line) => line.entry)),
     );
@@ -257,7 +261,9 @@ export class CompaniesService {
         : null,
       items: page.map((group) => toGroupDto(group, names)),
       total: matching.length,
-      has_more: newestFirst.length > page.length,
+      page: paging.page,
+      page_size: paging.page_size,
+      has_more: paging.offset + page.length < newestFirst.length,
     };
   }
 
@@ -268,7 +274,7 @@ export class CompaniesService {
    */
   async purchaseBreakdown(
     id: string,
-    options: { limit?: number } = {},
+    options: { page?: number; page_size?: number } = {},
   ): Promise<{
     settlement_currency: Currency;
     allocation: AllocationResult;
@@ -278,6 +284,8 @@ export class CompaniesService {
     /** How many still owe something, and their total — so the identity is checkable as sent. */
     owing_count: number;
     owing_total: number;
+    page: number;
+    page_size: number;
   }> {
     const row = await this.requireCompany(id);
     const [entries, purchases] = await Promise.all([
@@ -307,8 +315,8 @@ export class CompaniesService {
     // checkable from the response even when the rows are cut: owing_total + general = balance.
     const owing = allocation.purchases.filter((purchase) => purchase.remaining !== 0);
     const owingTotal = owing.reduce((total, purchase) => total + purchase.remaining, 0);
-    const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
-    const page = owing.slice(0, limit);
+    const paging = pagingOf(options);
+    const page = pageOfArray(owing, paging);
     const pageIds = new Set(page.map((purchase) => purchase.purchase_id));
 
     return {
@@ -325,6 +333,8 @@ export class CompaniesService {
       settled_count: allocation.purchases.length - owing.length,
       owing_count: owing.length,
       owing_total: owingTotal,
+      page: paging.page,
+      page_size: paging.page_size,
     };
   }
 

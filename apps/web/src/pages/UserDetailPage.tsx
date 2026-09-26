@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { diffSets } from '@mizan/permissions';
 import type { PresetKey } from '@mizan/permissions';
 import {
@@ -18,6 +18,8 @@ import {
 } from '@mizan/ui';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { PermissionEditor } from '../components/PermissionEditor.js';
+import { Pager } from '../components/Pager.js';
+import { useCursorPaging } from '../lib/paging.js';
 import type { PermissionSelection } from '../components/PermissionEditor.js';
 import { AuditDiff } from '../components/AuditDiff.js';
 import { useIsWide } from '../lib/wide.js';
@@ -444,7 +446,7 @@ function SessionsTab({ userId }: { userId: string }) {
  * Paged by **keyset**, not by offset: each page carries the timestamp and id of its last row
  * and the next asks for "older than that", which the index answers in the same time whether
  * the employee has done fifty things or five million (the first page of four million audit rows
- * measures 4.4 ms). A page is twenty-five rows and the button asks for the next one — nothing
+ * measures 4.4 ms). A page is twenty-five rows unless somebody picks more, and the arrows turn it — nothing
  * here can ask the server for everything somebody has ever done.
  */
 function ActivityTab({ userId }: { userId: string }) {
@@ -452,20 +454,18 @@ function ActivityTab({ userId }: { userId: string }) {
   const formatter = useFormatter();
   const wide = useIsWide();
 
-  const activity = useInfiniteQuery({
-    queryKey: ['user-activity', userId],
-    initialPageParam: '',
-    queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ done_by: userId, limit: '25' });
-      if (pageParam) params.set('cursor', String(pageParam));
-      return apiRequest<{ items: AuditRow[]; next_cursor: string | null }>(
-        `/history?${params.toString()}`,
-      );
-    },
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  const paging = useCursorPaging({ storageKey: 'user-activity', resetOn: [userId] });
+  const activity = useQuery({
+    queryKey: ['user-activity', userId, paging.cursor, paging.pageSize],
+    queryFn: () =>
+      apiRequest<{ items: AuditRow[]; next_cursor: string | null }>(
+        `/history?done_by=${encodeURIComponent(userId)}&${paging.query}`,
+      ),
+    placeholderData: keepPreviousData,
   });
 
-  const rows = activity.data?.pages.flatMap((page) => page.items) ?? [];
+  const rows = activity.data?.items ?? [];
+  const nextCursor = activity.data?.next_cursor ?? null;
   const action = (row: AuditRow) => t(`history:action.${row.action}`, { defaultValue: row.action });
   const kind = (row: AuditRow) =>
     t(`history:entity.${row.entity_type}`, { defaultValue: row.entity_type });
@@ -556,17 +556,13 @@ function ActivityTab({ userId }: { userId: string }) {
           </div>
         )}
 
-        {activity.hasNextPage ? (
-          <div className="mz-row">
-            <Button
-              variant="secondary"
-              loading={activity.isFetchingNextPage}
-              onClick={() => void activity.fetchNextPage()}
-            >
-              {t('common:more')}
-            </Button>
-          </div>
-        ) : null}
+        <Pager
+          page={paging.page}
+          pageSize={paging.pageSize}
+          hasNext={Boolean(nextCursor)}
+          onPage={(page) => (page > paging.page && nextCursor ? paging.next(nextCursor) : paging.previous())}
+          onPageSize={paging.setPageSize}
+        />
       </div>
     </QueryStates>
   );

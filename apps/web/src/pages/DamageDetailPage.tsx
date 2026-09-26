@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, DateField, TextField, Toast, Toggle } from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
@@ -9,6 +9,8 @@ import { DualAmount } from '../components/DualAmount.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { QueryStates } from '../components/states.js';
+import { Pager } from '../components/Pager.js';
+import { useCursorPaging } from '../lib/paging.js';
 import { AttributionChip, ReturnStatusChip } from '../components/chips.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import { quantityOf } from './DamagesPage.js';
@@ -17,6 +19,7 @@ import type { DamageDetail } from './DamagesPage.js';
 type Sheet = 'return' | 'written_off' | 'company_credit' | 'customer_credit' | 'return_to_stock' | 'void';
 
 interface DamageHistory {
+  next_cursor: string | null;
   items: { id: string; action: string; occurred_at: string; actor_display_name: string | null; note: string | null }[];
 }
 
@@ -49,11 +52,15 @@ export function DamageDetailPage() {
     queryFn: () => apiRequest<DamageDetail>(`/damages/${id}`),
   });
 
+  // The audit trail is paged by cursor (D-058).
+  const historyPaging = useCursorPaging({ storageKey: 'record-history', resetOn: [id] });
   const history = useQuery({
-    queryKey: ['damages', id, 'history'],
-    queryFn: () => apiRequest<DamageHistory>(`/damages/${id}/history`),
+    queryKey: ['damages', id, 'history', historyPaging.cursor, historyPaging.pageSize],
+    queryFn: () => apiRequest<DamageHistory>(`/damages/${id}/history?${historyPaging.query}`),
     enabled: tab === 'history',
+    placeholderData: keepPreviousData,
   });
+  const historyNext = history.data?.next_cursor ?? null;
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['damages'] });
@@ -309,6 +316,15 @@ export function DamageDetailPage() {
                         </li>
                       ))}
                     </ul>
+                    <Pager
+                      page={historyPaging.page}
+                      pageSize={historyPaging.pageSize}
+                      hasNext={Boolean(historyNext)}
+                      onPage={(page) =>
+                        page > historyPaging.page && historyNext ? historyPaging.next(historyNext) : historyPaging.previous()
+                      }
+                      onPageSize={historyPaging.setPageSize}
+                    />
                   </Card>
                 </QueryStates>
               ) : null}

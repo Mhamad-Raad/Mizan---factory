@@ -83,5 +83,10 @@
   "theme_menu": "ڕووکار",
   "text_size_menu": "قەبارەی نووسین",
   "entered_separately": "جیا جیا دەنووسرێت",
-  "rate_at_source": "بەپێی {{source}}: {{rate}}"
+  "rate_at_source": "بەپێی {{source}}: {{rate}}",
+  "pager_rows": "ڕیز لە هەر پەڕەیەک",
+  "pager_range": "{{range}} لە {{total}}",
+  "pager_page": "پەڕەی {{page}}",
+  "pager_previous": "پەڕەی پێشوو",
+  "pager_next": "پەڕەی دواتر"
 }

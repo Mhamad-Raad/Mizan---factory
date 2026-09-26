@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
+import { Pager } from '../components/Pager.js';
+import { usePaging } from '../lib/paging.js';
 import { FilterChip } from './MaterialsPage.js';
 import { useApp, useFormatter } from '../lib/store.js';
 
@@ -37,7 +39,7 @@ interface ReportResponse {
   pinned?: { filter: 'done_by'; user_id: string };
   basis?: string;
   groups: ReportGroup[];
-  /** How many groups the period had, and whether the response was capped (I4 review, D-032). */
+  /** How many groups the period had, across every page (D-058). */
   group_count: number;
   has_more: boolean;
   totals?: Record<string, unknown>;
@@ -202,14 +204,18 @@ export function ReportPage({ name }: { name?: ReportName }) {
     enabled: canSeeEveryone && filters,
   });
 
+  // The totals are the whole period's on every page; only the groups are paged (D-058).
+  const paging = usePaging({ storageKey: 'reports', resetOn: [reportName, range.from, range.to, groupBy, doneBy] });
+
   const report = useQuery({
-    queryKey: ['reports', reportName, range.from, range.to, groupBy, doneBy],
+    queryKey: ['reports', reportName, range.from, range.to, groupBy, doneBy, paging.page, paging.pageSize],
     queryFn: () => {
       const search = new URLSearchParams({ from: range.from, to: range.to });
       if (groupBy) search.set('group_by', groupBy);
       if (doneBy) search.set('done_by', doneBy);
-      return apiRequest<ReportResponse>(`/reports/${reportName}?${search.toString()}`);
+      return apiRequest<ReportResponse>(`/reports/${reportName}?${search.toString()}&${paging.query}`);
     },
+    placeholderData: keepPreviousData,
   });
 
   const data = report.data;
@@ -417,12 +423,13 @@ export function ReportPage({ name }: { name?: ReportName }) {
             })}
           </ul>
 
-          {data?.has_more ? (
-            // Said out loud: a report that quietly stops at two hundred rows lies about the period.
-            <p className="mz-caption">
-              {t('reports:capped', { shown: (data.groups ?? []).length, total: data.group_count })}
-            </p>
-          ) : null}
+          <Pager
+            page={paging.page}
+            pageSize={paging.pageSize}
+            total={data?.group_count ?? 0}
+            onPage={paging.setPage}
+            onPageSize={paging.setPageSize}
+          />
         </QueryStates>
 
         {filters ? (

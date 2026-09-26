@@ -668,7 +668,7 @@ export class OrdersService {
     const [audit, paymentTypes, entries] = await Promise.all([
       this.history.list({ about_order: id, ...options }),
       this.orders.paymentTypeHistory(id),
-      this.ledger.entriesFor(this.database, order.customer_id),
+      this.ledger.entriesOfDocument(this.database, order.customer_id, id),
     ]);
 
     return {
@@ -681,20 +681,18 @@ export class OrdersService {
         changed_at: row.changed_at.toISOString(),
         changed_by_name: row.changed_by_name,
       })),
-      ledger_entries: entries
-        .filter((entry) => entry.refs.order_id === id)
-        .map((entry) => ({
-          id: entry.id,
-          entry_type: entry.entry_type,
-          entry_date: entry.entry_date,
-          amount_iqd: entry.amount_iqd,
-          amount_usd_cents: entry.amount_usd_cents,
-          entered_currency: entry.entered_currency,
-          rate_iqd_per_usd: entry.rate_iqd_per_usd,
-          note: entry.note,
-          voucher_number: entry.voucher_number ?? null,
-          reverses_entry_id: entry.reverses_entry_id,
-        })),
+      ledger_entries: entries.map((entry) => ({
+        id: entry.id,
+        entry_type: entry.entry_type,
+        entry_date: entry.entry_date,
+        amount_iqd: entry.amount_iqd,
+        amount_usd_cents: entry.amount_usd_cents,
+        entered_currency: entry.entered_currency,
+        rate_iqd_per_usd: entry.rate_iqd_per_usd,
+        note: entry.note,
+        voucher_number: entry.voucher_number ?? null,
+        reverses_entry_id: entry.reverses_entry_id,
+      })),
     };
   }
 

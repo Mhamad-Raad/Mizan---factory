@@ -83,5 +83,10 @@
   "theme_menu": "المظهر",
   "text_size_menu": "حجم النص",
   "entered_separately": "يُدخَل كل منهما على حدة",
-  "rate_at_source": "حسب {{source}}: {{rate}}"
+  "rate_at_source": "حسب {{source}}: {{rate}}",
+  "pager_rows": "صفوف في الصفحة",
+  "pager_range": "{{range}} من {{total}}",
+  "pager_page": "الصفحة {{page}}",
+  "pager_previous": "الصفحة السابقة",
+  "pager_next": "الصفحة التالية"
 }

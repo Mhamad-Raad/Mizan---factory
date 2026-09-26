@@ -18,6 +18,7 @@ import { StockService } from '../stock/stock.service.js';
 import { ItemsRepository } from './items.repository.js';
 import type { ItemFilters, ItemListRow, StoredMonthPrice } from './items.repository.js';
 import type { ItemDto, ItemRow, MonthPriceDto, PricePairDto, PricingUnit } from './item.types.js';
+import { pagingOf } from '../common/paging.js';
 
 export interface CreateItemInput {
   name: string;
@@ -350,10 +351,14 @@ export class ItemsService {
     });
   }
 
-  async prices(id: string): Promise<{ items: MonthPriceDto[] }> {
+  async prices(
+    id: string,
+    options: { page?: number; page_size?: number } = {},
+  ): Promise<{ items: MonthPriceDto[]; total: number; page: number; page_size: number }> {
     if (!(await this.items.findById(id))) throw ApiError.notFound();
-    const rows = await this.items.pricesOf(id);
-    return { items: rows.map(toMonthPriceDto) };
+    const paging = pagingOf(options);
+    const { rows, total } = await this.items.pricesOf(id, paging);
+    return { items: rows.map(toMonthPriceDto), total, page: paging.page, page_size: paging.page_size };
   }
 
   /**

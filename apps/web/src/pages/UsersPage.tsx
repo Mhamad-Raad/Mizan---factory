@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Avatar, Chip, Icon, TextField, Toggle } from '@mizan/ui';
 import { PRESETS } from '@mizan/permissions';
 import type { PresetKey } from '@mizan/permissions';
@@ -10,6 +10,8 @@ import { usePageTitle } from '../lib/page-title.js';
 import { useFormatter } from '../lib/store.js';
 import { DataList } from '../components/DataList.js';
 import { QueryStates } from '../components/states.js';
+import { Pager } from '../components/Pager.js';
+import { usePaging } from '../lib/paging.js';
 
 interface UserRow {
   id: string;
@@ -38,12 +40,15 @@ export function UsersPage() {
   const [query, setQuery] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
 
+  const paging = usePaging({ storageKey: 'users', resetOn: [query, includeInactive] });
+
   const users = useQuery({
-    queryKey: ['users', query, includeInactive],
+    queryKey: ['users', query, includeInactive, paging.page, paging.pageSize],
     queryFn: () =>
       apiRequest<{ items: UserRow[]; total: number }>(
-        `/users?q=${encodeURIComponent(query)}&include_inactive=${includeInactive}`,
+        `/users?q=${encodeURIComponent(query)}&include_inactive=${includeInactive}&${paging.query}`,
       ),
+    placeholderData: keepPreviousData,
   });
 
   usePageTitle(t('users:title'));
@@ -168,6 +173,13 @@ export function UsersPage() {
               {flags(user)}
             </>
           )}
+        />
+        <Pager
+          page={paging.page}
+          pageSize={paging.pageSize}
+          total={users.data?.total ?? 0}
+          onPage={paging.setPage}
+          onPageSize={paging.setPageSize}
         />
       </QueryStates>
 

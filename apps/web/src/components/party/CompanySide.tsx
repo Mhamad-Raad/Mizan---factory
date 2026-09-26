@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField, SegmentedControl, TextField } from '@mizan/ui';
 import type { MenuItem } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
@@ -15,8 +15,10 @@ import { MoneyInput } from '../MoneyInput.js';
 import type { MoneyValue } from '../MoneyInput.js';
 import { PaymentSheet } from '../PaymentSheet.js';
 import { ShareDocumentSheet } from '../ShareDocumentSheet.js';
+import { Pager } from '../Pager.js';
 import { QueryStates } from '../states.js';
 import { FilterChip } from '../../pages/MaterialsPage.js';
+import { usePaging } from '../../lib/paging.js';
 import { useFormatter, usePermission } from '../../lib/store.js';
 import type { PurchaseRow } from '../../pages/PurchasesPage.js';
 
@@ -37,6 +39,14 @@ interface Breakdown {
   owing_count: number;
   owing_total: number;
 }
+
+/** The ledger's type filter, as the API names the entry types (2.9.3). */
+const ENTRY_TYPE: Record<Exclude<EntryFilter, 'all'>, string> = {
+  payments: 'payment',
+  adjustments: 'adjustment',
+  credits: 'credit',
+  purchases: 'purchase',
+};
 
 /**
  * The buying side of a business (FR-704 to FR-712, D-054): what we bought from it, what we owe
@@ -73,14 +83,16 @@ export function useCompanySide(input: {
 
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [entryFilter, setEntryFilter] = useState<EntryFilter>('all');
-  /** The account tab asks for a page of the ledger, not an account's whole life (I2 review). */
-  const [ledgerLimit, setLedgerLimit] = useState(100);
+  /** The account tab reads one page of the ledger at a time, never an account's whole life (D-058). */
+  const ledgerPaging = usePaging({ storageKey: 'account-ledger', prefix: 'buying_', resetOn: [entryFilter] });
+  const breakdownPaging = usePaging({ storageKey: 'breakdown', prefix: 'breakdown_' });
+  const purchasesPaging = usePaging({ storageKey: 'account-purchases', prefix: 'purchases_' });
   /** Bumped by every write that puts a row in the ledger (signature moment 3, spec 3.6.2). */
   const [landedVersion, setLandedVersion] = useState(0);
   const [statement, setStatement] = useState(false);
 
   const ledger = useQuery({
-    queryKey: ['companies', id, 'ledger', ledgerLimit],
+    queryKey: ['companies', id, 'ledger', entryFilter, ledgerPaging.page, ledgerPaging.pageSize],
     queryFn: () =>
       apiRequest<{
         company: { settlement_currency: Currency };
@@ -88,25 +100,43 @@ export function useCompanySide(input: {
         items: LedgerRow[];
         total: number;
         has_more: boolean;
-      }>(`/companies/${id}/ledger?limit=${ledgerLimit}`),
+      }>(
+        `/companies/${id}/ledger?${ledgerPaging.query}${entryFilter === 'all' ? '' : `&type=${ENTRY_TYPE[entryFilter]}`}`,
+      ),
     enabled: enabled && maySeeBalance && tab === 'account',
+    placeholderData: keepPreviousData,
   });
 
+  // The per-purchase card on the account tab, a page at a time.
   const breakdown = useQuery({
-    queryKey: ['companies', id, 'breakdown'],
-    queryFn: () => apiRequest<Breakdown>(`/companies/${id}/purchase-breakdown`),
-    // The purchases tab needs it too: a purchase's remaining is its oldest-first share, not a
-    // sum of what happens to name it (FR-712).
-    enabled:
-      enabled &&
-      maySeeBalance &&
-      (tab === 'account' || tab === 'purchases' || tab === 'overview' || sheet === 'payment'),
+    queryKey: ['companies', id, 'breakdown', breakdownPaging.page, breakdownPaging.pageSize],
+    queryFn: () => apiRequest<Breakdown>(`/companies/${id}/purchase-breakdown?${breakdownPaging.query}`),
+    enabled: enabled && maySeeBalance && tab === 'account',
+    placeholderData: keepPreviousData,
+  });
+
+  // The purchases list and the payment sheet need each owing purchase's remaining — its
+  // oldest-first share, not a sum of what happens to name it (FR-712) — so they read the
+  // largest page the API sends, oldest first, which is where the money goes out first.
+  const owingPurchases = useQuery({
+    queryKey: ['companies', id, 'breakdown', 'owing'],
+    queryFn: () => apiRequest<Breakdown>(`/companies/${id}/purchase-breakdown?page_size=100`),
+    enabled: enabled && maySeeBalance && (tab === 'purchases' || tab === 'overview' || sheet === 'payment'),
   });
 
   const purchases = useQuery({
-    queryKey: ['companies', id, 'purchases'],
-    queryFn: () => apiRequest<{ items: PurchaseRow[]; total: number }>(`/companies/${id}/purchases`),
-    enabled: enabled && maySeePurchases && (tab === 'purchases' || tab === 'overview'),
+    queryKey: ['companies', id, 'purchases', purchasesPaging.page, purchasesPaging.pageSize],
+    queryFn: () =>
+      apiRequest<{ items: PurchaseRow[]; total: number }>(`/companies/${id}/purchases?${purchasesPaging.query}`),
+    enabled: enabled && maySeePurchases && tab === 'purchases',
+    placeholderData: keepPreviousData,
+  });
+
+  // The overview shows the latest five and asks for no more than that.
+  const recent = useQuery({
+    queryKey: ['companies', id, 'purchases', 'recent'],
+    queryFn: () => apiRequest<{ items: PurchaseRow[]; total: number }>(`/companies/${id}/purchases?page_size=5`),
+    enabled: enabled && maySeePurchases && tab === 'overview',
   });
 
   const statementData = useQuery({
@@ -154,16 +184,13 @@ export function useCompanySide(input: {
 
   const allocation = breakdown.data?.allocation ?? null;
   const purchaseNumbers = new Map((breakdown.data?.purchases ?? []).map((row) => [row.id, row.number]));
+  const owingAllocation = owingPurchases.data?.allocation ?? null;
+  const owingNumbers = new Map((owingPurchases.data?.purchases ?? []).map((row) => [row.id, row.number]));
   const errorOf = (error: unknown) =>
     error instanceof ApiError ? t(error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') }) : undefined;
 
-  const ledgerRows = (ledger.data?.items ?? []).filter((row) => {
-    if (entryFilter === 'all') return true;
-    if (entryFilter === 'payments') return row.entry_type === 'payment';
-    if (entryFilter === 'adjustments') return row.entry_type === 'adjustment';
-    if (entryFilter === 'credits') return row.entry_type === 'credit';
-    return row.entry_type === 'purchase';
-  });
+  // Filtered by the API, so a page is a page of the chosen kind (D-058).
+  const ledgerRows = ledger.data?.items ?? [];
 
   /** The one buying-side action that stays on the page: paying them. */
   const primaryAction: ReactNode =
@@ -193,24 +220,33 @@ export function useCompanySide(input: {
     </Can>
   );
 
-  const purchaseList = (limit?: number) => (
+  const purchaseList = (list: typeof purchases, paged: boolean) => (
     <QueryStates
-      query={purchases}
-      isEmpty={(purchases.data?.items.length ?? 0) === 0}
+      query={list}
+      isEmpty={(list.data?.items.length ?? 0) === 0}
       emptyTitle={t('companies:no_purchases')}
       emptyAction={newPurchase}
       skeletonLines={3}
     >
       <ul className="mz-list">
-        {(purchases.data?.items ?? []).slice(0, limit).map((purchase) => (
+        {(list.data?.items ?? []).map((purchase) => (
           <PurchaseListItem
             key={purchase.id}
             purchase={purchase}
             settlement={settlement}
-            remaining={allocation?.purchases.find((row) => row.purchase_id === purchase.id)?.remaining ?? null}
+            remaining={owingAllocation?.purchases.find((row) => row.purchase_id === purchase.id)?.remaining ?? null}
           />
         ))}
       </ul>
+      {paged ? (
+        <Pager
+          page={purchasesPaging.page}
+          pageSize={purchasesPaging.pageSize}
+          total={list.data?.total ?? 0}
+          onPage={purchasesPaging.setPage}
+          onPageSize={purchasesPaging.setPageSize}
+        />
+      ) : null}
     </QueryStates>
   );
 
@@ -236,19 +272,13 @@ export function useCompanySide(input: {
             namespace="companies"
             landedVersion={landedVersion}
           />
-          {ledger.data?.has_more ? (
-            <div className="mz-stack" style={{ marginBlockStart: 'var(--space-3)' }}>
-              <span className="mz-caption">
-                {t('companies:more_entries', {
-                  shown: formatter.number(ledger.data.items.length),
-                  total: formatter.number(ledger.data.total),
-                })}
-              </span>
-              <Button variant="secondary" onClick={() => setLedgerLimit(ledgerLimit + 100)}>
-                {t('companies:show_more')}
-              </Button>
-            </div>
-          ) : null}
+          <Pager
+            page={ledgerPaging.page}
+            pageSize={ledgerPaging.pageSize}
+            total={ledger.data?.total ?? 0}
+            onPage={ledgerPaging.setPage}
+            onPageSize={ledgerPaging.setPageSize}
+          />
         </Card>
       </QueryStates>
 
@@ -276,22 +306,18 @@ export function useCompanySide(input: {
                   </Link>
                 </li>
               ))}
+            {/* Across every page, so the identity "owing + general = balance" reads from any one. */}
             {breakdown.data && breakdown.data.owing_count > allocation.purchases.length ? (
               <li className="mz-list__item">
                 <span className="mz-list__body">
-                  <span className="mz-caption">
-                    {t('companies:more_entries', {
-                      shown: formatter.number(allocation.purchases.length),
-                      total: formatter.number(breakdown.data.owing_count),
-                    })}
-                  </span>
+                  <span className="mz-caption">{t('glossary:total')}</span>
                 </span>
                 <span className="mz-list__end" data-tabular>
                   {formatter.money(breakdown.data.owing_total, settlement)}
                 </span>
               </li>
             ) : null}
-            {allocation.general !== 0 ? (
+            {allocation.general !== 0 && breakdownPaging.page === 1 ? (
               <li className="mz-list__item">
                 <span className="mz-list__body">
                   <span className="mz-list__title">{t('companies:general_bucket')}</span>
@@ -302,6 +328,13 @@ export function useCompanySide(input: {
               </li>
             ) : null}
           </ul>
+          <Pager
+            page={breakdownPaging.page}
+            pageSize={breakdownPaging.pageSize}
+            total={breakdown.data?.owing_count ?? 0}
+            onPage={breakdownPaging.setPage}
+            onPageSize={breakdownPaging.setPageSize}
+          />
         </Card>
       ) : null}
     </>
@@ -321,12 +354,12 @@ export function useCompanySide(input: {
           settlement_currency={settlement}
           rate={rate}
           saving={payment.isPending}
-          purchases={(allocation?.purchases ?? [])
+          purchases={(owingAllocation?.purchases ?? [])
             .filter((row) => row.remaining > 0)
             .map((row) => ({
               id: row.purchase_id,
               label: `${t('purchases:number', {
-                number: formatter.number(purchaseNumbers.get(row.purchase_id) ?? 0),
+                number: formatter.number(owingNumbers.get(row.purchase_id) ?? 0),
               })} · ${formatter.money(row.remaining, settlement)}`,
             }))}
           error={errorOf(payment.error)}
@@ -424,8 +457,8 @@ export function useCompanySide(input: {
     maySeePurchases: enabled && maySeePurchases,
     primaryAction,
     menuItems,
-    purchasesTab: purchaseList(),
-    recentPurchases: purchaseList(5),
+    purchasesTab: purchaseList(purchases, true),
+    recentPurchases: purchaseList(recent, false),
     accountTab: account,
     sheets,
   };

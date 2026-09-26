@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { QueryStates } from '../components/states.js';
+import { Pager } from '../components/Pager.js';
+import { useCursorPaging } from '../lib/paging.js';
 import { AuditDiff } from '../components/AuditDiff.js';
 import { FilterChip } from './MaterialsPage.js';
 import { useApp, useFormatter } from '../lib/store.js';
@@ -105,24 +107,28 @@ export function HistoryPage() {
   });
 
   const range = rangeFor(preset, formatter.today(), custom);
-  const history = useInfiniteQuery({
-    queryKey: ['history', doneBy, entityType, preset, custom.from, custom.to],
-    initialPageParam: '',
-    queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ limit: '25' });
+  // The audit trail only grows, so it is paged by cursor (D-058).
+  const paging = useCursorPaging({
+    storageKey: 'history',
+    resetOn: [doneBy, entityType, preset, custom.from, custom.to],
+  });
+  const history = useQuery({
+    queryKey: ['history', doneBy, entityType, preset, custom.from, custom.to, paging.cursor, paging.pageSize],
+    queryFn: () => {
+      const params = new URLSearchParams();
       if (doneBy) params.set('done_by', doneBy);
       if (entityType) params.set('entity_type', entityType);
       if (range.from) params.set('from', range.from);
       if (range.to) params.set('to', range.to);
-      if (pageParam) params.set('cursor', String(pageParam));
       return apiRequest<{ items: AuditEntry[]; next_cursor: string | null }>(
-        `/history?${params.toString()}`,
+        `/history?${params.toString()}&${paging.query}`,
       );
     },
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    placeholderData: keepPreviousData,
   });
 
-  const entries = history.data?.pages.flatMap((page) => page.items) ?? [];
+  const entries = history.data?.items ?? [];
+  const nextCursor = history.data?.next_cursor ?? null;
   const employees = (directory.data ?? []).filter((entry) => entry.is_active);
 
   usePageTitle(t('history:title'));
@@ -269,16 +275,13 @@ export function HistoryPage() {
             </Card>
           ))}
 
-          {history.hasNextPage ? (
-            <Button
-              variant="secondary"
-              block
-              loading={history.isFetchingNextPage}
-              onClick={() => void history.fetchNextPage()}
-            >
-              {t('common:more')}
-            </Button>
-          ) : null}
+          <Pager
+            page={paging.page}
+            pageSize={paging.pageSize}
+            hasNext={Boolean(nextCursor)}
+            onPage={(page) => (page > paging.page && nextCursor ? paging.next(nextCursor) : paging.previous())}
+            onPageSize={paging.setPageSize}
+          />
         </QueryStates>
 
         {filters ? (

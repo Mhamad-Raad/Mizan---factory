@@ -5,6 +5,7 @@ import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import type { CustomerRow } from './customer.types.js';
 import { countFrom } from '../common/count-from.js';
+import { pagingOf, type Paging } from '../common/paging.js';
 
 /** Alias-aware column list, so the same fields serve a plain read and the list query. */
 function customerColumns(alias = 'customers'): string {
@@ -159,8 +160,7 @@ export class CustomersRepository {
     ]);
 
     const countValues = [...values];
-    const pageSize = Math.min(filters.page_size ?? 25, 100);
-    const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
+    const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
     const order = filters.sort === 'balance' ? `${net} DESC, c.name ASC` : 'c.name ASC';
@@ -320,24 +320,35 @@ export class CustomersRepository {
     return rows[0] ?? null;
   }
 
-  async rateHistory(id: string, limit = 50) {
+  /** One page of the account's rates, newest first, and how many there are in all (D-058). */
+  async rateHistory(id: string, paging: Paging) {
     const { rows } = await this.database.query<{
       id: string;
       rate_iqd_per_usd: string;
       effective_from: Date;
       note: string | null;
       created_by_name: string | null;
+      total: string;
     }>(
       `SELECT r.id, r.rate_iqd_per_usd::text AS rate_iqd_per_usd, r.effective_from, r.note,
-              u.display_name AS created_by_name
+              u.display_name AS created_by_name, count(*) OVER ()::text AS total
          FROM customer_rates r
          LEFT JOIN users u ON u.id = r.created_by
         WHERE r.customer_id = $1
-        ORDER BY r.effective_from DESC
-        LIMIT $2`,
-      [id, Math.min(limit, 100)],
+        ORDER BY r.effective_from DESC, r.id DESC
+        LIMIT $2 OFFSET $3`,
+      [id, paging.page_size, paging.offset],
     );
-    return rows;
+    return { rows, total: rows.length > 0 ? Number(rows[0]?.total) : await this.rateCount(id) };
+  }
+
+  /** A page past the end has no row to carry the count; ask for it on its own. */
+  private async rateCount(id: string): Promise<number> {
+    const { rows } = await this.database.query<{ total: string }>(
+      'SELECT count(*)::text AS total FROM customer_rates WHERE customer_id = $1',
+      [id],
+    );
+    return Number(rows[0]?.total ?? 0);
   }
 
   async insertRate(

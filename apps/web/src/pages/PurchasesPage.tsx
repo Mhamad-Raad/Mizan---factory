@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { BottomSheet, Button, Chip, DateField, TextField } from '@mizan/ui';
 import type { Currency, Measure } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
@@ -9,6 +9,8 @@ import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
+import { Pager } from '../components/Pager.js';
+import { usePaging } from '../lib/paging.js';
 import { FilterChip } from './MaterialsPage.js';
 import { useFormatter } from '../lib/store.js';
 
@@ -89,8 +91,13 @@ export function PurchasesPage() {
   // names yesterday — which silently hid today's purchases from the list (I2 review).
   const range = rangeFor(dates, formatter.today(), from, to);
 
+  const paging = usePaging({
+    storageKey: 'purchases',
+    resetOn: [query, range.from, range.to, stockOnly, voided, doneBy],
+  });
+
   const purchases = useQuery({
-    queryKey: ['purchases', query, range.from, range.to, stockOnly, voided, doneBy],
+    queryKey: ['purchases', query, range.from, range.to, stockOnly, voided, doneBy, paging.page, paging.pageSize],
     queryFn: () => {
       const params = new URLSearchParams({ q: query });
       if (range.from) params.set('from', range.from);
@@ -98,8 +105,9 @@ export function PurchasesPage() {
       if (stockOnly) params.set('company', 'stock_only');
       if (voided) params.set('status', 'void');
       if (doneBy) params.set('done_by', doneBy);
-      return apiRequest<{ items: PurchaseRow[]; total: number }>(`/purchases?${params.toString()}`);
+      return apiRequest<{ items: PurchaseRow[]; total: number }>(`/purchases?${params.toString()}&${paging.query}`);
     },
+    placeholderData: keepPreviousData,
   });
 
   const directory = useQuery({
@@ -198,6 +206,13 @@ export function PurchasesPage() {
               </li>
             ))}
           </ul>
+          <Pager
+            page={paging.page}
+            pageSize={paging.pageSize}
+            total={purchases.data?.total ?? 0}
+            onPage={paging.setPage}
+            onPageSize={paging.setPageSize}
+          />
         </QueryStates>
 
         {filters ? (

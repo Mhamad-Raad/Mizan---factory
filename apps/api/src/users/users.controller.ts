@@ -17,6 +17,7 @@ import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { UsersService } from './users.service.js';
+import { pageFields } from '../common/paging.js';
 
 const presetKeys = ['sales', 'warehouse', 'accountant'] as const;
 
@@ -51,8 +52,7 @@ const permissionsSchema = z.object({
 const listSchema = z.object({
   q: z.string().optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
-  page: z.coerce.number().int().positive().optional(),
-  page_size: z.coerce.number().int().positive().max(100).optional(),
+  ...pageFields,
 });
 
 /**

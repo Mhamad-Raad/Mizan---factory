@@ -5,6 +5,7 @@ import { contextOf, can } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { HistoryRepository } from './history.repository.js';
+import { limitField } from '../common/paging.js';
 
 const listSchema = z.object({
   done_by: z.string().uuid().optional(),
@@ -14,7 +15,7 @@ const listSchema = z.object({
   entity_id: z.string().max(64).optional(),
   action: z.string().max(40).optional(),
   cursor: z.string().max(64).optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: limitField,
 });
 
 @Controller('history')

@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { BottomSheet, Button, Icon, NumberField, TextField } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { apiRequest } from '../../lib/api.js';
+import { Pager } from '../Pager.js';
 import { QueryStates } from '../states.js';
+import { DEFAULT_PAGE_SIZE, clampPageSize } from '../../lib/paging.js';
 import { useFormatter, usePermission } from '../../lib/store.js';
 import type { CustomerRow } from '../../pages/CustomersPage.js';
 
@@ -112,8 +114,11 @@ export function EditPartySheet({
 export function RateHistorySheet({ id, onClose }: { id: string; onClose: () => void }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
+  // A sheet's page is its own: it closes, so it does not belong in the address (D-058).
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const rates = useQuery({
-    queryKey: ['customers', id, 'rates'],
+    queryKey: ['customers', id, 'rates', page, pageSize],
     queryFn: () =>
       apiRequest<{
         items: {
@@ -123,7 +128,9 @@ export function RateHistorySheet({ id, onClose }: { id: string; onClose: () => v
           note: string | null;
           created_by_name: string | null;
         }[];
-      }>(`/customers/${id}/rates`),
+        total: number;
+      }>(`/customers/${id}/rates?page=${page}&page_size=${pageSize}`),
+    placeholderData: keepPreviousData,
   });
 
   return (
@@ -153,6 +160,16 @@ export function RateHistorySheet({ id, onClose }: { id: string; onClose: () => v
             </li>
           ))}
         </ul>
+        <Pager
+          page={page}
+          pageSize={pageSize}
+          total={rates.data?.total ?? 0}
+          onPage={setPage}
+          onPageSize={(size) => {
+            setPageSize(clampPageSize(size));
+            setPage(1);
+          }}
+        />
       </QueryStates>
     </BottomSheet>
   );

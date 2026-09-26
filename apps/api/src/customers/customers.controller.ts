@@ -6,6 +6,7 @@ import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { CustomersService } from './customers.service.js';
+import { limitField, pageFields, pageSchema } from '../common/paging.js';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const money = z.object({
@@ -25,8 +26,7 @@ const listSchema = z.object({
   balance: z.enum(['owes', 'settled', 'credit']).optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
   sort: z.enum(['name', 'balance']).optional(),
-  page: z.coerce.number().int().positive().optional(),
-  page_size: z.coerce.number().int().positive().max(100).optional(),
+  ...pageFields,
 });
 
 const createSchema = z.object({
@@ -77,7 +77,7 @@ const ledgerSchema = z.object({
   money_only: z.enum(['true', 'false']).optional(),
   include_undone: z.enum(['true', 'false']).optional(),
   as_of: isoDate.optional(),
-  limit: z.coerce.number().int().positive().max(500).optional(),
+  ...pageFields,
 });
 
 const statementSchema = z.object({ from: isoDate.optional(), to: isoDate.optional() });
@@ -95,7 +95,7 @@ const historySchema = z.object({
     ])
     .optional(),
   cursor: z.string().max(200).optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: limitField,
 });
 
 /**
@@ -227,8 +227,12 @@ export class CustomersController {
 
   @Get('customers/:id/rates')
   @RequirePermission('customers.view')
-  async rates(@Req() request: RequestWithContext, @Param('id') id: string) {
-    return this.customers.rateHistoryOf(contextOf(request), id);
+  async rates(
+    @Req() request: RequestWithContext,
+    @Param('id') id: string,
+    @Query(zodBody(pageSchema)) query: z.infer<typeof pageSchema>,
+  ) {
+    return this.customers.rateHistoryOf(contextOf(request), id, query);
   }
 
   @Post('customers/:id/rates')
@@ -257,7 +261,8 @@ export class CustomersController {
       money_only: query.money_only === 'true',
       include_undone: query.include_undone === 'true',
       as_of: query.as_of,
-      limit: query.limit,
+      page: query.page,
+      page_size: query.page_size,
     });
   }
 

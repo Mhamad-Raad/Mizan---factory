@@ -5,6 +5,7 @@ import type { RequestContext } from '../common/request-context.js';
 import { PeriodService } from '../settings/period.service.js';
 import { ReportsRepository } from './reports.repository.js';
 import type { DamageGroupBy, GroupBy, ReportFilters } from './reports.repository.js';
+import { pageOfArray, pagingOf } from '../common/paging.js';
 
 export interface ReportRequest {
   from?: string;
@@ -13,6 +14,9 @@ export interface ReportRequest {
   group_by?: GroupBy;
   company_id?: string;
   item_id?: string;
+  /** Which page of groups to send (D-058); the totals are always the whole period's. */
+  page?: number;
+  page_size?: number;
 }
 
 export interface ReportMeta {
@@ -56,7 +60,7 @@ export class ReportsService {
 
     return {
       ...meta,
-      ...capped(
+      ...paged(request, 
         groups.map((group) => ({
           key: group.key,
           label: group.label,
@@ -98,7 +102,7 @@ export class ReportsService {
 
     return {
       ...meta,
-      ...capped(
+      ...paged(request, 
         groups.map((group) => ({
           key: group.key,
           label: group.label,
@@ -190,7 +194,7 @@ export class ReportsService {
       ...meta,
       /** The report is a **list-price** margin and says so on the screen (FR-1005). */
       basis: 'month_price',
-      ...capped(sortGroups(groups, filters.group_by ?? 'month', (group) => group.cost.margin_iqd)),
+      ...paged(request, sortGroups(groups, filters.group_by ?? 'month', (group) => group.cost.margin_iqd)),
       totals: {
         lines: sum(groups.map((group) => group.lines)),
         lines_without_cost: sum(groups.map((group) => group.lines_without_cost)),
@@ -210,7 +214,8 @@ export class ReportsService {
   async stock(context: RequestContext, request: ReportRequest) {
     // The stock report has no user filter at all (2.11), so nothing is pinned.
     const filters = this.range(request);
-    const rows = await this.reports.stock(filters, MAX_GROUPS);
+    // Every material is valued, so the totals are the whole stock's; only a page is sent.
+    const rows = await this.reports.stock(filters, null);
     const month = `${filters.to.slice(0, 7)}-01`;
 
     const groups = rows.map((row) => {
@@ -257,7 +262,7 @@ export class ReportsService {
       from: filters.from,
       to: filters.to,
       group_by: 'item',
-      ...capped(groups),
+      ...paged(request, groups),
       totals: {
         materials: groups.length,
         cost: {
@@ -279,7 +284,8 @@ export class ReportsService {
   async receivables(context: RequestContext, request: ReportRequest) {
     // Not pinned: accounts are nobody's in particular any more (D-056).
     const { filters, meta } = this.resolve(context, request, null);
-    const rows = await this.reports.receivables(filters, MAX_GROUPS);
+    const paging = pagingOf(request);
+    const rows = await this.reports.receivables(filters, paging);
 
     const groups = rows.map((row) => ({
       key: row.key,
@@ -297,14 +303,16 @@ export class ReportsService {
     }));
 
     // The totals are the period's, over every customer — the window functions computed them
-    // before the page was taken, so a capped report still tells the truth (D-032).
+    // before the page was taken, so every page carries the period's totals (D-058).
     const first = rows[0];
     return {
       ...meta,
       group_by: 'customer',
       groups,
       group_count: Number(first?.group_count ?? 0),
-      has_more: Number(first?.group_count ?? 0) > groups.length,
+      has_more: Number(first?.group_count ?? 0) > paging.offset + groups.length,
+      page: paging.page,
+      page_size: paging.page_size,
       totals: {
         customers: Number(first?.group_count ?? 0),
         balance: {
@@ -344,7 +352,7 @@ export class ReportsService {
     return {
       ...meta,
       group_by: 'company',
-      ...capped(groups),
+      ...paged(request, groups),
       totals: {
         companies: groups.length,
         balance: {
@@ -386,7 +394,7 @@ export class ReportsService {
     return {
       ...meta,
       group_by: request.group_by ?? 'month',
-      ...capped(groups),
+      ...paged(request, groups),
       totals: {
         records: sum(groups.map((group) => group.records)),
         qty_count: sum(groups.map((group) => group.qty_count)),
@@ -413,7 +421,7 @@ export class ReportsService {
     return {
       ...meta,
       group_by: 'employee',
-      ...capped(
+      ...paged(request, 
         rows.map((row) => ({
           key: row.key,
           label: row.label,
@@ -458,7 +466,7 @@ export class ReportsService {
     return {
       ...meta,
       group_by: 'employee',
-      ...capped(groups),
+      ...paged(request, groups),
       totals: {
         received_iqd: sum(groups.map((group) => group.received_iqd)),
         received_usd_cents: sum(groups.map((group) => group.received_usd_cents)),
@@ -536,20 +544,14 @@ function sum(values: readonly number[]): number {
 }
 
 /**
- * How many groups a report **sends**. At the volumes of NFR-13 — 10,000 customers, 5,000
- * materials — "sales by customer for the year" is ten thousand rows, and on the reference
- * connection of NFR-03 (400 kbps) two megabytes of them take the better part of a minute to
- * arrive on a phone that can only show a screenful.
- */
-const MAX_GROUPS = 200;
-
-/**
- * The groups worth sending, with the truth about how many there were.
+ * One page of groups, with the truth about how many there were (D-058; it replaces D-032's cap
+ * of 200). At the volumes of NFR-13 "sales by customer for the year" is ten thousand rows, which
+ * a phone on NFR-03's connection cannot take in one answer; a page of them it can.
  *
- * The totals are **not** computed from this list: every report sums all of its groups first and
- * caps afterwards, so a capped report's totals are still the period's (asserted). The order the
- * rows arrive in decides what a cap keeps, which is why a report grouped by a dimension is
- * ordered by its own money, largest first, rather than alphabetically.
+ * The totals are **not** computed from this page: every report sums all of its groups first and
+ * pages afterwards, so any page's totals are the period's (asserted). The order the rows arrive
+ * in decides what the first page shows, which is why a report grouped by a dimension is ordered
+ * by its own money, largest first, rather than alphabetically.
  */
 /**
  * A date grouping reads newest first, because that is the order a period is read in; a
@@ -568,10 +570,17 @@ function sortGroups<T extends { key: string }>(
   return [...groups].sort((left, right) => measure(right) - measure(left));
 }
 
-function capped<T>(groups: readonly T[]): { groups: T[]; group_count: number; has_more: boolean } {
+function paged<T>(
+  request: { page?: number; page_size?: number },
+  groups: readonly T[],
+): { groups: T[]; group_count: number; has_more: boolean; page: number; page_size: number } {
+  const paging = pagingOf(request);
+  const page = pageOfArray(groups, paging);
   return {
-    groups: groups.slice(0, MAX_GROUPS),
+    groups: page,
     group_count: groups.length,
-    has_more: groups.length > MAX_GROUPS,
+    has_more: paging.offset + page.length < groups.length,
+    page: paging.page,
+    page_size: paging.page_size,
   };
 }

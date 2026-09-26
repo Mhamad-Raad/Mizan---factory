@@ -9,6 +9,8 @@ import { usePageTitle } from '../lib/page-title.js';
 import { DataList } from '../components/DataList.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
+import { Pager } from '../components/Pager.js';
+import { usePaging } from '../lib/paging.js';
 import { FilterChip } from './MaterialsPage.js';
 import { customerName } from '../lib/customers.js';
 import { usePermission } from '../lib/store.js';
@@ -59,12 +61,14 @@ export function CustomersPage() {
   const [includeInactive, setIncludeInactive] = useState(false);
   const [sort, setSort] = useState<'name' | 'balance'>('name');
 
+  const paging = usePaging({ storageKey: 'companies', resetOn: [query, balance, includeInactive, sort] });
+
   const customers = useQuery({
-    queryKey: ['customers', query, balance, includeInactive, sort],
+    queryKey: ['customers', query, balance, includeInactive, sort, paging.page, paging.pageSize],
     queryFn: () => {
       const search = new URLSearchParams({ q: query, include_inactive: String(includeInactive), sort });
       if (balance !== 'all') search.set('balance', balance);
-      return apiRequest<{ items: CustomerRow[]; total: number }>(`/customers?${search.toString()}`);
+      return apiRequest<{ items: CustomerRow[]; total: number }>(`/customers?${search.toString()}&${paging.query}`);
     },
     placeholderData: keepPreviousData,
   });
@@ -154,6 +158,13 @@ export function CustomersPage() {
             )}
           />
         </div>
+        <Pager
+          page={paging.page}
+          pageSize={paging.pageSize}
+          total={customers.data?.total ?? 0}
+          onPage={paging.setPage}
+          onPageSize={paging.setPageSize}
+        />
       </QueryStates>
     </div>
   );

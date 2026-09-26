@@ -6,6 +6,7 @@ import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { CompaniesService } from './companies.service.js';
+import { limitField, pageFields, pageSchema } from '../common/paging.js';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const money = z.object({
@@ -19,8 +20,7 @@ const listSchema = z.object({
   q: z.string().max(200).optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
   sort: z.enum(['name', 'balance']).optional(),
-  page: z.coerce.number().int().positive().optional(),
-  page_size: z.coerce.number().int().positive().max(100).optional(),
+  ...pageFields,
 });
 
 const paymentSchema = money.extend({
@@ -82,13 +82,13 @@ const ledgerSchema = z.object({
   from: isoDate.optional(),
   to: isoDate.optional(),
   done_by: z.string().uuid().optional(),
-  limit: z.coerce.number().int().positive().max(500).optional(),
+  ...pageFields,
 });
 
 const statementSchema = z.object({ from: isoDate.optional(), to: isoDate.optional() });
 const historySchema = z.object({
   cursor: z.string().max(200).optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: limitField,
 });
 
 /**
@@ -139,7 +139,8 @@ export class CompaniesController {
       from: query.from,
       to: query.to,
       done_by: query.done_by,
-      limit: query.limit,
+      page: query.page,
+      page_size: query.page_size,
     });
   }
 
@@ -148,8 +149,7 @@ export class CompaniesController {
   @RequirePermission('companies.view', 'fields.see_company_balances')
   async breakdown(
     @Param('id') id: string,
-    @Query(zodBody(z.object({ limit: z.coerce.number().int().positive().max(200).optional() })))
-    query: { limit?: number },
+    @Query(zodBody(pageSchema)) query: z.infer<typeof pageSchema>,
   ) {
     return this.companies.purchaseBreakdown(id, query);
   }

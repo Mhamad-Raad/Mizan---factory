@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
@@ -11,6 +11,8 @@ import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { PaymentSheet } from '../components/PaymentSheet.js';
 import { QueryStates } from '../components/states.js';
+import { Pager } from '../components/Pager.js';
+import { useCursorPaging } from '../lib/paging.js';
 import { OrderStatusChip, PaymentTypeChip, RateBadge } from '../components/chips.js';
 import { useJustSettled } from '../lib/motion.js';
 import { customerName } from '../lib/customers.js';
@@ -57,11 +59,29 @@ export function OrderDetailPage() {
     queryFn: () => apiRequest<{ current: { rate_iqd_per_usd: string } | null }>('/settings/global-rates'),
   });
 
+  // The audit trail is paged by cursor (D-058). The payments and payment-type changes ride on
+  // every page of the answer — they are the order's own, a handful, read straight from SQL.
+  const historyPaging = useCursorPaging({ storageKey: 'record-history', resetOn: [id] });
   const history = useQuery({
-    queryKey: ['orders', id, 'history'],
-    queryFn: () => apiRequest<OrderHistory>(`/orders/${id}/history`),
+    queryKey: ['orders', id, 'history', historyPaging.cursor, historyPaging.pageSize],
+    queryFn: () =>
+      apiRequest<OrderHistory & { next_cursor: string | null }>(`/orders/${id}/history?${historyPaging.query}`),
     enabled: tab === 'history' || tab === 'payments',
+    placeholderData: keepPreviousData,
   });
+  const historyNext = history.data?.next_cursor ?? null;
+  // A payment-type change shows on the page whose time window holds it: newer than the next
+  // page's first row, no newer than this page's cursor — so none repeats from page to page.
+  const pageHistory: OrderHistory | undefined = history.data
+    ? {
+        ...history.data,
+        payment_type_changes: history.data.payment_type_changes.filter((change) => {
+          const newest = historyPaging.cursor?.split('|')[0];
+          const oldest = historyNext?.split('|')[0];
+          return (!newest || change.changed_at < newest) && (!oldest || change.changed_at >= oldest);
+        }),
+      }
+    : undefined;
 
   const receiptData = useQuery({
     queryKey: ['orders', id, 'receipt'],
@@ -384,14 +404,14 @@ export function OrderDetailPage() {
                 <QueryStates
                   query={history}
                   isEmpty={
-                    (history.data?.items.length ?? 0) +
-                      (history.data?.payment_type_changes.length ?? 0) ===
+                    (pageHistory?.items.length ?? 0) +
+                      (pageHistory?.payment_type_changes.length ?? 0) ===
                     0
                   }
                   emptyTitle={t('history:empty')}
                 >
                   <ul className="mz-list">
-                    {timelineOf(history.data).map((row) =>
+                    {timelineOf(pageHistory).map((row) =>
                       row.kind === 'type_change' ? (
                         <li key={row.change.id} className="mz-list__item mz-list__item--detail">
                           <span className="mz-row-lead">
@@ -450,6 +470,15 @@ export function OrderDetailPage() {
                       ),
                     )}
                   </ul>
+                  <Pager
+                    page={historyPaging.page}
+                    pageSize={historyPaging.pageSize}
+                    hasNext={Boolean(historyNext)}
+                    onPage={(page) =>
+                      page > historyPaging.page && historyNext ? historyPaging.next(historyNext) : historyPaging.previous()
+                    }
+                    onPageSize={historyPaging.setPageSize}
+                  />
                 </QueryStates>
               ) : null}
             </>

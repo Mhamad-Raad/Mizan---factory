@@ -3,6 +3,7 @@ import { normalizeForSearch, normalizePhone } from '@mizan/text';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import type { DirectoryEntryDto, UserRole, UserRow } from './user.types.js';
+import { pagingOf } from '../common/paging.js';
 
 const COLUMNS = `id, username::text AS username, phone, display_name, role, password_hash,
                  must_change_password, preset_key, preset_version,
@@ -87,8 +88,7 @@ export class UsersRepository {
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
-    const pageSize = Math.min(filters.page_size ?? 25, 100);
-    const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
+    const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
     const [list, count] = await Promise.all([

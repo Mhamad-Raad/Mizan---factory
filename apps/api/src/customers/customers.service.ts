@@ -25,6 +25,7 @@ import type {
   CustomerRow,
   LedgerGroupDto,
 } from './customer.types.js';
+import { pageOfArray, pagingOf } from '../common/paging.js';
 
 export interface MoneyInput {
   amount: number;
@@ -566,8 +567,9 @@ export class CustomersService {
       money_only?: boolean;
       as_of?: string;
       include_undone?: boolean;
-      /** The bound the I2 review added on both ledgers: a long account is not a page. */
-      limit?: number;
+      /** One page of it (D-058): a long account is never sent whole. */
+      page?: number;
+      page_size?: number;
     },
   ): Promise<{
     customer: { id: string; name: string; settlement_currency: Currency; is_system: boolean };
@@ -575,6 +577,8 @@ export class CustomersService {
     balance_as_of: number | null;
     items: LedgerGroupDto[];
     total: number;
+    page: number;
+    page_size: number;
     has_more: boolean;
   }> {
     const row = await this.requireCustomer(context, id);
@@ -595,8 +599,8 @@ export class CustomersService {
     // Newest first on screen; the running balance was computed in posting order (2.4.1), over
     // the whole ledger, so the page returned still carries the figures History recorded.
     const newestFirst = [...visible].reverse();
-    const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
-    const page = newestFirst.slice(0, limit);
+    const paging = pagingOf(options);
+    const page = pageOfArray(newestFirst, paging);
     const names = await this.userNames(
       page.flatMap((group) => group.rows.map((line) => line.entry)),
     );
@@ -614,7 +618,9 @@ export class CustomersService {
         : null,
       items: page.map((group) => toGroupDto(group, names)),
       total: visible.length,
-      has_more: newestFirst.length > page.length,
+      page: paging.page,
+      page_size: paging.page_size,
+      has_more: paging.offset + page.length < newestFirst.length,
     };
   }
 
@@ -1235,23 +1241,27 @@ export class CustomersService {
   // ─────────────────────────────── rates ───────────────────────────────
 
   /** The customer's rate history — the current rate and every rate before it. */
-  async rateHistoryOf(context: RequestContext, id: string) {
+  async rateHistoryOf(context: RequestContext, id: string, options: { page?: number; page_size?: number } = {}) {
     await this.requireCustomer(context, id);
+    const paging = pagingOf(options);
     const [current, history] = await Promise.all([
       this.customers.currentRate(id),
-      this.customers.rateHistory(id),
+      this.customers.rateHistory(id, paging),
     ]);
     return {
       current: current
         ? { rate_iqd_per_usd: formatRate(current.rate), since: current.since.toISOString() }
         : null,
-      items: history.map((row) => ({
+      items: history.rows.map((row) => ({
         id: row.id,
         rate_iqd_per_usd: formatRate(row.rate_iqd_per_usd),
         effective_from: row.effective_from.toISOString(),
         note: row.note,
         created_by_name: row.created_by_name,
       })),
+      total: history.total,
+      page: paging.page,
+      page_size: paging.page_size,
     };
   }
 

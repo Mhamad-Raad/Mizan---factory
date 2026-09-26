@@ -11,6 +11,8 @@ import { QueryStates } from '../components/states.js';
 import { FilterChip } from './MaterialsPage.js';
 import { useFormatter } from '../lib/store.js';
 import { OrderTable } from '../components/OrderTable.js';
+import { Pager } from '../components/Pager.js';
+import { usePaging } from '../lib/paging.js';
 
 export interface OrderRow {
   id: string;
@@ -94,9 +96,10 @@ export function OrdersPage() {
   });
 
   const range = rangeOf(chip, formatter.today());
+  const paging = usePaging({ storageKey: 'orders', resetOn: [chip, unpaidOnly, paymentType, doneBy, query] });
 
   const orders = useQuery({
-    queryKey: ['orders', chip, unpaidOnly, paymentType, doneBy, query],
+    queryKey: ['orders', chip, unpaidOnly, paymentType, doneBy, query, paging.page, paging.pageSize],
     queryFn: () => {
       const params = new URLSearchParams();
       if (range.from) params.set('from', range.from);
@@ -105,7 +108,7 @@ export function OrdersPage() {
       if (paymentType !== 'all') params.set('payment_type', paymentType);
       if (doneBy) params.set('done_by', doneBy);
       if (query) params.set('q', query);
-      return apiRequest<{ items: OrderRow[]; total: number }>(`/orders?${params.toString()}`);
+      return apiRequest<{ items: OrderRow[]; total: number }>(`/orders?${params.toString()}&${paging.query}`);
     },
     // Keep the current rows on screen while a filter change refetches, so the table dims for a
     // moment instead of collapsing to a skeleton on every keystroke or dropdown change.
@@ -202,6 +205,13 @@ export function OrdersPage() {
           <div className="mz-refreshable" data-busy={refreshing ? 'true' : undefined} aria-busy={refreshing}>
           <OrderTable rows={rows} />
           </div>
+          <Pager
+            page={paging.page}
+            pageSize={paging.pageSize}
+            total={orders.data?.total ?? 0}
+            onPage={paging.setPage}
+            onPageSize={paging.setPageSize}
+          />
         </QueryStates>
       </div>
 

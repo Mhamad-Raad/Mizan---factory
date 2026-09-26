@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Chip, Icon, Menu, TextField } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
@@ -10,6 +10,8 @@ import { DataList } from '../components/DataList.js';
 import type { Column } from '../components/DataList.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
+import { Pager } from '../components/Pager.js';
+import { usePaging } from '../lib/paging.js';
 import { useFormatter } from '../lib/store.js';
 
 export interface ItemRow {
@@ -50,13 +52,16 @@ export function MaterialsPage() {
   const [stock, setStock] = useState<StockFilter>('all');
   const [includeInactive, setIncludeInactive] = useState(false);
 
+  const paging = usePaging({ storageKey: 'materials', resetOn: [query, stock, includeInactive] });
+
   const items = useQuery({
-    queryKey: ['items', query, stock, includeInactive],
+    queryKey: ['items', query, stock, includeInactive, paging.page, paging.pageSize],
     queryFn: () => {
       const params = new URLSearchParams({ q: query, include_inactive: String(includeInactive) });
       if (stock !== 'all') params.set('stock', stock);
-      return apiRequest<{ items: ItemRow[]; total: number }>(`/items?${params.toString()}`);
+      return apiRequest<{ items: ItemRow[]; total: number }>(`/items?${params.toString()}&${paging.query}`);
     },
+    placeholderData: keepPreviousData,
   });
 
   const rows = items.data?.items ?? [];
@@ -227,6 +232,13 @@ export function MaterialsPage() {
                 {statusChips(item)}
               </>
             )}
+          />
+          <Pager
+            page={paging.page}
+            pageSize={paging.pageSize}
+            total={items.data?.total ?? 0}
+            onPage={paging.setPage}
+            onPageSize={paging.setPageSize}
           />
         </QueryStates>
       </div>

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Database } from '../database/pool.js';
+import { limitOf } from '../common/paging.js';
 
 export interface AuditRow {
   id: string;
@@ -110,7 +111,7 @@ export class HistoryRepository {
       conditions.push(`(a.occurred_at, a.id) < ($${values.length - 1}::timestamptz, $${values.length}::bigint)`);
     }
 
-    const limit = Math.min(filters.limit ?? 50, 100);
+    const limit = limitOf(filters.limit);
     values.push(limit + 1);
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

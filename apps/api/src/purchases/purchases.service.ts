@@ -495,30 +495,28 @@ export class PurchasesService {
     const [audit, entries] = await Promise.all([
       this.history.list({ entity_type: 'purchase', entity_id: id, ...options }),
       purchase.company_id
-        ? this.ledger.entriesFor(this.database, purchase.company_id)
+        ? this.ledger.entriesOfDocument(this.database, purchase.company_id, id)
         : Promise.resolve([]),
     ]);
 
     return {
       ...audit,
-      ledger_entries: entries
-        .filter((entry) => entry.refs.purchase_id === id)
-        .map((entry) => ({
-          id: entry.id,
-          entry_type: entry.entry_type,
-          entry_date: entry.entry_date,
-          entered_currency: entry.entered_currency,
-          rate_iqd_per_usd: entry.rate_iqd_per_usd,
-          note: entry.note,
-          voucher_number: entry.voucher_number ?? null,
-          reverses_entry_id: entry.reverses_entry_id,
-          // The amounts a purchase put on the account are purchase amounts: they travel under
-          // `cost` so the same flag hides them here as on the document (spec 2.4.4, 2.6.2).
-          cost: {
-            amount_iqd: entry.amount_iqd,
-            amount_usd_cents: entry.amount_usd_cents,
-          },
-        })),
+      ledger_entries: entries.map((entry) => ({
+        id: entry.id,
+        entry_type: entry.entry_type,
+        entry_date: entry.entry_date,
+        entered_currency: entry.entered_currency,
+        rate_iqd_per_usd: entry.rate_iqd_per_usd,
+        note: entry.note,
+        voucher_number: entry.voucher_number ?? null,
+        reverses_entry_id: entry.reverses_entry_id,
+        // The amounts a purchase put on the account are purchase amounts: they travel under
+        // `cost` so the same flag hides them here as on the document (spec 2.4.4, 2.6.2).
+        cost: {
+          amount_iqd: entry.amount_iqd,
+          amount_usd_cents: entry.amount_usd_cents,
+        },
+      })),
     };
   }
 

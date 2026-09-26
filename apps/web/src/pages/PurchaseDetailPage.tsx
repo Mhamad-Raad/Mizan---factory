@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, TextField, Toast } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
@@ -9,6 +9,8 @@ import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { Can } from '../components/Can.js';
 import { QueryStates } from '../components/states.js';
+import { Pager } from '../components/Pager.js';
+import { useCursorPaging } from '../lib/paging.js';
 import { PriceFromMonth, RateBadge } from '../components/chips.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import type { PurchaseDetail } from './PurchasesPage.js';
@@ -16,6 +18,7 @@ import type { PurchaseDetail } from './PurchasesPage.js';
 type Tab = 'lines' | 'history';
 
 interface PurchaseHistory {
+  next_cursor: string | null;
   items: { id: string; action: string; occurred_at: string; actor_display_name: string | null; note: string | null }[];
   ledger_entries: {
     id: string;
@@ -64,11 +67,15 @@ export function PurchaseDetailPage() {
     enabled: maySeeBalance && Boolean(purchase.data?.company_id),
   });
 
+  // The audit trail is paged by cursor (D-058).
+  const historyPaging = useCursorPaging({ storageKey: 'record-history', resetOn: [id] });
   const history = useQuery({
-    queryKey: ['purchases', id, 'history'],
-    queryFn: () => apiRequest<PurchaseHistory>(`/purchases/${id}/history`),
+    queryKey: ['purchases', id, 'history', historyPaging.cursor, historyPaging.pageSize],
+    queryFn: () => apiRequest<PurchaseHistory>(`/purchases/${id}/history?${historyPaging.query}`),
     enabled: tab === 'history',
+    placeholderData: keepPreviousData,
   });
+  const historyNext = history.data?.next_cursor ?? null;
 
   const voidPurchase = useMutation({
     mutationFn: () =>
@@ -272,8 +279,18 @@ export function PurchaseDetailPage() {
                         </li>
                       ))}
                     </ul>
+                    <Pager
+                      page={historyPaging.page}
+                      pageSize={historyPaging.pageSize}
+                      hasNext={Boolean(historyNext)}
+                      onPage={(page) =>
+                        page > historyPaging.page && historyNext ? historyPaging.next(historyNext) : historyPaging.previous()
+                      }
+                      onPageSize={historyPaging.setPageSize}
+                    />
 
-                    {(history.data?.ledger_entries ?? []).length > 0 ? (
+                    {/* The purchase's own money rows ride on every page; they are shown once, on the first. */}
+                    {historyPaging.page === 1 && (history.data?.ledger_entries ?? []).length > 0 ? (
                       <ul className="mz-list">
                         {(history.data?.ledger_entries ?? []).map((entry) => (
                           <li key={entry.id} className="mz-list__item">

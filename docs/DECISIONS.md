@@ -801,3 +801,39 @@ The client: "make the today ui better with charts and if needed tables of the re
 - **Recent orders:** the latest eight, exactly as the Orders page lists them.
 
 Relied on: the client's instruction; 1.5.4 (field flags); 2.3 (dual currency); rule 7.
+
+## D-058 · 2026-09-26 · client review · Every list is paged: 25 a page, never more than 100
+
+The client: "add pagination to fetching lists of data … this will be used for a long time with
+no update and if the data becomes too much the backend can fail — default 25 per page, max a
+hundred", pointing at the delivery dashboard's pager.
+
+- **One rule on the API** (`common/paging.ts`): every list takes `page` and `page_size`,
+  answers 25 rows by default, and refuses more than 100 (422). The main lists already paged
+  this way; now the ledgers, both rate histories, a material's price history, the purchase
+  breakdown and every report do too, and each answer says its `page`, `page_size` and total.
+  The cap of 200 groups on reports (D-032) and the growing `limit` of 100–500 on the ledgers are
+  gone.
+- **The audit trail pages by cursor**, 25 at a time: it only ever grows, and "the rows after
+  this one" stays as quick on its millionth row as on its first, where an offset would not.
+  It has no total, so its pager reads "Page 3" with Previous and Next.
+- **What still reads a whole account on the server, and why:** a ledger's running balance and
+  the oldest-first allocation of payments to purchases are defined over every row before the
+  page (2.4.1 rule 5, FR-712), so they are computed over the account and only the page is sent.
+  An account is thousands of rows after years, not millions, so this is bounded by one
+  business's history. The stock report now values every material so its totals are the whole
+  stock's (before, its totals silently covered only the rows it sent).
+- **Found on the way:** an order's or a purchase's History tab read the whole account ledger to
+  find that document's payments; it now asks the database for the document's rows only. A
+  company's "Unpaid orders" card filtered the first 25 orders in the browser, so an account with
+  many paid orders showed none unpaid; it now asks for `status=owing` (unpaid or partly paid).
+- **Left whole on purpose:** a statement (a date-bounded printed document, capped at 500 rows as
+  before), an order's or purchase's lines (at most 200 by the form), the employee directory
+  behind the "done by" pickers (a factory's staff), and the last 20 sessions of a user.
+- **On screen:** one `Pager` under every list — rows per page (25, 50, 100, remembered per
+  list in this browser), "26–50 of 312", and arrows from the icon registry so they point the
+  reading way. Page and size live in the address, so Back and a shared link keep the page; two
+  lists on one screen use separate names. Changing a filter goes back to page one.
+
+Relied on: the client's instruction; NFR-03 and NFR-13 (a phone on a slow line, years of data);
+2.4.1; 2.10.6 (mirrored directional icons).

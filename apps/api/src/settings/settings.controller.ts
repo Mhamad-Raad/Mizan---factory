@@ -7,6 +7,7 @@ import { zodBody } from '../common/zod.pipe.js';
 import { RatesService } from '../rates/rates.service.js';
 import { SettingsService } from './settings.service.js';
 import { PUBLIC_SETTING_KEYS } from './settings.types.js';
+import { pageSchema, pagingOf } from '../common/paging.js';
 
 const patchSchema = z
   .object({
@@ -67,18 +68,13 @@ export class SettingsController {
   @Get('global-rates')
   @SessionOnly()
   async rateHistory(
-    @Query(zodBody(z.object({ limit: z.coerce.number().int().positive().max(100).optional() })))
-    query: {
-      limit?: number;
-    },
+    @Query(zodBody(pageSchema)) query: z.infer<typeof pageSchema>,
   ) {
-    const [current, history] = await Promise.all([
-      this.rates.current(),
-      this.rates.history(query.limit),
-    ]);
+    const paging = pagingOf(query);
+    const [current, history] = await Promise.all([this.rates.current(), this.rates.history(paging)]);
     return {
       current,
-      items: history.map((row) => ({
+      items: history.rows.map((row) => ({
         id: row.id,
         rate_iqd_per_usd: row.rate_iqd_per_usd,
         effective_from: row.effective_from.toISOString(),
@@ -86,6 +82,9 @@ export class SettingsController {
         created_by: row.created_by,
         created_by_name: row.created_by_name,
       })),
+      total: history.total,
+      page: paging.page,
+      page_size: paging.page_size,
     };
   }
 

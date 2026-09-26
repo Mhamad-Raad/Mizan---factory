@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Currency } from '@mizan/money';
 import { Database } from '../database/pool.js';
+import type { Paging } from '../common/paging.js';
 
 /**
  * All SQL for the reports (spec 2.11).
@@ -347,7 +348,8 @@ export class ReportsRepository {
 
   // ───────────────────────────────── stock (FR-1006) ─────────────────────────────────
 
-  async stock(filters: ReportFilters, limit: number) {
+  /** `limit` null values every material (LIMIT NULL is no limit), which the paged report does. */
+  async stock(filters: ReportFilters, limit: number | null) {
     const values: unknown[] = [filters.from, filters.to];
     const conditions = ['i.deleted_at IS NULL'];
     if (filters.item_id) {
@@ -458,10 +460,10 @@ export class ReportsRepository {
    * page. Counting unpaid orders for all of them meant grouping every order ever placed: 2.3
    * seconds at the design point of NFR-13, for two hundred rows (REVIEW-I6).
    */
-  async receivables(filters: ReportFilters, limit: number) {
+  async receivables(filters: ReportFilters, paging: Paging) {
     const values: unknown[] = [filters.from, filters.to];
     const conditions = ['c.deleted_at IS NULL', 'c.is_system = false'];
-    values.push(limit);
+    values.push(paging.page_size, paging.offset);
 
     const { rows } = await this.database.query<{
       key: string;
@@ -513,8 +515,8 @@ export class ReportsRepository {
                 sum(received_iqd) OVER () AS total_received_iqd,
                 sum(received_usd_cents) OVER () AS total_received_usd_cents
            FROM per_customer
-          ORDER BY balance DESC
-          LIMIT $${values.length}
+          ORDER BY balance DESC, id
+          LIMIT $${values.length - 1} OFFSET $${values.length}
        )
        SELECT p.id::text AS key, p.name AS label,
               p.settlement_currency::text AS settlement_currency,
@@ -846,7 +848,7 @@ export class ReportsRepository {
         label: dimension.label,
         group: `${dimension.key}, ${dimension.label}`,
         // Largest first, not alphabetically: a customer list read by name is a directory, and
-        // the response is capped, so the order decides which rows a phone is sent at all.
+        // the response is paged, so the order decides which rows the first page shows.
         order: `${measure} DESC, ${dimension.label} ASC NULLS LAST`,
       };
     }

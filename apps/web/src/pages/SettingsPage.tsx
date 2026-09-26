@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, NumberField, SegmentedControl, TextField, Toggle } from '@mizan/ui';
 import { apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
 import { AppearanceCards } from '../components/Appearance.js';
+import { Pager } from '../components/Pager.js';
+import { usePaging } from '../lib/paging.js';
 
 /**
  * Settings (FR-1101 to FR-1107): appearance (language, theme, text size) is per device,
@@ -132,6 +134,7 @@ interface SystemSettings {
 
 interface GlobalRate {
   current: { rate_iqd_per_usd: string; effective_from: string } | null;
+  total: number;
   items: {
     id: string;
     rate_iqd_per_usd: string;
@@ -155,9 +158,12 @@ function GlobalRateCard() {
   const [note, setNote] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
+  // The rate's history is paged like every list (D-058); `['global-rate']` still invalidates it.
+  const paging = usePaging({ storageKey: 'global-rates', prefix: 'rates_' });
   const rates = useQuery({
-    queryKey: ['global-rate'],
-    queryFn: () => apiRequest<GlobalRate>('/settings/global-rates'),
+    queryKey: ['global-rate', 'history', paging.page, paging.pageSize],
+    queryFn: () => apiRequest<GlobalRate>(`/settings/global-rates?${paging.query}`),
+    placeholderData: keepPreviousData,
   });
 
   const save = useMutation({
@@ -236,6 +242,13 @@ function GlobalRateCard() {
             ))}
           </ul>
         ) : null}
+        <Pager
+          page={paging.page}
+          pageSize={paging.pageSize}
+          total={rates.data?.total ?? 0}
+          onPage={paging.setPage}
+          onPageSize={paging.setPageSize}
+        />
 
         {message ? <p className="mz-muted">{message}</p> : null}
       </div>

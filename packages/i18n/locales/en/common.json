@@ -83,5 +83,10 @@
   "theme_menu": "Theme",
   "text_size_menu": "Text size",
   "entered_separately": "Entered separately",
-  "rate_at_source": "At {{source}}: {{rate}}"
+  "rate_at_source": "At {{source}}: {{rate}}",
+  "pager_rows": "Rows per page",
+  "pager_range": "{{range}} of {{total}}",
+  "pager_page": "Page {{page}}",
+  "pager_previous": "Previous page",
+  "pager_next": "Next page"
 }

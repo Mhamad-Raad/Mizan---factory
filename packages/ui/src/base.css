@@ -3557,3 +3557,55 @@ html[data-mirroring='true'] body {
   border-radius: 4px;
   block-size: 100%;
 }
+
+/* ── the foot of a paged list (client review, D-058) ─────────────────────────────── */
+
+/* Rows per page at the start, the range in the middle, the arrows at the end; on a phone the
+   size and the arrows share the first line and the range sits on its own beneath them. */
+.mz-pager {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  border-block-start: 1px solid var(--color-border);
+  padding-block-start: var(--space-3);
+}
+
+.mz-pager__size {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mz-pager__select {
+  inline-size: auto;
+  min-inline-size: 5rem;
+}
+
+.mz-pager__range {
+  flex: 1 1 auto;
+  text-align: center;
+}
+
+.mz-pager__arrows {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.mz-pager__arrows .mz-icon-button {
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.mz-pager__arrows .mz-icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (width < 30rem) {
+  .mz-pager__range {
+    order: 3;
+    flex-basis: 100%;
+  }
+}

@@ -4,6 +4,7 @@ import type { Currency } from '@mizan/money';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import { countFrom } from '../common/count-from.js';
+import { pagingOf } from '../common/paging.js';
 
 export interface CompanyRow {
   id: string;
@@ -131,8 +132,7 @@ export class CompaniesRepository {
     ]);
 
     const countValues = [...values];
-    const pageSize = Math.min(filters.page_size ?? 25, 100);
-    const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
+    const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
     const order = filters.sort === 'balance' ? 'bal.balance DESC, c.name ASC' : 'c.name ASC';
