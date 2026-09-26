@@ -97,5 +97,6 @@
   "field.device_ticket_id": "Device ticket",
   "field.session_id": "Session",
   "field.locked_until": "Locked until",
-  "field.reason": "Reason"
+  "field.reason": "Reason",
+  "field.other_sessions_signed_out": "Other devices signed out"
 }

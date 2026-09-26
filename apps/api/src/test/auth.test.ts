@@ -130,6 +130,47 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
       for (let i = 0; i < 4; i += 1) await attempt('nobody', 'whatever-long-enough').expect(401);
       await attempt('nobody', 'whatever-long-enough').expect(429);
     });
+
+    it('counts every spelling of a phone number and the username as one account', async () => {
+      const user = await seedUser({ username: 'rebaz', phone: '07501234567' });
+      const spellings = ['07501234567', '+9647501234567', '00964 750-123-4567', '٠٧٥٠١٢٣٤٥٦٧'];
+      const left: number[] = [];
+      for (const spelling of spellings) {
+        const response = await attempt(spelling, 'wrong-but-long-enough').expect(401);
+        left.push(response.body.error.params.attempts_left);
+      }
+      expect(left).toEqual([4, 3, 2, 1]);
+
+      const fifth = await attempt('REBAZ', 'wrong-but-long-enough').expect(429);
+      expect(fifth.body.error.params.minutes).toBe(15);
+      // Locked under every name the account answers to, with the right password too.
+      await attempt('rebaz', user.password).expect(429);
+      await attempt('+964 750 123 4567', user.password).expect(429);
+    });
+
+    it('counts the spellings of an unknown phone number as one', async () => {
+      for (const spelling of ['07709999999', '+964 770 999 9999', '009647709999999', '0770-999-9999']) {
+        await attempt(spelling, 'whatever-long-enough').expect(401);
+      }
+      await attempt('(0770) 999 9999', 'whatever-long-enough').expect(429);
+    });
+
+    it('gives a burst of parallel guesses no more than five tries', async () => {
+      await seedUser({ username: 'sara' });
+      const responses = await Promise.all(
+        Array.from({ length: 12 }, () => attempt('sara', 'wrong-but-long-enough')),
+      );
+      const statuses = responses.map((response) => response.status).sort();
+      expect(statuses.filter((status) => status === 401)).toHaveLength(4);
+      expect(statuses.filter((status) => status === 429)).toHaveLength(8);
+
+      const recorded = await withDatabase((client) =>
+        client.query<{ count: string }>(
+          `SELECT count(*)::text AS count FROM login_attempts WHERE username_attempted = 'sara' AND NOT succeeded`,
+        ),
+      );
+      expect(Number(recorded.rows[0]?.count)).toBe(5);
+    });
   });
 
   it('refuses a deactivated account with its own message', async () => {
@@ -225,6 +266,57 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
       const me = await as(ctx.http, session).get('/api/v1/auth/me').expect(200);
       expect(me.body.user.must_change_password).toBe(false);
       expect((await auditRows({ action: 'password_change' })).length).toBe(1);
+    });
+
+    it('does not check the current password while the account is locked out', async () => {
+      const user = await seedUser({ username: 'sara', role: 'admin' });
+      const session = await signIn(ctx.http, user);
+      for (let i = 0; i < 5; i += 1) {
+        await request(ctx.http)
+          .post('/api/v1/auth/login')
+          .send({ username_or_phone: 'sara', password: 'wrong-but-long-enough' });
+      }
+
+      const refused = await as(ctx.http, session)
+        .post('/api/v1/auth/change-password')
+        .send({ current: user.password, new: 'a-brand-new-password' })
+        .expect(429);
+      expect(refused.body.error.code).toBe('RATE_LIMITED');
+      expect(refused.body.error.params.minutes).toBe(15);
+    });
+
+    it('counts a wrong current password toward the same lockout', async () => {
+      const user = await seedUser({ username: 'sara', role: 'admin' });
+      const session = await signIn(ctx.http, user);
+      const change = (current: string) =>
+        as(ctx.http, session).post('/api/v1/auth/change-password').send({ current, new: 'a-brand-new-password' });
+
+      const first = await change('wrong-but-long-enough').expect(422);
+      expect(first.body.error.fields[0].params.attempts_left).toBe(4);
+      for (let i = 0; i < 3; i += 1) await change('wrong-but-long-enough').expect(422);
+      await change('wrong-but-long-enough').expect(429);
+      await change(user.password).expect(429);
+      // The Login page sees the same lockout.
+      await request(ctx.http)
+        .post('/api/v1/auth/login')
+        .send({ username_or_phone: 'sara', password: user.password })
+        .expect(429);
+    });
+
+    it('signs out every other session of the user, and keeps this one', async () => {
+      const user = await seedUser({ username: 'sara', role: 'admin' });
+      const here = await signIn(ctx.http, user);
+      const elsewhere = await signIn(ctx.http, user);
+
+      await as(ctx.http, here)
+        .post('/api/v1/auth/change-password')
+        .send({ current: user.password, new: 'a-brand-new-password' })
+        .expect(204);
+
+      await as(ctx.http, here).get('/api/v1/auth/me').expect(200);
+      await as(ctx.http, elsewhere).get('/api/v1/auth/me').expect(401);
+      const [row] = await auditRows({ action: 'password_change' });
+      expect(row?.changes).toEqual({ other_sessions_signed_out: 1 });
     });
 
     it('refuses a short password, the username itself and a common password', async () => {

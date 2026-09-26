@@ -97,5 +97,6 @@
   "field.device_ticket_id": "بەڵگەنامەی ئامێر",
   "field.session_id": "دانیشتن",
   "field.locked_until": "داخراوە هەتا",
-  "field.reason": "هۆکار"
+  "field.reason": "هۆکار",
+  "field.other_sessions_signed_out": "ئامێرە ترەکان کە لێیان چوونەدەرەوە"
 }

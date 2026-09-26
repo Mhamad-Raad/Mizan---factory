@@ -252,8 +252,9 @@ export class UsersRepository {
     username: string,
     windowMinutes: number,
     lookbackMinutes: number,
+    tx?: Db,
   ): Promise<{ recent: number; run: number; lastFailureAt: Date | null }> {
-    const { rows } = await this.database.query<{
+    const { rows } = await (tx ?? this.database).query<{
       recent: number;
       run: number;
       last_failure_at: Date | null;

@@ -183,6 +183,21 @@ export class SessionService {
     return result.rowCount ?? 0;
   }
 
+  /**
+   * Every other live session of a user, when they change their own password (review
+   * finding 12): whoever else holds the old password's session is signed out, and the device
+   * the change was made on stays signed in.
+   */
+  async revokeOthersForUser(userId: string, keepSessionId: string, reason: string, tx?: Db): Promise<number> {
+    const db = tx ?? this.database;
+    const result = await db.query(
+      `UPDATE sessions SET revoked_at = now(), revoke_reason = $3
+        WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL`,
+      [userId, keepSessionId, reason],
+    );
+    return result.rowCount ?? 0;
+  }
+
   async listForUser(userId: string): Promise<SessionRow[]> {
     const { rows } = await this.database.query<SessionRow>(
       `SELECT id, user_id, is_locked, is_shared_device, auth_method, device_label,

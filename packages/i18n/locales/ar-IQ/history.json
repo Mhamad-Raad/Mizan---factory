@@ -97,5 +97,6 @@
   "field.device_ticket_id": "تذكرة الجهاز",
   "field.session_id": "الجلسة",
   "field.locked_until": "مقفل حتى",
-  "field.reason": "السبب"
+  "field.reason": "السبب",
+  "field.other_sessions_signed_out": "الأجهزة الأخرى التي سُجّل خروجها"
 }
