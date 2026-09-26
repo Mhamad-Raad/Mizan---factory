@@ -115,11 +115,14 @@ await client.query(
   [actor, CUSTOMERS, EMPLOYEES],
 );
 await client.query(
-  `INSERT INTO companies (name, name_normalized, settlement_currency, created_by, updated_by)
+  // A company is a business we buy from (D-054). Names are not unique any more, so a re-run is
+  // kept idempotent by asking rather than by a conflict.
+  `INSERT INTO customers (name, name_normalized, settlement_currency, is_customer, is_supplier,
+                         created_by, updated_by)
    SELECT 'Volume supplier ' || g, 'volume supplier ' || g,
-          (CASE WHEN g % 5 = 0 THEN 'USD' ELSE 'IQD' END)::currency, $1, $1
+          (CASE WHEN g % 5 = 0 THEN 'USD' ELSE 'IQD' END)::currency, false, true, $1, $1
      FROM generate_series(1, $2) g
-   ON CONFLICT DO NOTHING`,
+    WHERE NOT EXISTS (SELECT 1 FROM customers c WHERE c.name_normalized = 'volume supplier ' || g)`,
   [actor, COMPANIES],
 );
 
@@ -133,7 +136,7 @@ await client.query(
 );
 await client.query(
   `CREATE TEMP TABLE volume_companies AS
-     SELECT row_number() OVER (ORDER BY id) - 1 AS n, id FROM companies WHERE name LIKE 'Volume supplier %'`,
+     SELECT row_number() OVER (ORDER BY id) - 1 AS n, id FROM customers WHERE name LIKE 'Volume supplier %'`,
 );
 await client.query(
   `CREATE TEMP TABLE volume_items AS
@@ -337,7 +340,7 @@ const { rows: totals } = await client.query(
           (SELECT count(*) FROM order_lines) AS order_lines,
           (SELECT count(*) FROM purchases) AS purchases,
           (SELECT count(*) FROM customers) AS customers,
-          (SELECT count(*) FROM companies) AS companies,
+          (SELECT count(*) FROM customers WHERE is_supplier) AS companies,
           (SELECT count(*) FROM items) AS materials,
           (SELECT count(*) FROM customer_ledger) AS customer_ledger,
           (SELECT count(*) FROM company_ledger) AS company_ledger,

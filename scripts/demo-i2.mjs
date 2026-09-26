@@ -103,9 +103,11 @@ const hemin = await signInFresh(`hemin.${unique}`, warehouseUser.body.temporary_
 const nazdar = await signInFresh(`nazdar.${unique}`, accountantUser.body.temporary_password);
 check(Boolean(hemin && nazdar), 'both signed in and set their own passwords');
 
-const alNoor = await call(nazdar.session, '/companies', {
+const alNoor = await call(nazdar.session, '/customers', {
   method: 'POST',
   body: {
+    is_customer: false,
+    is_supplier: true,
     name: `Al-Noor Steel Co. ${unique}`,
     contact_name: 'Abu Ahmad',
     phone: '0751 222 3344',
@@ -115,7 +117,7 @@ const alNoor = await call(nazdar.session, '/companies', {
 check(alNoor.status === 201, `company created, settled in ${alNoor.body?.settlement_currency}`);
 check(alNoor.body?.rate?.is_company_rate === false, 'with no rate of its own yet, so the global 1,300 applies');
 
-const companyRate = await call(nazdar.session, `/companies/${alNoor.body.id}/rates`, {
+const companyRate = await call(nazdar.session, `/customers/${alNoor.body.id}/rates`, {
   method: 'POST',
   body: { rate_iqd_per_usd: '1310', note: 'agreed for September' },
 });
@@ -249,7 +251,7 @@ check(
 
 step(5, 'Change the company rate → new documents use it, stored entries are untouched; then re-base a USD company');
 const storedBefore = (await call(nazdar.session, `/companies/${alNoor.body.id}/ledger?raw=true`)).body?.items ?? [];
-const newRate = await call(nazdar.session, `/companies/${alNoor.body.id}/rates`, {
+const newRate = await call(nazdar.session, `/customers/${alNoor.body.id}/rates`, {
   method: 'POST',
   body: { rate_iqd_per_usd: '1400', note: 'October rate' },
 });
@@ -262,17 +264,17 @@ check(
   'every stored entry is byte-for-byte what it was — nothing is recalculated from a later rate',
 );
 
-const guard = await call(nazdar.session, `/companies/${alNoor.body.id}/rates`, {
+const guard = await call(nazdar.session, `/customers/${alNoor.body.id}/rates`, {
   method: 'POST',
   body: { rate_iqd_per_usd: '14000' },
 });
 check(guard.status === 422 && guard.body?.error?.code === 'RATE_GUARD', 'a rate ten times too large asks for confirmation');
 
-const gulf = await call(nazdar.session, '/companies', {
+const gulf = await call(nazdar.session, '/customers', {
   method: 'POST',
-  body: { name: `Gulf Steel FZE ${unique}`, settlement_currency: 'USD' },
+  body: { is_customer: false, is_supplier: true, name: `Gulf Steel FZE ${unique}`, settlement_currency: 'USD' },
 });
-await call(nazdar.session, `/companies/${gulf.body.id}/rates`, {
+await call(nazdar.session, `/customers/${gulf.body.id}/rates`, {
   method: 'POST',
   body: { rate_iqd_per_usd: '1310' },
 });
@@ -289,7 +291,7 @@ check(
   `a USD-settled company's purchase is valued at its own rate: ${gulfPurchase.body?.cost?.total_usd_cents}¢ though the price was typed in dinars`,
 );
 
-const refused = await call(admin, `/companies/${gulf.body.id}/settlement-currency`, {
+const refused = await call(admin, `/customers/${gulf.body.id}/settlement-currency`, {
   method: 'PUT',
   body: { currency: 'IQD', note: 'they invoice in dinars now' },
 });
@@ -298,7 +300,7 @@ check(
   'changing the settlement currency with money on the account needs a re-basing rate',
 );
 
-const rebased = await call(admin, `/companies/${gulf.body.id}/settlement-currency`, {
+const rebased = await call(admin, `/customers/${gulf.body.id}/settlement-currency`, {
   method: 'PUT',
   body: { currency: 'IQD', note: 'they invoice in dinars now', rebase_rate: '1310' },
 });
@@ -371,9 +373,9 @@ check(steelNow.body?.stock?.stock_count === 20, `steel stock is back to ${steelN
 // ─────────────────────── 7. an opening debt, a statement, the list ───────────────────────
 
 step(7, 'Record an opening debt for a new company with a note, share its statement, and sort the list by balance');
-const zagros = await call(nazdar.session, '/companies', {
+const zagros = await call(nazdar.session, '/customers', {
   method: 'POST',
-  body: { name: `Zagros Metals ${unique}`, settlement_currency: 'IQD' },
+  body: { is_customer: false, is_supplier: true, name: `Zagros Metals ${unique}`, settlement_currency: 'IQD' },
 });
 const openingDebt = await call(nazdar.session, `/companies/${zagros.body.id}/opening-balance`, {
   method: 'POST',

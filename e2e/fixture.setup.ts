@@ -210,7 +210,9 @@ async function createCompany(
   context: Awaited<ReturnType<typeof request.newContext>>,
   session: Headers,
 ): Promise<string> {
-  const created = (await post(context, session, '/companies', {
+  const created = (await post(context, session, '/customers', {
+    is_customer: false,
+    is_supplier: true,
     name: 'Al-Noor Steel Co.',
     contact_name: 'Abu Ahmad',
     phone: '0751 222 3344',
@@ -218,7 +220,7 @@ async function createCompany(
   })) as { id: string };
 
   // The company's own rate, deliberately apart from the global 1,310 (FR-703, 2.3.3).
-  await post(context, session, `/companies/${created.id}/rates`, {
+  await post(context, session, `/customers/${created.id}/rates`, {
     rate_iqd_per_usd: '1305',
     note: 'agreed for September',
   });
