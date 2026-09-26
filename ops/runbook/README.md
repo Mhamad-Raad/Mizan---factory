@@ -21,7 +21,11 @@ which is what lets the session cookie stay `SameSite=Lax` with no cross-site exc
 4. Build, migrate, then start: `docker compose --profile tools build`, `docker compose run --rm migrate`,
    `docker compose up -d`. The API does not hold the migrate role's credentials — only the
    one-off `migrate` job does — and it refuses to start while a migration is pending, so the
-   migrations go first.
+   migrations go first. The first migrate creates the application role `mizan_app` without a
+   password; give it the one in `DATABASE_URL` before `up`:
+   `docker compose exec db psql -U mizan_migrate -d mizan -c "ALTER ROLE mizan_app PASSWORD '<the DATABASE_URL password>'"`.
+   Then take the superuser away from `mizan_migrate` (below, "The migrate role and the
+   superuser") — **after** this first migrate, never before it.
 5. Seed the first admin: `docker compose exec api node apps/api/dist/database/seed.js`,
    then **sign in once and change the password** — the account is created with
    `must_change_password`, and the value in `.env` should be removed afterwards.
@@ -48,7 +52,10 @@ not read mizan_migrations", the migrate job has not run yet: run it, then start 
 
 **The migrate role and the superuser (one-time, by hand).** `compose.yml` creates the database
 with `POSTGRES_USER=mizan_migrate`, which makes the schema owner a PostgreSQL **superuser** — more
-than migrations need. On a new host, or at a planned maintenance window on an existing one:
+than migrations need. **Order matters**: the first migrate must already have run, because
+migration `0002` creates the `mizan_app` role, and creating a role needs `CREATEROLE` (which a
+superuser has, and the demoted role below does not). On a new host that is right after step 4
+of "First deployment"; on an existing one, at a planned maintenance window:
 
 ```sh
 docker compose exec db psql -U mizan_migrate -d mizan -c "CREATE ROLE pg_admin LOGIN SUPERUSER PASSWORD '<new, from openssl rand -base64 32>'"
@@ -57,8 +64,11 @@ docker compose exec db psql -U pg_admin -d mizan -c "ALTER ROLE mizan_migrate NO
 
 then keep the `pg_admin` password with the backup key (off the host) and use it only for
 restores and emergencies. Migrations, the nightly dump and the restore drill keep working as
-`mizan_migrate`, which still owns the schema. This is not automated because the init scripts of
-the `postgres` image run only on an empty volume, and the production volume is not empty.
+`mizan_migrate`, which still owns the schema. A later migration that has to create or alter a
+role will fail as `mizan_migrate` with "permission denied to create role": run that one as
+`pg_admin`, or grant `CREATEROLE` for the window and revoke it after. This is not automated
+because the init scripts of the `postgres` image run only on an empty volume, and the
+production volume is not empty.
 
 **Rolling back** is redeploying the previous tag. A migration is never rolled back by
 un-applying it: write a new forward migration. The runner refuses to re-apply a file whose
