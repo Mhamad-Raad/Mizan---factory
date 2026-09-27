@@ -1854,7 +1854,10 @@ html[data-mirroring='true'] body {
 @media (width >= 64rem) {
   .mz-app--shell {
     display: grid;
-    grid-template: 'nav header' auto 'nav offline' auto 'nav main' 1fr / 17rem 1fr;
+
+    /* `minmax(0, 1fr)`: a wide table scrolls inside its own card; with a bare `1fr` the column
+       grew to the table's width and pushed the whole page past the window (Reports, 52 px). */
+    grid-template: 'nav header' auto 'nav offline' auto 'nav main' 1fr / 17rem minmax(0, 1fr);
   }
 
   .mz-header {
@@ -1888,20 +1891,27 @@ html[data-mirroring='true'] body {
     margin-inline: 0;
   }
 
+  /*
+   * Pinned to the window, not stuck in the page: a sticky sidebar rode the page's elastic
+   * overscroll and stretched with it (client review). The grid keeps its `nav` column as the
+   * space the sidebar covers, so the content still starts beside it.
+   */
   .mz-tabbar {
     grid-area: nav;
     flex-direction: column;
-    position: sticky;
+    position: fixed;
     justify-content: flex-start;
     gap: 0;
     border-block-start: 0;
     border-inline-end: 1px solid var(--color-border);
     background: var(--color-sidebar);
     padding: 0;
-    block-size: 100dvh;
-    inset-block-start: 0;
-    inset-inline: auto;
+    inline-size: 17rem;
+    inset-block: 0;
+    inset-inline: 0 auto;
     color: var(--color-sidebar-text);
+    overscroll-behavior: contain;
+    transition: inline-size var(--duration-micro) var(--ease-out);
 
     /* Not a scroller itself: the links scroll inside `.mz-sidebar__nav`, and a scrolling
        sidebar clipped the account menu that opens out of its foot (client review). */
@@ -2115,6 +2125,9 @@ html[data-mirroring='true'] body {
     padding-inline: var(--space-3);
     padding-block: var(--space-3);
     overflow-y: auto;
+
+    /* Scrolling the links ends at the list's end, never carrying on into the page behind. */
+    overscroll-behavior: contain;
   }
 }
 
@@ -2132,7 +2145,11 @@ html[data-mirroring='true'] body {
   }
 
   .mz-app--shell[data-sidebar='collapsed'] {
-    grid-template-columns: 4.75rem 1fr;
+    grid-template-columns: 4.75rem minmax(0, 1fr);
+  }
+
+  [data-sidebar='collapsed'] .mz-tabbar {
+    inline-size: 4.75rem;
   }
 
   /* Folded: no labels, no group headings, and every row a centred icon. */
@@ -4172,14 +4189,26 @@ html[data-mirroring='true'] body {
   gap: var(--space-1);
 }
 
-/* The whole profile row opens the account menu, not only its three dots (client review): the
-   dots' button stretches an invisible layer over the row, so it stays one real button — one
-   tab stop, one name for a screen reader — with a target the size of the row. */
-.mz-sidebar__user .mz-menu > .mz-icon-button::after {
-  content: '';
+/* The profile row is the account menu's button (client review): no three dots — the menu's
+   button lies over the whole row, invisible, so it stays one real button (one tab stop, one
+   name for a screen reader, a focus ring round the row) with a target the size of the row. */
+.mz-sidebar__user .mz-menu > .mz-icon-button {
   position: absolute;
-  inset: 0;
+  z-index: 1;
   border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+  inline-size: auto;
+  block-size: auto;
+  inset: 0;
+}
+
+.mz-sidebar__user .mz-menu > .mz-icon-button:hover {
+  background: transparent;
+}
+
+.mz-sidebar__user .mz-menu > .mz-icon-button svg {
+  display: none;
 }
 
 .mz-sidebar__user:hover {
