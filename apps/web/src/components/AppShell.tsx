@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BottomSheet, Icon, IconButton, Menu, BrandMark } from '@mizan/ui';
+import type { MenuItem } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import { useApp } from '../lib/store.js';
 import { AppearanceMenus } from './Appearance.js';
@@ -129,6 +130,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     navigate('/lock');
   };
 
+  // One account menu, in the sidebar on a desktop and in the bar on a phone.
+  const accountItems: MenuItem[] = [
+    { label: t('common:my_account'), icon: 'user', onSelect: () => navigate('/me') },
+    ...(isSharedDevice ? [{ label: t('auth:lock_now'), icon: 'lock' as const, onSelect: () => void lock() }] : []),
+    { label: t('auth:sign_out'), icon: 'logout', onSelect: () => void signOut() },
+  ];
+
   return (
     <div className="mz-app mz-app--shell" data-sidebar={collapsed ? 'collapsed' : 'open'}>
       <header className="mz-header">
@@ -153,19 +161,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
          * shows the same three choices as pictures, and keeps the numerals and the
          * shared-device flag, which are decided once.
          */}
-        <AppearanceMenus />
         {/* The sidebar carries the account on a desktop; on a phone this is where it lives. */}
         <span className="mz-header__account">
           <Menu
             label={t('common:account_menu')}
             icon="user"
-            items={[
-              { label: t('settings:me_title'), onSelect: () => navigate('/me') },
-              ...(isSharedDevice
-                ? [{ label: t('auth:lock_now'), onSelect: () => void lock() }]
-                : []),
-              { label: t('auth:sign_out'), onSelect: () => void signOut() },
-            ]}
+            items={accountItems}
           />
         </span>
         {/*
@@ -177,6 +178,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {isSharedDevice ? (
           <IconButton icon="lock" label={t('auth:lock_now')} onClick={() => void lock()} />
         ) : null}
+        {/* The light/dark switch is the bar's last control (client review). */}
+        <AppearanceMenus />
       </header>
 
       {!isOnline ? (
@@ -255,13 +258,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               label={t('common:account_menu')}
               icon="more"
               align="start"
-              items={[
-                { label: t('common:my_account'), icon: 'user', onSelect: () => navigate('/me') },
-                ...(isSharedDevice
-                  ? [{ label: t('auth:lock_now'), icon: 'lock' as const, onSelect: () => void lock() }]
-                  : []),
-                { label: t('auth:sign_out'), icon: 'logout', onSelect: () => void signOut() },
-              ]}
+              items={accountItems}
             />
           </div>
         </div>
