@@ -94,5 +94,6 @@
   "stock_after": "After saving",
   "effect_us": "A loss for us, at what the stock cost",
   "effect_company": "{{company}} will owe us what the stock cost",
-  "details": "Details"
+  "details": "Details",
+  "paid_back_note": "{{name}} paid back"
 }

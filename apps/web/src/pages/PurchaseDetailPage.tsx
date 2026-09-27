@@ -80,7 +80,7 @@ export function PurchaseDetailPage() {
   const settlement = data?.settlement_currency ?? 'IQD';
   const active = data?.doc_status === 'active';
 
-  usePageTitle(data ? t('purchases:number', { number: formatter.number(data.number) }) : t('purchases:title'));
+  usePageTitle(data ? t('purchases:number', { number: formatter.identifier(data.number) }) : t('purchases:title'));
 
   return (
     <>
@@ -100,7 +100,7 @@ export function PurchaseDetailPage() {
               <Card>
                 <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)', alignItems: 'flex-start' }}>
                   <div className="mz-stack" style={{ gap: '2px', minInlineSize: 0 }}>
-                    <h2 className="mz-title">{t('purchases:number', { number: formatter.number(data.number) })}</h2>
+                    <h2 className="mz-title">{t('purchases:number', { number: formatter.identifier(data.number) })}</h2>
                     <span className="mz-caption">{t('purchases:buy_caption')}</span>
                     <span className="mz-caption" style={{ display: 'block' }}>
                       {formatter.date(data.purchase_date)}

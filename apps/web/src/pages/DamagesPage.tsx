@@ -217,7 +217,7 @@ export function DamagesPage() {
       header: t('common:number_column'),
       cell: (damage) => (
         <span className="mz-cell__body">
-          <strong>{t('damages:number', { number: formatter.number(damage.number) })}</strong>
+          <strong>{t('damages:number', { number: formatter.identifier(damage.number) })}</strong>
           <span className="mz-caption">{formatter.date(damage.damage_date)}</span>
         </span>
       ),
@@ -399,7 +399,7 @@ export function DamagesPage() {
                   {statusOf(damage)}
                 </span>
                 <span className="mz-caption" data-tabular>
-                  {t('damages:number', { number: formatter.number(damage.number) })} ·{' '}
+                  {t('damages:number', { number: formatter.identifier(damage.number) })} ·{' '}
                   {quantityOf(damage, formatter, t)} · {formatter.date(damage.damage_date)}
                 </span>
                 {damage.reason ? (

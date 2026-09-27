@@ -50,6 +50,14 @@ describe('numerals (FR-1105, spec 3.7.4)', () => {
   });
 });
 
+describe('record numbers (client review)', () => {
+  it('reads order #1014 without a thousands separator, in the reader’s digits', () => {
+    expect(createFormatter({ locale: 'en', numerals: 'latn' }).identifier(1014)).toBe('1014');
+    expect(createFormatter({ locale: 'ckb-IQ', numerals: 'arabext' }).identifier(1014)).toBe('۱۰۱۴');
+    expect(createFormatter({ locale: 'en', numerals: 'latn' }).number(1014)).toBe('1,014');
+  });
+});
+
 describe('money formatting — the table in spec 2.10.4/2.10.5', () => {
   it('IQD has no decimals, USD has two', () => {
     expect(formatMinorUnits(1_250_000, 0, 'latn')).toBe('1,250,000');

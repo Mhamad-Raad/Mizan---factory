@@ -23,6 +23,7 @@ import { useCursorPaging, usePaging } from '../lib/paging.js';
 import { EditPartySheet, RateHistorySheet, SettlementCurrencySheet } from '../components/party/PartySheets.js';
 import { customerName } from '../lib/customers.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
+import { readNote } from '../lib/record-names.js';
 import { DIRECTION_LABELS, InactiveChip, directionOf } from './CustomersPage.js';
 import type { BalanceValue, CustomerRow } from './CustomersPage.js';
 import type { OrderRow } from './OrdersPage.js';
@@ -606,7 +607,7 @@ function HistoryItem({ row, settlement }: { row: HistoryRow; settlement: Currenc
         </span>
         {row.note ? (
           <span className="mz-caption" style={{ display: 'block' }}>
-            <bdi>{row.note}</bdi>
+            <bdi>{readNote(row.note, t, formatter.identifier)}</bdi>
           </span>
         ) : null}
       </span>

@@ -554,7 +554,7 @@ function DamageTextsForm({ damage }: { damage: DamageDetail }) {
       <Card>
         <div className="mz-stack">
           <div>
-            <h2 className="mz-heading">{t('damages:number', { number: formatter.number(damage.number) })}</h2>
+            <h2 className="mz-heading">{t('damages:number', { number: formatter.identifier(damage.number) })}</h2>
             <p className="mz-muted">{t('damages:edit_texts_only')}</p>
           </div>
           <dl className="mz-damage-facts">

@@ -6,6 +6,7 @@ import { Chip } from '@mizan/ui';
 import type { Currency, Rate } from '@mizan/money';
 import { DualAmount } from './DualAmount.js';
 import { useFormatter } from '../lib/store.js';
+import { readNote } from '../lib/record-names.js';
 import { useIsWide } from '../lib/wide.js';
 
 export interface LedgerRow {
@@ -148,7 +149,7 @@ export function LedgerList({
                             </span>
                             {underlying.note ? (
                               <span className="mz-caption" style={{ display: 'block' }}>
-                                <bdi>{underlying.note}</bdi>
+                                <bdi>{readNote(underlying.note, t, formatter.identifier)}</bdi>
                               </span>
                             ) : null}
                           </td>
@@ -249,7 +250,7 @@ function EntryLabel({
         ) : null}
         {row.voucher_number !== null ? (
           <span className="mz-caption">
-            {t('customers:voucher_number', { number: formatter.number(row.voucher_number) })}
+            {t('customers:voucher_number', { number: formatter.identifier(row.voucher_number) })}
           </span>
         ) : null}
       </span>
@@ -260,7 +261,7 @@ function EntryLabel({
       ) : null}
       {row.note ? (
         <span className="mz-caption">
-          <bdi>{row.note}</bdi>
+          <bdi>{readNote(row.note, t, formatter.identifier)}</bdi>
         </span>
       ) : null}
       {row.rows.length > 1 ? (

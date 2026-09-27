@@ -1037,7 +1037,7 @@ each. Where a fix had to choose, this is the choice.
   limit**: the whole factory reaches the server from one address, and a limit loose enough for a
   busy day at thirty users protects nothing a login ceiling does not. In memory per replica.
   Relied on: 2.8, NFR-13, C-07.
-- **The API no longer holds the migrate role.** Migration 0027 grants the app role `SELECT` on
+- **The API no longer holds the migrate role.** Migration 0028 grants the app role `SELECT` on
   `mizan_migrations`; migrations run from a one-off `migrate` service in `compose.yml`. Making
   `mizan_migrate` a non-superuser on the existing volume is a manual step (runbook), not code.
   Relied on: 2.13, 2.14.
@@ -1055,7 +1055,7 @@ each. Where a fix had to choose, this is the choice.
   2.13.
 - **A malformed record id is 404** (global pipe over `id`, `entryId`, `sessionId`, after the
   guard); **idempotency keys** must be 8–128 of `[A-Za-z0-9_-]` and are unique per user
-  (migration 0028). Relied on: 2.9.1, 2.9.2, FR-1305.
+  (migration 0029). Relied on: 2.9.1, 2.9.2, FR-1305.
 - **Numbers refused by a schema** now say so as numbers (`errors:field.number_too_small` with
   `min`), and every field error carries its `min`/`max`. Relied on: 2.9.2.
 
@@ -1104,3 +1104,21 @@ without the flags. This supersedes the per-address and backup bullets of D-066.
   demotes `mizan_migrate` only after the first migrate (0002 creates `mizan_app`) and sets
   `mizan_app`'s password; an import number too big says so (`imports:number_too_big`,
   `number_too_small`, `number_above`); `api` and `migrate` share `mizan-api:${MIZAN_IMAGE_TAG}`.
+
+## D-068 · 2026-09-27 · client review · Fourteen findings after the Me page and the rounding
+
+- **A username and a phone share one namespace.** Sign-in takes either (FR-101), so a phone may
+  not be another account's username and a new username may not be another account's phone; at
+  sign-in an exactly typed username wins over a phone. A phone with no digits is refused
+  (`errors:field.phone_invalid`) instead of being stored empty.
+- **How many orders still owe** moves under `balance` on the Orders list, with the amount: the
+  balances flag (2.6.2) now hides the "To collect" tile whole. Each row's own status stays.
+- **A record's number is an identifier** (`formatter.identifier`): the reader's digits, never a
+  thousands separator — "Order #1014". The rounding note takes its 250 from the formatter.
+- **English the API writes once** ("Expense #5", "Broken #4", "Broken #4 paid back") is read in
+  the reader's language wherever it shows (`lib/record-names.ts`); ledger rows stay as written.
+- **History records the rounding** of an order on create and on edit, old → new.
+- **The lock screen** returns to the page it covered; a different user taking over starts on
+  their own home, with no page title left over from the last one.
+- **The demo seed** changes a fresh admin's password to `DEMO_ADMIN_NEW_PASSWORD`, and stops
+  with that instruction when it is not set — it never invents an admin password.

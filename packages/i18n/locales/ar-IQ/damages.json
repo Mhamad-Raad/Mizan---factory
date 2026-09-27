@@ -94,5 +94,6 @@
   "stock_after": "بعد الحفظ",
   "effect_us": "خسارة علينا بكلفة المخزون",
   "effect_company": "ستكون {{company}} مدينة لنا بكلفة المخزون",
-  "details": "التفاصيل"
+  "details": "التفاصيل",
+  "paid_back_note": "تم تسديد {{name}}"
 }

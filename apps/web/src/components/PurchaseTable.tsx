@@ -79,7 +79,7 @@ export function PurchaseTable({
       header: t('common:number_column'),
       cell: (purchase) => (
         <span className="mz-cell__body">
-          <strong>{t('purchases:number', { number: formatter.number(purchase.number) })}</strong>
+          <strong>{t('purchases:number', { number: formatter.identifier(purchase.number) })}</strong>
           <span className="mz-caption">{formatter.date(purchase.purchase_date)}</span>
           {voided(purchase)}
         </span>
@@ -117,7 +117,7 @@ export function PurchaseTable({
         return (
           <span className="mz-rowcard">
             <span className="mz-rowcard__head">
-              <span className="mz-list__title">{t('purchases:number', { number: formatter.number(purchase.number) })}</span>
+              <span className="mz-list__title">{t('purchases:number', { number: formatter.identifier(purchase.number) })}</span>
               <span className="mz-rowcard__chips">
                 {purchase.company_id === null ? <Chip>{t('purchases:stock_only_badge')}</Chip> : null}
                 {voided(purchase)}

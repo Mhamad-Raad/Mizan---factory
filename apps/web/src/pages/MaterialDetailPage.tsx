@@ -736,7 +736,7 @@ function StockByPrice({
                   <span className="mz-caption">
                     {t('materials:bought_on_date', { date: formatter.date(lot.bought_on) })}
                     {' · '}
-                    {t('purchases:number', { number: formatter.number(lot.purchase_number) })}
+                    {t('purchases:number', { number: formatter.identifier(lot.purchase_number) })}
                   </span>
                 </span>
                 {lot.unit_cost_iqd !== undefined && lot.unit_cost_usd_cents !== undefined ? (

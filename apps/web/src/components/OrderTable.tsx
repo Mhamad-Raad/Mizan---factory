@@ -33,7 +33,7 @@ export function OrderTable({ rows, showCustomer = true }: { rows: readonly Order
       header: t('common:number_column'),
       cell: (order) => (
         <span className="mz-cell__body">
-          <strong>{t('orders:number', { number: formatter.number(order.number) })}</strong>
+          <strong>{t('orders:number', { number: formatter.identifier(order.number) })}</strong>
           <span className="mz-caption">{formatter.date(order.order_date)}</span>
         </span>
       ),
@@ -87,7 +87,7 @@ export function OrderTable({ rows, showCustomer = true }: { rows: readonly Order
       card={(order) => (
         <span className="mz-rowcard">
           <span className="mz-rowcard__head">
-            <span className="mz-list__title">{t('orders:number', { number: formatter.number(order.number) })}</span>
+            <span className="mz-list__title">{t('orders:number', { number: formatter.identifier(order.number) })}</span>
             <span className="mz-rowcard__chips">
               <PaymentTypeChip type={order.payment_type} />
               <OrderStatusChip status={order.status} />

@@ -13,6 +13,7 @@ import { AuditDiff, AuditValue } from '../components/AuditDiff.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { FilterChip } from './MaterialsPage.js';
 import { useApp, useFormatter } from '../lib/store.js';
+import { readNote, recordName } from '../lib/record-names.js';
 
 interface AuditRow {
   id: string;
@@ -116,18 +117,6 @@ function linkOf(entry: AuditRow): string | null {
     default:
       return null;
   }
-}
-
-/**
- * The record's name in the reader's language. The API stores an English label ("Order #1014",
- * "Material: Copper wire"), so a numbered record is named by its translated kind and its number,
- * and a named one by its name alone.
- */
-function recordName(entry: AuditRow, t: (key: string, options?: Record<string, unknown>) => string, number: (value: number) => string): string {
-  const numbered = entry.entity_label.match(/#\s*(\d+)\s*$/);
-  if (numbered) return `${t(`history:entity.${entry.entity_type}`, { defaultValue: entry.entity_type })} #${number(Number(numbered[1]))}`;
-  const named = entry.entity_label.match(/^[A-Za-z ]+:\s*(.+)$/);
-  return named?.[1] ?? entry.entity_label;
 }
 
 /** Two letters for a person's badge. */
@@ -368,7 +357,7 @@ export function HistoryPage() {
                   const style = actionStyle(entry.action);
                   const link = SESSION_ACTIONS.has(entry.action) ? null : linkOf(entry);
                   const open = expanded === entry.id;
-                  const name = recordName(entry, t, (value) => formatter.number(value));
+                  const name = recordName(entry.entity_type, entry.entity_label, t, formatter.identifier);
                   return (
                     <li key={entry.id} className="mz-activity__item" data-open={open ? 'true' : undefined}>
                       <span className="mz-activity__avatar" aria-hidden="true">
@@ -398,7 +387,7 @@ export function HistoryPage() {
                         <RowSummary entry={entry} />
                         {entry.note ? (
                           <p className="mz-activity__note">
-                            <bdi>“{entry.note}”</bdi>
+                            <bdi>“{readNote(entry.note, t, formatter.identifier)}”</bdi>
                           </p>
                         ) : null}
                         {open ? (

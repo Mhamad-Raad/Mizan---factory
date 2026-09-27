@@ -26,6 +26,7 @@ import { useIsWide } from '../lib/wide.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { QueryStates } from '../components/states.js';
 import { useApp, useFormatter } from '../lib/store.js';
+import { readNote, recordName } from '../lib/record-names.js';
 
 interface UserDetail {
   id: string;
@@ -502,7 +503,7 @@ function ActivityTab({ userId }: { userId: string }) {
                     </td>
                     <td>
                       <span className="mz-cell__body">
-                        <bdi>{row.entity_label}</bdi>
+                        <bdi>{recordName(row.entity_type, row.entity_label, t, formatter.identifier)}</bdi>
                         <span className="mz-caption">{kind(row)}</span>
                       </span>
                     </td>
@@ -510,7 +511,7 @@ function ActivityTab({ userId }: { userId: string }) {
                       {row.changes && Object.keys(row.changes).length > 0 ? (
                         <AuditDiff changes={row.changes} note={row.note} />
                       ) : row.note ? (
-                        <span className="mz-caption">{row.note}</span>
+                        <span className="mz-caption">{readNote(row.note, t, formatter.identifier)}</span>
                       ) : (
                         <span className="mz-muted">—</span>
                       )}
@@ -536,7 +537,7 @@ function ActivityTab({ userId }: { userId: string }) {
                   </span>
                 </div>
                 <p className="mz-entry__record">
-                  <bdi>{row.entity_label}</bdi>{' '}
+                  <bdi>{recordName(row.entity_type, row.entity_label, t, formatter.identifier)}</bdi>{' '}
                   <span className="mz-entry__kind">· {kind(row)}</span>
                 </p>
                 {hasDetail(row) ? (
@@ -546,7 +547,7 @@ function ActivityTab({ userId }: { userId: string }) {
                       {row.changes && Object.keys(row.changes).length > 0 ? (
                         <AuditDiff changes={row.changes} note={row.note} />
                       ) : (
-                        <p className="mz-caption">{row.note}</p>
+                        <p className="mz-caption">{readNote(row.note ?? '', t, formatter.identifier)}</p>
                       )}
                     </div>
                   </details>

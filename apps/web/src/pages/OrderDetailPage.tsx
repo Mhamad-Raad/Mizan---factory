@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
+import { ORDER_ROUNDING_IQD } from '@mizan/money';
 import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
@@ -158,7 +159,7 @@ export function OrderDetailPage() {
   const excessNeeded =
     payment.error instanceof ApiError && payment.error.fieldError('amount')?.code === 'EXCEEDS_REMAINING';
 
-  usePageTitle(data ? t('orders:number', { number: formatter.number(data.number) }) : t('orders:title'));
+  usePageTitle(data ? t('orders:number', { number: formatter.identifier(data.number) }) : t('orders:title'));
 
   return (
     <>
@@ -181,7 +182,7 @@ export function OrderDetailPage() {
                   style={{ gap: 'var(--space-3)', alignItems: 'flex-start' }}
                 >
                   <div className="mz-stack" style={{ gap: '2px' }}>
-                    <h2 className="mz-title">{t('orders:number', { number: formatter.number(data.number) })}</h2>
+                    <h2 className="mz-title">{t('orders:number', { number: formatter.identifier(data.number) })}</h2>
                     <Link to={`/customers/${data.customer_id}`} className="mz-caption">
                       {customerName({ name: data.customer_name, is_system: data.customer_is_system }, t)}
                     </Link>
@@ -213,7 +214,7 @@ export function OrderDetailPage() {
                     {/* Said out loud, so nobody wonders why the total is not the lines' sum (D-065). */}
                     {(data.rounding_iqd ?? 0) > 0 ? (
                       <span className="mz-caption">
-                        {t('orders:rounded_up', { amount: formatter.money(data.rounding_iqd ?? 0, 'IQD') })}
+                        {t('orders:rounded_up', { amount: formatter.money(data.rounding_iqd ?? 0, 'IQD'), step: formatter.number(ORDER_ROUNDING_IQD) })}
                       </span>
                     ) : null}
                     <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
@@ -386,7 +387,7 @@ export function OrderDetailPage() {
                             <span className="mz-caption">
                               {formatter.date(entry.entry_date)}
                               {entry.voucher_number
-                                ? ` · ${t('customers:voucher_number', { number: formatter.number(entry.voucher_number) })}`
+                                ? ` · ${t('customers:voucher_number', { number: formatter.identifier(entry.voucher_number) })}`
                                 : ''}
                             </span>
                             <RowNote note={entry.note} />
@@ -551,7 +552,7 @@ export function OrderDetailPage() {
                       </div>
                       <div className="mz-invoice__doc">
                         <span className="mz-invoice__doctype">{t('glossary:receipt')}</span>
-                        <strong>{t('orders:number', { number: formatter.number(rc.order.number) })}</strong>
+                        <strong>{t('orders:number', { number: formatter.identifier(rc.order.number) })}</strong>
                         <span className="mz-invoice__muted">{formatter.date(rc.order.order_date)}</span>
                       </div>
                     </header>

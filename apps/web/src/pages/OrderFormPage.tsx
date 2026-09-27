@@ -15,7 +15,7 @@ import {
   TextField,
   Toggle,
 } from '@mizan/ui';
-import { computeLineTotals, convert, documentTotals, roundOrderTotals } from '@mizan/money';
+import { ORDER_ROUNDING_IQD, computeLineTotals, convert, documentTotals, roundOrderTotals } from '@mizan/money';
 import type { Currency, Measure, Rate, RateSource } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
@@ -745,7 +745,7 @@ function OrderForm({
         total_usd_cents={totals.total_usd_cents}
         note={
           totals.rounding_iqd > 0
-            ? t('orders:rounded_up', { amount: formatter.money(totals.rounding_iqd, 'IQD') })
+            ? t('orders:rounded_up', { amount: formatter.money(totals.rounding_iqd, 'IQD'), step: formatter.number(ORDER_ROUNDING_IQD) })
             : undefined
         }
         primary={settlementCurrency}

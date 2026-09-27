@@ -104,7 +104,7 @@ export function DamageDetailPage() {
       <DualAmount amount_iqd={record.cost.est_value_iqd} amount_usd_cents={record.cost.est_value_usd_cents ?? 0} />
     ) : null;
 
-  usePageTitle(record ? t('damages:number', { number: formatter.number(record.number) }) : t('damages:title'));
+  usePageTitle(record ? t('damages:number', { number: formatter.identifier(record.number) }) : t('damages:title'));
 
   return (
     <div className="mz-stack">
@@ -120,7 +120,7 @@ export function DamageDetailPage() {
             <Card>
               <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)', alignItems: 'flex-start' }}>
                 <div className="mz-stack" style={{ gap: '2px', minInlineSize: 0 }}>
-                  <h2 className="mz-title">{t('damages:number', { number: formatter.number(record.number) })}</h2>
+                  <h2 className="mz-title">{t('damages:number', { number: formatter.identifier(record.number) })}</h2>
                   <Link to={`/materials/${record.item_id}`} className="mz-caption">
                     <bdi>{record.item_name}</bdi>
                   </Link>

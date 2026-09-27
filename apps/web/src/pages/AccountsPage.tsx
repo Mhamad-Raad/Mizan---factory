@@ -343,7 +343,7 @@ function SalesTab({ from, to }: { from: string; to: string }) {
       header: t('purchases:col_order'),
       cell: (row) => (
         <span className="mz-cell__body">
-          <strong>{t('orders:number', { number: formatter.number(row.number) })}</strong>
+          <strong>{t('orders:number', { number: formatter.identifier(row.number) })}</strong>
           <span className="mz-caption">{formatter.date(row.order_date)}</span>
         </span>
       ),
@@ -381,7 +381,7 @@ function SalesTab({ from, to }: { from: string; to: string }) {
           card={(row) => (
             <span className="mz-rowcard">
               <span className="mz-rowcard__head">
-                <span className="mz-list__title">{t('orders:number', { number: formatter.number(row.number) })}</span>
+                <span className="mz-list__title">{t('orders:number', { number: formatter.identifier(row.number) })}</span>
                 <Signed pair={row.profit} primary={row.settlement_currency} />
               </span>
               <span className="mz-caption">
@@ -437,7 +437,7 @@ function BoughtTab({ from, to }: { from: string; to: string }) {
       header: t('purchases:col_buy'),
       cell: (row) => (
         <span className="mz-cell__body">
-          <strong>{t('purchases:number', { number: formatter.number(row.number) })}</strong>
+          <strong>{t('purchases:number', { number: formatter.identifier(row.number) })}</strong>
           <span className="mz-caption">{formatter.date(row.purchase_date)}</span>
         </span>
       ),
@@ -466,7 +466,7 @@ function BoughtTab({ from, to }: { from: string; to: string }) {
           card={(row) => (
             <span className="mz-rowcard">
               <span className="mz-rowcard__head">
-                <span className="mz-list__title">{t('purchases:number', { number: formatter.number(row.number) })}</span>
+                <span className="mz-list__title">{t('purchases:number', { number: formatter.identifier(row.number) })}</span>
                 {total(row)}
               </span>
               <span className="mz-caption">
