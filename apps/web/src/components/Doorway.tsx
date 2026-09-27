@@ -2,12 +2,15 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, BrandMark } from '@mizan/ui';
 import { AppearanceMenus } from './Appearance.js';
+import { useDocumentTitle } from '../lib/page-title.js';
 
 interface DoorwayProps {
   /** The card's heading; the application's name when omitted. */
   title?: ReactNode;
   /** One quiet line under the heading. */
   subtitle?: ReactNode;
+  /** What the browser tab calls this screen ("Sign in", "Screen locked"). */
+  tabTitle?: string;
   children: ReactNode;
 }
 
@@ -19,8 +22,9 @@ interface DoorwayProps {
  * Language, theme and text size sit at the reading end of the top edge, the same menus the app
  * bar carries, because the person who needs Arabic needs it *before* signing in.
  */
-export function Doorway({ title, subtitle, children }: DoorwayProps) {
+export function Doorway({ title, subtitle, tabTitle, children }: DoorwayProps) {
   const { t } = useTranslation();
+  useDocumentTitle(tabTitle ?? (typeof title === 'string' ? title : null));
 
   return (
     <div className="mz-app mz-doorway">

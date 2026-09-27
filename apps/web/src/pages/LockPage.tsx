@@ -141,7 +141,7 @@ export function LockPage() {
   };
 
   return (
-    <Doorway>
+    <Doorway tabTitle={t('auth:locked_title')}>
       <div className="mz-stack">
         <div className="mz-row">
           <Avatar name={who.displayName} />

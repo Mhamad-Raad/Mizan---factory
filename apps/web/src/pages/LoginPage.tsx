@@ -61,7 +61,7 @@ export function LoginPage() {
   };
 
   return (
-    <Doorway subtitle={t('auth:sign_in_subtitle')}>
+    <Doorway subtitle={t('auth:sign_in_subtitle')} tabTitle={t('auth:sign_in')}>
       <form className="mz-stack" onSubmit={submit} noValidate>
         <TextField
           label={t('auth:username_or_phone')}
