@@ -23,6 +23,8 @@ export interface Lot {
   bought_on: string;
   /** In the material's priced measure (pieces, or kilograms with three decimals). */
   quantity: string;
+  /** What sales and damages have taken from it so far, net of what was given back. */
+  taken: string;
   remaining: string;
   unit_cost_iqd: number;
   unit_cost_usd_cents: number;
@@ -69,6 +71,7 @@ export class LotsService {
       purchase_number: string;
       bought_on: string;
       quantity: string;
+      taken: string;
       remaining: string;
       unit_cost_iqd: string;
       unit_cost_usd_cents: string;
@@ -79,7 +82,7 @@ export class LotsService {
     }>(
       `SELECT purchase_line_id, purchase_id, purchase_number::text AS purchase_number,
               to_char(purchase_date, 'YYYY-MM-DD') AS bought_on,
-              quantity::text AS quantity, remaining::text AS remaining,
+              quantity::text AS quantity, taken::text AS taken, remaining::text AS remaining,
               unit_price_iqd::text AS unit_cost_iqd, unit_price_usd_cents::text AS unit_cost_usd_cents,
               line_total_iqd::text AS line_total_iqd, line_total_usd_cents::text AS line_total_usd_cents,
               price_entered_currency::text AS entered_currency, rate_iqd_per_usd::text AS rate_iqd_per_usd
@@ -94,6 +97,7 @@ export class LotsService {
       purchase_number: Number(row.purchase_number),
       bought_on: row.bought_on,
       quantity: new Decimal(row.quantity).toFixed(QTY_SCALE),
+      taken: new Decimal(row.taken).toFixed(QTY_SCALE),
       remaining: new Decimal(row.remaining).toFixed(QTY_SCALE),
       unit_cost_iqd: Number(row.unit_cost_iqd),
       unit_cost_usd_cents: Number(row.unit_cost_usd_cents),
@@ -137,13 +141,14 @@ export class LotsService {
       const left = new Decimal(lot.remaining).minus(pending.get(lot.purchase_line_id) ?? 0);
       if (left.lte(0)) continue;
       const qty = Decimal.min(left, wanted);
-      takes.push(this.take(lot, qty));
+      const before = new Decimal(lot.taken).plus(pending.get(lot.purchase_line_id) ?? 0);
+      takes.push(this.take(lot, qty, before));
       wanted = wanted.minus(qty);
     }
     if (wanted.gt(0)) {
       // Nothing left in any buy: the latest buy's price stands in, with no allocation row.
       const latest = lots[lots.length - 1] as Lot;
-      const extra = this.take(latest, wanted);
+      const extra = this.take(latest, wanted, null);
       takes.push({ ...extra, purchase_line_id: '' });
     }
 
@@ -200,16 +205,23 @@ export class LotsService {
 
   /**
    * A quantity of one lot, costed as its share of what the whole buy cost, in both currencies
-   * (rule 1). Not a unit price times the quantity: the unit price on the calculated side is
-   * already rounded, and 5,000 kg of it drifts by dollars from what the buy really cost.
+   * (rule 1) — not a rounded unit price times the quantity, which on 5,000 kg drifts by dollars.
+   *
+   * With `before` (what was taken from the lot already) the share is the difference of two
+   * cumulative figures, each rounded once, so every take of a buy together costs exactly the
+   * buy — three pieces of a 1,000 dinar buy cost 333, 334 and 333, never 999 (review). Stock
+   * sold past every buy has no place in the lot and is costed as a plain share.
    */
-  private take(lot: Lot, qty: Decimal): Take {
-    const share = qty.dividedBy(lot.quantity);
+  private take(lot: Lot, qty: Decimal, before: Decimal | null): Take {
+    const costOf = (quantity: Decimal, total: number): number =>
+      roundHalfAwayFromZero(quantity.dividedBy(lot.quantity).times(total));
+    const cost = (total: number): number =>
+      before === null ? costOf(qty, total) : costOf(before.plus(qty), total) - costOf(before, total);
     return {
       purchase_line_id: lot.purchase_line_id,
       qty: qty.toFixed(QTY_SCALE),
-      cost_iqd: roundHalfAwayFromZero(share.times(lot.line_total_iqd)),
-      cost_usd_cents: roundHalfAwayFromZero(share.times(lot.line_total_usd_cents)),
+      cost_iqd: cost(lot.line_total_iqd),
+      cost_usd_cents: cost(lot.line_total_usd_cents),
     };
   }
 }

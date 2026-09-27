@@ -376,6 +376,28 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       expect(report.body.cost_of_sold.amount_usd_cents).toBe(lot?.line_total_usd_cents);
     });
 
+    it('costs every piece of a buy so that together they cost exactly the buy (review)', async () => {
+      const bolts = await createMaterial('Bolt M12', 'per_piece', { sale: 2_000, bought: 1_000 });
+      // Three pieces for 1,000 د.ع in all: a third is 333.33…
+      await as(ctx.http, admin)
+        .post('/api/v1/purchases')
+        .send({
+          company_id: null,
+          purchase_date: today(),
+          lines: [{ item_id: bolts, qty_count: 3, total: { amount: 1_000, currency: 'IQD' } }],
+        })
+        .expect(201);
+      const before = await as(ctx.http, admin).get('/api/v1/accounts/summary').expect(200);
+      for (let n = 0; n < 3; n += 1) {
+        await createOrder(sales, { lines: [{ item_id: bolts, qty_count: 1 }] }).expect(201);
+      }
+      const after = await as(ctx.http, admin).get('/api/v1/accounts/summary').expect(200);
+      const [lot] = (await as(ctx.http, admin).get(`/api/v1/items/${bolts}/lots`).expect(200)).body.items;
+      // 333 + 334 + 333: the buy's dinars exactly, where three rounded thirds made 999. (The
+      // dollar side of a margin is its dinar margin at the sale's rate, so it is not compared.)
+      expect(after.body.cost_of_sold.amount_iqd - before.body.cost_of_sold.amount_iqd).toBe(lot.line_total_iqd);
+    });
+
     it('refuses to void a buy whose stock has already been sold', async () => {
       const bought = await as(ctx.http, admin)
         .post('/api/v1/purchases')
@@ -820,6 +842,21 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
   });
 
   describe('editing and voiding (FR-610, spec 2.5.3)', () => {
+    it('returns the stock warning of an edit that oversells, as a new order does (review)', async () => {
+      const order = await createOrder(sales, { lines: [{ item_id: copper, qty_kg: '100.000' }] }).expect(201);
+      const edited = await as(ctx.http, sales)
+        .put(`/api/v1/orders/${order.body.id}`)
+        .send({
+          customer_id: kawa,
+          order_date: today(),
+          payment_type: 'borrowed',
+          version: order.body.version,
+          lines: [{ item_id: copper, qty_kg: '9000.000' }],
+        })
+        .expect(200);
+      expect(edited.body.stock_warnings[0]).toMatchObject({ requested: '9000.000' });
+    });
+
     it('keeps a payment already made when an edit makes the order cash (review)', async () => {
       const order = await createOrder(sales, { lines: [{ item_id: copper, qty_kg: '100.000' }] }).expect(201);
       await as(ctx.http, sales)
