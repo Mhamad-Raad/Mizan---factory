@@ -433,6 +433,8 @@ export interface MenuItem {
   current?: boolean;
   /** For a language row: the item's own language, so it is read in the right voice. */
   lang?: string;
+  /** An icon before the label, for a menu of actions rather than of choices (the account menu). */
+  icon?: IconName;
   onSelect: () => void;
 }
 
@@ -523,7 +525,13 @@ export function Menu({
                 item.onSelect();
               }}
             >
-              {item.current ? <Icon name="check" size={16} /> : <span className="mz-menu__gap" />}
+              {item.icon ? (
+                <Icon name={item.icon} size={16} />
+              ) : item.current ? (
+                <Icon name="check" size={16} />
+              ) : (
+                <span className="mz-menu__gap" />
+              )}
               {item.label}
             </button>
           ))}

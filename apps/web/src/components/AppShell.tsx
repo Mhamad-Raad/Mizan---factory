@@ -256,11 +256,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               icon="more"
               align="start"
               items={[
-                { label: t('settings:me_title'), onSelect: () => navigate('/me') },
+                { label: t('common:my_account'), icon: 'user', onSelect: () => navigate('/me') },
                 ...(isSharedDevice
-                  ? [{ label: t('auth:lock_now'), onSelect: () => void lock() }]
+                  ? [{ label: t('auth:lock_now'), icon: 'lock' as const, onSelect: () => void lock() }]
                   : []),
-                { label: t('auth:sign_out'), onSelect: () => void signOut() },
+                { label: t('auth:sign_out'), icon: 'logout', onSelect: () => void signOut() },
               ]}
             />
           </div>

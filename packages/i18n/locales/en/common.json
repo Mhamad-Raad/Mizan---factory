@@ -91,5 +91,8 @@
   "pager_next": "Next page",
   "no_rate_set": "No rate is set yet, so the other currency is not worked out",
   "rate_needed_first": "Set the rate in Settings first — an amount is kept in both currencies",
-  "export_truncated": "The file holds the first {{count}} rows only — choose a shorter period for the rest"
+  "export_truncated": "The file holds the first {{count}} rows only — choose a shorter period for the rest",
+  "my_account": "My account",
+  "switch_to_dark": "Switch to the dark theme",
+  "switch_to_light": "Switch to the light theme"
 }
