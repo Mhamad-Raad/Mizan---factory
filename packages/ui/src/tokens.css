@@ -559,6 +559,62 @@
   --color-neutral-chip-text: #afa1a1;
 }
 
+/* Jiyan: the wine red of Jiyan's own logo (#931329), for the client's brand (D-072). */
+[data-palette='jiyan'][data-theme='light'],
+[data-palette='jiyan'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fdfafa;
+  --color-surface-2: #f6efef;
+  --color-text: #231517;
+  --color-text-muted: #6d5d60;
+  --color-border: #e5dadb;
+  --color-border-strong: #917f82;
+  --color-primary: #931329;
+  --color-primary-hover: #7a0f22;
+  --color-primary-soft: #fbdde1;
+  --color-on-primary-soft: #4e0a16;
+  --color-sidebar: #fdf8f8;
+  --color-sidebar-text: #231517;
+  --color-sidebar-accent: #fbdde1;
+  --color-sidebar-accent-text: #4e0a16;
+  --color-sidebar-hover: #f6efef;
+  --color-on-header: #231517;
+  --color-table-head: #f6efef;
+  --color-table-stripe: #f8f3f3;
+  --color-table-hover: #fde7ea;
+  --color-focus: #931329;
+  --color-neutral-chip-bg: #f6efef;
+  --color-neutral-chip-text: #6d5d60;
+}
+
+[data-palette='jiyan'][data-theme='dark'],
+[data-palette='jiyan'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #1c1214;
+  --color-surface: #261a1d;
+  --color-surface-2: #36282b;
+  --color-text: #f5ebed;
+  --color-text-muted: #b09fa3;
+  --color-border: #3c2e31;
+  --color-border-strong: #7b6c6f;
+  --color-primary: #f07c8c;
+  --color-primary-hover: #f6a2ae;
+  --color-on-primary: #1f0c10;
+  --color-primary-soft: #5a2230;
+  --color-on-primary-soft: #fdd3da;
+  --color-header: #261a1d;
+  --color-sidebar: #23181a;
+  --color-sidebar-text: #f5ebed;
+  --color-sidebar-accent: #5a2230;
+  --color-sidebar-accent-text: #fdd3da;
+  --color-sidebar-hover: #32242a;
+  --color-on-header: #f5ebed;
+  --color-table-head: #30232a;
+  --color-table-stripe: #2d2126;
+  --color-table-hover: #4c2230;
+  --color-focus: #f07c8c;
+  --color-neutral-chip-bg: #36282b;
+  --color-neutral-chip-text: #b09fa3;
+}
+
 /* Clay: a warm terracotta. */
 [data-palette='clay'][data-theme='light'],
 [data-palette='clay'] [data-theme='light']:not([data-palette]) {

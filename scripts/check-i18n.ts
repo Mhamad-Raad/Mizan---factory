@@ -24,7 +24,7 @@ const API_DIR = join(ROOT, 'apps/api/src');
 /** Keys that legitimately read the same in every language. */
 // The product's name, "Jiyan Management", is written in English in every language (D-072):
 // the name and the word beneath it in the sidebar, on the sign-in page and on the invoice.
-const SAME_IN_EVERY_LANGUAGE = new Set(['common:app_name', 'common:app_tagline']);
+const SAME_IN_EVERY_LANGUAGE = new Set(['common:app_name', 'common:app_tagline', 'settings:palette_jiyan']);
 
 const problems: string[] = [];
 

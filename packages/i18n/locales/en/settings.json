@@ -62,6 +62,7 @@
   "palette": "Colour",
   "palette_hint": "The colour the app wears on this device",
   "palette_teal": "Teal",
+  "palette_jiyan": "Jiyan",
   "palette_ocean": "Ocean",
   "palette_plum": "Plum",
   "palette_clay": "Clay",

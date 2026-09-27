@@ -1254,4 +1254,7 @@ languages, and the stock queries were timed on 520,000 buys and 1.56 million tak
     browser.
   - **Home-screen icons:** the logo itself. The maskable icon is the Ĵ inside the safe zone,
     so a round crop never cuts the wordmark.
-  - **Unchanged for now:** the in-app mark (the box and sprout) and the app's teal theme.
+  - **In-app mark:** the sidebar and sign-in mark (`BrandMark`) is the same Ĵ with its swoosh.
+  - **New theme:** a "Jiyan" palette, the logo's wine red `#931329` in light and a softer
+    wine-rose in dark, second in the picker. All 44 of its contrast pairs meet AA. Teal stays
+    the default until the client says otherwise.

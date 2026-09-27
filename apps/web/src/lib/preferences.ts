@@ -20,6 +20,7 @@ export type Palette =
   | 'plum'
   | 'rose'
   | 'crimson'
+  | 'jiyan'
   | 'clay'
   | 'amber'
   | 'forest'
@@ -62,7 +63,7 @@ const LOCALES: Locale[] = ['ckb-IQ', 'ar-IQ', 'en'];
 export const THEMES: readonly Theme[] = ['light', 'dark', 'auto'];
 export const FONT_SCALES: readonly FontScale[] = [0.875, 1, 1.125, 1.25];
 export const PALETTES: readonly Palette[] = [
-  'teal', 'ocean', 'sky', 'indigo', 'plum', 'rose', 'crimson', 'clay', 'amber', 'forest', 'graphite',
+  'teal', 'jiyan', 'ocean', 'sky', 'indigo', 'plum', 'rose', 'crimson', 'clay', 'amber', 'forest', 'graphite',
 ];
 export const TYPEFACES: readonly Typeface[] = ['vazirmatn', 'plex', 'noto', 'kufi', 'naskh'];
 
