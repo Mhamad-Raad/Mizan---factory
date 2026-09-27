@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, DateField, Icon, Menu, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import type { IconName, MenuItem } from '@mizan/ui';
-import type { Currency } from '@mizan/money';
+import type { Currency, Rate } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
@@ -19,11 +19,14 @@ import { ShareDocumentSheet } from '../components/ShareDocumentSheet.js';
 import { QueryStates } from '../components/states.js';
 import { OrderTable } from '../components/OrderTable.js';
 import { Pager } from '../components/Pager.js';
-import { useCursorPaging, usePaging } from '../lib/paging.js';
+import { useCursorPaging, useKeepPageInRange, usePaging } from '../lib/paging.js';
 import { EditPartySheet, RateHistorySheet, SettlementCurrencySheet } from '../components/party/PartySheets.js';
 import { customerName } from '../lib/customers.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
 import { readNote } from '../lib/record-names.js';
+import { errorMessage } from '../lib/errors.js';
+import { invalidateMoneyViews } from '../lib/invalidate.js';
+import { lastTwelveMonths } from '../lib/periods.js';
 import { DIRECTION_LABELS, InactiveChip, directionOf } from './CustomersPage.js';
 import type { BalanceValue, CustomerRow } from './CustomersPage.js';
 import type { OrderRow } from './OrdersPage.js';
@@ -106,6 +109,7 @@ export function CustomerDetailPage() {
     enabled: selling && tab === 'orders',
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(ordersPaging, orders);
 
   // The overview asks the server for what is still owed, rather than filtering a page of orders.
   const owing = useQuery({
@@ -128,6 +132,7 @@ export function CustomerDetailPage() {
     enabled: tab === 'sales' && selling && maySeeSelling && !walkIn,
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(salesPaging, salesLedger);
 
   const [historyAction, setHistoryAction] = useState<HistoryAction>('all');
   const historyPaging = useCursorPaging({ storageKey: 'history', resetOn: [id, historyAction] });
@@ -141,10 +146,13 @@ export function CustomerDetailPage() {
     placeholderData: keepPreviousData,
   });
 
+  // The last twelve months to today's Baghdad date (FR-507, spec 2.10.4); the window is in the
+  // key, so a statement opened after midnight is not yesterday's.
+  const statementWindow = lastTwelveMonths(formatter.today());
   const salesStatement = useQuery({
-    queryKey: ['customers', id, 'statement'],
+    queryKey: ['customers', id, 'statement', statementWindow.from, statementWindow.to],
     queryFn: () => {
-      const window = statementWindow();
+      const window = statementWindow;
       return apiRequest<{
         customer: { name: string; settlement_currency: Currency };
         opening_balance: number;
@@ -158,7 +166,9 @@ export function CustomerDetailPage() {
   });
 
   const settlement: Currency = data?.settlement_currency ?? 'IQD';
-  const rate = data?.rate?.rate_iqd_per_usd ?? '1310.0000';
+  // Their own rate, or the global one the API reports in its place; none at all before a rate
+  // has ever been set, and then nothing is converted.
+  const rate: Rate | null = data?.rate?.rate_iqd_per_usd ?? null;
   const inSettlement = (value: BalanceValue | null | undefined) =>
     value ? (settlement === 'IQD' ? value.amount_iqd : value.amount_usd_cents) : 0;
   const owedToUs = inSettlement(data?.balance);
@@ -167,6 +177,7 @@ export function CustomerDetailPage() {
     await queryClient.invalidateQueries({ queryKey: ['customers'] });
     await queryClient.invalidateQueries({ queryKey: ['companies'] });
     await queryClient.invalidateQueries({ queryKey: ['orders'] });
+    await invalidateMoneyViews(queryClient);
   };
   const done = async (message?: string) => {
     setSheet(null);
@@ -204,8 +215,7 @@ export function CustomerDetailPage() {
     onSuccess: () => done(),
   });
 
-  const errorOf = (error: unknown) =>
-    error instanceof ApiError ? t(error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') }) : undefined;
+  const errorOf = (error: unknown) => errorMessage(t, error) ?? undefined;
   const excessNeeded =
     payment.error instanceof ApiError && payment.error.fieldError('amount')?.code === 'EXCEEDS_REMAINING';
 
@@ -271,7 +281,7 @@ export function CustomerDetailPage() {
                       <span className="mz-caption">
                         {data.rate?.is_customer_rate ? t('customers:rate_own') : t('customers:rate_is_global')}
                       </span>
-                      <span data-tabular>{formatter.rate(rate)}</span>
+                      <span data-tabular>{rate === null ? t('settings:no_rate_yet') : formatter.rate(rate)}</span>
                     </div>
                     <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)' }}>
                       <span className="mz-caption">{t('glossary:settlement_currency')}</span>
@@ -467,6 +477,7 @@ export function CustomerDetailPage() {
             hint={t('customers:rate_hint')}
             current={data?.rate?.is_customer_rate ? data.rate.rate_iqd_per_usd : null}
             saving={setRate.isPending}
+            error={errorOf(setRate.error)}
             onClose={() => setSheet(null)}
             onSave={(body) => setRate.mutate(body)}
           />
@@ -479,7 +490,7 @@ export function CustomerDetailPage() {
             current={settlement}
             hasMoney={owedToUs !== 0}
             balance={owedToUs}
-            rate={rate}
+            rate={rate ?? ''}
             saving={setCurrency.isPending}
             error={errorOf(setCurrency.error)}
             onClose={() => setSheet(null)}
@@ -624,14 +635,6 @@ function HistoryItem({ row, settlement }: { row: HistoryRow; settlement: Currenc
   );
 }
 
-/** The last twelve months: the window a statement covers (FR-507). */
-function statementWindow(): { from: string; to: string } {
-  const today = new Date();
-  const from = new Date(today);
-  from.setFullYear(from.getFullYear() - 1);
-  return { from: from.toISOString().slice(0, 10), to: today.toISOString().slice(0, 10) };
-}
-
 function pathOf(kind: EntryKind): string {
   return kind === 'opening' ? 'opening-balance' : `${kind}s`;
 }
@@ -669,7 +672,7 @@ function LedgerEntrySheet({
   onSave,
 }: {
   kind: EntryKind;
-  rate: string;
+  rate: Rate | null;
   saving: boolean;
   error?: string;
   onClose: () => void;

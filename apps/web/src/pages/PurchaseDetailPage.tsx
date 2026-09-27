@@ -3,7 +3,9 @@ import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
-import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { errorMessage } from '../lib/errors.js';
+import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { Can } from '../components/Can.js';
@@ -12,7 +14,7 @@ import { Pager } from '../components/Pager.js';
 import { useCursorPaging } from '../lib/paging.js';
 import { PriceFromMonth, RateBadge } from '../components/chips.js';
 import { useFormatter, usePermission } from '../lib/store.js';
-import type { PurchaseDetail } from './PurchasesPage.js';
+import type { PurchaseDetail } from '../lib/purchases.js';
 
 type Tab = 'lines' | 'history';
 
@@ -60,7 +62,7 @@ export function PurchaseDetailPage() {
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['purchases'] });
     await queryClient.invalidateQueries({ queryKey: ['items'] });
-    await queryClient.invalidateQueries({ queryKey: ['accounts'] });
+    await invalidateMoneyViews(queryClient);
   };
 
   const voidPurchase = useMutation({
@@ -300,9 +302,9 @@ export function PurchaseDetailPage() {
                 onChange={(event) => setReason(event.target.value)}
                 maxLength={2000}
               />
-              {voidPurchase.error instanceof ApiError ? (
+              {voidPurchase.error ? (
                 <div className="mz-warning" role="alert">
-                  {t(voidPurchase.error.messageKey, { defaultValue: t('errors:INTERNAL') })}
+                  {errorMessage(t, voidPurchase.error)}
                 </div>
               ) : null}
               <Button

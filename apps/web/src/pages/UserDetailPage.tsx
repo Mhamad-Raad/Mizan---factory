@@ -17,6 +17,7 @@ import {
   TextField,
 } from '@mizan/ui';
 import { ApiError, apiRequest } from '../lib/api.js';
+import { errorMessage } from '../lib/errors.js';
 import { PermissionEditor } from '../components/PermissionEditor.js';
 import { Pager } from '../components/Pager.js';
 import { useCursorPaging } from '../lib/paging.js';
@@ -195,7 +196,7 @@ function DetailsTab({ user }: { user: UserDetail }) {
         );
       } else if (caught instanceof ApiError && caught.code === 'VERSION_CONFLICT') {
         setError(t('common:conflict_title'));
-      } else setError(t('errors:INTERNAL'));
+      } else setError(errorMessage(t, caught) ?? t('errors:INTERNAL'));
     },
   });
 
@@ -216,7 +217,7 @@ function DetailsTab({ user }: { user: UserDetail }) {
             ? t('users:cannot_deactivate_self')
             : t('errors:LAST_ADMIN'),
         );
-      } else setError(t('errors:INTERNAL'));
+      } else setError(errorMessage(t, caught) ?? t('errors:INTERNAL'));
     },
   });
 
@@ -225,7 +226,9 @@ function DetailsTab({ user }: { user: UserDetail }) {
       apiRequest<{ temporary_password: string }>(`/users/${user.id}/reset-password`, {
         method: 'POST',
       }),
+    onMutate: () => setError(null),
     onSuccess: (response) => setTemporaryPassword(response.temporary_password),
+    onError: (caught: unknown) => setError(errorMessage(t, caught) ?? t('errors:INTERNAL')),
   });
 
   return (
@@ -382,6 +385,7 @@ function SessionsTab({ userId }: { userId: string }) {
       await queryClient.invalidateQueries({ queryKey: ['user-sessions', userId] });
     },
   });
+  const revokeError = errorMessage(t, revokeSession.error);
 
   return (
     <QueryStates query={sessions} skeletonLines={6}>
@@ -389,6 +393,11 @@ function SessionsTab({ userId }: { userId: string }) {
         <section className="mz-stack" style={{ gap: 'var(--space-2)' }}>
           <h2 className="mz-heading">{t('settings:sessions')}</h2>
           <p className="mz-caption">{t('settings:sessions_hint')}</p>
+          {revokeError ? (
+            <p className="mz-field__error" role="alert">
+              {revokeError}
+            </p>
+          ) : null}
           {(sessions.data?.sessions ?? []).length === 0 ? (
             <p className="mz-muted">{t('history:empty')}</p>
           ) : (

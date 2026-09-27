@@ -56,6 +56,35 @@ export function clearDraft(form: string, id = 'new'): void {
   }
 }
 
+/**
+ * The autosave of one form while it is open. Once the record is saved, `finish()` clears the
+ * draft **and stops the autosave for good**: the save hands out a fresh idempotency key, which
+ * re-arms the form's autosave timer, and without the stop that timer wrote the saved form back
+ * as a draft while the lists refreshed — the next "New order" then offered to restore an order
+ * that already existed, and restoring it saved it twice.
+ */
+export interface DraftKeeper<T> {
+  write: (value: T, idempotencyKey: string) => void;
+  finish: () => void;
+  readonly finished: boolean;
+}
+
+export function createDraftKeeper<T>(form: string, id = 'new'): DraftKeeper<T> {
+  let finished = false;
+  return {
+    write(value, idempotencyKey) {
+      if (!finished) writeDraft(form, id, value, idempotencyKey);
+    },
+    finish() {
+      finished = true;
+      clearDraft(form, id);
+    },
+    get finished() {
+      return finished;
+    },
+  };
+}
+
 /** Every draft of every form, cleared on sign-out and on a user switch (spec 2.10.2). */
 export function clearAllDrafts(): void {
   try {

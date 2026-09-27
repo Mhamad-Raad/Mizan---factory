@@ -6,12 +6,15 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Button, Chip, DateField, Icon, Tabs } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
+import { errorMessage } from '../lib/errors.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
+import { KpiHead } from '../components/KpiHead.js';
 import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
 import { ColumnChart } from '../components/charts/ColumnChart.js';
-import { usePaging } from '../lib/paging.js';
+import { useKeepPageInRange, usePaging } from '../lib/paging.js';
+import { lastDays, lastMonth, thisMonth, thisWeek, thisYear } from '../lib/periods.js';
 import { useIsWide } from '../lib/wide.js';
 import { downloadXlsx } from '../lib/xlsx.js';
 import type { Cell, Sheet, SheetColumn } from '../lib/xlsx.js';
@@ -189,20 +192,13 @@ const ORDER: ReportKey[] = [
 
 /** The period of a preset, from today's Baghdad day. */
 export function periodOf(preset: Preset, today: string, custom: { from: string; to: string }): { from: string; to: string } {
-  const month = `${today.slice(0, 7)}-01`;
-  if (preset === 'custom') return { from: custom.from || month, to: custom.to || today };
+  const month = thisMonth(today);
+  if (preset === 'custom') return { from: custom.from || month.from, to: custom.to || today };
   if (preset === 'today') return { from: today, to: today };
-  if (preset === 'month') return { from: month, to: today };
-  if (preset === 'year') return { from: `${today.slice(0, 4)}-01-01`, to: today };
-  if (preset === 'last_month') {
-    const end = new Date(`${month}T00:00:00Z`);
-    end.setUTCDate(0);
-    const last = end.toISOString().slice(0, 10);
-    return { from: `${last.slice(0, 7)}-01`, to: last };
-  }
-  const start = new Date(`${today}T00:00:00Z`);
-  start.setUTCDate(start.getUTCDate() - (preset === 'week' ? 6 : 89));
-  return { from: start.toISOString().slice(0, 10), to: today };
+  if (preset === 'month') return month;
+  if (preset === 'year') return thisYear(today);
+  if (preset === 'last_month') return lastMonth(today);
+  return preset === 'week' ? thisWeek(today) : lastDays(today, 90);
 }
 
 /** A figure lives on the row or inside its `cost` / `balance` group (D-022). */
@@ -259,7 +255,7 @@ export function ReportsPage() {
   const tab: ReportKey = requested && allowed.includes(requested) ? requested : (allowed[0] ?? 'sales');
   const preset = (params.get('period') as Preset | null) ?? 'month';
   const range = periodOf(preset, formatter.today(), { from: params.get('from') ?? '', to: params.get('to') ?? '' });
-  const [exporting, setExporting] = useState(false);
+  const exporter = useExport();
 
   const set = (patch: Record<string, string | null>) =>
     setParams(
@@ -279,10 +275,9 @@ export function ReportsPage() {
   const titleOf = (key: ReportKey) => (key === 'expenses' ? t('reports:expenses') : t(SHAPES[key].titleKey));
   const period = `${formatter.date(range.from)} — ${formatter.date(range.to)}`;
 
-  const downloadAll = async () => {
-    setExporting(true);
-    try {
-      const sheets: Sheet[] = [];
+  const downloadAll = () =>
+    exporter.run(async () => {
+      const sheets: ExportedSheet[] = [];
       for (const key of allowed) {
         sheets.push(
           key === 'expenses'
@@ -290,20 +285,23 @@ export function ReportsPage() {
             : await reportSheet(key, SHAPES[key], defaultGrouping(SHAPES[key], range), range, t, formatter, period),
         );
       }
-      downloadXlsx(`mizan-reports-${range.from}-${range.to}`, sheets, { rtl: lang !== 'en' });
-    } finally {
-      setExporting(false);
-    }
-  };
+      downloadXlsx(
+        `mizan-reports-${range.from}-${range.to}`,
+        sheets.map((exported) => exported.sheet),
+        { rtl: lang !== 'en' },
+      );
+      return sheets.some((exported) => exported.truncated);
+    });
 
   return (
     <div className="mz-stack">
       <div className="mz-reports__head">
         <p className="mz-muted">{t('reports:hub_hint')}</p>
-        <Button variant="secondary" icon="download" loading={exporting} onClick={() => void downloadAll()}>
+        <Button variant="secondary" icon="download" loading={exporter.exporting} onClick={() => void downloadAll()}>
           {t('reports:download_all')}
         </Button>
       </div>
+      <ExportNotice notice={exporter.notice} />
 
       {/* The period: one for every tab, kept in the address so a report can be bookmarked. */}
       <div className="mz-accounts__period">
@@ -378,19 +376,38 @@ function labelOf(group: ReportGroup, groupBy: string, formatter: Formatter, t: T
   return group.key;
 }
 
-async function fetchAll(key: ReportKey, groupBy: string, range: { from: string; to: string }): Promise<ReportResponse> {
+/**
+ * How far a file export reads: 100 pages of the API's 100 rows. A period with more than that is
+ * not silently cut short — the export says the file holds only the first rows (see `useExport`).
+ */
+const EXPORT_PAGES = 100;
+const EXPORT_ROWS = EXPORT_PAGES * 100;
+
+/** A sheet for the file, and whether the period had more rows than the export reads. */
+interface ExportedSheet {
+  sheet: Sheet;
+  truncated: boolean;
+}
+
+async function fetchAll(
+  key: ReportKey,
+  groupBy: string,
+  range: { from: string; to: string },
+): Promise<{ data: ReportResponse; truncated: boolean }> {
   // Every group, a page at a time (the API sends at most 100), for the file — the screen shows one page.
   const pages: ReportGroup[] = [];
   let first: ReportResponse | null = null;
-  for (let page = 1; page <= 100; page += 1) {
+  let truncated = false;
+  for (let page = 1; page <= EXPORT_PAGES; page += 1) {
     const search = new URLSearchParams({ from: range.from, to: range.to, page: String(page), page_size: '100' });
     if (groupBy) search.set('group_by', groupBy);
     const response = await apiRequest<ReportResponse>(`/reports/${key}?${search.toString()}`);
     first ??= response;
     pages.push(...response.groups);
     if (!response.has_more) break;
+    if (page === EXPORT_PAGES) truncated = true;
   }
-  return { ...(first as ReportResponse), groups: pages };
+  return { data: { ...(first as ReportResponse), groups: pages }, truncated };
 }
 
 /** One report as a sheet: its groups, a column per figure (dinars and dollars apart), totals. */
@@ -402,8 +419,8 @@ async function reportSheet(
   t: Translate,
   formatter: Formatter,
   period: string,
-): Promise<Sheet> {
-  const data = await fetchAll(key, groupBy, range);
+): Promise<ExportedSheet> {
+  const { data, truncated } = await fetchAll(key, groupBy, range);
   const firstFigures = figuresOf(shape, (data.groups[0] ?? data.totals) as Record<string, unknown> | undefined);
   const amounts = shape.amounts.filter(([, iqd]) => data.groups.length === 0 || firstFigures[iqd] !== undefined);
   const quantities = usefulQuantities(shape, data.groups as Record<string, unknown>[]);
@@ -438,12 +455,15 @@ async function reportSheet(
     ];
   };
   return {
-    name: t(shape.titleKey),
-    title: t(shape.titleKey),
-    subtitle: period,
-    columns,
-    rows: data.groups.map((group) => rowOf(group as Record<string, unknown>, labelOf(group, data.group_by, formatter, t))),
-    totals: data.totals ? rowOf(data.totals, t('reports:total_row')) : undefined,
+    sheet: {
+      name: t(shape.titleKey),
+      title: t(shape.titleKey),
+      subtitle: period,
+      columns,
+      rows: data.groups.map((group) => rowOf(group as Record<string, unknown>, labelOf(group, data.group_by, formatter, t))),
+      totals: data.totals ? rowOf(data.totals, t('reports:total_row')) : undefined,
+    },
+    truncated,
   };
 }
 
@@ -458,15 +478,26 @@ interface ExpenseRow {
   created_by_name: string | null;
 }
 
-async function expensesSheet(range: { from: string; to: string }, t: Translate, formatter: Formatter, period: string): Promise<Sheet> {
+async function expensesSheet(
+  range: { from: string; to: string },
+  t: Translate,
+  formatter: Formatter,
+  period: string,
+): Promise<ExportedSheet> {
   const rows: ExpenseRow[] = [];
-  for (let page = 1; page <= 100; page += 1) {
+  let total = 0;
+  for (let page = 1; page <= EXPORT_PAGES; page += 1) {
     const response = await apiRequest<{ items: ExpenseRow[]; total: number }>(
       `/expenses?from=${range.from}&to=${range.to}&page=${page}&page_size=100`,
     );
+    total = response.total;
     rows.push(...response.items);
     if (rows.length >= response.total || response.items.length === 0) break;
   }
+  return { sheet: expensesSheetOf(rows, t, formatter, period), truncated: rows.length < total };
+}
+
+function expensesSheetOf(rows: ExpenseRow[], t: Translate, formatter: Formatter, period: string): Sheet {
   return {
     name: t('reports:expenses'),
     title: t('reports:expenses'),
@@ -498,15 +529,44 @@ async function expensesSheet(range: { from: string; to: string }, t: Translate, 
   };
 }
 
+/**
+ * A file export's state. A failure is said, not swallowed — the old `try … finally` left the
+ * button spinning back to idle with nothing downloaded and nothing on screen — and a period
+ * longer than the export reads says the file holds only its first rows.
+ */
+function useExport() {
+  const { t } = useTranslation();
+  const formatter = useFormatter();
+  const [exporting, setExporting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const run = async (work: () => Promise<boolean>) => {
+    setExporting(true);
+    setNotice(null);
+    try {
+      const truncated = await work();
+      if (truncated) setNotice(t('common:export_truncated', { count: formatter.number(EXPORT_ROWS) }));
+    } catch (caught) {
+      setNotice(errorMessage(t, caught));
+    } finally {
+      setExporting(false);
+    }
+  };
+  return { exporting, notice, run };
+}
+
+function ExportNotice({ notice }: { notice: string | null }) {
+  if (!notice) return null;
+  return (
+    <div className="mz-warning" role="alert">
+      {notice}
+    </div>
+  );
+}
+
 function Tile({ icon, label, children }: { icon: Parameters<typeof Icon>[0]['name']; label: string; children: ReactNode }) {
   return (
     <div className="mz-kpi">
-      <span className="mz-kpi__head">
-        <span className="mz-kpi__icon" aria-hidden="true">
-          <Icon name={icon} size={18} />
-        </span>
-        <span className="mz-caption">{label}</span>
-      </span>
+      <KpiHead icon={icon} label={label} />
       {children}
     </div>
   );
@@ -528,7 +588,7 @@ function ReportTab({
   const wide = useIsWide();
   const lang = useApp((state) => state.preferences.lang);
   const [groupBy, setGroupBy] = useState(() => defaultGrouping(shape, range));
-  const [exporting, setExporting] = useState(false);
+  const exporter = useExport();
   const paging = usePaging({ storageKey: 'reports', prefix: 'r_', resetOn: [reportKey, range.from, range.to, groupBy] });
 
   const report = useQuery({
@@ -540,6 +600,10 @@ function ReportTab({
     },
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(paging, {
+    data: report.data ? { total: report.data.group_count } : undefined,
+    isPlaceholderData: report.isPlaceholderData,
+  });
 
   const data = report.data;
   const groups = data?.groups ?? [];
@@ -548,15 +612,12 @@ function ReportTab({
   const amounts = shape.amounts.filter(([, iqd]) => totalFigures[iqd] !== undefined || groups.some((g) => figuresOf(shape, g)[iqd] !== undefined));
   const headline = amounts[0];
 
-  const download = async () => {
-    setExporting(true);
-    try {
-      const sheet = await reportSheet(reportKey, shape, groupBy, range, t, formatter, period);
+  const download = () =>
+    exporter.run(async () => {
+      const { sheet, truncated } = await reportSheet(reportKey, shape, groupBy, range, t, formatter, period);
       downloadXlsx(`mizan-${reportKey}-${range.from}-${range.to}`, [sheet], { rtl: lang !== 'en' });
-    } finally {
-      setExporting(false);
-    }
-  };
+      return truncated;
+    });
 
   // A trend when the groups are days or months: oldest on the reading start, the headline figure.
   const chronological = (groupBy === 'month' || groupBy === 'day') && headline && groups.length > 1;
@@ -613,11 +674,12 @@ function ReportTab({
               ))}
             </select>
           ) : null}
-          <Button icon="download" loading={exporting} onClick={() => void download()}>
+          <Button icon="download" loading={exporter.exporting} onClick={() => void download()}>
             {t('reports:download_excel')}
           </Button>
         </div>
       </div>
+      <ExportNotice notice={exporter.notice} />
 
       {data?.pinned ? <Chip tone="warning">{t('reports:pinned_to_you')}</Chip> : null}
 
@@ -820,7 +882,7 @@ function ExpensesTab({ range, period }: { range: { from: string; to: string }; p
   const { t } = useTranslation();
   const formatter = useFormatter();
   const lang = useApp((state) => state.preferences.lang);
-  const [exporting, setExporting] = useState(false);
+  const exporter = useExport();
   const paging = usePaging({ storageKey: 'reports', prefix: 'e_', resetOn: [range.from, range.to] });
 
   const list = useQuery({
@@ -829,6 +891,7 @@ function ExpensesTab({ range, period }: { range: { from: string; to: string }; p
       apiRequest<{ items: ExpenseRow[]; total: number }>(`/expenses?from=${range.from}&to=${range.to}&${paging.query}`),
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(paging, list);
   const summary = useQuery({
     queryKey: ['accounts', 'summary', range.from, range.to],
     queryFn: () =>
@@ -838,16 +901,12 @@ function ExpensesTab({ range, period }: { range: { from: string; to: string }; p
   });
   const rows = list.data?.items ?? [];
 
-  const download = async () => {
-    setExporting(true);
-    try {
-      downloadXlsx(`mizan-expenses-${range.from}-${range.to}`, [await expensesSheet(range, t, formatter, period)], {
-        rtl: lang !== 'en',
-      });
-    } finally {
-      setExporting(false);
-    }
-  };
+  const download = () =>
+    exporter.run(async () => {
+      const { sheet, truncated } = await expensesSheet(range, t, formatter, period);
+      downloadXlsx(`mizan-expenses-${range.from}-${range.to}`, [sheet], { rtl: lang !== 'en' });
+      return truncated;
+    });
 
   return (
     <div className="mz-stack">
@@ -860,11 +919,12 @@ function ExpensesTab({ range, period }: { range: { from: string; to: string }; p
           <Link to="/accounts?tab=expenses" className="mz-button mz-button--ghost">
             {t('reports:manage_expenses')}
           </Link>
-          <Button icon="download" loading={exporting} onClick={() => void download()}>
+          <Button icon="download" loading={exporter.exporting} onClick={() => void download()}>
             {t('reports:download_excel')}
           </Button>
         </div>
       </div>
+      <ExportNotice notice={exporter.notice} />
 
       {summary.data ? (
         <div className="mz-kpis">

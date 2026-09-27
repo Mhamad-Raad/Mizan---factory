@@ -3,11 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, NumberField, TextField } from '@mizan/ui';
 import { apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { errorMessage } from '../lib/errors.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
 import { AppearanceCards } from '../components/Appearance.js';
 import { Pager } from '../components/Pager.js';
-import { usePaging } from '../lib/paging.js';
+import { useKeepPageInRange, usePaging } from '../lib/paging.js';
 
 /**
  * Settings (FR-1101 to FR-1107): how the app looks on this device, and the system's exchange
@@ -83,6 +84,7 @@ function GlobalRateCard() {
     queryFn: () => apiRequest<GlobalRate>(`/settings/global-rates?${paging.query}`),
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(paging, rates);
 
   const save = useMutation({
     mutationFn: () =>
@@ -94,13 +96,18 @@ function GlobalRateCard() {
         },
         idempotencyKey: newIdempotencyKey(),
       }),
+    // A new attempt clears the last one's "Rate saved", so it never stands next to a refusal.
+    onMutate: () => setMessage(null),
     onSuccess: async () => {
       setValue('');
       setNote('');
       setMessage(t('settings:rate_saved'));
       await queryClient.invalidateQueries({ queryKey: ['global-rate'] });
+      // A company without its own rate is valued at this one.
+      await queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
   });
+  const saveError = errorMessage(t, save.error);
 
   return (
     <Card>
@@ -125,6 +132,7 @@ function GlobalRateCard() {
           hint={t('settings:new_rate_hint')}
           decimals={4}
           value={value}
+          error={saveError ?? undefined}
           onChange={(event) => setValue(event.target.value)}
         />
         <TextField

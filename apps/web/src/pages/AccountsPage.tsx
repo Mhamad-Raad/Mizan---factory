@@ -3,24 +3,30 @@ import type { ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, DateField, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
+import { BottomSheet, Button, DateField, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
-import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { errorMessage } from '../lib/errors.js';
+import { invalidateMoneyViews } from '../lib/invalidate.js';
+import { useGlobalRate } from '../lib/rates.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DataList } from '../components/DataList.js';
 import type { Column } from '../components/DataList.js';
 import { DualAmount } from '../components/DualAmount.js';
+import { KpiHead } from '../components/KpiHead.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { Pager } from '../components/Pager.js';
 import { QueryStates } from '../components/states.js';
 import { customerName } from '../lib/customers.js';
-import { usePaging } from '../lib/paging.js';
+import { useKeepPageInRange, usePaging } from '../lib/paging.js';
+import { useDebouncedValue } from '../lib/debounce.js';
+import { lastMonth, thisMonth, thisYear } from '../lib/periods.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import { useIsWide } from '../lib/wide.js';
-import type { PurchaseRow } from './PurchasesPage.js';
+import type { PurchaseRow } from '../lib/purchases.js';
 
 interface Pair {
   amount_iqd: number;
@@ -88,12 +94,9 @@ const TABS: readonly Tab[] = ['sales', 'bought', 'materials', 'expenses'];
 
 /** The first and last day of a preset, from today's Baghdad date (2.10.4). */
 function presetRange(preset: Exclude<Preset, 'custom'>, today: string): { from: string; to: string } {
-  const [year, month] = today.split('-').map(Number) as [number, number];
-  if (preset === 'this_year') return { from: `${year}-01-01`, to: today };
-  if (preset === 'this_month') return { from: `${today.slice(0, 7)}-01`, to: today };
-  const first = new Date(Date.UTC(year, month - 2, 1));
-  const last = new Date(Date.UTC(year, month - 1, 0));
-  return { from: first.toISOString().slice(0, 10), to: last.toISOString().slice(0, 10) };
+  if (preset === 'this_year') return thisYear(today);
+  if (preset === 'this_month') return thisMonth(today);
+  return lastMonth(today);
 }
 
 /**
@@ -266,12 +269,7 @@ function Figure({
   const sign = Math.sign(pair.amount_iqd);
   return (
     <div className="mz-kpi mz-accounts__tile" data-sign={signed ? sign : undefined}>
-      <span className="mz-kpi__head">
-        <span className="mz-kpi__icon" aria-hidden="true">
-          <Icon name={icon} size={18} />
-        </span>
-        <span className="mz-caption">{label}</span>
-      </span>
+      <KpiHead icon={icon} label={label} />
       <DualAmount amount_iqd={pair.amount_iqd} amount_usd_cents={pair.amount_usd_cents} />
       {caption ? <span className="mz-caption">{caption}</span> : null}
     </div>
@@ -326,7 +324,8 @@ function Signed({ pair, primary }: { pair: Pair; primary?: Currency }) {
 function SalesTab({ from, to }: { from: string; to: string }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
+  const q = useDebouncedValue(search);
   const paging = usePaging({ storageKey: 'accounts-sales', prefix: 'sales_', resetOn: [q, from, to] });
   const list = useQuery({
     queryKey: ['accounts', 'sales', from, to, q, paging.page, paging.pageSize],
@@ -336,6 +335,7 @@ function SalesTab({ from, to }: { from: string; to: string }) {
       ),
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(paging, list);
   const rows = list.data?.items ?? [];
 
   const columns: Column<SaleRow>[] = [
@@ -371,7 +371,7 @@ function SalesTab({ from, to }: { from: string; to: string }) {
   ];
 
   return (
-    <TabFrame search={q} onSearch={setQ} placeholder={t('purchases:search_sales')}>
+    <TabFrame search={search} onSearch={setSearch} placeholder={t('purchases:search_sales')}>
       <QueryStates query={list} isEmpty={rows.length === 0} emptyTitle={t('purchases:empty_sales')} skeletonLines={4}>
         <DataList
           rows={rows}
@@ -413,7 +413,8 @@ function SalesTab({ from, to }: { from: string; to: string }) {
 function BoughtTab({ from, to }: { from: string; to: string }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
+  const q = useDebouncedValue(search);
   const paging = usePaging({ storageKey: 'accounts-bought', prefix: 'buys_', resetOn: [q, from, to] });
   const list = useQuery({
     queryKey: ['purchases', 'accounts', from, to, q, paging.page, paging.pageSize],
@@ -423,6 +424,7 @@ function BoughtTab({ from, to }: { from: string; to: string }) {
       ),
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(paging, list);
   const rows = list.data?.items ?? [];
 
   const total = (row: PurchaseRow) =>
@@ -456,7 +458,7 @@ function BoughtTab({ from, to }: { from: string; to: string }) {
   ];
 
   return (
-    <TabFrame search={q} onSearch={setQ} placeholder={t('purchases:search_bought')}>
+    <TabFrame search={search} onSearch={setSearch} placeholder={t('purchases:search_bought')}>
       <QueryStates query={list} isEmpty={rows.length === 0} emptyTitle={t('purchases:empty_bought')} skeletonLines={4}>
         <DataList
           rows={rows}
@@ -502,7 +504,8 @@ function BoughtTab({ from, to }: { from: string; to: string }) {
 function MaterialsTab({ from, to }: { from: string; to: string }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
+  const q = useDebouncedValue(search);
   const paging = usePaging({ storageKey: 'accounts-materials', prefix: 'mats_', resetOn: [q, from, to] });
   const list = useQuery({
     queryKey: ['accounts', 'materials', from, to, q, paging.page, paging.pageSize],
@@ -512,6 +515,7 @@ function MaterialsTab({ from, to }: { from: string; to: string }) {
       ),
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(paging, list);
   const rows = list.data?.items ?? [];
 
   /** A quantity in the material's own measure: whole pieces, or kilograms to three places. */
@@ -545,7 +549,7 @@ function MaterialsTab({ from, to }: { from: string; to: string }) {
   ];
 
   return (
-    <TabFrame search={q} onSearch={setQ} placeholder={t('purchases:search_materials')}>
+    <TabFrame search={search} onSearch={setSearch} placeholder={t('purchases:search_materials')}>
       <QueryStates query={list} isEmpty={rows.length === 0} emptyTitle={t('purchases:empty_materials')} skeletonLines={4}>
         <DataList
           rows={rows}
@@ -588,7 +592,8 @@ function ExpensesTab({ from, to }: { from: string; to: string }) {
   const wide = useIsWide();
   const queryClient = useQueryClient();
   const mayVoid = usePermission('expenses.void');
-  const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
+  const q = useDebouncedValue(search);
   const [adding, setAdding] = useState(false);
   const [voiding, setVoiding] = useState<ExpenseRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -601,12 +606,12 @@ function ExpensesTab({ from, to }: { from: string; to: string }) {
       ),
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(paging, list);
   const rows = list.data?.items ?? [];
 
   const refresh = async (message: string) => {
     setToast(message);
-    await queryClient.invalidateQueries({ queryKey: ['expenses'] });
-    await queryClient.invalidateQueries({ queryKey: ['accounts'] });
+    await invalidateMoneyViews(queryClient);
   };
 
   const amount = (row: ExpenseRow) => (
@@ -621,8 +626,8 @@ function ExpensesTab({ from, to }: { from: string; to: string }) {
 
   return (
     <TabFrame
-      search={q}
-      onSearch={setQ}
+      search={search}
+      onSearch={setSearch}
       placeholder={t('purchases:search_expenses')}
       action={
         <Can permission="expenses.create">
@@ -744,10 +749,10 @@ function AddExpenseSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
   const [note, setNote] = useState('');
   const [money, setMoney] = useState<MoneyValue>({ amount: null, currency: 'IQD', other_amount: null });
 
-  const rate = useQuery({
-    queryKey: ['global-rate'],
-    queryFn: () => apiRequest<{ current: { rate_iqd_per_usd: string } | null }>('/settings/global-rates'),
-  });
+  // An expense is stored in both currencies at today's rate, so it waits for one to be set —
+  // and says so under the amount, rather than leaving a Save button that silently never wakes.
+  const { query: rateQuery, rate } = useGlobalRate();
+  const noRate = rateQuery.isSuccess && rate === null;
 
   const save = useMutation({
     mutationFn: () =>
@@ -764,7 +769,7 @@ function AddExpenseSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
     onSuccess: onSaved,
   });
 
-  const ready = title.trim() !== '' && money.amount !== null && money.amount > 0 && date !== '';
+  const ready = rate !== null && title.trim() !== '' && money.amount !== null && money.amount > 0 && date !== '';
 
   return (
     <BottomSheet title={t('purchases:add_expense')} open onClose={onClose} closeLabel={t('common:close')}>
@@ -776,14 +781,13 @@ function AddExpenseSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
           maxLength={200}
           onChange={(event) => setTitle(event.target.value)}
         />
-        {rate.data?.current ? (
-          <MoneyInput
-            label={t('purchases:expense_amount')}
-            value={money}
-            rate={rate.data.current.rate_iqd_per_usd}
-            onChange={setMoney}
-          />
-        ) : null}
+        <MoneyInput
+          label={t('purchases:expense_amount')}
+          value={money}
+          rate={rate}
+          onChange={setMoney}
+          hint={noRate ? t('common:rate_needed_first') : undefined}
+        />
         <DateField
           label={t('purchases:expense_date')}
           value={date}
@@ -796,9 +800,9 @@ function AddExpenseSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
           maxLength={2000}
           onChange={(event) => setNote(event.target.value)}
         />
-        {save.error instanceof ApiError ? (
+        {save.error ? (
           <div className="mz-warning" role="alert">
-            {t(save.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })}
+            {errorMessage(t, save.error)}
           </div>
         ) : null}
         <Button block loading={save.isPending} disabled={!ready} onClick={() => save.mutate()}>
@@ -847,9 +851,9 @@ function VoidExpenseSheet({
           maxLength={2000}
           onChange={(event) => setReason(event.target.value)}
         />
-        {voidIt.error instanceof ApiError ? (
+        {voidIt.error ? (
           <div className="mz-warning" role="alert">
-            {t(voidIt.error.messageKey, { defaultValue: t('errors:INTERNAL') })}
+            {errorMessage(t, voidIt.error)}
           </div>
         ) : null}
         <Button

@@ -11,7 +11,8 @@ import type { Column } from '../components/DataList.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
-import { usePaging } from '../lib/paging.js';
+import { useKeepPageInRange, usePaging } from '../lib/paging.js';
+import { useDebouncedValue } from '../lib/debounce.js';
 import { useFormatter } from '../lib/store.js';
 
 export interface ItemRow {
@@ -48,7 +49,9 @@ type StockFilter = 'all' | 'in' | 'out';
 export function MaterialsPage() {
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const [query, setQuery] = useState('');
+  const [search, setSearch] = useState('');
+  // The request waits for the typing to stop (NFR-03): one search, not one per letter.
+  const query = useDebouncedValue(search);
   const [stock, setStock] = useState<StockFilter>('all');
   const [includeInactive, setIncludeInactive] = useState(false);
 
@@ -63,6 +66,7 @@ export function MaterialsPage() {
     },
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(paging, items);
 
   const rows = items.data?.items ?? [];
 
@@ -147,8 +151,8 @@ export function MaterialsPage() {
               <TextField
                 label={t('common:search')}
                 placeholder={t('materials:search_placeholder')}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
                 type="search"
                 inputMode="search"
               />
@@ -238,22 +242,5 @@ export function MaterialsPage() {
         </QueryStates>
       </div>
     </>
-  );
-}
-
-export function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button type="button" className="mz-filter-chip" aria-pressed={active} onClick={onClick}>
-      {active ? <Icon name="check" size={16} /> : null}
-      {children}
-    </button>
   );
 }

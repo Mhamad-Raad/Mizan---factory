@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Chip, TextField } from '@mizan/ui';
-import { ApiError, apiRequest } from '../lib/api.js';
+import { apiRequest } from '../lib/api.js';
+import { errorMessage } from '../lib/errors.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { passwordChangeError } from '../lib/signInError.js';
 import { QueryStates } from '../components/states.js';
 import { useApp, useFormatter } from '../lib/store.js';
 import { recordName } from '../lib/record-names.js';
+import { initialsOf } from '../lib/initials.js';
 
 interface Profile {
   id: string;
@@ -26,11 +28,6 @@ interface MyAction {
   action: string;
   entity_type: string;
   entity_label: string;
-}
-
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '')).toUpperCase() || '·';
 }
 
 /**
@@ -147,7 +144,7 @@ function ProfileCard({
 
   const changed = name.trim() !== profile.display_name || (phone.trim() || null) !== (profile.phone ?? null);
   const error =
-    save.error instanceof ApiError ? t(save.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') }) : null;
+    errorMessage(t, save.error);
 
   return (
     <Card>

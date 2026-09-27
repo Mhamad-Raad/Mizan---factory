@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation } from '@tanstack/react-query';
 import { Button, Card, Chip, SegmentedControl } from '@mizan/ui';
-import { ApiError, apiRequest } from '../lib/api.js';
+import { apiRequest } from '../lib/api.js';
+import { errorMessage } from '../lib/errors.js';
 import { usePageTitle } from '../lib/page-title.js';
 
 type ImportKind =
@@ -139,7 +140,7 @@ export function ImportPage() {
     },
     onError: (caught) => {
       setResult(null);
-      setError(caught instanceof ApiError ? t('errors:VALIDATION_FAILED') : t('errors:INTERNAL'));
+      setError(errorMessage(t, caught));
     },
   });
 

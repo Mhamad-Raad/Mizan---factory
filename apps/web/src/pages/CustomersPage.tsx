@@ -10,8 +10,9 @@ import { DataList } from '../components/DataList.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
-import { usePaging } from '../lib/paging.js';
-import { FilterChip } from './MaterialsPage.js';
+import { useKeepPageInRange, usePaging } from '../lib/paging.js';
+import { useDebouncedValue } from '../lib/debounce.js';
+import { FilterChip } from '../components/FilterChip.js';
 import { customerName } from '../lib/customers.js';
 import { usePermission } from '../lib/store.js';
 
@@ -52,7 +53,9 @@ type BalanceFilter = 'all' | 'owes' | 'settled' | 'credit';
  */
 export function CustomersPage() {
   const { t } = useTranslation();
-  const [query, setQuery] = useState('');
+  const [search, setSearch] = useState('');
+  // The request waits for the typing to stop (NFR-03): one search, not one per letter.
+  const query = useDebouncedValue(search);
   const [balance, setBalance] = useState<BalanceFilter>('all');
   const [includeInactive, setIncludeInactive] = useState(false);
   const [sort, setSort] = useState<'name' | 'balance'>('name');
@@ -68,6 +71,7 @@ export function CustomersPage() {
     },
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(paging, customers);
   const refreshing = customers.isFetching && customers.isPlaceholderData;
 
   const rows = customers.data?.items ?? [];
@@ -82,8 +86,8 @@ export function CustomersPage() {
             <TextField
               label={t('common:search')}
               placeholder={t('customers:search_placeholder')}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
               type="search"
               inputMode="search"
             />

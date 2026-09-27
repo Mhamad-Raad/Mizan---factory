@@ -11,7 +11,8 @@ export interface MonthPriceEditorProps {
   onClose: () => void;
   month: string;
   monthLabel: string;
-  rate: Rate;
+  /** Today's global rate, or `null` when none is set and nothing can be converted. */
+  rate: Rate | null;
   /** The pair already stored for this month, so the sheet opens on what is there. */
   initial?: {
     sale?: { amount_iqd: number; amount_usd_cents: number; entered_currency: 'IQD' | 'USD' } | null;

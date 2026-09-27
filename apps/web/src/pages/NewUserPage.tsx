@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Card, SegmentedControl, StickyFooter, TextField } from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { errorMessage } from '../lib/errors.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { PermissionEditor } from '../components/PermissionEditor.js';
 import type { PermissionSelection } from '../components/PermissionEditor.js';
@@ -57,7 +58,7 @@ export function NewUserPage() {
           Object.fromEntries(caught.fields.map((field) => [field.path, t(field.message_key, field.params ?? {})])),
         );
       } else {
-        setFieldErrors({ username: t('errors:INTERNAL') });
+        setFieldErrors({ username: errorMessage(t, caught) ?? t('errors:INTERNAL') });
       }
     } finally {
       setBusy(false);

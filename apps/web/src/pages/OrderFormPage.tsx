@@ -29,9 +29,13 @@ import { QueryStates } from '../components/states.js';
 import { TotalsFooter } from '../components/TotalsFooter.js';
 import { PriceFromMonth } from '../components/chips.js';
 import type { Lot } from './MaterialDetailPage.js';
-import { clearDraft, readDraft, writeDraft } from '../lib/drafts.js';
+import { clearDraft, createDraftKeeper, readDraft } from '../lib/drafts.js';
+import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { customerName } from '../lib/customers.js';
 import { useFormatter, usePermission } from '../lib/store.js';
+import { errorMessage } from '../lib/errors.js';
+import { useGlobalRate } from '../lib/rates.js';
+import type { OrderSaveWarnings } from '../components/OrderSaveWarnings.js';
 import type { CustomerRow } from './CustomersPage.js';
 import type { ItemRow } from './MaterialsPage.js';
 
@@ -201,11 +205,7 @@ function OrderForm({
   const [form, setForm] = useState<FormState>(initial);
   const [picking, setPicking] = useState<'customer' | 'material' | null>(null);
 
-  const rate = useQuery({
-    queryKey: ['global-rate'],
-    queryFn: () =>
-      apiRequest<{ current: { rate_iqd_per_usd: string } | null }>('/settings/global-rates'),
-  });
+  const { rate: globalRate } = useGlobalRate();
 
   /**
    * The customer behind an id that came from a link or from the order being edited. What it
@@ -229,12 +229,13 @@ function OrderForm({
   const paymentType = isSystemCustomer ? 'cash' : form.payment_type;
 
   // The rate for this order (2.3.3): the one typed here for this deal, else the customer's own
-  // rate, else today's global rate — the same precedence the server applies.
+  // rate, else today's global rate — the same precedence the server applies. With none of them
+  // there is no rate to preview with, and nothing is converted rather than a rate invented.
   const usingOverride = form.rate_override.trim() !== '';
   const customerRate = customer.data?.rate;
-  const documentRate: Rate = usingOverride
+  const documentRate: Rate | null = usingOverride
     ? form.rate_override.trim()
-    : (customerRate?.rate_iqd_per_usd ?? rate.data?.current?.rate_iqd_per_usd ?? '1310.0000');
+    : (customerRate?.rate_iqd_per_usd ?? globalRate);
   const rateSource: RateSource = usingOverride
     ? 'manual'
     : customerRate?.is_customer_rate
@@ -247,18 +248,23 @@ function OrderForm({
         ? t('glossary:customer_rate')
         : t('glossary:system_rate');
 
-  /** Every change is kept, so a dropped connection or a locked screen costs nothing (2.10.2). */
+  /**
+   * Every change is kept, so a dropped connection or a locked screen costs nothing (2.10.2) —
+   * until the order is saved, when the autosave stops for good and the draft is cleared.
+   */
+  const [drafts] = useState(() => createDraftKeeper<FormState>('order', draftId));
   useEffect(() => {
+    if (drafts.finished) return;
     if (form.lines.length === 0 && !form.customer_id) return;
-    const timer = window.setTimeout(() => writeDraft('order', draftId, form, idempotencyKey), 300);
+    const timer = window.setTimeout(() => drafts.write(form, idempotencyKey), 300);
     return () => window.clearTimeout(timer);
-  }, [form, draftId, idempotencyKey]);
+  }, [form, drafts, idempotencyKey]);
 
   const totals = useMemo(() => {
     // One entry per line, aligned to `form.lines` (null where the line is not yet complete), so a
     // line card can show its own net and the footer can sum them.
     const perLine = form.lines.map((line) => {
-      if (quantityOf(line) === null || line.price.amount === null) return null;
+      if (documentRate === null || quantityOf(line) === null || line.price.amount === null) return null;
       const gross = computeLineTotals({
         priced_measure: line.priced_measure,
         qty_count: line.qty_count,
@@ -301,20 +307,22 @@ function OrderForm({
     const complete = perLine.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
     const discountIqd = complete.reduce((sum, entry) => sum + entry.discount_iqd, 0);
     const discountUsd = complete.reduce((sum, entry) => sum + entry.discount_usd_cents, 0);
+    const summed = documentTotals(
+      complete.map((entry) => entry.gross),
+      { discount_iqd: discountIqd, discount_usd_cents: discountUsd },
+    );
     return {
       perLine,
       discount_iqd: discountIqd,
       discount_usd_cents: discountUsd,
-      // The same rounding the server applies, so the total shown is the total saved (D-065).
-      ...roundOrderTotals(
-        documentTotals(
-          complete.map((entry) => entry.gross),
-          { discount_iqd: discountIqd, discount_usd_cents: discountUsd },
-        ),
-        documentRate,
-      ),
+      // The same rounding the server applies, so the total shown is the total saved (D-065):
+      // up to a round 250 dinars for a customer who settles in dinars, and none for one who
+      // settles in dollars, whose total is theirs to the cent.
+      ...(settlementCurrency === 'IQD' && documentRate !== null
+        ? roundOrderTotals(summed, documentRate)
+        : { ...summed, rounding_iqd: 0, rounding_usd_cents: 0 }),
     };
-  }, [form, documentRate, rateSource]);
+  }, [form, documentRate, rateSource, settlementCurrency]);
 
   const save = useMutation({
     mutationFn: () => {
@@ -354,27 +362,38 @@ function OrderForm({
       });
     },
     onSuccess: async (order) => {
-      clearDraft('order', draftId);
+      drafts.finish();
       setIdempotencyKey(newIdempotencyKey());
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
       await queryClient.invalidateQueries({ queryKey: ['customers'] });
       await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await invalidateMoneyViews(queryClient);
+      // The stock and credit-limit warnings of the save travel with it: this form is gone the
+      // moment it navigates, so the page it lands on is the one that shows them.
+      const warnings: OrderSaveWarnings = {
+        stock_warnings: order.stock_warnings ?? [],
+        credit_limit_warning: order.credit_limit_warning ?? null,
+      };
       if (mode === 'edit') {
-        navigate(`/orders/${orderId}`, { replace: true });
+        navigate(`/orders/${orderId}`, { replace: true, state: { saveWarnings: warnings } });
         return;
       }
       // Back to the orders list, carrying the saved order so the list can raise the save toast
       // with its 8-second undo (FR-610, signature moment 3).
       navigate('/orders', {
         replace: true,
-        state: { savedOrder: { id: order.id, number: order.number } },
+        state: { savedOrder: { id: order.id, number: order.number, warnings } },
       });
     },
   });
 
   const error = save.error instanceof ApiError ? save.error : null;
-  const stockWarnings = save.data?.stock_warnings ?? [];
-  const creditWarning = save.data?.credit_limit_warning ?? null;
+  // Refusals the line cards already show under their inputs need no banner as well.
+  const shownUnderInputs =
+    error !== null &&
+    error.fields.length > 0 &&
+    error.fields.every((field) => /^lines\.\d+\.(qty_kg|qty_count|unit_price)/.test(field.path));
+  const saveError = shownUnderInputs ? null : errorMessage(t, save.error);
 
   const addLine = (item: ItemRow) => {
     setPicking(null);
@@ -496,10 +515,14 @@ function OrderForm({
                 editable here for this one order only; the hint says which is in force. */}
             <NumberField
               label={t('orders:rate_for_order')}
-              hint={t('common:rate_at_source', {
-                source: rateSourceLabel,
-                rate: formatter.rate(documentRate),
-              })}
+              hint={
+                documentRate === null
+                  ? t('common:no_rate_set')
+                  : t('common:rate_at_source', {
+                      source: rateSourceLabel,
+                      rate: formatter.rate(documentRate),
+                    })
+              }
               decimals={4}
               value={form.rate_override}
               onChange={(event) =>
@@ -559,7 +582,7 @@ function OrderForm({
         if (hasDiscount) {
           if (line.discount_mode === 'amount') {
             discountOffIqd = Math.round(rawDiscount);
-            discountOffUsd = convert(discountOffIqd, 'IQD', documentRate);
+            discountOffUsd = documentRate === null ? null : convert(discountOffIqd, 'IQD', documentRate);
           } else if (totals.perLine[index]) {
             discountOffIqd = totals.perLine[index]?.discount_iqd ?? null;
             discountOffUsd = totals.perLine[index]?.discount_usd_cents ?? null;
@@ -711,32 +734,9 @@ function OrderForm({
         </Button>
       ) : null}
 
-      {stockWarnings.length > 0 ? (
-        <div className="mz-warning" role="status">
-          {stockWarnings.map((warning) => (
-            <span key={warning.item_id}>
-              {t('orders:stock_warning', {
-                item: warning.item_name,
-                available: warning.available,
-                requested: warning.requested,
-              })}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      {creditWarning ? (
-        <div className="mz-warning" role="status">
-          {t('orders:credit_limit_warning', {
-            limit: formatter.money(creditWarning.limit, creditWarning.currency),
-            balance: formatter.money(creditWarning.balance_after, creditWarning.currency),
-          })}
-        </div>
-      ) : null}
-
-      {error && !error.fields.length ? (
+      {saveError ? (
         <div className="mz-warning" role="alert">
-          {t(error.messageKey, { defaultValue: t('errors:INTERNAL') })}
+          {saveError}
         </div>
       ) : null}
 

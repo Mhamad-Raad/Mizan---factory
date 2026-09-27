@@ -4,7 +4,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, NumberField, SegmentedControl, StickyFooter, TextField } from '@mizan/ui';
-import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { errorMessage } from '../lib/errors.js';
+import { useGlobalRate } from '../lib/rates.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
@@ -42,10 +44,7 @@ export function NewCustomerPage() {
   const [creditLimit, setCreditLimit] = useState<MoneyValue>({ amount: null, currency: 'IQD', other_amount: null });
   const [idempotencyKey] = useState(newIdempotencyKey);
 
-  const rate = useQuery({
-    queryKey: ['global-rate'],
-    queryFn: () => apiRequest<{ current: { rate_iqd_per_usd: string } | null }>('/settings/global-rates'),
-  });
+  const { rate: systemRate } = useGlobalRate();
 
   const duplicates = useQuery({
     queryKey: ['customers', 'duplicates', name.trim()],
@@ -85,7 +84,6 @@ export function NewCustomerPage() {
   });
 
   const matches = duplicates.data?.duplicates ?? [];
-  const systemRate = rate.data?.current?.rate_iqd_per_usd ?? '1310.0000';
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -156,7 +154,11 @@ export function NewCustomerPage() {
           {maySetRate ? (
             <NumberField
               label={t('customers:rate_field')}
-              hint={t('customers:rate_field_hint', { rate: formatter.rate(systemRate) })}
+              hint={
+                systemRate === null
+                  ? t('settings:no_rate_yet')
+                  : t('customers:rate_field_hint', { rate: formatter.rate(systemRate) })
+              }
               decimals={4}
               value={ownRate}
               onChange={(event) => setOwnRate(event.target.value)}
@@ -190,9 +192,9 @@ export function NewCustomerPage() {
             maxLength={2000}
           />
 
-          {create.error instanceof ApiError ? (
+          {create.error ? (
             <p className="mz-field__error" role="alert">
-              {t(create.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })}
+              {errorMessage(t, create.error)}
             </p>
           ) : null}
         </div>
