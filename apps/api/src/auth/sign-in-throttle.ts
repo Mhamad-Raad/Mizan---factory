@@ -10,6 +10,13 @@ const DAY_MS = 24 * HOUR_MS;
 const MAX_BLOCK_MS = HOUR_MS;
 /** Above this many tracked addresses, the ones with nothing left to remember are dropped. */
 const PRUNE_ABOVE = 10_000;
+/**
+ * However many addresses are still counting, no more than this are remembered: past it the
+ * oldest are forgotten. An attacker walking through IPv6 networks would otherwise grow the map
+ * for an hour; forgetting one of them only lets that address try again, and the per-account
+ * lockout, which lives in the database, still holds.
+ */
+const MAX_TRACKED = 100_000;
 
 type Entry = {
   /** Wrong passwords in the current hour, which starts at the first of them. */
@@ -60,6 +67,8 @@ export function addressKey(ip: string | null | undefined): string {
 @Injectable()
 export class SignInAddressLimiter {
   private readonly entries = new Map<string, Entry>();
+  /** The size at which the next prune runs: twice what the last one kept, so it stays cheap. */
+  private pruneAt = PRUNE_ABOVE;
   private readonly limit: number;
   private readonly blockMs: number;
 
@@ -116,7 +125,7 @@ export class SignInAddressLimiter {
   private current(key: string, now: number): Entry {
     let entry = this.entries.get(key);
     if (!entry) {
-      if (this.entries.size >= PRUNE_ABOVE) this.prune(now);
+      if (this.entries.size >= this.pruneAt) this.prune(now);
       entry = {
         failures: 0,
         windowStart: now,
@@ -143,5 +152,19 @@ export class SignInAddressLimiter {
         now - entry.lastBlockAt >= DAY_MS;
       if (idle) this.entries.delete(key);
     }
+    // At the cap, forget the oldest down to nine tenths of it, so the next full pass is another
+    // tenth of the cap away. A Map iterates in insertion order: the first entries are the oldest.
+    if (this.entries.size >= MAX_TRACKED) {
+      for (const [key, entry] of this.entries) {
+        if (this.entries.size <= MAX_TRACKED * 0.9) break;
+        if (entry.inFlight === 0) this.entries.delete(key);
+      }
+    }
+    this.pruneAt = Math.min(MAX_TRACKED, Math.max(PRUNE_ABOVE, this.entries.size * 2));
+  }
+
+  /** How many addresses are remembered — for tests. */
+  get size(): number {
+    return this.entries.size;
   }
 }

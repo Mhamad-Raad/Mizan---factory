@@ -92,4 +92,25 @@ describe('the per-address ceiling on wrong passwords', () => {
     pending[0]?.(false);
     expect(refusedMinutes(() => subject.begin('198.51.100.1')(false))).toBeNull();
   });
+
+  const network = (n: number) =>
+    `2001:db8:${(n >> 16).toString(16)}:${(n & 0xffff).toString(16)}::1`;
+
+  it('remembers at most 100,000 addresses, however many networks an attacker walks through', () => {
+    const subject = limiter(100);
+    for (let n = 0; n < 150_000; n++) fail(subject, network(n));
+    expect(subject.size).toBeLessThanOrEqual(100_000);
+    // The newest networks are the ones still counted.
+    for (let n = 0; n < 99; n++) fail(subject, network(149_999));
+    expect(refusedMinutes(() => subject.begin(network(149_999)))).toBe(5);
+  });
+
+  it('never forgets an address whose check is still under way', () => {
+    const subject = limiter(100);
+    const pending = subject.begin('198.51.100.9');
+    for (let n = 0; n < 110_000; n++) fail(subject, network(n));
+    pending(true);
+    for (let n = 0; n < 99; n++) fail(subject, '198.51.100.9');
+    expect(refusedMinutes(() => subject.begin('198.51.100.9'))).toBe(5);
+  });
 });
