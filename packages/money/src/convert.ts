@@ -33,5 +33,9 @@ export function convert(amount: number, from: Currency, rate: Rate): number {
  */
 export function impliedRate(amountIqd: number, amountUsdCents: number): Rate {
   if (amountUsdCents === 0) throw new RangeError('cannot derive a rate from a zero USD amount');
-  return formatRate(new Decimal(amountIqd).dividedBy(new Decimal(amountUsdCents).dividedBy(100)));
+  const rate = formatRate(new Decimal(amountIqd).dividedBy(new Decimal(amountUsdCents).dividedBy(100)));
+  // A zero or negative rate is two amounts that do not describe the same money — refused here,
+  // at write time, rather than by the database's CHECK as a failure (review, lesson 12).
+  if (!new Decimal(rate).gt(0)) throw new RangeError('the two amounts imply no usable rate');
+  return rate;
 }

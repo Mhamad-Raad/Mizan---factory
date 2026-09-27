@@ -1,9 +1,9 @@
 import type { Currency, Measure } from '@mizan/money';
 
 /*
- * The shapes of a buy (a purchase) as the API sends them, and the date range the lists use.
- * The Purchases list itself gave its place to the accountant page (D-062): buying is done in
- * Materials now, and the buys of a period are listed on /accounts.
+ * The shapes of a buy (a purchase) as the API sends them. The Purchases list itself gave its
+ * place to the accountant page (D-062): buying is done in Materials now, and the buys of a
+ * period are listed on /accounts.
  */
 
 export interface PurchaseRow {
@@ -59,24 +59,4 @@ export interface PurchaseDetail extends PurchaseRow {
     } | null;
   }[];
   duplicate_item_warning?: { item_id: string; item_name: string }[];
-}
-
-type DateFilter = 'all' | 'today' | 'week' | 'month' | 'custom';
-
-/** The date chips of spec 3.3, resolved from today's **Baghdad** day (2.10.4). */
-export function rangeFor(
-  filter: DateFilter,
-  today: string,
-  from: string,
-  to: string,
-): { from?: string; to?: string } {
-  if (from || to) return { from: from || undefined, to: to || undefined };
-  if (filter === 'all') return {};
-  if (filter === 'today') return { from: today, to: today };
-  if (filter === 'week') {
-    const start = new Date(`${today}T00:00:00Z`);
-    start.setUTCDate(start.getUTCDate() - 6);
-    return { from: start.toISOString().slice(0, 10), to: today };
-  }
-  return { from: `${today.slice(0, 7)}-01`, to: today };
 }

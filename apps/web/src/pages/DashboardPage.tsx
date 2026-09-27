@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Card, Icon } from '@mizan/ui';
+import { Button, Card } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
+import { KpiHead } from '../components/KpiHead.js';
 import { OrderTable } from '../components/OrderTable.js';
 import { QueryStates } from '../components/states.js';
 import { ColumnChart } from '../components/charts/ColumnChart.js';
@@ -24,7 +25,7 @@ interface Tile {
   amount_iqd?: number;
   amount_usd_cents?: number;
   cost?: Pair | null;
-  balance?: Pair | null;
+  balance?: (Pair & { count?: number }) | null;
   owed?: Pair | null;
 }
 
@@ -126,17 +127,16 @@ export function DashboardPage() {
         <div className="mz-kpis">
           {tiles.map((tile) => {
             const money = tile.amount_iqd !== undefined ? (tile as Pair) : (tile.cost ?? tile.owed ?? tile.balance);
+            // "Unpaid orders" carries its count inside `balance`, so the balances flag hides both.
+            const count = tile.count ?? tile.balance?.count;
+            // A tile whose every figure was withheld says nothing, so it is not shown.
+            if (count === undefined && !money) return null;
             return (
               <Link key={tile.key} to={LINKS[tile.key] ?? '/'} className="mz-kpi">
-                <span className="mz-kpi__head">
-                  <span className="mz-kpi__icon" aria-hidden="true">
-                    <Icon name={ICONS[tile.key] ?? 'clock'} size={18} />
-                  </span>
-                  <span className="mz-caption">{t(`dashboard:tile.${tile.key}`)}</span>
-                </span>
-                {tile.count !== undefined ? (
+                <KpiHead icon={ICONS[tile.key] ?? 'clock'} label={t(`dashboard:tile.${tile.key}`)} />
+                {count !== undefined ? (
                   <span className="mz-kpi__count" data-tabular>
-                    {formatter.number(tile.count)}
+                    {formatter.number(count)}
                   </span>
                 ) : null}
                 {/* A balance or a total is a pair: dinars and dollars, never a sum of the two. */}

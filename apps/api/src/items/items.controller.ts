@@ -1,25 +1,26 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
+import { isoDate, minorAmount } from '../common/schemas.js';
 import { AdminOnly, RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { ItemsService } from './items.service.js';
-import { limitField, pageFields } from '../common/paging.js';
+import { cursorField, limitField, pageFields } from '../common/paging.js';
 
 const uuid = z.string().uuid();
 const kg = z.string().regex(/^-?\d{1,9}(\.\d{1,3})?$/);
 const money = z.object({
-  amount: z.number().int(),
+  amount: minorAmount,
   currency: z.enum(['IQD', 'USD']),
   /** Overwriting the calculated side stores the implied rate as `manual` (spec 2.3.2). */
-  other_amount: z.number().int().nullish(),
+  other_amount: minorAmount.nullish(),
 });
 /** A bought or sale price: never below zero (security review, finding 16). */
 const price = money.extend({
-  amount: z.number().int().nonnegative(),
-  other_amount: z.number().int().nonnegative().nullish(),
+  amount: minorAmount.nonnegative(),
+  other_amount: minorAmount.nonnegative().nullish(),
 });
 
 const listSchema = z.object({
@@ -50,7 +51,7 @@ export const createSchema = baseSchema.extend({
       qty_count: z.number().int().positive().nullish(),
       qty_kg: kg.nullish(),
       unit_price: price,
-      purchase_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      purchase_date: isoDate,
       note: z.string().max(500).nullish(),
     })
     .nullish(),
@@ -73,7 +74,7 @@ const copyMonthSchema = z.object({
 });
 
 export const movementSchema = z.object({
-  entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  entry_date: isoDate,
   qty_count: z.number().int().nullish(),
   qty_kg: kg.nullish(),
   unit_cost: price.nullish(),
@@ -85,7 +86,7 @@ const pageSchema = z.object({
 });
 
 const historySchema = z.object({
-  cursor: z.string().max(200).optional(),
+  cursor: cursorField,
   limit: limitField,
 });
 

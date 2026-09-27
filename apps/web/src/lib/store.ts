@@ -90,9 +90,16 @@ export const useApp = create<AppState>((set, get) => ({
   isLocked: false,
   isOnline: true,
 
+  // A different person in the session starts without the last one's page title, which would
+  // otherwise show until their first page names itself (client-review bug 11).
   setSession: ({ user, permissions, isLocked = false }) =>
-    set({ user, permissions: new Set(permissions), isLocked }),
-  clearSession: () => set({ user: null, permissions: new Set<string>(), isLocked: false }),
+    set((state) => ({
+      user,
+      permissions: new Set(permissions),
+      isLocked,
+      ...(state.user?.id === user.id ? {} : { pageTitle: '' }),
+    })),
+  clearSession: () => set({ user: null, permissions: new Set<string>(), isLocked: false, pageTitle: '' }),
   pageTitle: '',
   setPageTitle: (title) =>
     set((state) => (state.pageTitle === title ? state : { pageTitle: title })),

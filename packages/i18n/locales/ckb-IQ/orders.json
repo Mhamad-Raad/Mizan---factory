@@ -57,6 +57,7 @@
   "tile_orders": "فرۆشتنەکان",
   "tile_sold": "فرۆشراو",
   "tile_to_collect": "ماوە بۆ وەرگرتن",
-  "rounded_up": "بە {{amount}} بەرزکرایەوە بۆ ٢٥٠ی تەواو",
-  "rounding": "نزیککردنەوە"
+  "rounded_up": "بە {{amount}} بەرزکرایەوە بۆ {{step}}ی تەواو",
+  "rounding": "نزیککردنەوە",
+  "save_order_one": "پاشەکەوتکردنی فرۆشتن ({{count}} هێڵ)"
 }

@@ -1,14 +1,14 @@
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
+import { isoDate, minorAmount } from '../common/schemas.js';
 import { RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { DamagesService } from './damages.service.js';
-import { limitField, pageFields } from '../common/paging.js';
+import { cursorField, limitField, pageFields } from '../common/paging.js';
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const kg = z.string().regex(/^\d{1,9}(\.\d{1,3})?$/);
 const attribution = z.enum(['none', 'customer_order', 'us', 'company']);
 
@@ -39,7 +39,7 @@ const voidSchema = z.object({
 
 const paidBackSchema = z.object({
   method: z.enum(['money', 'materials']),
-  entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  entry_date: isoDate.nullish(),
   note: z.string().max(2000).nullish(),
   version: z.number().int().positive().optional(),
 });
@@ -50,9 +50,9 @@ const returnSchema = z.object({
   note: z.string().max(2000).nullish(),
   credit: z
     .object({
-      amount: z.number().int().positive(),
+      amount: minorAmount.positive(),
       currency: z.enum(['IQD', 'USD']),
-      other_amount: z.number().int().positive().nullish(),
+      other_amount: minorAmount.positive().nullish(),
       note: z.string().max(2000).nullish(),
     })
     .nullish(),
@@ -80,7 +80,7 @@ const listSchema = z.object({
 });
 
 const historySchema = z.object({
-  cursor: z.string().max(200).optional(),
+  cursor: cursorField,
   limit: limitField,
 });
 

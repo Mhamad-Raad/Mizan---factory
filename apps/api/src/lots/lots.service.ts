@@ -23,9 +23,14 @@ export interface Lot {
   bought_on: string;
   /** In the material's priced measure (pieces, or kilograms with three decimals). */
   quantity: string;
+  /** What sales and damages have taken from it so far, net of what was given back. */
+  taken: string;
   remaining: string;
   unit_cost_iqd: number;
   unit_cost_usd_cents: number;
+  /** What the whole buy cost, as stored — a take is costed as its share of these (rule 1). */
+  line_total_iqd: number;
+  line_total_usd_cents: number;
   entered_currency: 'IQD' | 'USD';
   rate_iqd_per_usd: string;
 }
@@ -58,6 +63,8 @@ export class LotsService {
    * stock.
    */
   async lotsOf(itemId: string, tx?: Db): Promise<Lot[]> {
+    // `item_lots` (migration 0030) trims what the buys hold to the stock on hand, oldest first,
+    // so stock that left without a buy (a sale past every buy, a correction) is not sold twice.
     const { rows } = await (tx ?? this.database).query<{
       purchase_line_id: string;
       purchase_id: string;
@@ -65,24 +72,23 @@ export class LotsService {
       bought_on: string;
       quantity: string;
       taken: string;
+      remaining: string;
       unit_cost_iqd: string;
       unit_cost_usd_cents: string;
+      line_total_iqd: string;
+      line_total_usd_cents: string;
       entered_currency: 'IQD' | 'USD';
       rate_iqd_per_usd: string;
     }>(
-      `SELECT l.id AS purchase_line_id, p.id AS purchase_id, p.number::text AS purchase_number,
-              to_char(p.purchase_date, 'YYYY-MM-DD') AS bought_on,
-              (CASE WHEN l.priced_measure = 'count' THEN l.qty_count::numeric ELSE l.qty_kg END)::text AS quantity,
-              coalesce(a.taken, 0)::text AS taken,
-              l.unit_price_iqd::text AS unit_cost_iqd, l.unit_price_usd_cents::text AS unit_cost_usd_cents,
-              l.price_entered_currency::text AS entered_currency, l.rate_iqd_per_usd::text AS rate_iqd_per_usd
-         FROM purchase_lines l
-         JOIN purchases p ON p.id = l.purchase_id
-         LEFT JOIN LATERAL (
-           SELECT sum(qty) AS taken FROM lot_allocations WHERE purchase_line_id = l.id
-         ) a ON true
-        WHERE l.item_id = $1 AND l.deleted_at IS NULL AND p.status = 'active' AND p.deleted_at IS NULL
-        ORDER BY p.purchase_date, p.number, l.line_no`,
+      `SELECT purchase_line_id, purchase_id, purchase_number::text AS purchase_number,
+              to_char(purchase_date, 'YYYY-MM-DD') AS bought_on,
+              quantity::text AS quantity, taken::text AS taken, remaining::text AS remaining,
+              unit_price_iqd::text AS unit_cost_iqd, unit_price_usd_cents::text AS unit_cost_usd_cents,
+              line_total_iqd::text AS line_total_iqd, line_total_usd_cents::text AS line_total_usd_cents,
+              price_entered_currency::text AS entered_currency, rate_iqd_per_usd::text AS rate_iqd_per_usd
+         FROM item_lots
+        WHERE item_id = $1
+        ORDER BY purchase_date, purchase_number, line_no`,
       [itemId],
     );
     return rows.map((row) => ({
@@ -91,12 +97,26 @@ export class LotsService {
       purchase_number: Number(row.purchase_number),
       bought_on: row.bought_on,
       quantity: new Decimal(row.quantity).toFixed(QTY_SCALE),
-      remaining: new Decimal(row.quantity).minus(row.taken).toFixed(QTY_SCALE),
+      taken: new Decimal(row.taken).toFixed(QTY_SCALE),
+      remaining: new Decimal(row.remaining).toFixed(QTY_SCALE),
       unit_cost_iqd: Number(row.unit_cost_iqd),
       unit_cost_usd_cents: Number(row.unit_cost_usd_cents),
+      line_total_iqd: Number(row.line_total_iqd),
+      line_total_usd_cents: Number(row.line_total_usd_cents),
       entered_currency: row.entered_currency,
       rate_iqd_per_usd: row.rate_iqd_per_usd,
     }));
+  }
+
+  /**
+   * Locks the rows of the given materials, always in the same order. A document that sells or
+   * breaks several materials takes every lock up front, sorted, so two documents naming the
+   * same materials in a different order wait for each other instead of deadlocking (review).
+   */
+  async lockItems(tx: Db, itemIds: readonly string[]): Promise<void> {
+    const ids = [...new Set(itemIds)].sort();
+    if (ids.length === 0) return;
+    await tx.query('SELECT id FROM items WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE', [ids]);
   }
 
   /**
@@ -121,13 +141,14 @@ export class LotsService {
       const left = new Decimal(lot.remaining).minus(pending.get(lot.purchase_line_id) ?? 0);
       if (left.lte(0)) continue;
       const qty = Decimal.min(left, wanted);
-      takes.push(this.take(lot, qty));
+      const before = new Decimal(lot.taken).plus(pending.get(lot.purchase_line_id) ?? 0);
+      takes.push(this.take(lot, qty, before));
       wanted = wanted.minus(qty);
     }
     if (wanted.gt(0)) {
       // Nothing left in any buy: the latest buy's price stands in, with no allocation row.
       const latest = lots[lots.length - 1] as Lot;
-      const extra = this.take(latest, wanted);
+      const extra = this.take(latest, wanted, null);
       takes.push({ ...extra, purchase_line_id: '' });
     }
 
@@ -182,13 +203,25 @@ export class LotsService {
     return Boolean(rows[0]?.taken);
   }
 
-  /** A quantity of one lot, costed in both currencies from the lot's own stored pair (rule 1). */
-  private take(lot: Lot, qty: Decimal): Take {
+  /**
+   * A quantity of one lot, costed as its share of what the whole buy cost, in both currencies
+   * (rule 1) — not a rounded unit price times the quantity, which on 5,000 kg drifts by dollars.
+   *
+   * With `before` (what was taken from the lot already) the share is the difference of two
+   * cumulative figures, each rounded once, so every take of a buy together costs exactly the
+   * buy — three pieces of a 1,000 dinar buy cost 333, 334 and 333, never 999 (review). Stock
+   * sold past every buy has no place in the lot and is costed as a plain share.
+   */
+  private take(lot: Lot, qty: Decimal, before: Decimal | null): Take {
+    const costOf = (quantity: Decimal, total: number): number =>
+      roundHalfAwayFromZero(quantity.dividedBy(lot.quantity).times(total));
+    const cost = (total: number): number =>
+      before === null ? costOf(qty, total) : costOf(before.plus(qty), total) - costOf(before, total);
     return {
       purchase_line_id: lot.purchase_line_id,
       qty: qty.toFixed(QTY_SCALE),
-      cost_iqd: roundHalfAwayFromZero(new Decimal(lot.unit_cost_iqd).times(qty)),
-      cost_usd_cents: roundHalfAwayFromZero(new Decimal(lot.unit_cost_usd_cents).times(qty)),
+      cost_iqd: cost(lot.line_total_iqd),
+      cost_usd_cents: cost(lot.line_total_usd_cents),
     };
   }
 }

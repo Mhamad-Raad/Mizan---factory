@@ -4,8 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button, PasswordField } from '@mizan/ui';
 import { Doorway } from '../components/Doorway.js';
-import { ApiError, apiRequest } from '../lib/api.js';
-import { signInError } from '../lib/signInError.js';
+import { apiRequest } from '../lib/api.js';
+import { passwordChangeError } from '../lib/signInError.js';
 import { useApp } from '../lib/store.js';
 
 /** A user flagged "must change password" goes here before anything else (FR-101). */
@@ -33,15 +33,7 @@ export function ChangePasswordPage() {
       if (user) setSession({ user: { ...user, must_change_password: false }, permissions: [...permissions] });
       navigate('/');
     } catch (caught) {
-      // A wrong current password and a lockout read as they do on the Login page: this field
-      // counts toward the same five attempts (security review, finding 2).
-      const wrongCurrent = caught instanceof ApiError && caught.fields[0]?.path === 'current';
-      if (!(caught instanceof ApiError) || caught.code === 'RATE_LIMITED' || wrongCurrent) {
-        const problem = signInError(t, caught);
-        setError(problem.warning ? `${problem.message} — ${problem.warning}` : problem.message);
-      } else if (caught.fields[0]) {
-        setError(t(caught.fields[0].message_key, { min: 8, ...(caught.fields[0].params ?? {}) }));
-      } else setError(t(caught.messageKey, { defaultValue: t('errors:INTERNAL') }));
+      setError(passwordChangeError(t, caught));
     } finally {
       setBusy(false);
     }
@@ -86,7 +78,7 @@ export function ChangePasswordPage() {
             {error}
           </p>
         ) : null}
-        <Button type="submit" block loading={busy} disabled={!current || !next || mismatch}>
+        <Button type="submit" block loading={busy} disabled={!current || !next || repeat !== next}>
           {t('auth:change_password')}
         </Button>
       </form>

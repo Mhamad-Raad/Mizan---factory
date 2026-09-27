@@ -71,6 +71,18 @@ describe('the API client (spec 2.9.1, 2.9.2)', () => {
     await expect(apiRequest('/users')).rejects.toBeInstanceOf(NetworkError);
   });
 
+  it("reads a proxy's HTML error page as our own failure, not as a SyntaxError", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 502, text: async () => '<html>Bad gateway</html>' } as Response),
+    );
+    await expect(apiRequest('/orders', { method: 'POST', body: {} })).rejects.toMatchObject({
+      status: 502,
+      code: 'INTERNAL',
+      messageKey: 'errors:INTERNAL',
+    });
+  });
+
   it('returns nothing for 204 without trying to parse a body', async () => {
     stubFetch({ status: 204 });
     await expect(apiRequest('/auth/logout', { method: 'POST' })).resolves.toBeUndefined();

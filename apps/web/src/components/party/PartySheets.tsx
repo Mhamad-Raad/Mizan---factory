@@ -237,6 +237,11 @@ export function SettlementCurrencySheet({
             onChange={(event) => setRebaseRate(event.target.value)}
             error={error}
           />
+        ) : error ? (
+          // With nothing owed there is no rate field to show a refusal under.
+          <p className="mz-field__error" role="alert">
+            {error}
+          </p>
         ) : null}
         <p className="mz-caption">{t('companies:rebase_hint')}</p>
 

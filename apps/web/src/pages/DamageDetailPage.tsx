@@ -3,7 +3,9 @@ import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField, Icon, TextField, Toast } from '@mizan/ui';
-import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { errorMessage } from '../lib/errors.js';
+import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
@@ -65,6 +67,7 @@ export function DamageDetailPage() {
     await queryClient.invalidateQueries({ queryKey: ['damages'] });
     await queryClient.invalidateQueries({ queryKey: ['items'] });
     await queryClient.invalidateQueries({ queryKey: ['customers'] });
+    await invalidateMoneyViews(queryClient);
   };
 
   const paidBack = useMutation({
@@ -104,7 +107,7 @@ export function DamageDetailPage() {
       <DualAmount amount_iqd={record.cost.est_value_iqd} amount_usd_cents={record.cost.est_value_usd_cents ?? 0} />
     ) : null;
 
-  usePageTitle(record ? t('damages:number', { number: formatter.number(record.number) }) : t('damages:title'));
+  usePageTitle(record ? t('damages:number', { number: formatter.identifier(record.number) }) : t('damages:title'));
 
   return (
     <div className="mz-stack">
@@ -120,7 +123,7 @@ export function DamageDetailPage() {
             <Card>
               <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)', alignItems: 'flex-start' }}>
                 <div className="mz-stack" style={{ gap: '2px', minInlineSize: 0 }}>
-                  <h2 className="mz-title">{t('damages:number', { number: formatter.number(record.number) })}</h2>
+                  <h2 className="mz-title">{t('damages:number', { number: formatter.identifier(record.number) })}</h2>
                   <Link to={`/materials/${record.item_id}`} className="mz-caption">
                     <bdi>{record.item_name}</bdi>
                   </Link>
@@ -317,11 +320,7 @@ export function DamageDetailPage() {
         <PaidBackSheet
           method={sheet}
           saving={paidBack.isPending}
-          error={
-            paidBack.error instanceof ApiError
-              ? t(paidBack.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })
-              : undefined
-          }
+          error={errorMessage(t, paidBack.error) ?? undefined}
           onClose={() => setSheet(null)}
           onSave={(body) => paidBack.mutate({ method: sheet, ...body })}
         />
@@ -330,11 +329,7 @@ export function DamageDetailPage() {
       {sheet === 'void' && record ? (
         <VoidSheet
           saving={voidRecord.isPending}
-          error={
-            voidRecord.error instanceof ApiError
-              ? t(voidRecord.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })
-              : undefined
-          }
+          error={errorMessage(t, voidRecord.error) ?? undefined}
           onClose={() => setSheet(null)}
           onSave={(reason) => voidRecord.mutate(reason)}
         />

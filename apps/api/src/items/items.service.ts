@@ -283,6 +283,14 @@ export class ItemsService {
       // for it, so it needs an admin once the material has moved — and it never recomputes a
       // line, which keeps its snapshot of the priced measure (FR-302).
       if (input.pricing_unit !== undefined && input.pricing_unit !== before.pricing_unit) {
+        // Its buys are counted in the measure they were bought in (D-062): pieces cannot become
+        // kilos under them, so a material that has been bought keeps its unit — even for an
+        // admin (review: the stock would be trimmed and valued across two measures).
+        const { rowCount: bought } = await tx.query(
+          'SELECT 1 FROM purchase_lines WHERE item_id = $1 AND deleted_at IS NULL LIMIT 1',
+          [id],
+        );
+        if (bought) throw new ApiError('VERSION_CONFLICT', { reason: 'bought' }, [], 'errors:pricing_unit_bought');
         const referenced = await this.items.isReferenced(id, tx);
         if (referenced && context.role !== 'admin') {
           throw ApiError.permissionDenied('admin');

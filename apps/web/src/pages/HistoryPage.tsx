@@ -11,8 +11,11 @@ import { Pager } from '../components/Pager.js';
 import { useCursorPaging } from '../lib/paging.js';
 import { AuditDiff, AuditValue } from '../components/AuditDiff.js';
 import { DualAmount } from '../components/DualAmount.js';
-import { FilterChip } from './MaterialsPage.js';
+import { FilterChip } from '../components/FilterChip.js';
 import { useApp, useFormatter } from '../lib/store.js';
+import { readNote, recordName } from '../lib/record-names.js';
+import { initialsOf } from '../lib/initials.js';
+import { lastDays, thisWeek, yesterdayOf } from '../lib/periods.js';
 
 interface AuditRow {
   id: string;
@@ -52,14 +55,10 @@ export function rangeFor(
   if (preset === 'custom') return { from: custom.from || undefined, to: custom.to || undefined };
   if (preset === 'today') return { from: today, to: today };
   if (preset === 'yesterday') {
-    const date = new Date(`${today}T00:00:00Z`);
-    date.setUTCDate(date.getUTCDate() - 1);
-    const day = date.toISOString().slice(0, 10);
+    const day = yesterdayOf(today);
     return { from: day, to: day };
   }
-  const date = new Date(`${today}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() - (preset === 'week' ? 6 : 29));
-  return { from: date.toISOString().slice(0, 10), to: today };
+  return preset === 'week' ? thisWeek(today) : lastDays(today, 30);
 }
 
 const ENTITY_TYPES = [
@@ -116,25 +115,6 @@ function linkOf(entry: AuditRow): string | null {
     default:
       return null;
   }
-}
-
-/**
- * The record's name in the reader's language. The API stores an English label ("Order #1014",
- * "Material: Copper wire"), so a numbered record is named by its translated kind and its number,
- * and a named one by its name alone.
- */
-function recordName(entry: AuditRow, t: (key: string, options?: Record<string, unknown>) => string, number: (value: number) => string): string {
-  const numbered = entry.entity_label.match(/#\s*(\d+)\s*$/);
-  if (numbered) return `${t(`history:entity.${entry.entity_type}`, { defaultValue: entry.entity_type })} #${number(Number(numbered[1]))}`;
-  const named = entry.entity_label.match(/^[A-Za-z ]+:\s*(.+)$/);
-  return named?.[1] ?? entry.entity_label;
-}
-
-/** Two letters for a person's badge. */
-function initialsOf(name: string | null): string {
-  if (!name) return '·';
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '')).toUpperCase();
 }
 
 /** The changes worth a glance in the row: fields that went from one value to another. */
@@ -274,7 +254,7 @@ export function HistoryPage() {
   // Day headings, in the Baghdad day each entry happened on.
   const dayOf = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Baghdad' });
   const today = formatter.today();
-  const yesterday = rangeFor('yesterday', today, { from: '', to: '' }).from;
+  const yesterday = yesterdayOf(today);
   const days: { day: string; entries: AuditEntry[] }[] = [];
   for (const entry of entries) {
     const day = dayOf(entry.occurred_at);
@@ -368,7 +348,7 @@ export function HistoryPage() {
                   const style = actionStyle(entry.action);
                   const link = SESSION_ACTIONS.has(entry.action) ? null : linkOf(entry);
                   const open = expanded === entry.id;
-                  const name = recordName(entry, t, (value) => formatter.number(value));
+                  const name = recordName(entry.entity_type, entry.entity_label, t, formatter.identifier);
                   return (
                     <li key={entry.id} className="mz-activity__item" data-open={open ? 'true' : undefined}>
                       <span className="mz-activity__avatar" aria-hidden="true">
@@ -398,7 +378,7 @@ export function HistoryPage() {
                         <RowSummary entry={entry} />
                         {entry.note ? (
                           <p className="mz-activity__note">
-                            <bdi>“{entry.note}”</bdi>
+                            <bdi>“{readNote(entry.note, t, formatter.identifier)}”</bdi>
                           </p>
                         ) : null}
                         {open ? (

@@ -147,6 +147,25 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
       });
     });
 
+    it('keeps the unit of a material that has been bought, even for an admin (review)', async () => {
+      const material = await createMaterial(warehouse);
+      await as(ctx.http, admin)
+        .post('/api/v1/purchases')
+        .send({
+          company_id: null,
+          purchase_date: '2026-09-01',
+          lines: [{ item_id: material.id, qty_kg: '100.000', unit_price: { amount: 700, currency: 'IQD' } }],
+        })
+        .expect(201);
+      const current = await as(ctx.http, admin).get(`/api/v1/items/${material.id}`).expect(200);
+
+      const refused = await as(ctx.http, admin)
+        .patch(`/api/v1/items/${material.id}`)
+        .send({ pricing_unit: 'per_piece', version: current.body.version })
+        .expect(409);
+      expect(refused.body.error.message_key).toBe('errors:pricing_unit_bought');
+    });
+
     it('refuses a stale version rather than overwriting another edit (spec 2.9.5)', async () => {
       const material = await createMaterial(warehouse);
       await as(ctx.http, warehouse)

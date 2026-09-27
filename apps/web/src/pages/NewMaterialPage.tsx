@@ -2,14 +2,16 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, DateField, NumberField, StickyFooter, TextField } from '@mizan/ui';
-import type { Rate } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { useFormatter, usePermission } from '../lib/store.js';
+import { errorMessage } from '../lib/errors.js';
+import { invalidateMoneyViews } from '../lib/invalidate.js';
+import { useGlobalRate } from '../lib/rates.js';
 
 const emptyMoney = (): MoneyValue => ({ amount: null, currency: 'IQD', other_amount: null });
 
@@ -45,12 +47,8 @@ export function NewMaterialPage() {
   const [bought, setBought] = useState<MoneyValue>(emptyMoney);
   const [idempotencyKey] = useState(newIdempotencyKey);
 
-  const globalRate = useQuery({
-    queryKey: ['global-rate'],
-    queryFn: () =>
-      apiRequest<{ current: { rate_iqd_per_usd: string } | null }>('/settings/global-rates'),
-  });
-  const rate: Rate = globalRate.data?.current?.rate_iqd_per_usd ?? '1310.0000';
+  // Null until a rate is set: the money fields then show no conversion rather than invent one.
+  const { rate } = useGlobalRate();
   const thisMonth = formatter.today().slice(0, 7);
 
   const create = useMutation({
@@ -86,15 +84,13 @@ export function NewMaterialPage() {
     },
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await invalidateMoneyViews(queryClient);
       navigate(`/materials/${created.id}`, { replace: true });
     },
   });
 
   const duplicate = create.error instanceof ApiError ? create.error.fieldError('name') : undefined;
-  const otherError =
-    create.error instanceof ApiError && !duplicate
-      ? t(create.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })
-      : null;
+  const otherError = duplicate ? null : errorMessage(t, create.error);
 
   const quantityValid = quantity.trim() !== '' && Number(quantity) > 0;
   const costValid = unitCost.amount !== null && unitCost.amount >= 0;

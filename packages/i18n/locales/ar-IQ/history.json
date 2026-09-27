@@ -138,5 +138,6 @@
   "value.pending": "بالانتظار",
   "value.not_returnable": "لا يُرجَع",
   "value.admin": "مدير",
-  "value.employee": "موظف"
+  "value.employee": "موظف",
+  "field.rounding": "التقريب"
 }

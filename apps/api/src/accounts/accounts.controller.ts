@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
+import { isoDate, minorAmount } from '../common/schemas.js';
 import { RequirePermission } from '../common/decorators.js';
 import { pageFields } from '../common/paging.js';
 import { contextOf } from '../common/request-context.js';
@@ -9,7 +10,6 @@ import { PeriodService } from '../settings/period.service.js';
 import { AccountsService } from './accounts.service.js';
 import { ExpensesService } from './expenses.service.js';
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const periodSchema = z.object({ from: isoDate.optional(), to: isoDate.optional() });
 const listSchema = periodSchema.extend({ q: z.string().max(200).optional(), ...pageFields });
@@ -19,9 +19,9 @@ const expenseSchema = z.object({
   expense_date: isoDate,
   title: z.string().min(1).max(200),
   amount: z.object({
-    amount: z.number().int().positive(),
+    amount: minorAmount.positive(),
     currency: z.enum(['IQD', 'USD']),
-    other_amount: z.number().int().positive().nullish(),
+    other_amount: minorAmount.positive().nullish(),
   }),
   note: z.string().max(2000).nullish(),
 });

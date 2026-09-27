@@ -159,9 +159,11 @@ export interface OrderTotals {
   orders: number;
   total_iqd: number;
   total_usd_cents: number;
-  /** Orders that still owe something, in their company's own currency. */
-  owing: number;
-  balance: { owed_iqd: number; owed_usd_cents: number };
+  /**
+   * What is still owed: how many orders owe something, and how much. Both sit under `balance`,
+   * so the flag that hides what customers owe hides the count as well (2.6.2).
+   */
+  balance: { owing: number; owed_iqd: number; owed_usd_cents: number };
 }
 
 @Injectable()
@@ -341,11 +343,23 @@ export class OrdersRepository {
         orders: Number(t?.orders ?? 0),
         total_iqd: Number(t?.total_iqd ?? 0),
         total_usd_cents: Number(t?.total_usd_cents ?? 0),
-        owing: Number(t?.owing ?? 0),
-        // Under `balance`, so the flag that hides what customers owe hides this too (2.6.2).
-        balance: { owed_iqd: Number(t?.owed_iqd ?? 0), owed_usd_cents: Number(t?.owed_usd_cents ?? 0) },
+        balance: {
+          owing: Number(t?.owing ?? 0),
+          owed_iqd: Number(t?.owed_iqd ?? 0),
+          owed_usd_cents: Number(t?.owed_usd_cents ?? 0),
+        },
       },
     };
+  }
+
+  /** What the ledger says is still owed on one order, in one currency (0 before any entry). */
+  async remainingOf(orderId: string, currency: 'IQD' | 'USD', tx: Db): Promise<number> {
+    const column = currency === 'IQD' ? 'remaining_iqd' : 'remaining_usd_cents';
+    const { rows } = await tx.query<{ remaining: string }>(
+      `SELECT ${column}::text AS remaining FROM order_remaining WHERE order_id = $1`,
+      [orderId],
+    );
+    return Number(rows[0]?.remaining ?? 0);
   }
 
   async linesOf(orderId: string, tx?: Db): Promise<OrderLineRow[]> {

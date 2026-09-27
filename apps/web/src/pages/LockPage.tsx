@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Avatar, Button, PasswordField } from '@mizan/ui';
 import { Doorway } from '../components/Doorway.js';
@@ -31,6 +31,10 @@ interface SwitchResponse {
 export function LockPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: unknown } | null)?.from;
+  // Only a path inside the app, never the lock screen itself.
+  const returnTo = typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') && !from.startsWith('/lock') ? from : '/';
   const queryClient = useQueryClient();
   const user = useApp((state) => state.user);
   const preferences = useApp((state) => state.preferences);
@@ -73,7 +77,8 @@ export function LockPage() {
       await apiRequest('/auth/unlock', { method: 'POST', body: { password } });
       setLocked(false);
       reset();
-      navigate('/');
+      // Back to the page the lock covered; somebody taking over starts on their own home.
+      navigate(returnTo, { replace: true });
     } catch (caught) {
       setError(signInError(t, caught));
     } finally {

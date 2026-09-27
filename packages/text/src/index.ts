@@ -98,15 +98,18 @@ export function searchEqualsFuzzy(a: string, b: string): boolean {
 
 /**
  * Phone numbers are normalised separately (spec 2.10.7): digits only, with a leading
- * +964 / 00964 reduced to 0, so 07501234567, +9647501234567 and 0964 750 123 4567 match.
+ * +964 / 00964 / 0964 reduced to 0, so 07501234567, +9647501234567, 0964 750 123 4567 and
+ * +964 (0)750 123 4567 match.
  */
 export function normalizePhone(phone: string): string {
   if (!phone) return '';
   const digits = mapCharacters(phone.normalize('NFKC'), [DIGIT_MAP]).replace(/[^0-9+]/g, '');
   const withoutPlus = digits.startsWith('+') ? digits.slice(1) : digits;
-  if (withoutPlus.startsWith('00964')) return `0${withoutPlus.slice(5)}`;
-  if (withoutPlus.startsWith('964')) return `0${withoutPlus.slice(3)}`;
-  return withoutPlus;
+  // The country code in any of its spellings — 964, 00964, 0964 — and the "(0)" people write
+  // after it: +964 (0)750… is still 0750… (review: the documented 0964 form did not match).
+  const national = withoutPlus.match(/^(?:00|0)?964(.*)$/)?.[1];
+  if (national === undefined) return withoutPlus;
+  return national.startsWith('0') ? national : `0${national}`;
 }
 
 /**

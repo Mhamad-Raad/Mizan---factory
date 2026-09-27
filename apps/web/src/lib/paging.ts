@@ -32,7 +32,8 @@ function storeSize(storageKey: string, size: number): void {
 export interface Paging {
   page: number;
   pageSize: number;
-  setPage: (page: number) => void;
+  /** `replace` swaps the address instead of adding a Back step — for a correction, not a turn. */
+  setPage: (page: number, replace?: boolean) => void;
   setPageSize: (size: number) => void;
   /** `page=…&page_size=…`, to append to a list request. */
   query: string;
@@ -85,7 +86,10 @@ export function usePaging({
     [setParams, pageParam, sizeParam],
   );
 
-  const setPage = useCallback((next: number) => update({ page: Math.max(1, Math.trunc(next)) }), [update]);
+  const setPage = useCallback(
+    (next: number, replace = false) => update({ page: Math.max(1, Math.trunc(next)) }, replace),
+    [update],
+  );
   const setPageSize = useCallback(
     (size: number) => {
       const clamped = clampPageSize(size);
@@ -106,6 +110,37 @@ export function usePaging({
   }, [filterKey, page, update]);
 
   return { page, pageSize, setPage, setPageSize, query: `page=${page}&page_size=${pageSize}` };
+}
+
+/**
+ * The page to go to when `page` lies past the end of a list of `total` rows — its last page,
+ * or page one when it is empty — and `null` when the page is fine where it is.
+ */
+export function pageWithin(page: number, pageSize: number, total: number): number | null {
+  if (page <= 1) return null;
+  const last = Math.max(1, Math.ceil(total / pageSize));
+  return page > last ? last : null;
+}
+
+/**
+ * Keeps a list off a page that is past its end. Back restores the page number from the address
+ * but not the filters kept in the screen, so page four of a narrowed list can come back as page
+ * four of a list that has two — "No orders", with no pager under it to leave by. When the rows
+ * come back and the page is beyond them, the address moves to the last page that has any.
+ * A placeholder (the previous filter's rows, kept on screen while the next load) is not an
+ * answer to this question, so it is ignored.
+ */
+export function useKeepPageInRange(
+  paging: Paging,
+  query: { data?: { total?: number } | undefined; isPlaceholderData?: boolean },
+): void {
+  const total = query.isPlaceholderData ? undefined : query.data?.total;
+  const { page, pageSize, setPage } = paging;
+  useEffect(() => {
+    if (total === undefined) return;
+    const next = pageWithin(page, pageSize, total);
+    if (next !== null) setPage(next, true);
+  }, [total, page, pageSize, setPage]);
 }
 
 /**

@@ -3,10 +3,14 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Chip, TextField } from '@mizan/ui';
-import { ApiError, apiRequest } from '../lib/api.js';
+import { apiRequest } from '../lib/api.js';
+import { errorMessage } from '../lib/errors.js';
 import { usePageTitle } from '../lib/page-title.js';
+import { passwordChangeError } from '../lib/signInError.js';
 import { QueryStates } from '../components/states.js';
 import { useApp, useFormatter } from '../lib/store.js';
+import { recordName } from '../lib/record-names.js';
+import { initialsOf } from '../lib/initials.js';
 
 interface Profile {
   id: string;
@@ -24,11 +28,6 @@ interface MyAction {
   action: string;
   entity_type: string;
   entity_label: string;
-}
-
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '')).toUpperCase() || '·';
 }
 
 /**
@@ -98,8 +97,7 @@ export function MePage() {
                 <span className="mz-list__body">
                   <span className="mz-list__title">
                     {t(`history:action.${row.action}`, { defaultValue: row.action })} ·{' '}
-                    {/* "Employee: Rebaz Omar" reads as the name alone. */}
-                    <bdi>{row.entity_label.replace(/^[A-Za-z ]+:\s*/, '')}</bdi>
+                    <bdi>{recordName(row.entity_type, row.entity_label, t, formatter.identifier)}</bdi>
                   </span>
                   <span className="mz-caption">{formatter.timestamp(new Date(row.occurred_at))}</span>
                 </span>
@@ -146,7 +144,7 @@ function ProfileCard({
 
   const changed = name.trim() !== profile.display_name || (phone.trim() || null) !== (profile.phone ?? null);
   const error =
-    save.error instanceof ApiError ? t(save.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') }) : null;
+    errorMessage(t, save.error);
 
   return (
     <Card>
@@ -204,6 +202,7 @@ function ProfileCard({
 /** The password, asked for twice, after the current one (FR-1102). */
 function PasswordCard() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [repeat, setRepeat] = useState('');
@@ -212,14 +211,20 @@ function PasswordCard() {
 
   const change = useMutation({
     mutationFn: () => apiRequest('/auth/change-password', { method: 'POST', body: { current, new: next } }),
-    onSuccess: () => {
+    onSuccess: async () => {
       setMessage(t('auth:password_changed'));
       setError(null);
       setCurrent('');
       setNext('');
       setRepeat('');
+      // The change moved the account's version: the profile form must start from the new one,
+      // or its next save is refused as somebody else's edit.
+      await queryClient.invalidateQueries({ queryKey: ['me', 'profile'] });
     },
-    onError: () => setError(t('auth:invalid_credentials')),
+    onError: (caught) => {
+      setMessage(null);
+      setError(passwordChangeError(t, caught));
+    },
   });
 
   const mismatch = repeat.length > 0 && repeat !== next;
@@ -230,6 +235,7 @@ function PasswordCard() {
         className="mz-stack"
         onSubmit={(event) => {
           event.preventDefault();
+          setError(null);
           change.mutate();
         }}
       >
@@ -265,7 +271,7 @@ function PasswordCard() {
           </p>
         ) : null}
         {message ? <p className="mz-muted">{message}</p> : null}
-        <Button type="submit" loading={change.isPending} disabled={!current || !next || mismatch}>
+        <Button type="submit" loading={change.isPending} disabled={!current || !next || repeat !== next}>
           {t('auth:change_password')}
         </Button>
       </form>

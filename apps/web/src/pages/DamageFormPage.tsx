@@ -6,13 +6,15 @@ import { Button, Card, DateField, Icon, StickyFooter, TextField } from '@mizan/u
 import { Decimal, roundHalfAwayFromZero } from '@mizan/money';
 import type { Currency, Measure } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { errorMessage } from '../lib/errors.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { DraftBanner } from '../components/DraftBanner.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { PickerSheet } from '../components/PickerSheet.js';
 import { QuantityInput } from '../components/QuantityInput.js';
 import { QueryStates } from '../components/states.js';
-import { clearDraft, readDraft, writeDraft } from '../lib/drafts.js';
+import { clearDraft, createDraftKeeper, readDraft } from '../lib/drafts.js';
+import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
 import type { CustomerRow } from './CustomersPage.js';
 import { quantityOf } from './DamagesPage.js';
@@ -177,11 +179,14 @@ function DamageForm({ initial }: { initial: FormState }) {
       )}`
     : form.stock_hint;
 
+  // Stopped for good once the damage is saved, so the saved record never comes back as a draft.
+  const [drafts] = useState(() => createDraftKeeper<FormState>('damage', draftId));
   useEffect(() => {
+    if (drafts.finished) return;
     if (!form.item_id && form.qty_kg === null && form.qty_count === null) return;
-    const timer = window.setTimeout(() => writeDraft('damage', draftId, form, idempotencyKey), 300);
+    const timer = window.setTimeout(() => drafts.write(form, idempotencyKey), 300);
     return () => window.clearTimeout(timer);
-  }, [form, draftId, idempotencyKey]);
+  }, [form, drafts, idempotencyKey]);
 
   const save = useMutation({
     mutationFn: () =>
@@ -201,16 +206,22 @@ function DamageForm({ initial }: { initial: FormState }) {
         idempotencyKey,
       }),
     onSuccess: async (damage) => {
-      clearDraft('damage', draftId);
+      drafts.finish();
       setIdempotencyKey(newIdempotencyKey());
       await queryClient.invalidateQueries({ queryKey: ['damages'] });
       await queryClient.invalidateQueries({ queryKey: ['items'] });
       await queryClient.invalidateQueries({ queryKey: ['customers'] });
+      await invalidateMoneyViews(queryClient);
       navigate(`/damages/${damage.id}`, { replace: true });
     },
   });
 
   const error = save.error instanceof ApiError ? save.error : null;
+  // A refused quantity shows under its input; anything else — a network failure included —
+  // shows above the save button.
+  const shownUnderInputs =
+    error !== null && error.fields.length > 0 && error.fields.every((field) => /^qty_(kg|count)$/.test(field.path));
+  const saveError = shownUnderInputs ? null : errorMessage(t, save.error);
   const quantity = pricedMeasure === 'kg' ? form.qty_kg : form.qty_count;
   const canSave =
     Boolean(form.item_id) &&
@@ -436,9 +447,9 @@ function DamageForm({ initial }: { initial: FormState }) {
         </div>
       </Card>
 
-      {error && !error.fields.length ? (
+      {saveError ? (
         <div className="mz-warning" role="alert">
-          {t(error.messageKey, { defaultValue: t('errors:INTERNAL') })}
+          {saveError}
         </div>
       ) : null}
 
@@ -546,7 +557,7 @@ function DamageTextsForm({ damage }: { damage: DamageDetail }) {
       navigate(`/damages/${damage.id}`, { replace: true });
     },
   });
-  const error = save.error instanceof ApiError ? save.error : null;
+  const error = errorMessage(t, save.error);
 
   return (
     <div className="mz-stack mz-form-page mz-damage-form">
@@ -554,7 +565,7 @@ function DamageTextsForm({ damage }: { damage: DamageDetail }) {
       <Card>
         <div className="mz-stack">
           <div>
-            <h2 className="mz-heading">{t('damages:number', { number: formatter.number(damage.number) })}</h2>
+            <h2 className="mz-heading">{t('damages:number', { number: formatter.identifier(damage.number) })}</h2>
             <p className="mz-muted">{t('damages:edit_texts_only')}</p>
           </div>
           <dl className="mz-damage-facts">
@@ -619,7 +630,7 @@ function DamageTextsForm({ damage }: { damage: DamageDetail }) {
 
       {error ? (
         <div className="mz-warning" role="alert">
-          {t(error.messageKey, { defaultValue: t('errors:INTERNAL') })}
+          {error}
         </div>
       ) : null}
 

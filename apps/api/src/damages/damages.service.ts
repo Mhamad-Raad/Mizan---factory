@@ -12,6 +12,7 @@ import {
 } from '@mizan/ledger';
 import type { DamageAttribution, ReturnStatus, StockEffect } from '@mizan/ledger';
 import { AuditService } from '../audit/audit.service.js';
+import { resolveActingUser } from '../common/acting-user.js';
 import { ApiError } from '../common/errors.js';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
@@ -239,6 +240,9 @@ export class DamagesService {
     const owedByCompany = attribution === 'company' && links.company_id !== null && links.purchase_id === null;
 
     const created = await this.database.transaction(async (tx) => {
+      // The company's row before the material's — the order a sale takes them in — so a damage
+      // and an order for the same company and material cannot deadlock (review).
+      if (owedByCompany && links.company_id) await this.customerLedger.lockOwner(tx, links.company_id);
       // What the damaged stock cost us: taken from the buys oldest first, like a sale (D-062).
       // The month price above stands in only for a material that was never bought.
       const lotPlan =
@@ -377,26 +381,50 @@ export class DamagesService {
     const attributionChanged = attribution !== existing.attribution;
     const dateChanged = damageDate !== existing.damage_date;
 
-    // A damage costed from the buys (D-062) has taken its stock and, for a company, put its cost
-    // on their account. Its quantity, who did it and its date are that booking: changing them is
-    // a void and a new record, never a rewrite. The texts stay editable.
-    if (existing.est_value_source === 'lots' && (quantityChanged || attributionChanged || dateChanged)) {
-      throw new ApiError('EDIT_WINDOW_CLOSED', { reason: 'damage_booked' });
+    const stockEffect = stockEffectOf(attribution);
+    // Which company, order or purchase it names is the booking too: an owed damage moved to
+    // another company would leave its charge on the first one's account (review).
+    const linksChanged =
+      links.company_id !== existing.company_id ||
+      links.order_id !== existing.order_id ||
+      links.purchase_id !== existing.purchase_id;
+    const bookingChanged = quantityChanged || attributionChanged || dateChanged || linksChanged;
+
+    // A damage that took stock (and so its cost from the buys, D-062) or put its cost on a
+    // company's account has been booked: its quantity, who did it and its date are that booking,
+    // and changing them is a void and a new record, never a rewrite — an edit could not take the
+    // stock from the buys again, charge the company or undo the charge (review). The texts stay
+    // editable. Only a record that touches neither stock nor an account, before or after, may be
+    // re-booked in place.
+    const touchesStockOrAccount =
+      existing.est_value_source === 'lots' ||
+      existing.stock_effect !== 'none' ||
+      existing.compensation !== 'none' ||
+      stockEffect !== 'none' ||
+      attribution === 'company';
+    if (bookingChanged && touchesStockOrAccount) {
+      throw new ApiError('EDIT_WINDOW_CLOSED', { reason: 'damage_booked' }, [], 'errors:damage_booked');
     }
 
-    const prices = await this.items.pricesUpTo(existing.item_id, firstOfMonth(damageDate));
-    const value = damageValue(
-      { priced_measure: pricedMeasure, ...quantity },
-      selectMonthPrice(prices, 'bought', damageDate),
-    );
-    const stockEffect = stockEffectOf(attribution);
+    // The value is the booking's: an edit of the texts keeps it exactly — above all a cost taken
+    // from the buys, which the month's price must never replace (review).
+    const value = bookingChanged
+      ? damageValue(
+          { priced_measure: pricedMeasure, ...quantity },
+          selectMonthPrice(await this.items.pricesUpTo(existing.item_id, firstOfMonth(damageDate)), 'bought', damageDate),
+        )
+      : {
+          est_value_iqd: existing.est_value_iqd === null ? null : Number(existing.est_value_iqd),
+          est_value_usd_cents: existing.est_value_usd_cents === null ? null : Number(existing.est_value_usd_cents),
+          est_value_source: existing.est_value_source,
+        };
 
     await this.database.transaction(async (tx) => {
       const record = await this.damages.lock(id, tx);
       if (!record) throw ApiError.notFound();
       if (record.version !== input.version) throw await this.versionConflict(id);
 
-      if (quantityChanged || attributionChanged || dateChanged) {
+      if (bookingChanged) {
         await this.stock.reverseLiveForRef(
           tx,
           { ref_type: 'damage', ref_ids: [id] },
@@ -508,6 +536,13 @@ export class DamagesService {
         ]);
       }
 
+      // The locks in the order every writer takes them — the company, then the material, then
+      // its stock — so a void and a new damage for the same company cannot deadlock (review).
+      const account =
+        record.compensation === 'owed' && record.company_id
+          ? await this.customerLedger.lockOwner(tx, record.company_id)
+          : null;
+      await this.lots.lockItems(tx, [record.item_id]);
       await this.stock.reverseLiveForRef(
         tx,
         { ref_type: 'damage', ref_ids: [id] },
@@ -515,7 +550,6 @@ export class DamagesService {
       );
       await this.lots.release(tx, { type: 'damage', ids: [id], createdBy: context.userId });
       if (record.compensation === 'owed' && record.company_id) {
-        const account = await this.customerLedger.lockOwner(tx, record.company_id);
         if (account) {
           const entries = await this.customerLedger.entriesFor(tx, record.company_id);
           const reversed = new Set(entries.map((entry) => entry.reverses_entry_id).filter(Boolean));
@@ -616,26 +650,37 @@ export class DamagesService {
 
     const returnedAt = input.returned_at ? new Date(`${input.returned_at}T12:00:00Z`) : new Date();
 
-    // The credit is written through the company service, so it goes through the one ledger
-    // writer with its lock, its balance before/after and its audit row (D-019).
-    if (withCredit && input.credit) {
-      await this.companies.recordEntry(context, existing.company_id as string, 'credit', {
-        amount: input.credit.amount,
-        currency: input.credit.currency,
-        other_amount: input.credit.other_amount ?? null,
-        entry_date: this.period.today(),
-        note:
-          input.credit.note?.trim() ||
-          input.note?.trim() ||
-          `returned on damage #${existing.number}`,
-        purchase_id: existing.purchase_id,
-        damage_id: id,
-      });
-    }
-
     await this.database.transaction(async (tx) => {
       const record = await this.damages.lock(id, tx);
       if (!record) throw ApiError.notFound();
+      // Checked again under the lock: two taps on "returned + credit" must not credit twice.
+      if (record.return_status !== existing.return_status) {
+        throw new ApiError('VERSION_CONFLICT', { current_version: record.version });
+      }
+
+      // The credit is written through the company service, so it goes through the one ledger
+      // writer with its lock, its balance before/after and its audit row (D-019) — in this
+      // transaction, so a credit never stands without the status it pays for (review).
+      if (withCredit && input.credit) {
+        await this.companies.recordEntry(
+          context,
+          existing.company_id as string,
+          'credit',
+          {
+            amount: input.credit.amount,
+            currency: input.credit.currency,
+            other_amount: input.credit.other_amount ?? null,
+            entry_date: this.period.today(),
+            note:
+              input.credit.note?.trim() ||
+              input.note?.trim() ||
+              `returned on damage #${existing.number}`,
+            purchase_id: existing.purchase_id,
+            damage_id: id,
+          },
+          tx,
+        );
+      }
 
       const updated = await this.damages.update(
         id,
@@ -869,24 +914,8 @@ export class DamagesService {
   }
 
   /** Only an admin may record a damage as found by somebody else (spec 2.7). */
-  private async actingUser(context: RequestContext, requested?: string | null): Promise<string> {
-    if (!requested || requested === context.userId) return context.userId;
-    if (context.role !== 'admin') throw ApiError.permissionDenied('admin');
-    const { rowCount } = await this.database.query(
-      'SELECT 1 FROM users WHERE id = $1 AND deleted_at IS NULL AND is_active = true',
-      [requested],
-    );
-    if (!rowCount) {
-      throw ApiError.validation([
-        {
-          path: 'acting_user_id',
-          code: 'NOT_FOUND',
-          message_key: 'errors:field.required',
-          params: {},
-        },
-      ]);
-    }
-    return requested;
+  private actingUser(context: RequestContext, requested?: string | null): Promise<string> {
+    return resolveActingUser(this.database, context, requested, 'acting_user_id');
   }
 
   /** One `damage_out` movement for the record's quantities, negated (2.5.1, FR-804). */

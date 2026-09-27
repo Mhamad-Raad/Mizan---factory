@@ -11,7 +11,8 @@ import { useFormatter } from '../lib/store.js';
 import { DataList } from '../components/DataList.js';
 import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
-import { usePaging } from '../lib/paging.js';
+import { useKeepPageInRange, usePaging } from '../lib/paging.js';
+import { useDebouncedValue } from '../lib/debounce.js';
 
 interface UserRow {
   id: string;
@@ -37,7 +38,9 @@ interface UserRow {
 export function UsersPage() {
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const [query, setQuery] = useState('');
+  const [search, setSearch] = useState('');
+  // The request waits for the typing to stop (NFR-03): one search, not one per letter.
+  const query = useDebouncedValue(search);
   const [includeInactive, setIncludeInactive] = useState(false);
 
   const paging = usePaging({ storageKey: 'users', resetOn: [query, includeInactive] });
@@ -50,6 +53,7 @@ export function UsersPage() {
       ),
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(paging, users);
 
   usePageTitle(t('users:title'));
   const rows = users.data?.items ?? [];
@@ -98,8 +102,8 @@ export function UsersPage() {
             <TextField
               label={t('common:search')}
               placeholder={t('users:search_placeholder')}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
               type="search"
               inputMode="search"
             />

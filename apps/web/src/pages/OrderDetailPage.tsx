@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
-import type { Currency } from '@mizan/money';
+import { ORDER_ROUNDING_IQD, convert } from '@mizan/money';
+import type { Currency, Rate } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
@@ -18,6 +19,11 @@ import { useJustSettled } from '../lib/motion.js';
 import { customerName } from '../lib/customers.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import type { OrderDetail } from './OrderFormPage.js';
+import { errorMessage } from '../lib/errors.js';
+import { invalidateMoneyViews } from '../lib/invalidate.js';
+import { useGlobalRate } from '../lib/rates.js';
+import { OrderSaveWarningsNotice } from '../components/OrderSaveWarnings.js';
+import type { OrderSaveWarnings } from '../components/OrderSaveWarnings.js';
 import { timelineOf } from '../lib/order-timeline.js';
 import type { OrderHistory } from '../lib/order-timeline.js';
 
@@ -49,15 +55,28 @@ export function OrderDetailPage() {
   const printPending = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  // The warnings of an edit just saved arrive in the navigation state (see OrderFormPage); they
+  // are read once, and the history entry wiped so a refresh does not raise them again.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [saveWarnings] = useState(
+    () => (location.state as { saveWarnings?: OrderSaveWarnings } | null)?.saveWarnings ?? null,
+  );
+  useEffect(() => {
+    if (saveWarnings) navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const order = useQuery({
     queryKey: ['orders', id],
     queryFn: () => apiRequest<OrderDetail>(`/orders/${id}`),
   });
 
-  const rate = useQuery({
-    queryKey: ['global-rate'],
-    queryFn: () => apiRequest<{ current: { rate_iqd_per_usd: string } | null }>('/settings/global-rates'),
-  });
+  // A payment is valued at the customer's own rate when they have one, else at today's global
+  // rate — the precedence the server applies — so the sheet's preview is the figure saved.
+  // The order carries its company's own rate, so this needs no permission to open the company.
+  const { rate: globalRate } = useGlobalRate();
+  const paymentRate: Rate | null = order.data?.customer_rate_iqd_per_usd ?? globalRate;
 
   // The audit trail is paged by cursor (D-058). The payments and payment-type changes ride on
   // every page of the answer — they are the order's own, a handful, read straight from SQL.
@@ -96,12 +115,17 @@ export function OrderDetailPage() {
 
   // Print the moment the receipt data is in the DOM. The click handler enables the fetch and arms
   // the ref; this fires window.print() once — a side effect only, no state set inside the effect.
+  // A failed fetch disarms it, so a later success does not print by surprise.
   useEffect(() => {
-    if (printPending.current && receiptData.data) {
+    if (!printPending.current) return;
+    if (receiptData.data) {
       printPending.current = false;
       window.print();
+    } else if (receiptData.isError) {
+      printPending.current = false;
     }
-  }, [receiptData.data]);
+  }, [receiptData.data, receiptData.isError]);
+  const printError = receiptWanted && !receiptData.data ? errorMessage(t, receiptData.error) : null;
 
   const printReceipt = () => {
     if (receiptData.data) {
@@ -109,13 +133,20 @@ export function OrderDetailPage() {
       return;
     }
     printPending.current = true;
-    setReceiptWanted(true);
+    if (receiptWanted) {
+      // A retry that fails again leaves `isError` as it was, so the effect above cannot see it:
+      // disarm here, or a later background refetch would print by surprise (review).
+      void receiptData.refetch().then((result) => {
+        if (result.isError) printPending.current = false;
+      });
+    } else setReceiptWanted(true);
   };
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['orders'] });
     await queryClient.invalidateQueries({ queryKey: ['customers'] });
     await queryClient.invalidateQueries({ queryKey: ['items'] });
+    await invalidateMoneyViews(queryClient);
   };
 
   const payment = useMutation({
@@ -158,7 +189,7 @@ export function OrderDetailPage() {
   const excessNeeded =
     payment.error instanceof ApiError && payment.error.fieldError('amount')?.code === 'EXCEEDS_REMAINING';
 
-  usePageTitle(data ? t('orders:number', { number: formatter.number(data.number) }) : t('orders:title'));
+  usePageTitle(data ? t('orders:number', { number: formatter.identifier(data.number) }) : t('orders:title'));
 
   return (
     <>
@@ -166,6 +197,12 @@ export function OrderDetailPage() {
         <QueryStates query={order}>
           {data ? (
             <>
+              <OrderSaveWarningsNotice warnings={saveWarnings} />
+              {printError ? (
+                <div className="mz-warning" role="alert">
+                  {printError}
+                </div>
+              ) : null}
               {data.doc_status === 'void' ? (
                 <div className="mz-warning" role="status">
                   {t('orders:void_banner', {
@@ -181,7 +218,7 @@ export function OrderDetailPage() {
                   style={{ gap: 'var(--space-3)', alignItems: 'flex-start' }}
                 >
                   <div className="mz-stack" style={{ gap: '2px' }}>
-                    <h2 className="mz-title">{t('orders:number', { number: formatter.number(data.number) })}</h2>
+                    <h2 className="mz-title">{t('orders:number', { number: formatter.identifier(data.number) })}</h2>
                     <Link to={`/customers/${data.customer_id}`} className="mz-caption">
                       {customerName({ name: data.customer_name, is_system: data.customer_is_system }, t)}
                     </Link>
@@ -213,7 +250,7 @@ export function OrderDetailPage() {
                     {/* Said out loud, so nobody wonders why the total is not the lines' sum (D-065). */}
                     {(data.rounding_iqd ?? 0) > 0 ? (
                       <span className="mz-caption">
-                        {t('orders:rounded_up', { amount: formatter.money(data.rounding_iqd ?? 0, 'IQD') })}
+                        {t('orders:rounded_up', { amount: formatter.money(data.rounding_iqd ?? 0, 'IQD'), step: formatter.number(ORDER_ROUNDING_IQD) })}
                       </span>
                     ) : null}
                     <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
@@ -234,17 +271,24 @@ export function OrderDetailPage() {
                         <span className="mz-figure__label">{t('orders:remaining')}</span>
                         <span
                           className={`mz-figure__value${data.remaining > 0 ? ' mz-figure__value--owed' : ''}`}
-                          data-tabular
                         >
-                          {formatter.money(data.remaining, data.settlement_currency)}
+                          <DualAmount
+                            {...bothOf(data.remaining, data.settlement_currency, data.rate_iqd_per_usd)}
+                            primary={data.settlement_currency}
+                            kind="derived"
+                          />
                         </span>
                       </div>
                     ) : null}
                     {data.discount_iqd > 0 ? (
                       <div className="mz-figure">
                         <span className="mz-figure__label">{t('glossary:discount')}</span>
-                        <span className="mz-figure__value" data-tabular>
-                          {formatter.money(data.discount_iqd, 'IQD')}
+                        <span className="mz-figure__value">
+                          <DualAmount
+                            amount_iqd={data.discount_iqd}
+                            amount_usd_cents={data.discount_usd_cents}
+                            primary={data.settlement_currency}
+                          />
                         </span>
                       </div>
                     ) : null}
@@ -386,7 +430,7 @@ export function OrderDetailPage() {
                             <span className="mz-caption">
                               {formatter.date(entry.entry_date)}
                               {entry.voucher_number
-                                ? ` · ${t('customers:voucher_number', { number: formatter.number(entry.voucher_number) })}`
+                                ? ` · ${t('customers:voucher_number', { number: formatter.identifier(entry.voucher_number) })}`
                                 : ''}
                             </span>
                             <RowNote note={entry.note} />
@@ -497,14 +541,10 @@ export function OrderDetailPage() {
             open
             remaining={Math.max(data.remaining, 0)}
             settlement_currency={data.settlement_currency}
-            rate={rate.data?.current?.rate_iqd_per_usd ?? '1310.0000'}
+            rate={paymentRate}
             saving={payment.isPending}
             needsExcessConfirmation={excessNeeded}
-            error={
-              payment.error instanceof ApiError && !excessNeeded
-                ? t(payment.error.messageKey, { defaultValue: t('errors:VALIDATION_FAILED') })
-                : undefined
-            }
+            error={excessNeeded ? undefined : (errorMessage(t, payment.error) ?? undefined)}
             onClose={() => setPaying(false)}
             onSave={(body) => payment.mutate(body)}
           />
@@ -516,7 +556,7 @@ export function OrderDetailPage() {
             remaining={data.remaining}
             settlementCurrency={data.settlement_currency}
             saving={changeType.isPending}
-            error={changeType.error instanceof ApiError ? t('errors:VALIDATION_FAILED') : undefined}
+            error={errorMessage(t, changeType.error) ?? undefined}
             onClose={() => setChangingType(false)}
             onSave={(body) => changeType.mutate(body)}
           />
@@ -528,6 +568,7 @@ export function OrderDetailPage() {
             lineCount={data.lines.length}
             remaining={data.remaining}
             settlementCurrency={data.settlement_currency}
+            error={errorMessage(t, voidOrder.error) ?? undefined}
             onClose={() => setVoiding(false)}
             onSave={(reason) => voidOrder.mutate(reason)}
           />
@@ -540,6 +581,8 @@ export function OrderDetailPage() {
           ? (() => {
               const rc = receiptData.data;
               const subtotalIqd = rc.order.lines.reduce((sum, line) => sum + line.line_total_iqd, 0);
+              const subtotalUsd = rc.order.lines.reduce((sum, line) => sum + line.line_total_usd_cents, 0);
+              const primary = rc.customer.settlement_currency;
               return (
                 <div className="mz-print-region" aria-hidden="true">
                   <div className="mz-invoice">
@@ -551,7 +594,7 @@ export function OrderDetailPage() {
                       </div>
                       <div className="mz-invoice__doc">
                         <span className="mz-invoice__doctype">{t('glossary:receipt')}</span>
-                        <strong>{t('orders:number', { number: formatter.number(rc.order.number) })}</strong>
+                        <strong>{t('orders:number', { number: formatter.identifier(rc.order.number) })}</strong>
                         <span className="mz-invoice__muted">{formatter.date(rc.order.order_date)}</span>
                       </div>
                     </header>
@@ -603,16 +646,19 @@ export function OrderDetailPage() {
                                 ? `${formatter.quantity(line.qty_kg ?? '0')} ${t('common:kg_symbol')}`
                                 : formatter.number(line.qty_count ?? 0)}
                             </td>
-                            <td className="mz-invoice__num" data-tabular>
-                              {formatter.money(
-                                line.price_entered_currency === 'IQD'
-                                  ? line.unit_price_iqd
-                                  : line.unit_price_usd_cents,
-                                line.price_entered_currency,
-                              )}
+                            <td className="mz-invoice__num">
+                              <DualAmount
+                                amount_iqd={line.unit_price_iqd}
+                                amount_usd_cents={line.unit_price_usd_cents}
+                                primary={line.price_entered_currency}
+                              />
                             </td>
-                            <td className="mz-invoice__num" data-tabular>
-                              {formatter.money(line.line_total_iqd, 'IQD')}
+                            <td className="mz-invoice__num">
+                              <DualAmount
+                                amount_iqd={line.line_total_iqd}
+                                amount_usd_cents={line.line_total_usd_cents}
+                                primary={primary}
+                              />
                             </td>
                           </tr>
                         ))}
@@ -623,18 +669,32 @@ export function OrderDetailPage() {
                     <div className="mz-invoice__totals">
                       <div className="mz-invoice__total-row">
                         <span>{t('orders:subtotal')}</span>
-                        <span data-tabular>{formatter.money(subtotalIqd, 'IQD')}</span>
+                        <DualAmount amount_iqd={subtotalIqd} amount_usd_cents={subtotalUsd} primary={primary} />
                       </div>
                       {rc.order.discount_iqd > 0 ? (
                         <div className="mz-invoice__total-row">
                           <span>{t('glossary:discount')}</span>
-                          <span data-tabular>−{formatter.money(rc.order.discount_iqd, 'IQD')}</span>
+                          <span>
+                            −
+                            <DualAmount
+                              amount_iqd={rc.order.discount_iqd}
+                              amount_usd_cents={rc.order.discount_usd_cents}
+                              primary={primary}
+                            />
+                          </span>
                         </div>
                       ) : null}
                       {(rc.order.rounding_iqd ?? 0) > 0 ? (
                         <div className="mz-invoice__total-row">
                           <span>{t('orders:rounding')}</span>
-                          <span data-tabular>+{formatter.money(rc.order.rounding_iqd ?? 0, 'IQD')}</span>
+                          <span>
+                            +
+                            <DualAmount
+                              amount_iqd={rc.order.rounding_iqd ?? 0}
+                              amount_usd_cents={rc.order.rounding_usd_cents ?? 0}
+                              primary={primary}
+                            />
+                          </span>
                         </div>
                       ) : null}
                       <div className="mz-invoice__total-row mz-invoice__total-row--grand">
@@ -649,16 +709,20 @@ export function OrderDetailPage() {
                       </div>
                       <div className="mz-invoice__total-row">
                         <span>{t('orders:remaining')}</span>
-                        <span data-tabular>
-                          {formatter.money(rc.order.remaining, rc.customer.settlement_currency)}
-                        </span>
+                        <DualAmount
+                          {...bothOf(rc.order.remaining, primary, rc.order.rate_iqd_per_usd)}
+                          primary={primary}
+                          kind="derived"
+                        />
                       </div>
                       {rc.balance_after !== null ? (
                         <div className="mz-invoice__total-row">
                           <span>{t('glossary:balance')}</span>
-                          <span data-tabular>
-                            {formatter.money(rc.balance_after, rc.customer.settlement_currency)}
-                          </span>
+                          <DualAmount
+                            {...bothOf(rc.balance_after, primary, rc.order.rate_iqd_per_usd)}
+                            primary={primary}
+                            kind="derived"
+                          />
                         </div>
                       ) : null}
                     </div>
@@ -681,6 +745,16 @@ export function OrderDetailPage() {
       </div>
     </>
   );
+}
+
+/**
+ * A figure the API holds in one currency — what is still owed, in the settlement currency —
+ * with its counterpart converted at the order's own rate, for a `DualAmount` marked derived.
+ */
+function bothOf(amount: number, currency: Currency, rate: Rate): { amount_iqd: number; amount_usd_cents: number } {
+  return currency === 'IQD'
+    ? { amount_iqd: amount, amount_usd_cents: convert(amount, 'IQD', rate) }
+    : { amount_iqd: convert(amount, 'USD', rate), amount_usd_cents: amount };
 }
 
 /**
@@ -805,6 +879,7 @@ function VoidSheet({
   lineCount,
   remaining,
   settlementCurrency,
+  error,
   onClose,
   onSave,
 }: {
@@ -812,6 +887,7 @@ function VoidSheet({
   lineCount: number;
   remaining: number;
   settlementCurrency: Currency;
+  error?: string;
   onClose: () => void;
   onSave: (reason: string) => void;
 }) {
@@ -831,6 +907,7 @@ function VoidSheet({
         <TextField
           label={t('glossary:reason')}
           value={reason}
+          error={error}
           hint={t('materials:note_required')}
           onChange={(event) => setReason(event.target.value)}
         />

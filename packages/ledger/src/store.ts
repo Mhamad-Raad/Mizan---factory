@@ -1,3 +1,4 @@
+import type { Currency } from '@mizan/money';
 import type { LedgerEntry, NewLedgerEntry } from './types.js';
 
 /**
@@ -10,6 +11,14 @@ export interface LedgerStore {
   entriesFor(ownerId: string): Promise<LedgerEntry[]>;
   /** Appends one row, assigning `posting_seq` from the ledger's sequence. Never updates. */
   append(entry: NewLedgerEntry): Promise<LedgerEntry>;
+  /**
+   * The balance in one currency, summed by the store itself. Optional: a store that has it
+   * spares every write a read of the counterparty's whole ledger, which for the walk-in
+   * customer grows by two rows a sale for the life of the system (review).
+   */
+  balanceIn?(ownerId: string, currency: Currency): Promise<number>;
+  /** One row of one counterparty and whether something already reverses it (optional, as above). */
+  findEntry?(ownerId: string, entryId: string): Promise<{ entry: LedgerEntry; reversed: boolean } | null>;
 }
 
 export class InMemoryLedgerStore implements LedgerStore {

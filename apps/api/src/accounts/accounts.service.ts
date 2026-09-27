@@ -165,6 +165,8 @@ export class AccountsService {
         rounding_iqd: string;
         rounding_usd_cents: string;
         uncosted: string;
+        costed_iqd: string;
+        costed_usd: string;
       }>(
         `SELECT o.id, o.number::text AS number, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
                 c.id AS customer_id, c.name AS customer_name, c.is_system AS customer_is_system,
@@ -172,11 +174,15 @@ export class AccountsService {
                 o.total_iqd::text AS total_iqd, o.total_usd_cents::text AS total_usd_cents,
                 o.discount_iqd::text AS discount_iqd, o.discount_usd_cents::text AS discount_usd_cents,
                 o.rounding_iqd::text AS rounding_iqd, o.rounding_usd_cents::text AS rounding_usd_cents,
-                m.margin_iqd::text AS margin_iqd, m.margin_usd::text AS margin_usd, m.uncosted::text AS uncosted
+                m.margin_iqd::text AS margin_iqd, m.margin_usd::text AS margin_usd, m.uncosted::text AS uncosted,
+                m.costed_iqd::text AS costed_iqd, m.costed_usd::text AS costed_usd
            FROM orders o
            JOIN customers c ON c.id = o.customer_id
            CROSS JOIN LATERAL (
              SELECT coalesce(sum(margin_iqd), 0) AS margin_iqd, coalesce(sum(margin_usd_cents), 0) AS margin_usd,
+                    -- What the costed lines sold for: a line with no cost is not counted as cost.
+                    coalesce(sum(line_total_iqd) FILTER (WHERE margin_iqd IS NOT NULL), 0) AS costed_iqd,
+                    coalesce(sum(line_total_usd_cents) FILTER (WHERE margin_iqd IS NOT NULL), 0) AS costed_usd,
                     count(*) FILTER (WHERE margin_iqd IS NULL) AS uncosted
                FROM order_lines WHERE order_id = o.id AND deleted_at IS NULL
            ) m
@@ -207,7 +213,8 @@ export class AccountsService {
           customer_is_system: row.customer_is_system,
           settlement_currency: row.settlement_currency,
           total,
-          cost: minus(total, profit),
+          // What the costed lines cost us, as the summary's cost of sold counts it (review).
+          cost: minus(pair(row.costed_iqd, row.costed_usd), pair(row.margin_iqd, row.margin_usd)),
           profit,
           lines_without_cost: Number(row.uncosted),
         };
@@ -234,7 +241,9 @@ export class AccountsService {
         SELECT l.item_id,
                sum(CASE WHEN l.priced_measure = 'count' THEN l.qty_count::numeric ELSE l.qty_kg END) AS qty,
                sum(l.line_total_iqd) AS revenue_iqd, sum(l.line_total_usd_cents) AS revenue_usd,
-               sum(l.margin_iqd) AS margin_iqd, sum(l.margin_usd_cents) AS margin_usd
+               sum(l.margin_iqd) AS margin_iqd, sum(l.margin_usd_cents) AS margin_usd,
+               sum(l.line_total_iqd) FILTER (WHERE l.margin_iqd IS NOT NULL) AS costed_iqd,
+               sum(l.line_total_usd_cents) FILTER (WHERE l.margin_iqd IS NOT NULL) AS costed_usd
           FROM order_lines l JOIN orders o ON o.id = l.order_id
          WHERE l.deleted_at IS NULL AND o.status = 'active' AND o.deleted_at IS NULL
            AND o.order_date BETWEEN $1::date AND $2::date
@@ -252,6 +261,7 @@ export class AccountsService {
              coalesce(sold.qty, 0)::text AS sold_qty,
              coalesce(sold.revenue_iqd, 0)::text AS revenue_iqd, coalesce(sold.revenue_usd, 0)::text AS revenue_usd,
              coalesce(sold.margin_iqd, 0)::text AS margin_iqd, coalesce(sold.margin_usd, 0)::text AS margin_usd,
+             coalesce(sold.costed_iqd, 0)::text AS costed_iqd, coalesce(sold.costed_usd, 0)::text AS costed_usd,
              coalesce(bought.qty, 0)::text AS bought_qty,
              coalesce(bought.spent_iqd, 0)::text AS spent_iqd, coalesce(bought.spent_usd, 0)::text AS spent_usd,
              (CASE WHEN i.pricing_unit = 'per_piece' THEN st.stock_count::numeric ELSE st.stock_kg END)::text AS stock
@@ -270,6 +280,8 @@ export class AccountsService {
         revenue_usd: string;
         margin_iqd: string;
         margin_usd: string;
+        costed_iqd: string;
+        costed_usd: string;
         bought_qty: string;
         spent_iqd: string;
         spent_usd: string;
@@ -291,7 +303,7 @@ export class AccountsService {
           pricing_unit: row.pricing_unit,
           sold_qty: new Decimal(row.sold_qty).toFixed(3),
           sold: revenue,
-          cost: minus(revenue, profit),
+          cost: minus(pair(row.costed_iqd, row.costed_usd), profit),
           profit,
           bought_qty: new Decimal(row.bought_qty).toFixed(3),
           bought: pair(row.spent_iqd, row.spent_usd),

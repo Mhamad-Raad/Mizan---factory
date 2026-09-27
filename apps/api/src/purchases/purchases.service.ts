@@ -12,6 +12,7 @@ import {
 import type { Currency, Measure, Rate, RateSource } from '@mizan/money';
 import { allocateOldestFirst } from '@mizan/ledger';
 import { AuditService } from '../audit/audit.service.js';
+import { resolveActingUser } from '../common/acting-user.js';
 import { ApiError } from '../common/errors.js';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
@@ -364,6 +365,9 @@ export class PurchasesService {
       if (purchase.company_id && !account) throw ApiError.notFound();
 
       const oldLines = await this.purchases.linesOf(id, tx);
+      // The materials' locks, as a sale takes them, so no sale can be taking from this buy
+      // while it is checked and rewritten (review: a sale costed from a voided buy).
+      await this.lots.lockItems(tx, [...oldLines.map((line) => line.item_id), ...input.lines.map((line) => line.item_id)]);
       // A buy is the cost of every sale that took from it (D-062): once any of its stock has
       // gone out, rewriting it would change what those sales cost.
       if (await this.lots.anyTaken(tx, oldLines.map((line) => line.id))) {
@@ -481,6 +485,8 @@ export class PurchasesService {
         ? await this.ledger.lockOwner(tx, purchase.company_id)
         : null;
       const lines = await this.purchases.linesOf(id, tx);
+      // As on an edit: no sale may be taking from this buy while it is voided (review).
+      await this.lots.lockItems(tx, lines.map((line) => line.item_id));
       if (await this.lots.anyTaken(tx, lines.map((line) => line.id))) {
         throw new ApiError('BUY_IN_USE', { purchase_id: id });
       }
@@ -653,24 +659,8 @@ export class PurchasesService {
   }
 
   /** Only an admin may record a purchase as done by somebody else (spec 2.7). */
-  private async actingUser(context: RequestContext, requested?: string | null): Promise<string> {
-    if (!requested || requested === context.userId) return context.userId;
-    if (context.role !== 'admin') throw ApiError.permissionDenied('admin');
-    const { rowCount } = await this.database.query(
-      'SELECT 1 FROM users WHERE id = $1 AND deleted_at IS NULL AND is_active = true',
-      [requested],
-    );
-    if (!rowCount) {
-      throw ApiError.validation([
-        {
-          path: 'acting_user_id',
-          code: 'NOT_FOUND',
-          message_key: 'errors:field.required',
-          params: {},
-        },
-      ]);
-    }
-    return requested;
+  private actingUser(context: RequestContext, requested?: string | null): Promise<string> {
+    return resolveActingUser(this.database, context, requested, 'acting_user_id');
   }
 
   /** Creator, admin, or `purchases.edit` (FR-405). */

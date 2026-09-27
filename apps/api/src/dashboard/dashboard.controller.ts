@@ -18,7 +18,7 @@ export interface DashboardTile {
   /** Bought prices, which travel under `cost` so one flag hides them (D-022). */
   cost?: { amount_iqd: number; amount_usd_cents: number } | null;
   /** Customer balances: their own key, their own flag, and always a pair (D-022, rule 1). */
-  balance?: { amount_iqd: number; amount_usd_cents: number } | null;
+  balance?: { count?: number; amount_iqd: number; amount_usd_cents: number } | null;
   /** What we owe suppliers — a *company* balance, so not the bought-price flag's business. */
   owed?: { amount_iqd: number; amount_usd_cents: number } | null;
 }
@@ -280,8 +280,9 @@ export class DashboardController {
       },
       {
         key: 'unpaid_orders',
-        count: Number(unpaid.rows[0]?.count ?? 0),
+        // How many orders owe, with how much: both belong to the balances flag (D-068).
         balance: {
+          count: Number(unpaid.rows[0]?.count ?? 0),
           amount_iqd: Number(unpaid.rows[0]?.iqd ?? 0),
           amount_usd_cents: Number(unpaid.rows[0]?.usd_cents ?? 0),
         },

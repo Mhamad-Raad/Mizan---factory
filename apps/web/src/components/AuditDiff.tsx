@@ -3,6 +3,7 @@ import { Icon } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { DualAmount } from './DualAmount.js';
 import { useFormatter } from '../lib/store.js';
+import { readNote } from '../lib/record-names.js';
 
 /**
  * One audit row's field diff, in the reader's language (FR-902: "the field diff in the user's
@@ -134,6 +135,7 @@ export function AuditValue({ value }: { value: unknown }) {
 
 export function AuditDiff({ changes, note }: { changes: Record<string, unknown>; note?: string | null }) {
   const { t } = useTranslation();
+  const formatter = useFormatter();
 
   return (
     <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
@@ -168,7 +170,7 @@ export function AuditDiff({ changes, note }: { changes: Record<string, unknown>;
       })}
       {note ? (
         <p className="mz-caption">
-          {t('common:note')}: {note}
+          {t('common:note')}: {readNote(note, t, formatter.identifier)}
         </p>
       ) : null}
     </div>

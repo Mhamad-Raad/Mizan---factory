@@ -154,8 +154,11 @@ export function App() {
   }, [me.data, me.error, setSession, clearSession]);
 
   useEffect(() => {
-    if (isLocked && location.pathname !== '/lock') navigate('/lock', { replace: true });
-  }, [isLocked, location.pathname, navigate]);
+    // The lock screen keeps where the user was, so unlocking takes them back there (bug 12).
+    if (isLocked && location.pathname !== '/lock') {
+      navigate('/lock', { replace: true, state: { from: location.pathname + location.search } });
+    }
+  }, [isLocked, location.pathname, location.search, navigate]);
 
   if (me.isPending) {
     return (

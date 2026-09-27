@@ -9,11 +9,18 @@ import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { QueryStates } from '../components/states.js';
 import { DualAmount } from '../components/DualAmount.js';
-import { FilterChip } from './MaterialsPage.js';
+import { KpiHead } from '../components/KpiHead.js';
+import { FilterChip } from '../components/FilterChip.js';
 import { useFormatter } from '../lib/store.js';
+import { errorMessage } from '../lib/errors.js';
+import { invalidateMoneyViews } from '../lib/invalidate.js';
+import { OrderSaveWarningsNotice } from '../components/OrderSaveWarnings.js';
+import type { OrderSaveWarnings } from '../components/OrderSaveWarnings.js';
 import { OrderTable } from '../components/OrderTable.js';
 import { Pager } from '../components/Pager.js';
-import { usePaging } from '../lib/paging.js';
+import { useKeepPageInRange, usePaging } from '../lib/paging.js';
+import { useDebouncedValue } from '../lib/debounce.js';
+import { thisMonth, thisWeek, yesterdayOf } from '../lib/periods.js';
 
 export interface OrderRow {
   id: string;
@@ -47,8 +54,7 @@ interface OrderTotals {
   orders: number;
   total_iqd: number;
   total_usd_cents: number;
-  owing: number;
-  balance?: { owed_iqd: number; owed_usd_cents: number } | null;
+  balance?: { owing: number; owed_iqd: number; owed_usd_cents: number } | null;
 }
 
 /**
@@ -64,17 +70,22 @@ export function OrdersPage() {
 
   // A just-saved order arrives in the navigation state (see OrderFormPage). Read it once, up front,
   // so the save toast (with its 8-second undo, FR-610) shows the moment the list mounts.
-  const savedOrder = (location.state as { savedOrder?: { id: string; number: number } } | null)
-    ?.savedOrder;
+  const savedOrder = (
+    location.state as { savedOrder?: { id: string; number: number; warnings?: OrderSaveWarnings } } | null
+  )?.savedOrder;
+  // Its warnings stay on screen after the toast has gone: they are for reading, not for undoing.
+  const [saveWarnings] = useState(() => savedOrder?.warnings ?? null);
 
   const [chip, setChip] = useState<DateChip>('today');
   const [unpaidOnly, setUnpaidOnly] = useState(false);
   const [paymentType, setPaymentType] = useState<'all' | 'cash' | 'borrowed'>('all');
   const [doneBy, setDoneBy] = useState('');
-  const [query, setQuery] = useState('');
+  const [search, setSearch] = useState('');
+  // The request waits for the typing to stop (NFR-03): one search, not one per letter.
+  const query = useDebouncedValue(search);
   const [toast, setToast] = useState<{ message: string; orderId: string } | null>(() =>
     savedOrder
-      ? { message: t('orders:saved', { number: formatter.number(savedOrder.number) }), orderId: savedOrder.id }
+      ? { message: t('orders:saved', { number: formatter.identifier(savedOrder.number) }), orderId: savedOrder.id }
       : null,
   );
 
@@ -102,8 +113,11 @@ export function OrdersPage() {
       setToast(null);
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
       await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await queryClient.invalidateQueries({ queryKey: ['customers'] });
+      await invalidateMoneyViews(queryClient);
     },
   });
+  const undoError = errorMessage(t, undo.error);
 
   const range = rangeOf(chip, formatter.today());
   const paging = usePaging({ storageKey: 'orders', resetOn: [chip, unpaidOnly, paymentType, doneBy, query] });
@@ -127,6 +141,7 @@ export function OrdersPage() {
     // moment instead of collapsing to a skeleton on every keystroke or dropdown change.
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(paging, orders);
   const refreshing = orders.isFetching && orders.isPlaceholderData;
 
   const directory = useQuery({
@@ -143,16 +158,22 @@ export function OrdersPage() {
   return (
     <>
       <div className="mz-stack">
+        <OrderSaveWarningsNotice warnings={saveWarnings} />
+        {undoError ? (
+          <div className="mz-warning" role="alert">
+            {undoError}
+          </div>
+        ) : null}
         <div className="mz-toolbar">
           <div className="mz-toolbar__filters">
             <div className="mz-toolbar__search">
               <TextField
                 label={t('common:search')}
                 placeholder={t('orders:search_hint')}
-                value={query}
+                value={search}
                 type="search"
                 inputMode="search"
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => setSearch(event.target.value)}
               />
             </div>
             <select
@@ -210,46 +231,32 @@ export function OrdersPage() {
         {totals ? (
           <div className="mz-kpis mz-kpis--three">
             <div className="mz-kpi">
-              <span className="mz-kpi__head">
-                <span className="mz-kpi__icon" aria-hidden="true">
-                  <Icon name="orders" size={18} />
-                </span>
-                <span className="mz-caption">{t('orders:tile_orders')}</span>
-              </span>
+              <KpiHead icon="orders" label={t('orders:tile_orders')} />
               <span className="mz-kpi__count" data-tabular>
                 {formatter.number(totals.orders)}
               </span>
             </div>
             <div className="mz-kpi">
-              <span className="mz-kpi__head">
-                <span className="mz-kpi__icon" aria-hidden="true">
-                  <Icon name="chart" size={18} />
-                </span>
-                <span className="mz-caption">{t('orders:tile_sold')}</span>
-              </span>
+              <KpiHead icon="chart" label={t('orders:tile_sold')} />
               <DualAmount amount_iqd={totals.total_iqd} amount_usd_cents={totals.total_usd_cents} />
             </div>
-            <button
-              type="button"
-              className="mz-kpi mz-kpi--button"
-              aria-pressed={unpaidOnly}
-              onClick={() => setUnpaidOnly(!unpaidOnly)}
-            >
-              <span className="mz-kpi__head">
-                <span className="mz-kpi__icon" aria-hidden="true">
-                  <Icon name="clock" size={18} />
+            {/* What is owed, and how many orders owe it, belong to the balances flag (2.6.2). */}
+            {totals.balance ? (
+              <button
+                type="button"
+                className="mz-kpi mz-kpi--button"
+                aria-pressed={unpaidOnly}
+                onClick={() => setUnpaidOnly(!unpaidOnly)}
+              >
+                <KpiHead icon="clock" label={t('orders:tile_to_collect')} />
+                <span className="mz-kpi__count" data-tabular>
+                  {formatter.number(totals.balance.owing)}
                 </span>
-                <span className="mz-caption">{t('orders:tile_to_collect')}</span>
-              </span>
-              <span className="mz-kpi__count" data-tabular>
-                {formatter.number(totals.owing)}
-              </span>
-              {totals.balance ? (
                 <span className="mz-owed">
                   <DualAmount amount_iqd={totals.balance.owed_iqd} amount_usd_cents={totals.balance.owed_usd_cents} />
                 </span>
-              ) : null}
-            </button>
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -290,16 +297,13 @@ export function OrdersPage() {
 }
 
 /**
- * Today and yesterday by default (FR-611); the week chip widens it to seven days, and "This
- * month" is the calendar month — the 1st to today — as on the Accounts page, so the Sold card
- * here and the Sold figure there agree (it was the last 30 days, which reached into last month).
+ * Today and yesterday by default (FR-611); the week chip is the last seven days, as on every
+ * screen, and "This month" is the calendar month — the 1st to today — as on the Accounts page,
+ * so the Sold card here and the Sold figure there agree.
  */
 function rangeOf(chip: DateChip, today: string): { from?: string; to?: string } {
   if (chip === 'all') return {};
-  if (chip === 'month') return { from: `${today.slice(0, 7)}-01`, to: today };
-  const to = today;
-  const days = chip === 'today' ? 1 : 7;
-  const from = new Date(`${today}T00:00:00Z`);
-  from.setUTCDate(from.getUTCDate() - days);
-  return { from: from.toISOString().slice(0, 10), to };
+  if (chip === 'month') return thisMonth(today);
+  if (chip === 'week') return thisWeek(today);
+  return { from: yesterdayOf(today), to: today };
 }

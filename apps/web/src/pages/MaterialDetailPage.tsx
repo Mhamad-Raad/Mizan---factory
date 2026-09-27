@@ -14,7 +14,7 @@ import {
   TextField,
   Toast,
 } from '@mizan/ui';
-import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
@@ -23,9 +23,12 @@ import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
-import { useCursorPaging, usePaging } from '../lib/paging.js';
+import { useCursorPaging, useKeepPageInRange, usePaging } from '../lib/paging.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import { useIsWide } from '../lib/wide.js';
+import { errorMessage } from '../lib/errors.js';
+import { invalidateMoneyViews } from '../lib/invalidate.js';
+import { useGlobalRate } from '../lib/rates.js';
 import type { ItemRow } from './MaterialsPage.js';
 
 interface MonthPrice {
@@ -107,11 +110,7 @@ export function MaterialDetailPage() {
     queryFn: () => apiRequest<{ items: Lot[] }>(`/items/${id}/lots`),
   });
 
-  const rate = useQuery({
-    queryKey: ['global-rate'],
-    queryFn: () =>
-      apiRequest<{ current: { rate_iqd_per_usd: string } | null }>('/settings/global-rates'),
-  });
+  const { rate: currentRate } = useGlobalRate();
 
   // Each tab pages on its own (D-058): prices and movements by page number in the address,
   // the audit trail by cursor.
@@ -125,6 +124,7 @@ export function MaterialDetailPage() {
     enabled: tab === 'prices',
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(pricesPaging, prices);
 
   const movements = useQuery({
     queryKey: ['items', id, 'movements', movesPaging.page, movesPaging.pageSize],
@@ -133,6 +133,7 @@ export function MaterialDetailPage() {
     enabled: tab === 'movements',
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(movesPaging, movements);
 
   const history = useQuery({
     queryKey: ['items', id, 'history', historyPaging.cursor, historyPaging.pageSize],
@@ -197,6 +198,7 @@ export function MaterialDetailPage() {
       setToast(t('materials:stock_added'));
       await queryClient.invalidateQueries({ queryKey: ['items'] });
       await queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      await invalidateMoneyViews(queryClient);
     },
   });
 
@@ -212,7 +214,7 @@ export function MaterialDetailPage() {
     },
   });
 
-  const currentRate = rate.data?.current?.rate_iqd_per_usd ?? '1310.0000';
+  const setActiveError = errorMessage(t, setActive.error);
   const thisMonth = `${formatter.today().slice(0, 7)}-01`;
 
   // A movement can carry kg, a count, or both — kept exactly as the phone card showed them.
@@ -377,8 +379,14 @@ export function MaterialDetailPage() {
                   ) : null}
 
                   <Can permission="materials.edit">
+                    {setActiveError ? (
+                      <div className="mz-warning" role="alert">
+                        {setActiveError}
+                      </div>
+                    ) : null}
                     <Button
                       variant={item.data.is_active ? 'danger' : 'secondary'}
+                      loading={setActive.isPending}
                       onClick={() => setActive.mutate(!item.data?.is_active)}
                     >
                       {item.data.is_active ? t('materials:deactivate') : t('materials:reactivate')}
@@ -619,11 +627,7 @@ export function MaterialDetailPage() {
             rate={currentRate}
             initial={priceSheet.existing}
             saving={savePrices.isPending}
-            error={
-              savePrices.error instanceof ApiError
-                ? t(savePrices.error.fields[0]?.message_key ?? 'errors:VALIDATION_FAILED')
-                : undefined
-            }
+            error={errorMessage(t, savePrices.error) ?? undefined}
             onClose={() => setPriceSheet(null)}
             onSave={(input) =>
               savePrices.mutate({
@@ -646,13 +650,7 @@ export function MaterialDetailPage() {
             rate={currentRate}
             latest={(lots.data?.items ?? []).at(-1) ?? null}
             saving={addStock.isPending}
-            error={
-              addStock.error instanceof ApiError
-                ? t(addStock.error.fields[0]?.message_key ?? addStock.error.messageKey, {
-                    defaultValue: t('errors:VALIDATION_FAILED'),
-                  })
-                : undefined
-            }
+            error={errorMessage(t, addStock.error) ?? undefined}
             onClose={() => setAdding(false)}
             onSave={(input) => addStock.mutate(input)}
           />
@@ -736,7 +734,7 @@ function StockByPrice({
                   <span className="mz-caption">
                     {t('materials:bought_on_date', { date: formatter.date(lot.bought_on) })}
                     {' · '}
-                    {t('purchases:number', { number: formatter.number(lot.purchase_number) })}
+                    {t('purchases:number', { number: formatter.identifier(lot.purchase_number) })}
                   </span>
                 </span>
                 {lot.unit_cost_iqd !== undefined && lot.unit_cost_usd_cents !== undefined ? (
@@ -781,7 +779,7 @@ function AddStockSheet({
   onSave,
 }: {
   pricedMeasure: 'count' | 'kg';
-  rate: string;
+  rate: string | null;
   latest: Lot | null;
   saving: boolean;
   error?: string;

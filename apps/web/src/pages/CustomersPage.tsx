@@ -10,8 +10,9 @@ import { DataList } from '../components/DataList.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
-import { usePaging } from '../lib/paging.js';
-import { FilterChip } from './MaterialsPage.js';
+import { useKeepPageInRange, usePaging } from '../lib/paging.js';
+import { useDebouncedValue } from '../lib/debounce.js';
+import { FilterChip } from '../components/FilterChip.js';
 import { customerName } from '../lib/customers.js';
 import { usePermission } from '../lib/store.js';
 
@@ -52,8 +53,13 @@ type BalanceFilter = 'all' | 'owes' | 'settled' | 'credit';
  */
 export function CustomersPage() {
   const { t } = useTranslation();
-  const [query, setQuery] = useState('');
+  const [search, setSearch] = useState('');
+  // The request waits for the typing to stop (NFR-03): one search, not one per letter.
+  const query = useDebouncedValue(search);
   const [balance, setBalance] = useState<BalanceFilter>('all');
+  const seesSelling = usePermission('fields.see_customer_balances');
+  const seesBuying = usePermission('fields.see_company_balances');
+  const seesNet = seesSelling && seesBuying;
   const [includeInactive, setIncludeInactive] = useState(false);
   const [sort, setSort] = useState<'name' | 'balance'>('name');
 
@@ -68,6 +74,7 @@ export function CustomersPage() {
     },
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(paging, customers);
   const refreshing = customers.isFetching && customers.isPlaceholderData;
 
   const rows = customers.data?.items ?? [];
@@ -82,26 +89,32 @@ export function CustomersPage() {
             <TextField
               label={t('common:search')}
               placeholder={t('customers:search_placeholder')}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
               type="search"
               inputMode="search"
             />
           </div>
-          <select
-            className="mz-select"
-            aria-label={t('customers:net_balance')}
-            value={balance}
-            onChange={(event) => setBalance(event.target.value as BalanceFilter)}
-          >
-            <option value="all">{t('customers:all_balances')}</option>
-            <option value="owes">{t('customers:filter_owes')}</option>
-            <option value="credit">{t('customers:filter_credit')}</option>
-            <option value="settled">{t('customers:filter_settled')}</option>
-          </select>
-          <FilterChip active={sort === 'balance'} onClick={() => setSort(sort === 'balance' ? 'name' : 'balance')}>
-            {t('customers:sort_by_balance')}
-          </FilterChip>
+          {/* The net balance needs both sides' flags (D-054); without them the server ignores
+              this filter and sort, so they are not offered (review). */}
+          {seesNet ? (
+            <>
+              <select
+                className="mz-select"
+                aria-label={t('customers:net_balance')}
+                value={balance}
+                onChange={(event) => setBalance(event.target.value as BalanceFilter)}
+              >
+                <option value="all">{t('customers:all_balances')}</option>
+                <option value="owes">{t('customers:filter_owes')}</option>
+                <option value="credit">{t('customers:filter_credit')}</option>
+                <option value="settled">{t('customers:filter_settled')}</option>
+              </select>
+              <FilterChip active={sort === 'balance'} onClick={() => setSort(sort === 'balance' ? 'name' : 'balance')}>
+                {t('customers:sort_by_balance')}
+              </FilterChip>
+            </>
+          ) : null}
           <FilterChip active={includeInactive} onClick={() => setIncludeInactive(!includeInactive)}>
             {t('common:deactivated')}
           </FilterChip>

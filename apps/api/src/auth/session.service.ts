@@ -173,6 +173,23 @@ export class SessionService {
     );
   }
 
+  /**
+   * Ends one session of one user. `missing` when the user has no such session — an admin
+   * revoking from an employee's page must not end somebody else's (review); `already` when it
+   * had ended, which a double tap or a stale list asks for and is not an error.
+   */
+  async revokeOfUser(userId: string, sessionId: string, reason: string, tx?: Db): Promise<'revoked' | 'already' | 'missing'> {
+    const db = tx ?? this.database;
+    const { rowCount } = await db.query(
+      `UPDATE sessions SET revoked_at = now(), revoke_reason = $3
+        WHERE id = $2 AND user_id = $1 AND revoked_at IS NULL`,
+      [userId, sessionId, reason],
+    );
+    if ((rowCount ?? 0) > 0) return 'revoked';
+    const { rowCount: exists } = await db.query('SELECT 1 FROM sessions WHERE id = $2 AND user_id = $1', [userId, sessionId]);
+    return exists ? 'already' : 'missing';
+  }
+
   /** Used when a password is reset or an account is deactivated (FR-202, FR-203). */
   async revokeAllForUser(userId: string, reason: string, tx?: Db): Promise<number> {
     const db = tx ?? this.database;

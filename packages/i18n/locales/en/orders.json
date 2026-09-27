@@ -57,6 +57,7 @@
   "tile_orders": "Orders",
   "tile_sold": "Sold",
   "tile_to_collect": "Still to collect",
-  "rounded_up": "Rounded up by {{amount}} to a round 250",
-  "rounding": "Rounding"
+  "rounded_up": "Rounded up by {{amount}} to a round {{step}}",
+  "rounding": "Rounding",
+  "save_order_one": "Save order ({{count}} line)"
 }

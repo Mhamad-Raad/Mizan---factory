@@ -378,6 +378,7 @@ export class ReportsRepository {
       price_month: string | null;
       lots_value_iqd: string | null;
       lots_value_usd_cents: string | null;
+      lots_remaining: string | null;
     }>(
       // The page of materials is chosen first and everything else hangs off those rows: the
        // report sends two hundred groups (D-032), and computing five thousand materials' stock,
@@ -402,7 +403,8 @@ export class ReportsRepository {
               price.bought_usd_cents::text AS bought_usd_cents,
               to_char(price.month, 'YYYY-MM-DD') AS price_month,
               lots.value_iqd::text AS lots_value_iqd,
-              lots.value_usd_cents::text AS lots_value_usd_cents
+              lots.value_usd_cents::text AS lots_value_usd_cents,
+              lots.remaining::text AS lots_remaining
          FROM page
          JOIN items i ON i.id = page.id
          LEFT JOIN item_stock st ON st.item_id = i.id
@@ -445,19 +447,21 @@ export class ReportsRepository {
             ORDER BY p.month DESC
             LIMIT 1
          ) price ON true
-         -- What the stock on hand cost us (D-062): what is left of every buy, at that buy's
-         -- own price — the same figure the material page splits by price. The month price
-         -- above stands in only for a material with no buys (stock from before D-062).
-         LEFT JOIN LATERAL (
-           SELECT round(sum(((CASE WHEN l.priced_measure = 'count' THEN l.qty_count::numeric ELSE l.qty_kg END)
-                             - coalesce(a.taken, 0)) * l.unit_price_iqd)) AS value_iqd,
-                  round(sum(((CASE WHEN l.priced_measure = 'count' THEN l.qty_count::numeric ELSE l.qty_kg END)
-                             - coalesce(a.taken, 0)) * l.unit_price_usd_cents)) AS value_usd_cents
-             FROM purchase_lines l
-             JOIN purchases p ON p.id = l.purchase_id
-             LEFT JOIN LATERAL (SELECT sum(qty) AS taken FROM lot_allocations WHERE purchase_line_id = l.id) a ON true
-            WHERE l.item_id = i.id AND l.deleted_at IS NULL AND p.status = 'active' AND p.deleted_at IS NULL
-         ) lots ON true
+         -- What the stock on hand cost us (D-062): what is left of every buy, as its share of
+         -- what that buy cost — the same figure the material page splits by price, from the
+         -- same view (migration 0030). The month price above stands in for stock with no buy
+         -- behind it (opening stock, a return), which the service adds on top.
+         -- One grouped pass over the page's buys, not the view once per material: 120 ms for
+         -- 5,000 materials and 520,000 buys, where the per-material lateral took 4.5 s (review).
+         LEFT JOIN (
+           SELECT l.item_id,
+                  round(sum(l.remaining * l.line_total_iqd / l.quantity)) AS value_iqd,
+                  round(sum(l.remaining * l.line_total_usd_cents / l.quantity)) AS value_usd_cents,
+                  sum(l.remaining) AS remaining
+             FROM item_lots l
+            WHERE l.item_id IN (SELECT id FROM page)
+            GROUP BY l.item_id
+         ) lots ON lots.item_id = i.id
         ORDER BY i.name ASC`,
       values,
     );
@@ -688,7 +692,12 @@ export class ReportsRepository {
            SELECT coalesce(sum(amount_iqd), 0) AS iqd, coalesce(sum(amount_usd_cents), 0) AS usd_cents
              FROM (SELECT amount_iqd, amount_usd_cents FROM company_ledger WHERE damage_id = d.id
                    UNION ALL
-                   SELECT amount_iqd, amount_usd_cents FROM customer_ledger WHERE damage_id = d.id)
+                   -- The charge a company's damage puts on their account names the record too,
+                   -- but it is what they owe, not a credit — nor is its reversal (D-062, review).
+                   SELECT cu.amount_iqd, cu.amount_usd_cents FROM customer_ledger cu
+                    WHERE cu.damage_id = d.id AND cu.entry_type <> 'damage'
+                      AND NOT EXISTS (SELECT 1 FROM customer_ledger charge
+                                       WHERE charge.id = cu.reverses_entry_id AND charge.entry_type = 'damage'))
                   linked_credits
          ) credits ON true
         WHERE ${conditions.join(' AND ')}

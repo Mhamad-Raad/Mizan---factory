@@ -3,7 +3,8 @@ import { numeralsFor } from './digits.js';
 import type { Numerals } from './digits.js';
 import { formatBusinessDate, formatMonth, formatTimestamp, todayInBaghdad, weekdayOrder } from './dates.js';
 import type { WeekStart } from './dates.js';
-import { APPROX, formatMinorUnits, formatMoney, formatNumber, formatQuantity, formatRate } from './numbers.js';
+import { APPROX, formatMinorUnits, formatMoney, formatIdentifier, formatNumber, formatQuantity,
+  formatRate } from './numbers.js';
 import { directionOf } from './locales.js';
 import type { Direction, Locale } from './locales.js';
 import { pluralCategory } from './plural.js';
@@ -46,6 +47,8 @@ export interface Formatter {
   number(value: number | string, decimals?: number): string;
   /** A quantity (pieces or kilograms) without the trailing zeros of its three decimals. */
   quantity(value: number | string): string;
+  /** A record's number (order #1014): the reader's digits, never a thousands separator. */
+  identifier(value: number | string): string;
   money(minor: number, currency: Currency): string;
   minorUnits(minor: number, currency: Currency): string;
   rate(rate: string): string;
@@ -69,6 +72,7 @@ export function createFormatter(options: FormatterOptions): Formatter {
     direction: directionOf(locale),
     number: (value, decimals = 0) => formatNumber(value, numerals, decimals),
     quantity: (value) => formatQuantity(value, numerals),
+    identifier: (value) => formatIdentifier(value, numerals),
     money: (minor, currency) => formatMoney(minor, currency, locale, numerals),
     minorUnits: (minor, currency) => formatMinorUnits(minor, currency === 'IQD' ? 0 : 2, numerals),
     rate: (rate) => formatRate(rate, locale, numerals),

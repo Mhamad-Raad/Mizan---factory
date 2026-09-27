@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { as, createTestApp, resetDatabase, seedUser, signIn } from './harness.js';
+import { as, createTestApp, resetDatabase, seedUser, signIn, withDatabase } from './harness.js';
 import type { Session, TestApp } from './harness.js';
 
 /**
@@ -82,4 +82,51 @@ describe('inputs the API reads before the database does', () => {
     }
     await as(ctx.http, admin).get(`/api/v1/users?q=${'x'.repeat(201)}`).expect(422);
   });
+
+  it('refuses a date that does not exist as a 422 naming the field, never a failed cast (review)', async () => {
+    for (const url of ['/api/v1/accounts/summary?from=2026-02-30', '/api/v1/history?to=2025-13-01']) {
+      const response = await as(ctx.http, admin).get(url).expect(422);
+      expect(response.body.error.code).toBe('VALIDATION_FAILED');
+    }
+    await as(ctx.http, admin)
+      .post('/api/v1/expenses')
+      .send({ title: 'Rent', amount: { amount: 100_000, currency: 'IQD' }, expense_date: '2025-02-30' })
+      .expect(422);
+  });
+
+  it('reads a History filter it cannot use as nothing found or a 422, never a 500 (review)', async () => {
+    const unknown = await as(ctx.http, admin).get('/api/v1/history?action=no_such_action').expect(200);
+    expect(unknown.body.items).toHaveLength(0);
+    await as(ctx.http, admin).get('/api/v1/history?cursor=yesterday|1').expect(422);
+  });
+
+  it('pages History without skipping the rows one transaction wrote together (review)', async () => {
+    // Five records' rows stamped with one transaction's now(): a page may end among them.
+    await withDatabase(async (client) => {
+      await client.query('BEGIN');
+      for (let n = 0; n < 5; n += 1) {
+        await client.query(
+          `INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, entity_label, changes, related, request_id)
+           SELECT id, 'update', 'cursor_test', $1, 'Settings', '{}'::jsonb, '{}'::jsonb, gen_random_uuid()
+             FROM users WHERE username = 'sara'`,
+          [`record-${n}`],
+        );
+      }
+      await client.query('COMMIT');
+    });
+
+    const everything = await as(ctx.http, admin).get('/api/v1/history?entity_type=cursor_test&limit=100').expect(200);
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const page: { body: { items: { id: string }[]; next_cursor: string | null } } = await as(ctx.http, admin)
+        .get(`/api/v1/history?entity_type=cursor_test&limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`)
+        .expect(200);
+      seen.push(...page.body.items.map((item) => item.id));
+      cursor = page.body.next_cursor;
+    } while (cursor);
+    expect(seen).toEqual(everything.body.items.map((item: { id: string }) => item.id));
+    expect(seen).toHaveLength(5);
+  });
 });
+

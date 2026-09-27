@@ -12,6 +12,7 @@ export function SetRateSheet({
   hint,
   current,
   saving,
+  error,
   onClose,
   onSave,
 }: {
@@ -21,6 +22,8 @@ export function SetRateSheet({
   /** The counterparty's own current rate to prefill, or null when they have none yet. */
   current: string | null;
   saving: boolean;
+  /** Why the last attempt was refused, under the rate field. */
+  error?: string;
   onClose: () => void;
   onSave: (body: { rate_iqd_per_usd: string; note: string | null }) => void;
 }) {
@@ -35,6 +38,7 @@ export function SetRateSheet({
           label={label}
           decimals={4}
           value={rate}
+          error={error}
           onChange={(event) => setRate(event.target.value)}
         />
         {hint ? <p className="mz-caption">{hint}</p> : null}

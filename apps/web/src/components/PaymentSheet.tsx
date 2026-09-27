@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { BottomSheet, Button, DateField, NumberField, SegmentedControl, TextField, Toggle } from '@mizan/ui';
 import { convert } from '@mizan/money';
 import type { Currency, Rate } from '@mizan/money';
-import { MoneyInput, centsToInput, parseMinor } from './MoneyInput.js';
+import { MoneyInput, parseMinor } from './MoneyInput.js';
 import type { MoneyValue } from './MoneyInput.js';
 import { DualAmount } from './DualAmount.js';
 import { useFormatter } from '../lib/store.js';
@@ -28,7 +28,11 @@ export interface PaymentSheetProps {
   /** What is still owed, in the settlement currency: the sheet pre-fills it (FR-606). */
   remaining: number;
   settlement_currency: Currency;
-  rate: Rate;
+  /**
+   * The account's rate — its own when it has one, else today's global rate, as the server
+   * applies it. `null` when no rate is set: the previews then stay in the settlement currency.
+   */
+  rate: Rate | null;
   saving?: boolean;
   error?: string;
   /** Set when the API asked for a confirmation ("record the excess as customer credit"). */
@@ -108,17 +112,13 @@ export function PaymentSheet({
    * the entered side as authoritative and converting only for the preview. Settle in full
    * lands on nothing owed by definition.
    */
+  const inSettlement = (minor: number, currency: Currency, other?: number | null): number =>
+    currency === settlement_currency ? minor : (other ?? (rate === null ? 0 : convert(minor, currency, rate)));
   const paidInSettlement = splitting
-    ? splitParts().reduce(
-        (total, part) =>
-          total + (part.currency === settlement_currency ? part.amount : convert(part.amount, part.currency, rate)),
-        0,
-      )
+    ? splitParts().reduce((total, part) => total + inSettlement(part.amount, part.currency), 0)
     : amount.amount === null
       ? 0
-      : amount.currency === settlement_currency
-        ? amount.amount
-        : (amount.other_amount ?? convert(amount.amount, amount.currency, rate));
+      : inSettlement(amount.amount, amount.currency, amount.other_amount);
   const afterPayment = settleInFull ? 0 : remaining - paidInSettlement;
 
   return (
@@ -136,12 +136,7 @@ export function PaymentSheet({
             * a remainder of 3,050,000 IQD is not "$0.00", and rule 7 asks for both currencies
             * with ≈ on the figure that was derived rather than stored.
             */}
-          <DualAmount
-            amount_iqd={settlement_currency === 'IQD' ? remaining : convert(remaining, 'USD', rate)}
-            amount_usd_cents={settlement_currency === 'USD' ? remaining : convert(remaining, 'IQD', rate)}
-            primary={settlement_currency}
-            kind="derived"
-          />
+          <SettlementAmount amount={remaining} currency={settlement_currency} rate={rate} />
         </div>
 
         {!splitting ? (
@@ -232,12 +227,7 @@ export function PaymentSheet({
         {/* The balance this payment leaves behind, live as the amount is typed (3.4.2). */}
         <div className="mz-row mz-row--between">
           <span className="mz-caption">{t('customers:after_payment')}</span>
-          <DualAmount
-            amount_iqd={settlement_currency === 'IQD' ? afterPayment : convert(afterPayment, 'USD', rate)}
-            amount_usd_cents={settlement_currency === 'USD' ? afterPayment : convert(afterPayment, 'IQD', rate)}
-            primary={settlement_currency}
-            kind="derived"
-          />
+          <SettlementAmount amount={afterPayment} currency={settlement_currency} rate={rate} />
         </div>
 
         {needsExcessConfirmation ? (
@@ -274,14 +264,35 @@ export function PaymentSheet({
 
         <span className="mz-caption">
           {remainingHint ??
-            t('customers:remaining_hint', {
-            amount:
-              settlement_currency === 'USD'
-                  ? `$${centsToInput(remaining)}`
-                  : formatter.money(remaining, settlement_currency),
-            })}
+            t('customers:remaining_hint', { amount: formatter.money(remaining, settlement_currency) })}
         </span>
       </div>
     </BottomSheet>
+  );
+}
+
+/**
+ * A figure held in the settlement currency, with its counterpart converted at the account's
+ * rate and marked ≈ as derived. Without a rate there is no counterpart to show, and the figure
+ * says so rather than converting at a rate nobody set.
+ */
+function SettlementAmount({ amount, currency, rate }: { amount: number; currency: Currency; rate: Rate | null }) {
+  const { t } = useTranslation();
+  const formatter = useFormatter();
+  if (rate === null) {
+    return (
+      <span className="mz-stack" style={{ gap: 0, alignItems: 'flex-end' }}>
+        <bdi data-tabular>{formatter.money(amount, currency)}</bdi>
+        <span className="mz-caption">{t('common:no_rate_set')}</span>
+      </span>
+    );
+  }
+  return (
+    <DualAmount
+      amount_iqd={currency === 'IQD' ? amount : convert(amount, 'USD', rate)}
+      amount_usd_cents={currency === 'USD' ? amount : convert(amount, 'IQD', rate)}
+      primary={currency}
+      kind="derived"
+    />
   );
 }

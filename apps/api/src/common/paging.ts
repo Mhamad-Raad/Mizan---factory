@@ -21,6 +21,12 @@ export const pageSchema = z.object(pageFields);
 /** The cursor-paged audit trail's size limit: the same default and maximum. */
 export const limitField = z.coerce.number().int().positive().max(MAX_PAGE_SIZE).optional();
 
+/**
+ * The audit trail's cursor, `<microseconds since 1970>|<id>`, exactly as the previous page
+ * handed it out. Checked here so a malformed one is a 422, never a failed cast in the database.
+ */
+export const cursorField = z.string().regex(/^\d{1,20}\|\d{1,20}$/).optional();
+
 export interface Paging {
   page: number;
   page_size: number;

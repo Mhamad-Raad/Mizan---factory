@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NumberField } from '@mizan/ui';
 import { convert, impliedRate } from '@mizan/money';
@@ -15,8 +16,11 @@ export interface MoneyValue {
 export interface MoneyInputProps {
   label: string;
   value: MoneyValue;
-  /** The rate that fills the calculated side — the order's rate, or today's global rate. */
-  rate: Rate;
+  /**
+   * The rate that fills the calculated side — the order's rate, or today's global rate. `null`
+   * when no rate has been set: the other side is then left for the user, never invented.
+   */
+  rate: Rate | null;
   onChange: (value: MoneyValue) => void;
   hint?: string;
   error?: string;
@@ -61,7 +65,7 @@ export function MoneyInput({
   // of the one that was; off, each side shows only what the user typed.
   const enteredIqd = value.currency === 'IQD';
   const typedThis = entered;
-  const otherAuto = entered === null ? null : convert(entered, value.currency, rate);
+  const otherAuto = entered === null || rate === null ? null : convert(entered, value.currency, rate);
   const iqd = enteredIqd ? typedThis : auto ? otherAuto : (value.other_amount ?? null);
   const usd = enteredIqd ? (auto ? otherAuto : (value.other_amount ?? null)) : typedThis;
 
@@ -88,30 +92,33 @@ export function MoneyInput({
     ? overridden && iqd !== null && usd !== null && usd !== 0
       ? t('common:manual_rate', { rate: formatter.rate(impliedRate(iqd, usd)) })
       : (hint ?? t('common:entered_separately'))
-    : (hint ??
-      (sourceLabel
-        ? t('common:rate_at_source', { source: sourceLabel, rate: formatter.rate(rate) })
-        : t('common:rate_used', { rate: formatter.rate(rate) })));
+    : rate === null
+      ? (hint ?? t('common:no_rate_set'))
+      : (hint ??
+        (sourceLabel
+          ? t('common:rate_at_source', { source: sourceLabel, rate: formatter.rate(rate) })
+          : t('common:rate_used', { rate: formatter.rate(rate) })));
 
   return (
     <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
       {label ? <span className="mz-field__label">{label}</span> : null}
       <div className="mz-grid-2">
-        <NumberField
+        <MoneySide
           label={t('glossary:iqd')}
           unit={t('common:iqd_symbol')}
-          value={iqd === null ? '' : String(iqd)}
+          currency="IQD"
+          minor={iqd}
           disabled={disabled}
           error={error}
-          onChange={(event) => setSide('IQD', parseMinor(event.target.value, 'IQD'))}
+          onChange={(minor) => setSide('IQD', minor)}
         />
-        <NumberField
+        <MoneySide
           label={t('glossary:usd')}
           unit={t('common:usd_symbol')}
-          decimals={2}
-          value={usd === null ? '' : centsToInput(usd)}
+          currency="USD"
+          minor={usd}
           disabled={disabled}
-          onChange={(event) => setSide('USD', parseMinor(event.target.value, 'USD'))}
+          onChange={(minor) => setSide('USD', minor)}
         />
       </div>
       <span className="mz-field__hint">{note}</span>
@@ -119,13 +126,83 @@ export function MoneyInput({
   );
 }
 
-/** Dinars are whole; dollars are typed as dollars and stored as cents (spec 2.3.1). */
+/**
+ * One side of the pair. While somebody is typing in it, it shows **what they typed** — "12.",
+ * "12.5", a lone "-" — and only reports the amount that text means; rebuilding the text from the
+ * amount on every keystroke turned "1" into "1.00" and made a dollar amount impossible to type.
+ * The typed text gives way to the amount when the amount changes from outside (the other side
+ * was typed, a draft was restored) and when the field is left.
+ */
+function MoneySide({
+  label,
+  unit,
+  currency,
+  minor,
+  disabled,
+  error,
+  onChange,
+}: {
+  label: string;
+  unit: string;
+  currency: Currency;
+  minor: number | null;
+  disabled?: boolean;
+  error?: string;
+  onChange: (minor: number | null) => void;
+}) {
+  const [typed, setTyped] = useState<string | null>(null);
+  const shown = typed !== null && parseMinor(typed, currency) === minor ? typed : toInput(minor, currency);
+  return (
+    <NumberField
+      label={label}
+      unit={unit}
+      decimals={currency === 'USD' ? 2 : 0}
+      value={shown}
+      disabled={disabled}
+      error={error}
+      onChange={(event) => {
+        setTyped(event.target.value);
+        onChange(parseMinor(event.target.value, currency));
+      }}
+      onBlur={() => setTyped(null)}
+    />
+  );
+}
+
+function toInput(minor: number | null, currency: Currency): string {
+  if (minor === null) return '';
+  return currency === 'USD' ? centsToInput(minor) : String(minor);
+}
+
+const EASTERN_DIGITS = /[٠-٩۰-۹]/g;
+
+/**
+ * Dinars are whole; dollars are typed as dollars and stored as cents (spec 2.3.1).
+ *
+ * The text is read as a decimal string — whole part and fraction apart — never through a
+ * floating-point number, so "0.29" is 29 cents and not 28.999…. Anything that is not a plain
+ * amount in that currency (a dinar fraction, a third decimal of a dollar, a lone "-") is `null`,
+ * which the form treats as "not an amount yet".
+ */
 export function parseMinor(text: string, currency: Currency): number | null {
-  const trimmed = text.trim();
-  if (trimmed === '') return null;
-  const value = Number(trimmed.replace(/,/g, ''));
-  if (!Number.isFinite(value)) return null;
-  return currency === 'IQD' ? Math.round(value) : Math.round(value * 100);
+  const cleaned = text
+    .trim()
+    .replace(EASTERN_DIGITS, (digit) => {
+      const code = digit.codePointAt(0) as number;
+      return String(code - (code >= 0x06f0 ? 0x06f0 : 0x0660));
+    })
+    .replace(/[,٬\s]/g, '')
+    .replace(/٫/g, '.');
+  const match = /^(-?)(\d*)(?:\.(\d*))?$/.exec(cleaned);
+  if (!match) return null;
+  const [, sign, whole = '', fraction = ''] = match;
+  if (whole === '' && fraction === '') return null;
+  const places = currency === 'IQD' ? 0 : 2;
+  if (fraction.length > places) return null;
+  const digits = `${whole}${fraction.padEnd(places, '0')}`;
+  const value = Number(digits);
+  if (!Number.isSafeInteger(value)) return null;
+  return sign === '-' && value !== 0 ? -value : value;
 }
 
 export function centsToInput(cents: number): string {

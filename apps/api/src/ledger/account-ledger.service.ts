@@ -4,7 +4,6 @@ import {
   LedgerWriter,
   ReversalNotAllowedError,
   balanceAsOf,
-  balanceOf,
   groupLedger,
   ledgerAuditChanges,
   liveEntries,
@@ -132,7 +131,9 @@ export abstract class AccountLedgerService {
     documentId: string,
     options: { note: string; entry_date?: string; types: readonly string[] } & LedgerWriteOptions,
   ): Promise<WriteResult[]> {
-    const entries = await this.entriesFor(tx, account.id);
+    // Only the document's own rows (a reversal copies the refs of the row it reverses), never
+    // the account's whole ledger — the walk-in's grows with every counter sale (review).
+    const entries = await this.entriesOfDocument(tx, account.id, documentId);
     const targets = liveEntries(entries).filter(
       (entry) => entry.refs[this.documentColumn] === documentId && options.types.includes(entry.entry_type),
     );
@@ -152,7 +153,7 @@ export abstract class AccountLedgerService {
   }
 
   async balanceOf(tx: Db, account: LedgerAccount): Promise<number> {
-    return balanceOf(await this.entriesFor(tx, account.id), account.settlement_currency);
+    return this.storeFor(tx).balanceIn(account.id, account.settlement_currency);
   }
 
   /** The balance at a business date, for the "as of" reading of a ledger (spec 2.2.6, A-43). */

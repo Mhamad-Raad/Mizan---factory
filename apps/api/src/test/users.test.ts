@@ -386,5 +386,49 @@ describe('users and permissions (FR-102 to FR-108, FR-201 to FR-206)', () => {
       const rows = await auditRows({ entityId: employee.id, action: 'update' });
       expect(rows[0]?.changes).toMatchObject({ display_name: { old: 'Rebaz', new: 'Rebaz Omar' } });
     });
+
+    it('refuses a phone with no digits, every time, instead of storing an empty one', async () => {
+      for (const username of ['rebaz', 'hemin']) {
+        const employee = await seedUser({ username });
+        const session = await signIn(ctx.http, employee);
+        const me = await as(ctx.http, session).get('/api/v1/me/profile').expect(200);
+        const refused = await as(ctx.http, session)
+          .patch('/api/v1/me/profile')
+          .send({ display_name: username, phone: 'none', version: me.body.version })
+          .expect(422);
+        expect(refused.body.error.fields[0]).toMatchObject({ path: 'phone', message_key: 'errors:field.phone_invalid' });
+      }
+    });
+
+    it("keeps a phone and a username apart: nobody's phone may be somebody else's username", async () => {
+      // Sign-in takes either, so a phone equal to another account's username would share its door.
+      await seedUser({ username: '07501112222' });
+      const employee = await seedUser({ username: 'rebaz' });
+      const session = await signIn(ctx.http, employee);
+      const me = await as(ctx.http, session).get('/api/v1/me/profile').expect(200);
+      const refused = await as(ctx.http, session)
+        .patch('/api/v1/me/profile')
+        .send({ display_name: 'Rebaz', phone: '+964 750 111 2222', version: me.body.version })
+        .expect(422);
+      expect(refused.body.error.fields[0]).toMatchObject({ path: 'phone', code: 'TAKEN' });
+
+      // And the other way round: a new username that is somebody's phone.
+      await seedUser({ username: 'kawa', phone: '07503334444' });
+      await as(ctx.http, adminSession)
+        .post('/api/v1/users')
+        .send({ display_name: 'Someone', username: '07503334444', role: 'employee', preset_key: 'sales' })
+        .expect(422);
+    });
+
+    it('signs in the account whose username was typed, even when another carries it as a phone', async () => {
+      // Two rows made before the check above existed: the exact username must win.
+      const owner = await seedUser({ username: '07505556666', password: 'owner-password-1' });
+      await seedUser({ username: 'shadow', phone: '07505556666', password: 'shadow-password-1' });
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const session = await signIn(ctx.http, owner);
+        const me = await as(ctx.http, session).get('/api/v1/me/profile').expect(200);
+        expect(me.body.id).toBe(owner.id);
+      }
+    });
   });
 });

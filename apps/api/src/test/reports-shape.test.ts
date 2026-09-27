@@ -418,7 +418,7 @@ describe('the reports read each growing table once (I4 review)', () => {
       0,
     );
 
-    expect(Number(tile.count)).toBe(unpaidInReport);
+    expect(Number(tile.balance.count)).toBe(unpaidInReport);
     expect(unpaidInReport).toBe(CUSTOMER_COUNT);
   });
 });

@@ -14,10 +14,11 @@ import {
   selectMonthPrice,
   withinTolerance,
 } from '@mizan/money';
-import type { Currency, Measure, MoneyPair, Rate, RateSource } from '@mizan/money';
+import type { Currency, Measure, MoneyPair, Rate, RateSource, RoundedTotals } from '@mizan/money';
 import { orderStatus } from '@mizan/ledger';
 import type { LedgerEntry } from '@mizan/ledger';
 import { AuditService } from '../audit/audit.service.js';
+import { resolveActingUser } from '../common/acting-user.js';
 import { ApiError } from '../common/errors.js';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
@@ -115,7 +116,8 @@ export class OrdersService {
   async get(context: RequestContext, id: string): Promise<OrderDto> {
     const row = await this.requireOrder(context, id);
     const lines = await this.orders.linesOf(id);
-    return toOrderDto(row, lines);
+    const own = await this.customers.currentRate(row.customer_id);
+    return { ...toOrderDto(row, lines), customer_rate_iqd_per_usd: own ? formatRate(own.rate) : null };
   }
 
   private async requireOrder(context: RequestContext, id: string): Promise<OrderListRow> {
@@ -149,17 +151,7 @@ export class OrdersService {
         },
       ]);
     }
-    // The walk-in customer is a till, not a debtor: it takes cash orders only (FR-501, A-33).
-    if (customer.is_system && input.payment_type === 'borrowed') {
-      throw ApiError.validation([
-        {
-          path: 'payment_type',
-          code: 'SYSTEM_CUSTOMER_CASH_ONLY',
-          message_key: 'errors:walk_in_cash_only',
-          params: {},
-        },
-      ]);
-    }
+    assertWalkInPaysCash(customer.is_system, input.payment_type, 'payment_type');
     if (input.payment_type === 'cash' && !input.received_currency) {
       throw ApiError.validation([
         {
@@ -178,16 +170,11 @@ export class OrdersService {
       const locked = await this.ledger.lockOwner(tx, customer.id);
       if (!locked) throw ApiError.notFound();
 
+      // Every material's lock up front, in one order, after the account's (review: deadlocks).
+      await this.lots.lockItems(tx, input.lines.map((line) => line.item_id));
       const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource);
       const discount = this.discountPair(input.discount, rate, rateSource, lines);
-      // The total rounds up to the next 250 dinars; the lines keep their prices (D-065).
-      const totals = roundOrderTotals(
-        documentTotals(lines, {
-          discount_iqd: discount.amount_iqd,
-          discount_usd_cents: discount.amount_usd_cents,
-        }),
-        rate,
-      );
+      const totals = orderTotals(lines, discount, rate, customer.settlement_currency);
 
       const warnings = await this.stock.assertSellable(
         tx,
@@ -260,6 +247,11 @@ export class OrdersService {
               old: null,
               new: { iqd: totals.total_iqd, usd_cents: totals.total_usd_cents },
             },
+            // What the round-250 rule added on top of the lines (D-065), so History explains it.
+            rounding: {
+              old: null,
+              new: { iqd: totals.rounding_iqd, usd_cents: totals.rounding_usd_cents },
+            },
           },
           note: input.notes?.trim() || null,
           related: {
@@ -297,6 +289,7 @@ export class OrdersService {
     const existing = await this.requireOrder(context, id);
     if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { order_id: id });
     await this.assertMayEdit(context, existing);
+    assertWalkInPaysCash(existing.customer_is_system, input.payment_type, 'payment_type');
 
     const { rate, rateSource } = await this.rateFor(input.rate_iqd_per_usd, existing.customer_id);
     const actingUserId = await this.actingUser(
@@ -304,7 +297,7 @@ export class OrdersService {
       input.acting_user_id ?? existing.acting_user_id,
     );
 
-    await this.database.transaction(async (tx) => {
+    const edited = await this.database.transaction(async (tx) => {
       const order = await this.orders.lock(id, tx);
       if (!order) throw ApiError.notFound();
       if (order.version !== input.version) throw await this.versionConflict(context, id);
@@ -328,6 +321,9 @@ export class OrdersService {
       if (!locked) throw ApiError.notFound();
 
       const oldLines = await this.orders.linesOf(id, tx);
+      // Every material the order had or will have, locked before any stock moves — the order
+      // every writer takes: account, materials, stock (review: deadlocks).
+      await this.lots.lockItems(tx, [...oldLines.map((line) => line.item_id), ...input.lines.map((line) => line.item_id)]);
 
       // Step 2 of 2.5.3: reverse everything live that belongs to this document.
       await this.stock.reverseLiveForRef(
@@ -342,20 +338,17 @@ export class OrdersService {
         related: { order_id: id, customer_id: order.customer_id },
       });
 
+      // What was paid against this order stays paid through the edit (review): the document's
+      // own rows are reversed above, so what is left against the order is those payments.
+      const paidBefore = -(await this.orders.remainingOf(id, locked.settlement_currency, tx));
+
       // The old lines give their stock back to the buys it came from before the new lines take.
       await this.lots.release(tx, { type: 'order_line', ids: oldLines.map((line) => line.id), createdBy: context.userId });
       const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource);
       const discount = this.discountPair(input.discount, rate, rateSource, lines);
-      // The total rounds up to the next 250 dinars; the lines keep their prices (D-065).
-      const totals = roundOrderTotals(
-        documentTotals(lines, {
-          discount_iqd: discount.amount_iqd,
-          discount_usd_cents: discount.amount_usd_cents,
-        }),
-        rate,
-      );
+      const totals = orderTotals(lines, discount, rate, customerRow.settlement_currency);
 
-      await this.stock.assertSellable(
+      const warnings = await this.stock.assertSellable(
         tx,
         lines.map((line) => ({
           item_id: line.item_id,
@@ -392,16 +385,19 @@ export class OrdersService {
       );
       if (!updated) throw await this.versionConflict(context, id);
 
-      await this.writeDocumentEntries(context, tx, locked, {
+      const creditWarning = await this.writeDocumentEntries(context, tx, locked, {
         orderId: id,
         orderDate: input.order_date,
         paymentType: input.payment_type,
         totals,
         rate,
         rateSource,
-        receivedCurrency: input.received_currency ?? null,
+        // An edit that does not say which currency was handed over keeps the account's own,
+        // rather than a settlement with no currency at all (review).
+        receivedCurrency: input.received_currency ?? (input.payment_type === 'cash' ? customerRow.settlement_currency : null),
         receivedAmount: input.received_amount ?? null,
         customer: customerRow,
+        paidBefore,
       });
 
       await this.audit.record(
@@ -420,15 +416,22 @@ export class OrdersService {
               old: { iqd: Number(order.total_iqd), usd_cents: Number(order.total_usd_cents) },
               new: { iqd: totals.total_iqd, usd_cents: totals.total_usd_cents },
             },
+            rounding: {
+              old: { iqd: Number(order.rounding_iqd), usd_cents: Number(order.rounding_usd_cents) },
+              new: { iqd: totals.rounding_iqd, usd_cents: totals.rounding_usd_cents },
+            },
           },
           note: input.notes?.trim() || null,
           related: { order_id: id, customer_id: order.customer_id },
         },
         tx,
       );
+      return { warnings, creditWarning };
     });
 
-    return this.get(context, id);
+    // The same warnings a new order carries: an edit can oversell or pass the limit too (review).
+    const dto = await this.get(context, id);
+    return { ...dto, stock_warnings: edited.warnings, credit_limit_warning: edited.creditWarning };
   }
 
   /**
@@ -465,6 +468,8 @@ export class OrdersService {
       if (!locked) throw ApiError.notFound();
 
       const lines = await this.orders.linesOf(id, tx);
+      // Materials before their stock, sorted, as every writer takes them (review: deadlocks).
+      await this.lots.lockItems(tx, lines.map((line) => line.item_id));
       await this.stock.reverseLiveForRef(
         tx,
         { ref_type: 'order_line', ref_ids: lines.map((line) => line.id) },
@@ -540,6 +545,7 @@ export class OrdersService {
         },
       ]);
     }
+    assertWalkInPaysCash(existing.customer_is_system, input.to, 'to');
     if (existing.payment_type === input.to) {
       throw ApiError.validation([
         { path: 'to', code: 'UNCHANGED', message_key: 'errors:field.required', params: {} },
@@ -775,24 +781,8 @@ export class OrdersService {
   }
 
   /** Only an admin may record an order as done by somebody else (spec 2.7). */
-  private async actingUser(context: RequestContext, requested?: string | null): Promise<string> {
-    if (!requested || requested === context.userId) return context.userId;
-    if (context.role !== 'admin') throw ApiError.permissionDenied('admin');
-    const { rowCount } = await this.database.query(
-      'SELECT 1 FROM users WHERE id = $1 AND deleted_at IS NULL AND is_active = true',
-      [requested],
-    );
-    if (!rowCount) {
-      throw ApiError.validation([
-        {
-          path: 'acting_user_id',
-          code: 'NOT_FOUND',
-          message_key: 'errors:field.required',
-          params: {},
-        },
-      ]);
-    }
-    return requested;
+  private actingUser(context: RequestContext, requested?: string | null): Promise<string> {
+    return resolveActingUser(this.database, context, requested, 'acting_user_id');
   }
 
   /**
@@ -1079,12 +1069,13 @@ export class OrdersService {
       receivedCurrency: Currency | null;
       receivedAmount: number | null;
       customer: CustomerRow;
+      /** On an edit, what payments against the order had already settled, in the settlement currency. */
+      paidBefore?: number;
     },
   ): Promise<OrderDto['credit_limit_warning']> {
+    const paidBefore = Math.max(input.paidBefore ?? 0, 0);
     const settlementAmount =
-      customer.settlement_currency === 'IQD'
-        ? input.totals.total_iqd
-        : input.totals.total_usd_cents;
+      (customer.settlement_currency === 'IQD' ? input.totals.total_iqd : input.totals.total_usd_cents) - paidBefore;
 
     // The entry copies the order's two totals exactly as stored — never a conversion of one
     // of them — together with the order's rate snapshot (FR-612, 2.3.4).
@@ -1109,7 +1100,9 @@ export class OrdersService {
     );
 
     let warning: OrderDto['credit_limit_warning'] = null;
-    if (input.paymentType === 'cash') {
+    // Cash settles what is still owed; when payments already cover the new total there is
+    // nothing left to settle.
+    if (input.paymentType === 'cash' && settlementAmount > 0) {
       const money = await this.settlementPair({
         remaining: settlementAmount,
         settlementCurrency: customer.settlement_currency,
@@ -1118,11 +1111,14 @@ export class OrdersService {
         rate: input.rate,
         rateSource: input.rateSource,
         // Same currency and no rounded amount handed over: the settlement is the exact
-        // negation of the order entry, so the order closes at zero in *both* columns.
+        // negation of the order entry, so the order closes at zero in *both* columns. After
+        // earlier payments the other side is converted instead, as for any part payment.
         otherSideFallback:
-          customer.settlement_currency === 'IQD'
-            ? input.totals.total_usd_cents
-            : input.totals.total_iqd,
+          paidBefore > 0
+            ? null
+            : customer.settlement_currency === 'IQD'
+              ? input.totals.total_usd_cents
+              : input.totals.total_iqd,
       });
 
       await this.ledger.write(
@@ -1354,4 +1350,32 @@ function toOrderDto(row: OrderListRow, lines: readonly OrderLineRow[]): OrderDto
     version: row.version,
     created_at: row.created_at.toISOString(),
   };
+}
+
+/** The walk-in customer is a till, not a debtor: it takes cash orders only (FR-501, A-33). */
+function assertWalkInPaysCash(isSystem: boolean, paymentType: PaymentType, path: string): void {
+  if (!isSystem || paymentType !== 'borrowed') return;
+  throw ApiError.validation([
+    { path, code: 'SYSTEM_CUSTOMER_CASH_ONLY', message_key: 'errors:walk_in_cash_only', params: {} },
+  ]);
+}
+
+/**
+ * An order's totals. For an account settled in dinars the total rounds up to the next 250
+ * (D-065), the lines keeping their prices; an account settled in dollars is billed in dollars,
+ * so a dinar rounding would only add odd cents to its debt and it is not rounded (D-069).
+ */
+function orderTotals(
+  lines: readonly PreparedLine[],
+  discount: { amount_iqd: number; amount_usd_cents: number },
+  rate: Rate,
+  settlementCurrency: Currency,
+): RoundedTotals {
+  const totals = documentTotals(lines, {
+    discount_iqd: discount.amount_iqd,
+    discount_usd_cents: discount.amount_usd_cents,
+  });
+  return settlementCurrency === 'IQD'
+    ? roundOrderTotals(totals, rate)
+    : { ...totals, rounding_iqd: 0, rounding_usd_cents: 0 };
 }

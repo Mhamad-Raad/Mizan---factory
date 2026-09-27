@@ -83,7 +83,14 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (response.status === 204) return undefined as T;
 
   const text = await response.text();
-  const payload = text ? (JSON.parse(text) as unknown) : null;
+  let payload: unknown = null;
+  try {
+    payload = text ? (JSON.parse(text) as unknown) : null;
+  } catch {
+    // Not our API talking — a proxy's or a gateway's HTML page. Read it as our own failure, so
+    // the screen says something went wrong instead of throwing a SyntaxError nobody shows.
+    throw new ApiError(response.status, 'INTERNAL', 'errors:INTERNAL');
+  }
 
   if (!response.ok) {
     const error = (payload as { error?: Record<string, unknown> } | null)?.error;

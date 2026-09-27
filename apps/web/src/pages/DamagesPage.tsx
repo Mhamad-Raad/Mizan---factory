@@ -8,13 +8,16 @@ import { apiRequest } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
+import { KpiHead } from '../components/KpiHead.js';
 import { QueryStates } from '../components/states.js';
 import { DataList } from '../components/DataList.js';
 import type { Column } from '../components/DataList.js';
 import { Pager } from '../components/Pager.js';
-import { usePaging } from '../lib/paging.js';
+import { useKeepPageInRange, usePaging } from '../lib/paging.js';
+import { useDebouncedValue } from '../lib/debounce.js';
+import { lastMonth, thisMonth } from '../lib/periods.js';
 import type { DamageAttribution, ReturnStatus } from '../components/chips.js';
-import { FilterChip } from './MaterialsPage.js';
+import { FilterChip } from '../components/FilterChip.js';
 import { useFormatter } from '../lib/store.js';
 
 export interface DamageRow {
@@ -110,7 +113,9 @@ type Status = '' | 'owed' | 'paid';
 export function DamagesPage() {
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const [query, setQuery] = useState('');
+  const [search, setSearch] = useState('');
+  // The request waits for the typing to stop (NFR-03): one search, not one per letter.
+  const query = useDebouncedValue(search);
   const [dates, setDates] = useState<DateFilter>('month');
   const [voided, setVoided] = useState(false);
   const [doneBy, setDoneBy] = useState('');
@@ -166,6 +171,7 @@ export function DamagesPage() {
     // Keep the rows on screen while a filter or a page change refetches, as Orders does.
     placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(paging, damages);
   const refreshing = damages.isFetching && damages.isPlaceholderData;
 
   const directory = useQuery({
@@ -217,7 +223,7 @@ export function DamagesPage() {
       header: t('common:number_column'),
       cell: (damage) => (
         <span className="mz-cell__body">
-          <strong>{t('damages:number', { number: formatter.number(damage.number) })}</strong>
+          <strong>{t('damages:number', { number: formatter.identifier(damage.number) })}</strong>
           <span className="mz-caption">{formatter.date(damage.damage_date)}</span>
         </span>
       ),
@@ -252,8 +258,8 @@ export function DamagesPage() {
             <TextField
               label={t('common:search')}
               placeholder={t('damages:search_hint')}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
               type="search"
               inputMode="search"
             />
@@ -323,12 +329,7 @@ export function DamagesPage() {
       {totals ? (
         <div className="mz-kpis mz-kpis--three">
           <div className="mz-kpi">
-            <span className="mz-kpi__head">
-              <span className="mz-kpi__icon" aria-hidden="true">
-                <Icon name="warning" size={18} />
-              </span>
-              <span className="mz-caption">{t('damages:tile_recorded')}</span>
-            </span>
+            <KpiHead icon="warning" label={t('damages:tile_recorded')} />
             <span className="mz-kpi__count" data-tabular>
               {formatter.number(totals.records)}
             </span>
@@ -338,12 +339,7 @@ export function DamagesPage() {
           </div>
           {totals.cost ? (
             <div className="mz-kpi">
-              <span className="mz-kpi__head">
-                <span className="mz-kpi__icon" aria-hidden="true">
-                  <Icon name="materials" size={18} />
-                </span>
-                <span className="mz-caption">{t('damages:tile_value')}</span>
-              </span>
+              <KpiHead icon="materials" label={t('damages:tile_value')} />
               <DualAmount amount_iqd={totals.cost.est_value_iqd} amount_usd_cents={totals.cost.est_value_usd_cents} />
               {totals.unvalued > 0 ? (
                 <span className="mz-caption">{t('damages:totals_unvalued', { count: totals.unvalued })}</span>
@@ -356,12 +352,7 @@ export function DamagesPage() {
             aria-pressed={status === 'owed'}
             onClick={() => setStatus(status === 'owed' ? '' : 'owed')}
           >
-            <span className="mz-kpi__head">
-              <span className="mz-kpi__icon" aria-hidden="true">
-                <Icon name="clock" size={18} />
-              </span>
-              <span className="mz-caption">{t('damages:tile_owed')}</span>
-            </span>
+            <KpiHead icon="clock" label={t('damages:tile_owed')} />
             <span className="mz-kpi__count" data-tabular>
               {formatter.number(totals.owed_count)}
             </span>
@@ -399,7 +390,7 @@ export function DamagesPage() {
                   {statusOf(damage)}
                 </span>
                 <span className="mz-caption" data-tabular>
-                  {t('damages:number', { number: formatter.number(damage.number) })} ·{' '}
+                  {t('damages:number', { number: formatter.identifier(damage.number) })} ·{' '}
                   {quantityOf(damage, formatter, t)} · {formatter.date(damage.damage_date)}
                 </span>
                 {damage.reason ? (
@@ -430,11 +421,8 @@ export function DamagesPage() {
 /** The period chips, from today's Baghdad day. */
 function rangeOf(filter: DateFilter, today: string): { from?: string; to?: string } {
   if (filter === 'all') return {};
-  if (filter === 'month') return { from: `${today.slice(0, 7)}-01`, to: today };
-  const first = new Date(`${today.slice(0, 7)}-01T00:00:00Z`);
-  first.setUTCDate(0);
-  const last = first.toISOString().slice(0, 10);
-  return { from: `${last.slice(0, 7)}-01`, to: last };
+  if (filter === 'month') return thisMonth(today);
+  return lastMonth(today);
 }
 
 /** The quantity as the material measures it, with the other measure when it was recorded. */

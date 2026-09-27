@@ -75,7 +75,7 @@ export class UsersService {
     input: CreateUserInput,
   ): Promise<{ user: UserDto; temporary_password: string }> {
     const username = input.username.trim().toLowerCase();
-    const phone = input.phone ? normalizePhone(input.phone) : null;
+    const phone = input.phone ? phoneOf(input.phone) : null;
 
     await this.assertUsernameFree(username);
     if (phone) await this.assertPhoneFree(phone);
@@ -179,8 +179,7 @@ export class UsersService {
     if (input.username && input.username.toLowerCase() !== existing.username) {
       await this.assertUsernameFree(input.username.toLowerCase(), id);
     }
-    const phone =
-      input.phone === undefined ? undefined : input.phone ? normalizePhone(input.phone) : null;
+    const phone = input.phone === undefined ? undefined : input.phone ? phoneOf(input.phone) : null;
     if (phone) await this.assertPhoneFree(phone, id);
 
     // Admin safety: nobody demotes themselves, and the last active admin cannot be demoted
@@ -364,13 +363,16 @@ export class UsersService {
     await this.database.transaction(async (tx) => {
       await this.users.replacePermissions(id, after, context.userId, tx);
       if (input.preset_key !== undefined) {
-        await this.users.update(
+        const updated = await this.users.update(
           id,
           user.version,
           { preset_key: preset?.key ?? null, preset_version: preset?.version ?? null },
           context.userId,
           tx,
         );
+        // Somebody changed the employee meanwhile: nothing is saved, rather than new permissions
+        // under the old preset and a History row claiming a preset change that did not happen.
+        if (!updated) throw new ApiError('VERSION_CONFLICT', { current_version: user.version });
       }
       if (diff.granted.length > 0 || diff.revoked.length > 0 || input.preset_key !== undefined) {
         await this.audit.record(
@@ -410,7 +412,9 @@ export class UsersService {
 
   async revokeSession(context: RequestContext, id: string, sessionId: string): Promise<void> {
     await this.requireUser(id);
-    await this.sessions.revoke(sessionId, 'revoked_by_admin');
+    const outcome = await this.sessions.revokeOfUser(id, sessionId, 'revoked_by_admin');
+    if (outcome === 'missing') throw ApiError.notFound();
+    if (outcome === 'already') return;
     await this.audit.record(context, {
       action: 'logout',
       entity_type: 'session',
@@ -426,8 +430,15 @@ export class UsersService {
     return row;
   }
 
+  /**
+   * Sign-in takes a username or a phone (FR-101), so the two share one namespace: a username
+   * may not be somebody else's phone, nor a phone somebody else's username — otherwise one
+   * person's sign-in could reach, and lock, the other's account (client-review bug 1).
+   */
   private async assertUsernameFree(username: string, exceptId?: string): Promise<void> {
-    const existing = await this.users.findByUsername(username);
+    const existing =
+      (await this.users.findByUsername(username)) ??
+      (/^\d+$/.test(username) ? await this.users.findByPhone(username) : null);
     if (existing && existing.id !== exceptId) {
       throw ApiError.validation([
         { path: 'username', code: 'TAKEN', message_key: 'errors:field.username_taken', params: {} },
@@ -436,11 +447,25 @@ export class UsersService {
   }
 
   private async assertPhoneFree(phone: string, exceptId?: string): Promise<void> {
-    const existing = await this.users.findByPhone(phone);
-    if (existing && existing.id !== exceptId) {
+    for (const existing of [await this.users.findByPhone(phone), await this.users.findByUsername(phone)]) {
+      if (!existing || existing.id === exceptId) continue;
       throw ApiError.validation([
         { path: 'phone', code: 'TAKEN', message_key: 'errors:field.phone_taken', params: {} },
       ]);
     }
   }
+}
+
+/**
+ * A phone as stored: its digits in one spelling. Text with no digits is refused rather than
+ * stored as an empty phone — two of those would collide on the unique index (client-review bug 4).
+ */
+function phoneOf(typed: string): string {
+  const phone = normalizePhone(typed);
+  if (!/^\d+$/.test(phone)) {
+    throw ApiError.validation([
+      { path: 'phone', code: 'INVALID', message_key: 'errors:field.phone_invalid', params: {} },
+    ]);
+  }
+  return phone;
 }

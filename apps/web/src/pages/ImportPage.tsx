@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Chip, SegmentedControl } from '@mizan/ui';
-import { ApiError, apiRequest } from '../lib/api.js';
+import { apiRequest } from '../lib/api.js';
+import { errorMessage } from '../lib/errors.js';
 import { usePageTitle } from '../lib/page-title.js';
 
 type ImportKind =
@@ -127,19 +128,22 @@ export function ImportPage() {
 
   const template = KINDS.find((entry) => entry.kind === kind) as (typeof KINDS)[number];
 
+  const queryClient = useQueryClient();
   const send = useMutation({
     mutationFn: (mode: 'preview' | 'commit') =>
       apiRequest<PreviewResponse>(`/imports/${kind}${mode === 'preview' ? '/preview' : ''}`, {
         method: 'POST',
         body: { rows },
       }),
-    onSuccess: (response) => {
+    onSuccess: (response, mode) => {
       setResult(response);
       setError(null);
+      // Opening stock, balances and whole lists just arrived: every screen reads them afresh.
+      if (mode === 'commit') void queryClient.invalidateQueries();
     },
     onError: (caught) => {
       setResult(null);
-      setError(caught instanceof ApiError ? t('errors:VALIDATION_FAILED') : t('errors:INTERNAL'));
+      setError(errorMessage(t, caught));
     },
   });
 

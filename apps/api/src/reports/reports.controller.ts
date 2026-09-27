@@ -1,5 +1,6 @@
 import { Controller, Get, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
+import { isoDate } from '../common/schemas.js';
 import { RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
@@ -8,7 +9,6 @@ import { zodBody } from '../common/zod.pipe.js';
 import { ReportsService } from './reports.service.js';
 import { pageFields } from '../common/paging.js';
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const baseSchema = z.object({
   from: isoDate.optional(),
