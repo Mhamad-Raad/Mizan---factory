@@ -199,6 +199,10 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       // The company owes the rounded total.
       const customer = await as(ctx.http, sales).get(`/api/v1/customers/${kawa}`).expect(200);
       expect(customer.body.balance.amount_iqd ?? customer.body.balance).toBe(730_750);
+
+      // History says what the rounding added, so the total's difference from the lines is explained.
+      const [created] = await auditRows({ action: 'create', entityId: response.body.id });
+      expect(created?.changes).toMatchObject({ rounding: { old: null, new: { iqd: 125, usd_cents: 10 } } });
     });
 
     it('defaults the price from the month list and marks an override', async () => {
@@ -811,6 +815,7 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       const audit = await auditRows({ action: 'update', entityId: order.body.id });
       expect(audit[0]?.changes).toMatchObject({
         total: { old: { iqd: 85_000 }, new: { iqd: 68_000 } },
+        rounding: { old: { iqd: 0 }, new: { iqd: 0 } },
       });
     });
 
@@ -1178,14 +1183,15 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
 
       const list = await as(ctx.http, sales).get('/api/v1/orders?page_size=1').expect(200);
       expect(list.body.items).toHaveLength(1);
-      expect(list.body.totals).toMatchObject({ orders: 2, total_iqd: 103_000, owing: 1 });
-      expect(list.body.totals.balance.owed_iqd).toBe(55_000);
+      expect(list.body.totals).toMatchObject({ orders: 2, total_iqd: 103_000 });
+      expect(list.body.totals.balance).toMatchObject({ owing: 1, owed_iqd: 55_000 });
 
-      // Whoever may not see what customers owe gets the counts, never the owed amount.
+      // Whoever may not see what customers owe gets neither the amount nor how many orders owe.
       const viewer = await seedUser({ username: 'viewer.orders', permissions: ['orders.view'] });
       const plain = await as(ctx.http, await signIn(ctx.http, viewer)).get('/api/v1/orders').expect(200);
-      expect(plain.body.totals.owing).toBe(1);
+      expect(plain.body.totals.orders).toBe(2);
       expect('balance' in plain.body.totals).toBe(false);
+      expect('owing' in plain.body.totals).toBe(false);
     });
 
     it('filters by status, payment type, customer, employee and free text', async () => {

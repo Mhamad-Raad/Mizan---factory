@@ -138,5 +138,6 @@
   "value.pending": "Waiting",
   "value.not_returnable": "Not returnable",
   "value.admin": "Admin",
-  "value.employee": "Employee"
+  "value.employee": "Employee",
+  "field.rounding": "Rounding"
 }

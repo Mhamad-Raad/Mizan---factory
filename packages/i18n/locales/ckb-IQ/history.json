@@ -138,5 +138,6 @@
   "value.pending": "چاوەڕوان",
   "value.not_returnable": "ناگەڕێندرێتەوە",
   "value.admin": "بەڕێوەبەر",
-  "value.employee": "کارمەند"
+  "value.employee": "کارمەند",
+  "field.rounding": "نزیککردنەوە"
 }

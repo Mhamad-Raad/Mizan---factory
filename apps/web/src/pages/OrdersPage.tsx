@@ -47,8 +47,7 @@ interface OrderTotals {
   orders: number;
   total_iqd: number;
   total_usd_cents: number;
-  owing: number;
-  balance?: { owed_iqd: number; owed_usd_cents: number } | null;
+  balance?: { owing: number; owed_iqd: number; owed_usd_cents: number } | null;
 }
 
 /**
@@ -74,7 +73,7 @@ export function OrdersPage() {
   const [query, setQuery] = useState('');
   const [toast, setToast] = useState<{ message: string; orderId: string } | null>(() =>
     savedOrder
-      ? { message: t('orders:saved', { number: formatter.number(savedOrder.number) }), orderId: savedOrder.id }
+      ? { message: t('orders:saved', { number: formatter.identifier(savedOrder.number) }), orderId: savedOrder.id }
       : null,
   );
 
@@ -229,27 +228,28 @@ export function OrdersPage() {
               </span>
               <DualAmount amount_iqd={totals.total_iqd} amount_usd_cents={totals.total_usd_cents} />
             </div>
-            <button
-              type="button"
-              className="mz-kpi mz-kpi--button"
-              aria-pressed={unpaidOnly}
-              onClick={() => setUnpaidOnly(!unpaidOnly)}
-            >
-              <span className="mz-kpi__head">
-                <span className="mz-kpi__icon" aria-hidden="true">
-                  <Icon name="clock" size={18} />
+            {/* What is owed, and how many orders owe it, belong to the balances flag (2.6.2). */}
+            {totals.balance ? (
+              <button
+                type="button"
+                className="mz-kpi mz-kpi--button"
+                aria-pressed={unpaidOnly}
+                onClick={() => setUnpaidOnly(!unpaidOnly)}
+              >
+                <span className="mz-kpi__head">
+                  <span className="mz-kpi__icon" aria-hidden="true">
+                    <Icon name="clock" size={18} />
+                  </span>
+                  <span className="mz-caption">{t('orders:tile_to_collect')}</span>
                 </span>
-                <span className="mz-caption">{t('orders:tile_to_collect')}</span>
-              </span>
-              <span className="mz-kpi__count" data-tabular>
-                {formatter.number(totals.owing)}
-              </span>
-              {totals.balance ? (
+                <span className="mz-kpi__count" data-tabular>
+                  {formatter.number(totals.balance.owing)}
+                </span>
                 <span className="mz-owed">
                   <DualAmount amount_iqd={totals.balance.owed_iqd} amount_usd_cents={totals.balance.owed_usd_cents} />
                 </span>
-              ) : null}
-            </button>
+              </button>
+            ) : null}
           </div>
         ) : null}
 

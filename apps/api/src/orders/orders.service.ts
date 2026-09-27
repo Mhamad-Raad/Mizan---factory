@@ -260,6 +260,11 @@ export class OrdersService {
               old: null,
               new: { iqd: totals.total_iqd, usd_cents: totals.total_usd_cents },
             },
+            // What the round-250 rule added on top of the lines (D-065), so History explains it.
+            rounding: {
+              old: null,
+              new: { iqd: totals.rounding_iqd, usd_cents: totals.rounding_usd_cents },
+            },
           },
           note: input.notes?.trim() || null,
           related: {
@@ -419,6 +424,10 @@ export class OrdersService {
             total: {
               old: { iqd: Number(order.total_iqd), usd_cents: Number(order.total_usd_cents) },
               new: { iqd: totals.total_iqd, usd_cents: totals.total_usd_cents },
+            },
+            rounding: {
+              old: { iqd: Number(order.rounding_iqd), usd_cents: Number(order.rounding_usd_cents) },
+              new: { iqd: totals.rounding_iqd, usd_cents: totals.rounding_usd_cents },
             },
           },
           note: input.notes?.trim() || null,
