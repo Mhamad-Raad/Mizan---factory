@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
+import { isoDate, minorAmount } from '../common/schemas.js';
 import { RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
@@ -7,13 +8,12 @@ import { stripHistory } from '../history/history-fields.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { CompaniesService } from './companies.service.js';
-import { limitField, pageFields, pageSchema } from '../common/paging.js';
+import { cursorField, limitField, pageFields, pageSchema } from '../common/paging.js';
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const money = z.object({
-  amount: z.number().int(),
+  amount: minorAmount,
   currency: z.enum(['IQD', 'USD']),
-  other_amount: z.number().int().nullish(),
+  other_amount: minorAmount.nullish(),
 });
 const method = z.enum(['cash', 'transfer', 'other']);
 
@@ -44,10 +44,10 @@ export const entrySchema = money.extend({
 
 const adjustmentSchema = z
   .object({
-    new_balance: z.number().int().nullish(),
-    delta: z.number().int().nullish(),
+    new_balance: minorAmount.nullish(),
+    delta: minorAmount.nullish(),
     currency: z.enum(['IQD', 'USD']),
-    other_amount: z.number().int().nullish(),
+    other_amount: minorAmount.nullish(),
     entry_date: isoDate,
     note: z.string().min(3).max(2000),
     purchase_id: z.string().uuid().nullish(),
@@ -88,7 +88,7 @@ const ledgerSchema = z.object({
 
 const statementSchema = z.object({ from: isoDate.optional(), to: isoDate.optional() });
 const historySchema = z.object({
-  cursor: z.string().max(200).optional(),
+  cursor: cursorField,
   limit: limitField,
 });
 

@@ -1,23 +1,23 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
+import { isoDate, minorAmount, rateString } from '../common/schemas.js';
 import { RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { PurchasesService } from './purchases.service.js';
-import { limitField, pageFields } from '../common/paging.js';
+import { cursorField, limitField, pageFields } from '../common/paging.js';
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const kg = z.string().regex(/^\d{1,9}(\.\d{1,3})?$/);
 /**
  * A price, a line total or a discount: never below zero. Refused here with the field named,
  * rather than by the table's CHECK as a 500 (security review, finding 16).
  */
 const price = z.object({
-  amount: z.number().int().nonnegative(),
+  amount: minorAmount.nonnegative(),
   currency: z.enum(['IQD', 'USD']),
-  other_amount: z.number().int().nonnegative().nullish(),
+  other_amount: minorAmount.nonnegative().nullish(),
 });
 
 const lineSchema = z.object({
@@ -36,10 +36,7 @@ const createSchema = z.object({
   company_id: z.string().uuid().nullish(),
   purchase_date: isoDate,
   notes: z.string().max(2000).nullish(),
-  rate_iqd_per_usd: z
-    .string()
-    .regex(/^\d+(\.\d{1,4})?$/)
-    .nullish(),
+  rate_iqd_per_usd: rateString.nullish(),
   discount: price.nullish(),
   lines: z.array(lineSchema).min(1).max(200),
   acting_user_id: z.string().uuid().nullish(),
@@ -66,7 +63,7 @@ const listSchema = z.object({
 });
 
 const historySchema = z.object({
-  cursor: z.string().max(200).optional(),
+  cursor: cursorField,
   limit: limitField,
 });
 
