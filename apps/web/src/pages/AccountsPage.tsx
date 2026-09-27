@@ -752,7 +752,8 @@ function AddExpenseSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
   // An expense is stored in both currencies at today's rate, so it waits for one to be set —
   // and says so under the amount, rather than leaving a Save button that silently never wakes.
   const { query: rateQuery, rate } = useGlobalRate();
-  const noRate = rateQuery.isSuccess && rate === null;
+  // Also when the rate could not be read (offline): the hint says why Save is waiting.
+  const noRate = !rateQuery.isPending && rate === null;
 
   const save = useMutation({
     mutationFn: () =>

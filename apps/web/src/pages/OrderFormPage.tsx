@@ -392,7 +392,9 @@ function OrderForm({
   const shownUnderInputs =
     error !== null &&
     error.fields.length > 0 &&
-    error.fields.every((field) => /^lines\.\d+\.(qty_kg|qty_count|unit_price)/.test(field.path));
+    // Exactly the paths the cards read — `lines.0.unit_price.amount` is not one of them, and a
+    // refusal of it must reach the banner rather than vanish (review).
+    error.fields.every((field) => /^lines\.\d+\.(qty_kg|qty_count|unit_price)$/.test(field.path));
   const saveError = shownUnderInputs ? null : errorMessage(t, save.error);
 
   const addLine = (item: ItemRow) => {
@@ -842,6 +844,8 @@ export interface OrderDetail {
   customer_id: string;
   customer_name: string;
   customer_is_system: boolean;
+  /** The company's own rate, when it has one — what a payment on this order is valued at. */
+  customer_rate_iqd_per_usd?: string | null;
   settlement_currency: Currency;
   order_date: string;
   payment_type: 'cash' | 'borrowed';

@@ -57,6 +57,9 @@ export function CustomersPage() {
   // The request waits for the typing to stop (NFR-03): one search, not one per letter.
   const query = useDebouncedValue(search);
   const [balance, setBalance] = useState<BalanceFilter>('all');
+  const seesSelling = usePermission('fields.see_customer_balances');
+  const seesBuying = usePermission('fields.see_company_balances');
+  const seesNet = seesSelling && seesBuying;
   const [includeInactive, setIncludeInactive] = useState(false);
   const [sort, setSort] = useState<'name' | 'balance'>('name');
 
@@ -92,20 +95,26 @@ export function CustomersPage() {
               inputMode="search"
             />
           </div>
-          <select
-            className="mz-select"
-            aria-label={t('customers:net_balance')}
-            value={balance}
-            onChange={(event) => setBalance(event.target.value as BalanceFilter)}
-          >
-            <option value="all">{t('customers:all_balances')}</option>
-            <option value="owes">{t('customers:filter_owes')}</option>
-            <option value="credit">{t('customers:filter_credit')}</option>
-            <option value="settled">{t('customers:filter_settled')}</option>
-          </select>
-          <FilterChip active={sort === 'balance'} onClick={() => setSort(sort === 'balance' ? 'name' : 'balance')}>
-            {t('customers:sort_by_balance')}
-          </FilterChip>
+          {/* The net balance needs both sides' flags (D-054); without them the server ignores
+              this filter and sort, so they are not offered (review). */}
+          {seesNet ? (
+            <>
+              <select
+                className="mz-select"
+                aria-label={t('customers:net_balance')}
+                value={balance}
+                onChange={(event) => setBalance(event.target.value as BalanceFilter)}
+              >
+                <option value="all">{t('customers:all_balances')}</option>
+                <option value="owes">{t('customers:filter_owes')}</option>
+                <option value="credit">{t('customers:filter_credit')}</option>
+                <option value="settled">{t('customers:filter_settled')}</option>
+              </select>
+              <FilterChip active={sort === 'balance'} onClick={() => setSort(sort === 'balance' ? 'name' : 'balance')}>
+                {t('customers:sort_by_balance')}
+              </FilterChip>
+            </>
+          ) : null}
           <FilterChip active={includeInactive} onClick={() => setIncludeInactive(!includeInactive)}>
             {t('common:deactivated')}
           </FilterChip>

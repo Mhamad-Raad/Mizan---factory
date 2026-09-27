@@ -19,7 +19,6 @@ import { useJustSettled } from '../lib/motion.js';
 import { customerName } from '../lib/customers.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import type { OrderDetail } from './OrderFormPage.js';
-import type { CustomerRow } from './CustomersPage.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { useGlobalRate } from '../lib/rates.js';
@@ -75,13 +74,9 @@ export function OrderDetailPage() {
 
   // A payment is valued at the customer's own rate when they have one, else at today's global
   // rate — the precedence the server applies — so the sheet's preview is the figure saved.
+  // The order carries its company's own rate, so this needs no permission to open the company.
   const { rate: globalRate } = useGlobalRate();
-  const customer = useQuery({
-    queryKey: ['customers', order.data?.customer_id],
-    queryFn: () => apiRequest<CustomerRow>(`/customers/${order.data?.customer_id}`),
-    enabled: mayRecordPayment && Boolean(order.data?.customer_id),
-  });
-  const paymentRate: Rate | null = customer.data?.rate?.rate_iqd_per_usd ?? globalRate;
+  const paymentRate: Rate | null = order.data?.customer_rate_iqd_per_usd ?? globalRate;
 
   // The audit trail is paged by cursor (D-058). The payments and payment-type changes ride on
   // every page of the answer — they are the order's own, a handful, read straight from SQL.
@@ -138,8 +133,13 @@ export function OrderDetailPage() {
       return;
     }
     printPending.current = true;
-    if (receiptWanted) void receiptData.refetch();
-    else setReceiptWanted(true);
+    if (receiptWanted) {
+      // A retry that fails again leaves `isError` as it was, so the effect above cannot see it:
+      // disarm here, or a later background refetch would print by surprise (review).
+      void receiptData.refetch().then((result) => {
+        if (result.isError) printPending.current = false;
+      });
+    } else setReceiptWanted(true);
   };
 
   const invalidate = async () => {

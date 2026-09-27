@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Chip, SegmentedControl } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { errorMessage } from '../lib/errors.js';
@@ -128,15 +128,18 @@ export function ImportPage() {
 
   const template = KINDS.find((entry) => entry.kind === kind) as (typeof KINDS)[number];
 
+  const queryClient = useQueryClient();
   const send = useMutation({
     mutationFn: (mode: 'preview' | 'commit') =>
       apiRequest<PreviewResponse>(`/imports/${kind}${mode === 'preview' ? '/preview' : ''}`, {
         method: 'POST',
         body: { rows },
       }),
-    onSuccess: (response) => {
+    onSuccess: (response, mode) => {
       setResult(response);
       setError(null);
+      // Opening stock, balances and whole lists just arrived: every screen reads them afresh.
+      if (mode === 'commit') void queryClient.invalidateQueries();
     },
     onError: (caught) => {
       setResult(null);
