@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Decimal } from '@mizan/money';
+import { Decimal, roundHalfAwayFromZero } from '@mizan/money';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
 import { PeriodService } from '../settings/period.service.js';
@@ -223,6 +223,9 @@ export class ReportsService {
       const quantity = pricedMeasure === 'count' ? Number(row.stock_count) : Number(row.stock_kg);
       const boughtIqd = row.bought_iqd === null ? null : Number(row.bought_iqd);
       const boughtUsd = row.bought_usd_cents === null ? null : Number(row.bought_usd_cents);
+      // Stock the buys do not account for: all of it for a material never bought.
+      const unbought = row.lots_remaining === null ? new Decimal(quantity) : Decimal.max(new Decimal(quantity).minus(row.lots_remaining), 0);
+      const usesMonthPrice = !unbought.isZero();
 
       return {
         key: row.key,
@@ -240,23 +243,14 @@ export class ReportsService {
         moved_out_kg: row.out_kg,
         /** The month price the value was taken at, flagged when it is not this month's. */
         price_month: row.price_month,
-        price_fallback: row.lots_value_iqd === null && Boolean(row.price_month && row.price_month !== month),
+        price_fallback: usesMonthPrice && Boolean(row.price_month && row.price_month !== month),
         cost: {
-          // What the stock on hand cost us, from what is left of each buy at its own price
-          // (D-062); a material never bought falls back to stock × the month's bought price.
-          // Both currencies from stored pairs — never one converted from the other (2.11).
-          value_iqd:
-            row.lots_value_iqd !== null
-              ? Number(row.lots_value_iqd)
-              : boughtIqd === null
-                ? null
-                : Math.round(new Decimal(boughtIqd).times(quantity).toNumber()),
-          value_usd_cents:
-            row.lots_value_usd_cents !== null
-              ? Number(row.lots_value_usd_cents)
-              : boughtUsd === null
-                ? null
-                : Math.round(new Decimal(boughtUsd).times(quantity).toNumber()),
+          // What the stock on hand cost us: what is left of each buy, as its share of what the
+          // buy cost (D-062); stock with no buy behind it — opening stock, a material never
+          // bought — at the month's bought price. Both currencies from stored pairs, never one
+          // converted from the other (2.11).
+          value_iqd: stockValue(row.lots_value_iqd, boughtIqd, unbought),
+          value_usd_cents: stockValue(row.lots_value_usd_cents, boughtUsd, unbought),
           bought_iqd: boughtIqd,
           bought_usd_cents: boughtUsd,
         },
@@ -588,4 +582,11 @@ function paged<T>(
     page: paging.page,
     page_size: paging.page_size,
   };
+}
+
+/** The value of a material's stock in one currency: its buys, plus any stock no buy explains. */
+function stockValue(fromLots: string | null, monthPrice: number | null, unbought: Decimal): number | null {
+  if (unbought.isZero()) return fromLots === null ? 0 : Number(fromLots);
+  if (monthPrice === null) return fromLots === null ? null : Number(fromLots);
+  return (fromLots === null ? 0 : Number(fromLots)) + roundHalfAwayFromZero(new Decimal(monthPrice).times(unbought));
 }

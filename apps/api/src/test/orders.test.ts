@@ -205,6 +205,19 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       expect(created?.changes).toMatchObject({ rounding: { old: null, new: { iqd: 125, usd_cents: 10 } } });
     });
 
+    it('does not round the total of a company settled in dollars (D-069)', async () => {
+      const dollars = await as(ctx.http, admin)
+        .post('/api/v1/customers')
+        .send({ name: 'Gulf Trading', settlement_currency: 'USD' })
+        .expect(201);
+      // 1.3 kg × 850 = 1,105 د.ع — for a dinar account that would round to 1,250.
+      const order = await createOrder(sales, {
+        customer_id: dollars.body.id,
+        lines: [{ item_id: copper, qty_kg: '1.300' }],
+      }).expect(201);
+      expect(order.body).toMatchObject({ total_iqd: 1_105, rounding_iqd: 0, rounding_usd_cents: 0 });
+    });
+
     it('defaults the price from the month list and marks an override', async () => {
       const response = await createOrder(sales, {
         lines: [
@@ -332,6 +345,35 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
 
       const lots = await lotsOf(copper);
       expect(lots.map((lot) => lot.remaining)).toEqual(['6000.000', '1000.000']);
+    });
+
+    it('keeps the buys true to the stock after selling past every buy (review)', async () => {
+      // 6,000 kg on hand; selling 6,500 leaves the stock 500 short (a warning, A-34).
+      await createOrder(sales, { lines: [{ item_id: copper, qty_kg: '6500.000' }] }).expect(201);
+      // A buy of 1,000 brings the stock to 500 — the other 500 filled what was already sold.
+      await addStock(copper, '1000.000', undefined, 900);
+
+      const lots = await lotsOf(copper);
+      expect(lots.map((lot) => lot.remaining)).toEqual(['0.000', '500.000']);
+
+      // Selling the 500 left costs exactly them, never 500 more phantom kilos.
+      const before = await as(ctx.http, admin).get('/api/v1/accounts/summary').expect(200);
+      await createOrder(sales, { lines: [{ item_id: copper, qty_kg: '500.000' }] }).expect(201);
+      const after = await as(ctx.http, admin).get('/api/v1/accounts/summary').expect(200);
+      expect(after.body.cost_of_sold.amount_iqd - before.body.cost_of_sold.amount_iqd).toBe(450_000);
+      expect((await lotsOf(copper)).map((lot) => lot.remaining)).toEqual(['0.000', '0.000']);
+    });
+
+    it("costs a buy's stock at what the buy cost in both currencies, not a rounded unit price (review)", async () => {
+      const [lot] = (await as(ctx.http, admin).get(`/api/v1/items/${copper}/lots`).expect(200)).body.items as {
+        line_total_iqd: number;
+        line_total_usd_cents: number;
+      }[];
+      await createOrder(sales, { lines: [{ item_id: copper, qty_kg: '6000.000' }] }).expect(201);
+
+      const report = await as(ctx.http, admin).get('/api/v1/accounts/summary').expect(200);
+      expect(report.body.cost_of_sold.amount_iqd).toBe(lot?.line_total_iqd);
+      expect(report.body.cost_of_sold.amount_usd_cents).toBe(lot?.line_total_usd_cents);
     });
 
     it('refuses to void a buy whose stock has already been sold', async () => {
@@ -778,6 +820,63 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
   });
 
   describe('editing and voiding (FR-610, spec 2.5.3)', () => {
+    it('keeps a payment already made when an edit makes the order cash (review)', async () => {
+      const order = await createOrder(sales, { lines: [{ item_id: copper, qty_kg: '100.000' }] }).expect(201);
+      await as(ctx.http, sales)
+        .post(`/api/v1/orders/${order.body.id}/payments`)
+        .send({ amount: 30_000, currency: 'IQD', entry_date: today() })
+        .expect(201);
+      const read = await as(ctx.http, sales).get(`/api/v1/orders/${order.body.id}`).expect(200);
+
+      const edited = await as(ctx.http, sales)
+        .put(`/api/v1/orders/${order.body.id}`)
+        .send({
+          customer_id: kawa,
+          order_date: today(),
+          payment_type: 'cash',
+          received_currency: 'IQD',
+          version: read.body.version,
+          lines: [{ item_id: copper, qty_kg: '100.000' }],
+        })
+        .expect(200);
+
+      // 85,000 owed: 30,000 paid before, 55,000 settled in cash now — no credit out of nowhere.
+      expect(edited.body).toMatchObject({ remaining: 0, status: 'paid' });
+      const customer = await as(ctx.http, sales).get(`/api/v1/customers/${kawa}`).expect(200);
+      expect(customer.body.balance.amount_iqd).toBe(0);
+    });
+
+    it('never lets an edit or a payment-type change put the walk-in customer on credit (review)', async () => {
+      const order = await as(ctx.http, sales)
+        .post('/api/v1/orders')
+        .send({
+          customer_id: walkIn,
+          order_date: today(),
+          payment_type: 'cash',
+          received_currency: 'IQD',
+          lines: [{ item_id: copper, qty_kg: '1.000' }],
+        })
+        .expect(201);
+
+      const edit = await as(ctx.http, sales)
+        .put(`/api/v1/orders/${order.body.id}`)
+        .send({
+          customer_id: walkIn,
+          order_date: today(),
+          payment_type: 'borrowed',
+          version: order.body.version,
+          lines: [{ item_id: copper, qty_kg: '1.000' }],
+        })
+        .expect(422);
+      expect(edit.body.error.fields[0]).toMatchObject({ code: 'SYSTEM_CUSTOMER_CASH_ONLY' });
+
+      const change = await as(ctx.http, sales)
+        .post(`/api/v1/orders/${order.body.id}/payment-type`)
+        .send({ to: 'borrowed', note: 'on account' })
+        .expect(422);
+      expect(change.body.error.fields[0]).toMatchObject({ code: 'SYSTEM_CUSTOMER_CASH_ONLY' });
+    });
+
     it('writes reversals and new movements on an edit, and logs the diff', async () => {
       const order = await createOrder(sales, {
         lines: [{ item_id: copper, qty_kg: '100.000' }],
