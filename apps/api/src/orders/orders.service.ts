@@ -116,7 +116,8 @@ export class OrdersService {
   async get(context: RequestContext, id: string): Promise<OrderDto> {
     const row = await this.requireOrder(context, id);
     const lines = await this.orders.linesOf(id);
-    return toOrderDto(row, lines);
+    const own = await this.customers.currentRate(row.customer_id);
+    return { ...toOrderDto(row, lines), customer_rate_iqd_per_usd: own ? formatRate(own.rate) : null };
   }
 
   private async requireOrder(context: RequestContext, id: string): Promise<OrderListRow> {
@@ -296,7 +297,7 @@ export class OrdersService {
       input.acting_user_id ?? existing.acting_user_id,
     );
 
-    await this.database.transaction(async (tx) => {
+    const edited = await this.database.transaction(async (tx) => {
       const order = await this.orders.lock(id, tx);
       if (!order) throw ApiError.notFound();
       if (order.version !== input.version) throw await this.versionConflict(context, id);
@@ -320,6 +321,9 @@ export class OrdersService {
       if (!locked) throw ApiError.notFound();
 
       const oldLines = await this.orders.linesOf(id, tx);
+      // Every material the order had or will have, locked before any stock moves — the order
+      // every writer takes: account, materials, stock (review: deadlocks).
+      await this.lots.lockItems(tx, [...oldLines.map((line) => line.item_id), ...input.lines.map((line) => line.item_id)]);
 
       // Step 2 of 2.5.3: reverse everything live that belongs to this document.
       await this.stock.reverseLiveForRef(
@@ -340,13 +344,11 @@ export class OrdersService {
 
       // The old lines give their stock back to the buys it came from before the new lines take.
       await this.lots.release(tx, { type: 'order_line', ids: oldLines.map((line) => line.id), createdBy: context.userId });
-      // Every material's lock up front, in one order, after the account's (review: deadlocks).
-      await this.lots.lockItems(tx, input.lines.map((line) => line.item_id));
       const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource);
       const discount = this.discountPair(input.discount, rate, rateSource, lines);
       const totals = orderTotals(lines, discount, rate, customerRow.settlement_currency);
 
-      await this.stock.assertSellable(
+      const warnings = await this.stock.assertSellable(
         tx,
         lines.map((line) => ({
           item_id: line.item_id,
@@ -383,7 +385,7 @@ export class OrdersService {
       );
       if (!updated) throw await this.versionConflict(context, id);
 
-      await this.writeDocumentEntries(context, tx, locked, {
+      const creditWarning = await this.writeDocumentEntries(context, tx, locked, {
         orderId: id,
         orderDate: input.order_date,
         paymentType: input.payment_type,
@@ -424,9 +426,12 @@ export class OrdersService {
         },
         tx,
       );
+      return { warnings, creditWarning };
     });
 
-    return this.get(context, id);
+    // The same warnings a new order carries: an edit can oversell or pass the limit too (review).
+    const dto = await this.get(context, id);
+    return { ...dto, stock_warnings: edited.warnings, credit_limit_warning: edited.creditWarning };
   }
 
   /**
@@ -463,6 +468,8 @@ export class OrdersService {
       if (!locked) throw ApiError.notFound();
 
       const lines = await this.orders.linesOf(id, tx);
+      // Materials before their stock, sorted, as every writer takes them (review: deadlocks).
+      await this.lots.lockItems(tx, lines.map((line) => line.item_id));
       await this.stock.reverseLiveForRef(
         tx,
         { ref_type: 'order_line', ref_ids: lines.map((line) => line.id) },

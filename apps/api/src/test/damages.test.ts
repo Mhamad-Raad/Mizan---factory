@@ -462,6 +462,16 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
       expect(refused.body.error.message_key).toBe('errors:damage_booked');
     });
 
+    it('does not move a charged damage to another company (review)', async () => {
+      const created = await recordDamage(warehouse, { attribution: 'company', company_id: alNoor }).expect(201);
+      const other = await as(ctx.http, admin).post('/api/v1/customers').send({ name: 'Other Steel' }).expect(201);
+      const refused = await as(ctx.http, warehouse)
+        .patch(`/api/v1/damages/${created.body.id}`)
+        .send({ version: created.body.version, company_id: other.body.id })
+        .expect(409);
+      expect(refused.body.error.message_key).toBe('errors:damage_booked');
+    });
+
     it('reverses the movements on a void and keeps the reason', async () => {
       const created = await recordDamage(warehouse, { attribution: 'us' }).expect(201);
       const before = await stockOf(copper);
@@ -799,12 +809,14 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
       // 4 kg × 5,900, what the buy it came from cost (D-062).
       expect(created.body.cost.est_value_iqd).toBe(23_600);
 
-      // …and then somebody decides the material is sold by the piece (`PATCH /items/:id`).
+      // …and then the material is sold by the piece. The API refuses that for a material that has
+      // been bought (review), so this is data from before the rule, written directly.
       const material = await as(ctx.http, admin).get(`/api/v1/items/${copper}`).expect(200);
       await as(ctx.http, admin)
         .patch(`/api/v1/items/${copper}`)
         .send({ pricing_unit: 'per_piece', version: material.body.version })
-        .expect(200);
+        .expect(409);
+      await withDatabase((client) => client.query(`UPDATE items SET pricing_unit = 'per_piece' WHERE id = $1`, [copper]));
 
       // The record carries kilos, which are no longer the measure it is priced in. It must
       // still read — the review found this answering 500 from the kernel throwing.

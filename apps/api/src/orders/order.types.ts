@@ -100,6 +100,11 @@ export interface OrderDto {
   customer_id: string;
   customer_name: string;
   customer_is_system: boolean;
+  /**
+   * The company's own rate when it has one — the rate a payment on this order is valued at,
+   * before today's global rate (review: the payment preview). Null for none.
+   */
+  customer_rate_iqd_per_usd?: string | null;
   settlement_currency: Currency;
   order_date: string;
   payment_type: PaymentType;

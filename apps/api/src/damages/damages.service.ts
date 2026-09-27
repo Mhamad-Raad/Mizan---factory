@@ -382,7 +382,13 @@ export class DamagesService {
     const dateChanged = damageDate !== existing.damage_date;
 
     const stockEffect = stockEffectOf(attribution);
-    const bookingChanged = quantityChanged || attributionChanged || dateChanged;
+    // Which company, order or purchase it names is the booking too: an owed damage moved to
+    // another company would leave its charge on the first one's account (review).
+    const linksChanged =
+      links.company_id !== existing.company_id ||
+      links.order_id !== existing.order_id ||
+      links.purchase_id !== existing.purchase_id;
+    const bookingChanged = quantityChanged || attributionChanged || dateChanged || linksChanged;
 
     // A damage that took stock (and so its cost from the buys, D-062) or put its cost on a
     // company's account has been booked: its quantity, who did it and its date are that booking,
@@ -530,6 +536,13 @@ export class DamagesService {
         ]);
       }
 
+      // The locks in the order every writer takes them — the company, then the material, then
+      // its stock — so a void and a new damage for the same company cannot deadlock (review).
+      const account =
+        record.compensation === 'owed' && record.company_id
+          ? await this.customerLedger.lockOwner(tx, record.company_id)
+          : null;
+      await this.lots.lockItems(tx, [record.item_id]);
       await this.stock.reverseLiveForRef(
         tx,
         { ref_type: 'damage', ref_ids: [id] },
@@ -537,7 +550,6 @@ export class DamagesService {
       );
       await this.lots.release(tx, { type: 'damage', ids: [id], createdBy: context.userId });
       if (record.compensation === 'owed' && record.company_id) {
-        const account = await this.customerLedger.lockOwner(tx, record.company_id);
         if (account) {
           const entries = await this.customerLedger.entriesFor(tx, record.company_id);
           const reversed = new Set(entries.map((entry) => entry.reverses_entry_id).filter(Boolean));
