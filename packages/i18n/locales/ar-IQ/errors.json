@@ -65,5 +65,6 @@
   "field.number_too_small": "يجب أن يكون {{min}} أو أكثر",
   "field.number_too_big": "يجب أن يكون {{max}} أو أقل",
   "field.number_above": "يجب أن يكون أكثر من {{min}}",
-  "idempotency_key_invalid": "تعذّر إرسال هذا الطلب بأمان — أعد تحميل الصفحة وحاول مرة أخرى"
+  "idempotency_key_invalid": "تعذّر إرسال هذا الطلب بأمان — أعد تحميل الصفحة وحاول مرة أخرى",
+  "field.phone_invalid": "اكتب رقم هاتف بالأرقام، مثل 0750 123 4567"
 }

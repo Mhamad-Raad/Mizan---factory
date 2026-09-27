@@ -54,6 +54,8 @@ export class UsersRepository {
       `SELECT ${COLUMNS} FROM users
         WHERE deleted_at IS NULL
           AND (username = $1 OR ($2::text IS NOT NULL AND phone IS NOT NULL AND phone = $2))
+        -- A username typed exactly is that account, whatever phone anyone else carries.
+        ORDER BY (username = $1) DESC
         LIMIT 1`,
       [username, phone === '' ? null : phone],
     );

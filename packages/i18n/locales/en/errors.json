@@ -65,5 +65,6 @@
   "field.number_too_small": "Must be {{min}} or more",
   "field.number_too_big": "Must be {{max}} or less",
   "field.number_above": "Must be more than {{min}}",
-  "idempotency_key_invalid": "This request could not be sent safely — reload the page and try again"
+  "idempotency_key_invalid": "This request could not be sent safely — reload the page and try again",
+  "field.phone_invalid": "Type a phone number — digits, like 0750 123 4567"
 }
