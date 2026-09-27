@@ -4,6 +4,7 @@ import type { Currency, MoneyPair, Rate, RateSource } from '@mizan/money';
 import { allocateOldestFirst, balanceAsOf, balanceOf } from '@mizan/ledger';
 import type { AllocationResult, LedgerEntry, LedgerGroup } from '@mizan/ledger';
 import { AuditService } from '../audit/audit.service.js';
+import { resolveActingUser } from '../common/acting-user.js';
 import { ApiError } from '../common/errors.js';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
@@ -374,7 +375,7 @@ export class CompaniesService {
     return this.database.transaction(async (tx) => {
       const account = await this.lockFor(tx, id);
       if (input.purchase_id) await this.assertPurchaseOfCompany(tx, input.purchase_id, id);
-      const performedBy = input.performed_by ?? context.userId;
+      const performedBy = await resolveActingUser(tx, context, input.performed_by, 'performed_by');
       const results: CompanyWriteResultDto[] = [];
 
       if (input.split && input.split.length > 0) {
@@ -595,6 +596,8 @@ export class CompaniesService {
     id: string,
     kind: 'credit' | 'opening',
     input: CompanyEntryInput,
+    /** A caller's open transaction to write in, so the credit and what it is for commit together. */
+    outer?: Db,
   ): Promise<CompanyWriteResultDto> {
     this.period.assertNotFuture(input.entry_date, 'entry_date');
     if (!input.note?.trim()) {
@@ -611,7 +614,9 @@ export class CompaniesService {
 
     const { rate, source } = await this.rateFor(id);
 
-    return this.database.transaction(async (tx) => {
+    const inTransaction = <T>(work: (tx: Db) => Promise<T>): Promise<T> =>
+      outer ? work(outer) : this.database.transaction(work);
+    return inTransaction(async (tx) => {
       const account = await this.lockFor(tx, id);
       if (input.purchase_id) await this.assertPurchaseOfCompany(tx, input.purchase_id, id);
       if (input.damage_id) await this.assertDamageOfCompany(tx, input.damage_id, id);
@@ -637,7 +642,7 @@ export class CompaniesService {
         note: input.note.trim(),
         purchase_id: input.purchase_id ?? null,
         damage_id: input.damage_id ?? null,
-        performed_by_user_id: input.performed_by ?? context.userId,
+        performed_by_user_id: await resolveActingUser(tx, context, input.performed_by, 'performed_by'),
         method: null,
         voucher: false,
       });

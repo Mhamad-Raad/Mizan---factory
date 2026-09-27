@@ -440,6 +440,28 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
         .expect(200);
     });
 
+    it('keeps the cost it took from the buys when only its texts are edited (review)', async () => {
+      const created = await recordDamage(warehouse, { attribution: 'us' }).expect(201);
+      expect(created.body.cost.est_value_source).toBe('lots');
+
+      const edited = await as(ctx.http, warehouse)
+        .patch(`/api/v1/damages/${created.body.id}`)
+        .send({ version: created.body.version, notes: 'found behind the rack' })
+        .expect(200);
+      expect(edited.body.cost).toMatchObject(created.body.cost);
+    });
+
+    it('does not re-book a record into one that takes stock or charges a company (review)', async () => {
+      // Goods a customer brought back move no stock and charge nobody…
+      const created = await recordDamage(warehouse, { attribution: 'customer_order', order_id: order }).expect(201);
+      // …and becoming "the company broke it" would need both: that is a void and a new record.
+      const refused = await as(ctx.http, warehouse)
+        .patch(`/api/v1/damages/${created.body.id}`)
+        .send({ version: created.body.version, attribution: 'company', company_id: alNoor })
+        .expect(409);
+      expect(refused.body.error.message_key).toBe('errors:damage_booked');
+    });
+
     it('reverses the movements on a void and keeps the reason', async () => {
       const created = await recordDamage(warehouse, { attribution: 'us' }).expect(201);
       const before = await stockOf(copper);

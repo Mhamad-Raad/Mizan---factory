@@ -352,6 +352,16 @@ export class OrdersRepository {
     };
   }
 
+  /** What the ledger says is still owed on one order, in one currency (0 before any entry). */
+  async remainingOf(orderId: string, currency: 'IQD' | 'USD', tx: Db): Promise<number> {
+    const column = currency === 'IQD' ? 'remaining_iqd' : 'remaining_usd_cents';
+    const { rows } = await tx.query<{ remaining: string }>(
+      `SELECT ${column}::text AS remaining FROM order_remaining WHERE order_id = $1`,
+      [orderId],
+    );
+    return Number(rows[0]?.remaining ?? 0);
+  }
+
   async linesOf(orderId: string, tx?: Db): Promise<OrderLineRow[]> {
     const { rows } = await (tx ?? this.database).query<OrderLineRow>(
       `SELECT ${LINE_COLUMNS}, i.name AS item_name, i.pricing_unit::text AS item_pricing_unit,
