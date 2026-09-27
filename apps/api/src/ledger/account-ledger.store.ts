@@ -106,6 +106,21 @@ export class AccountLedgerStore implements LedgerStore {
     return rows.map((row) => this.toEntry(row));
   }
 
+  /**
+   * The rows that name one document — an order's payments, a purchase's — in posting order.
+   * Filtered in the database: a document's History tab must not read the account's whole
+   * ledger, which after years is thousands of rows for a handful (D-058).
+   */
+  async entriesOfDocument(ownerId: string, documentId: string): Promise<LedgerEntry[]> {
+    const { rows } = await this.tx.query<LedgerRow>(
+      `SELECT ${this.columns()} FROM ${this.shape.table}
+        WHERE ${this.shape.ownerColumn} = $1 AND ${this.shape.documentColumn} = $2
+        ORDER BY posting_seq ASC`,
+      [ownerId, documentId],
+    );
+    return rows.map((row) => this.toEntry(row));
+  }
+
   async append(entry: NewLedgerEntry): Promise<LedgerEntry> {
     const { table, ownerColumn, entryTypeEnum, documentColumn } = this.shape;
     const { rows } = await this.tx.query<LedgerRow>(

@@ -58,6 +58,8 @@
   "count_symbol": "دانە",
   "rate_used": "بە نرخی ئاڵوگۆڕی {{rate}}",
   "manual_rate": "نرخی ئاڵوگۆڕی دەستی {{rate}}",
+  "rate_company": "نرخی کۆمپانیا {{rate}}",
+  "rate_system": "نرخی سیستەم {{rate}}",
   "draft_found": "کارێکی پاشەکەوتنەکراوت هەیە لە {{time}}",
   "draft_restore": "بگەڕێنەوە",
   "statement_window": "ئەم ڕاپۆرتە مانگی ڕابردووی ١٢ مانگ دەگرێتەوە؛ ئەوەی پێشتر لە باڵانسی سەرەتاییدایە.",
@@ -66,7 +68,7 @@
   "date_to": "تا بەرواری",
   "status": "دۆخ",
   "number_column": "ژمارە",
-  "nav_daily": "کاری ڕۆژانە",
+  "nav_trade": "فرۆشتن و کڕین",
   "nav_records": "تۆمارەکان",
   "nav_insight": "بینین و ڕاپۆرت",
   "nav_admin": "بەڕێوەبردن",
@@ -81,5 +83,10 @@
   "theme_menu": "ڕووکار",
   "text_size_menu": "قەبارەی نووسین",
   "entered_separately": "جیا جیا دەنووسرێت",
-  "rate_at_source": "بەپێی {{source}}: {{rate}}"
+  "rate_at_source": "بەپێی {{source}}: {{rate}}",
+  "pager_rows": "ڕیز لە هەر پەڕەیەک",
+  "pager_range": "{{range}} لە {{total}}",
+  "pager_page": "پەڕەی {{page}}",
+  "pager_previous": "پەڕەی پێشوو",
+  "pager_next": "پەڕەی دواتر"
 }

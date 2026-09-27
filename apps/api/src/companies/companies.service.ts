@@ -17,6 +17,7 @@ import { PeriodService } from '../settings/period.service.js';
 import { SettingsService } from '../settings/settings.service.js';
 import { CompaniesRepository } from './companies.repository.js';
 import type { CompanyFilters, CompanyListRow, CompanyRow } from './companies.repository.js';
+import { pageOfArray, pagingOf } from '../common/paging.js';
 
 export interface MoneyInput {
   amount: number;
@@ -73,8 +74,6 @@ export interface CompanyDto {
   address: string | null;
   notes: string | null;
   settlement_currency: Currency;
-  assigned_user_id: string | null;
-  assigned_user_name: string | null;
   is_active: boolean;
   /** The company's own rate, with "since", or null when it falls back to the global one. */
   rate: { rate_iqd_per_usd: Rate; since: string; is_company_rate: boolean } | null;
@@ -151,11 +150,10 @@ export class CompaniesService {
 
   private async detailOf(row: CompanyRow, tx?: Db): Promise<CompanyDto> {
     const db = tx ?? this.database;
-    const [balance, companyRate, globalRate, assignee] = await Promise.all([
+    const [balance, companyRate, globalRate] = await Promise.all([
       this.companies.balanceOf(row.id, db),
       this.companies.currentRate(row.id, db),
       this.rates.current(db),
-      this.assigneeName(db, row.assigned_user_id),
     ]);
 
     const rate = companyRate
@@ -180,22 +178,11 @@ export class CompaniesService {
       address: row.address,
       notes: row.notes,
       settlement_currency: row.settlement_currency,
-      assigned_user_id: row.assigned_user_id,
-      assigned_user_name: assignee,
       is_active: row.is_active,
       rate,
       balance: rate ? toBalance(balance, row.settlement_currency, rate.rate_iqd_per_usd) : null,
       version: row.version,
     };
-  }
-
-  private async assigneeName(db: Db, userId: string | null): Promise<string | null> {
-    if (!userId) return null;
-    const { rows } = await db.query<{ display_name: string }>(
-      'SELECT display_name FROM users WHERE id = $1',
-      [userId],
-    );
-    return rows[0]?.display_name ?? null;
   }
 
   /**
@@ -216,7 +203,7 @@ export class CompaniesService {
    *
    * The running balance is still computed over the **whole** ledger in posting order, because
    * that is what makes it the same number History recorded (2.4.1 rule 5); the filters and the
-   * limit decide only what is returned. Without the bound a supplier of fifteen years answers
+   * page decide only what is returned. Without the bound a supplier of fifteen years answers
    * this route with 1.7 MB of JSON to a phone, which is what the I2 review measured.
    */
   async ledgerOf(
@@ -230,15 +217,18 @@ export class CompaniesService {
       from?: string;
       to?: string;
       done_by?: string;
-      limit?: number;
+      page?: number;
+      page_size?: number;
     },
   ): Promise<{
     company: { id: string; name: string; settlement_currency: Currency };
     balance: number;
     balance_as_of: number | null;
     items: LedgerGroupDto[];
-    /** How many groups the filters matched, and whether the answer was cut at the limit. */
+    /** How many groups the filters matched, and whether there is a page after this one. */
     total: number;
+    page: number;
+    page_size: number;
     has_more: boolean;
   }> {
     const row = await this.requireCompany(id);
@@ -257,8 +247,8 @@ export class CompaniesService {
 
     // Newest first on screen; the running balance was computed in posting order (2.4.1).
     const newestFirst = [...matching].reverse();
-    const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
-    const page = newestFirst.slice(0, limit);
+    const paging = pagingOf(options);
+    const page = pageOfArray(newestFirst, paging);
     const names = await this.userNames(
       page.flatMap((group) => group.rows.map((line) => line.entry)),
     );
@@ -271,7 +261,9 @@ export class CompaniesService {
         : null,
       items: page.map((group) => toGroupDto(group, names)),
       total: matching.length,
-      has_more: newestFirst.length > page.length,
+      page: paging.page,
+      page_size: paging.page_size,
+      has_more: paging.offset + page.length < newestFirst.length,
     };
   }
 
@@ -282,7 +274,7 @@ export class CompaniesService {
    */
   async purchaseBreakdown(
     id: string,
-    options: { limit?: number } = {},
+    options: { page?: number; page_size?: number } = {},
   ): Promise<{
     settlement_currency: Currency;
     allocation: AllocationResult;
@@ -292,6 +284,8 @@ export class CompaniesService {
     /** How many still owe something, and their total — so the identity is checkable as sent. */
     owing_count: number;
     owing_total: number;
+    page: number;
+    page_size: number;
   }> {
     const row = await this.requireCompany(id);
     const [entries, purchases] = await Promise.all([
@@ -321,8 +315,8 @@ export class CompaniesService {
     // checkable from the response even when the rows are cut: owing_total + general = balance.
     const owing = allocation.purchases.filter((purchase) => purchase.remaining !== 0);
     const owingTotal = owing.reduce((total, purchase) => total + purchase.remaining, 0);
-    const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
-    const page = owing.slice(0, limit);
+    const paging = pagingOf(options);
+    const page = pageOfArray(owing, paging);
     const pageIds = new Set(page.map((purchase) => purchase.purchase_id));
 
     return {
@@ -339,6 +333,8 @@ export class CompaniesService {
       settled_count: allocation.purchases.length - owing.length,
       owing_count: owing.length,
       owing_total: owingTotal,
+      page: paging.page,
+      page_size: paging.page_size,
     };
   }
 
@@ -1074,8 +1070,6 @@ function toCompanyDtoFromListRow(row: CompanyListRow, globalRate: Rate | null): 
     address: row.address,
     notes: row.notes,
     settlement_currency: row.settlement_currency,
-    assigned_user_id: row.assigned_user_id,
-    assigned_user_name: row.assigned_user_name,
     is_active: row.is_active,
     rate,
     balance: rate

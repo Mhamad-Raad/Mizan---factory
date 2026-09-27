@@ -61,7 +61,8 @@ export const PRESETS: Readonly<Record<PresetKey, Preset>> = {
   },
   accountant: {
     key: 'accountant',
-    version: 1,
+    // 2: the accountant page and its expenses (D-062).
+    version: 2,
     labelKey: 'permissions.preset.accountant',
     keys: [
       'companies.view',
@@ -73,12 +74,13 @@ export const PRESETS: Readonly<Record<PresetKey, Preset>> = {
       'companies.record_credit',
       'companies.opening_balance',
       'purchases.view',
+      'accounts.view',
+      'expenses.create',
       'orders.view',
       'orders.change_payment_type',
       'orders.record_payment',
       'orders.credit',
       'customers.view',
-      'customers.view_all',
       'customers.opening_balance',
       'customers.set_rate',
       'materials.view',
@@ -102,7 +104,6 @@ export const PRESETS: Readonly<Record<PresetKey, Preset>> = {
 export type ExtraKey =
   | 'can_void'
   | 'sees_bought_prices'
-  | 'sees_all_customers'
   | 'sees_balances'
   | 'can_adjust_owed'
   | 'can_set_rates';
@@ -114,7 +115,7 @@ export interface Extra {
 }
 
 /**
- * The six everyday extras of the simple editor (spec 1.5.3, FR-204). Each maps to a fixed
+ * The five everyday extras of the simple editor (spec 1.5.3, FR-204). Each maps to a fixed
  * group of catalog keys; simple mode and the Advanced grid edit one and the same set.
  */
 export const EXTRAS: readonly Extra[] = [
@@ -123,11 +124,6 @@ export const EXTRAS: readonly Extra[] = [
     key: 'sees_bought_prices',
     labelKey: 'permissions.extra.sees_bought_prices',
     keys: ['fields.see_bought_price'],
-  },
-  {
-    key: 'sees_all_customers',
-    labelKey: 'permissions.extra.sees_all_customers',
-    keys: ['customers.view_all'],
   },
   {
     key: 'sees_balances',

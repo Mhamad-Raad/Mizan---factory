@@ -10,7 +10,8 @@ export interface OrderHistory {
     note: string | null;
     changes: {
       /** A money entry's own figures — present on `ledger_entry` rows (payments, reversals). */
-      entry?: { type: string; amount_iqd: number; amount_usd_cents: number };
+      /** The amounts are absent when the caller's field flags withhold them. */
+      entry?: { type: string; amount_iqd?: number; amount_usd_cents?: number };
     } | null;
     related: { ledger_entry_id?: string } | null;
   }[];

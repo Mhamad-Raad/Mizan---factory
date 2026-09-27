@@ -60,6 +60,34 @@
 }
 
 /*
+ * The typefaces of Settings (D-061). Each names the family for Kurdish and Arabic text and keeps
+ * Inter for English — except IBM Plex, which has its own Latin — and every one carries the Sorani
+ * letters ڵ ڕ ۆ ێ ە ڤ. Vazirmatn is the default in the block above, and restated here so its own
+ * Settings card draws in Vazirmatn whatever the device has chosen.
+ */
+[data-font='vazirmatn'] {
+  --font-arabic: 'Vazirmatn Variable', 'Vazirmatn', 'Noto Sans Arabic', 'Segoe UI', tahoma, sans-serif;
+  --font-latin: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+[data-font='plex'] {
+  --font-arabic: 'IBM Plex Sans Arabic', 'Vazirmatn Variable', tahoma, sans-serif;
+  --font-latin: 'IBM Plex Sans Arabic', 'Inter Variable', system-ui, sans-serif;
+}
+
+[data-font='noto'] {
+  --font-arabic: 'Noto Sans Arabic Variable', 'Vazirmatn Variable', tahoma, sans-serif;
+}
+
+[data-font='kufi'] {
+  --font-arabic: 'Noto Kufi Arabic Variable', 'Vazirmatn Variable', tahoma, sans-serif;
+}
+
+[data-font='naskh'] {
+  --font-arabic: 'Noto Naskh Arabic Variable', 'Vazirmatn Variable', serif;
+}
+
+/*
  * The light ramp answers to the attribute as well as to the root, because the theme previews in
  * Settings draw a miniature of a theme **other** than the one on screen: a box marked
  * `data-theme="light"` inside a dark app declares the light colours again on itself, and the
@@ -103,6 +131,20 @@
   --color-sidebar-hover: #edf3f0;
   --color-on-header: #121e17;
   --color-brass: #93690d;
+
+  /* Data tables (client review, after the delivery dashboard): a tinted header, the odd
+     rows a shade off the surface, and a hover in the brand's soft tint. */
+  --color-table-head: #eef3f0;
+  --color-table-stripe: #f1f5f3;
+  --color-table-hover: #e2f3ee;
+
+  /*
+   * The two chart series of Today — sales and purchases. Validated with the dataviz palette
+   * check against the light surface: lightness band, chroma, CVD ΔE 10.1 (protan), normal
+   * ΔE 15.7, ≥ 3:1 contrast. Always shown with a legend, never colour alone.
+   */
+  --color-chart-sales: #00816c;
+  --color-chart-purchases: #93690d;
   --color-focus: #00816c;
   --color-neutral-chip-bg: #edf3f0;
   --color-neutral-chip-text: #5a675f;
@@ -148,6 +190,16 @@
   --color-sidebar-hover: #202c25;
   --color-on-header: #e9f1ec;
   --color-brass: #e6b55d;
+
+  /* The data tables' header, stripe and hover on the dark surface. */
+  --color-table-head: #1f2b24;
+  --color-table-stripe: #1d2922;
+  --color-table-hover: #21382f;
+
+  /* The dark steps of the same two hues, validated against the dark surface: CVD ΔE 12.6
+     (deutan), normal ΔE 17.1, inside the dark lightness band. */
+  --color-chart-sales: #34a38e;
+  --color-chart-purchases: #b3831f;
   --color-focus: #46bba5;
   --color-neutral-chip-bg: #25312a;
   --color-neutral-chip-text: #9aa9a0;
@@ -156,4 +208,577 @@
   --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
 
   color-scheme: dark;
+}
+
+/*
+ * Colour palettes (client review, after the item-management system): a device can wear Mizan in
+ * another colour. Teal is the default and has no block — it is the ramp above. Each palette is that
+ * same ramp turned to another hue in OKLCH, its brand steps and its tinted greys alike, at the same
+ * lightness, so every pair keeps the contrast the teal was measured at; `check:contrast` measures
+ * every palette in both themes anyway. Status colours, the chart series and brass are not palette
+ * colours: paid, owed and a series keep their meaning whatever the palette.
+ *
+ * The selectors answer both on the root and on a preview box inside it, as the themes do, so a
+ * palette card in Settings draws its miniature in its own colours; a box that names its own
+ * palette (a teal card in a plum app) is left to its own.
+ */
+
+/* Ocean: a steel blue. */
+[data-palette='ocean'][data-theme='light'],
+[data-palette='ocean'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fafcff;
+  --color-surface-2: #edf2f6;
+  --color-text: #121c24;
+  --color-text-muted: #5a656e;
+  --color-border: #d9dfe4;
+  --color-border-strong: #7c8892;
+  --color-primary: #3d72a7;
+  --color-primary-hover: #315f8d;
+  --color-primary-soft: #d7eaff;
+  --color-on-primary-soft: #173049;
+  --color-sidebar: #f7fafd;
+  --color-sidebar-text: #121c24;
+  --color-sidebar-accent: #d7eaff;
+  --color-sidebar-accent-text: #173049;
+  --color-sidebar-hover: #edf2f6;
+  --color-on-header: #121c24;
+  --color-table-head: #eef2f6;
+  --color-table-stripe: #f1f4f7;
+  --color-table-hover: #e5f0fb;
+  --color-focus: #3d72a7;
+  --color-neutral-chip-bg: #edf2f6;
+  --color-neutral-chip-text: #5a656e;
+}
+
+[data-palette='ocean'][data-theme='dark'],
+[data-palette='ocean'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #0e171f;
+  --color-surface: #172028;
+  --color-surface-2: #252f38;
+  --color-text: #e9f0f6;
+  --color-text-muted: #9aa6b1;
+  --color-border: #2a343d;
+  --color-border-strong: #69737c;
+  --color-primary: #6daae7;
+  --color-primary-hover: #8cc3fc;
+  --color-on-primary: #0a1722;
+  --color-primary-soft: #283a4c;
+  --color-on-primary-soft: #d0e0f2;
+  --color-header: #172028;
+  --color-sidebar: #151e26;
+  --color-sidebar-text: #e9f0f6;
+  --color-sidebar-accent: #283a4c;
+  --color-sidebar-accent-text: #d0e0f2;
+  --color-sidebar-hover: #202a33;
+  --color-on-header: #e9f0f6;
+  --color-table-head: #1f2932;
+  --color-table-stripe: #1d272f;
+  --color-table-hover: #253443;
+  --color-focus: #6daae7;
+  --color-neutral-chip-bg: #252f38;
+  --color-neutral-chip-text: #9aa6b1;
+}
+
+/* Sky: a clear cyan blue. */
+[data-palette='sky'][data-theme='light'],
+[data-palette='sky'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #f9fdfe;
+  --color-surface-2: #ecf3f5;
+  --color-text: #0f1d23;
+  --color-text-muted: #57666c;
+  --color-border: #d8dfe3;
+  --color-border-strong: #7a898f;
+  --color-primary: #0b7a9a;
+  --color-primary-hover: #036681;
+  --color-primary-soft: #cceefd;
+  --color-on-primary-soft: #013443;
+  --color-sidebar: #f7fbfc;
+  --color-sidebar-text: #0f1d23;
+  --color-sidebar-accent: #cceefd;
+  --color-sidebar-accent-text: #013443;
+  --color-sidebar-hover: #ecf3f5;
+  --color-on-header: #0f1d23;
+  --color-table-head: #edf3f5;
+  --color-table-stripe: #f1f5f6;
+  --color-table-hover: #e1f2f9;
+  --color-focus: #0b7a9a;
+  --color-neutral-chip-bg: #ecf3f5;
+  --color-neutral-chip-text: #57666c;
+}
+
+[data-palette='sky'][data-theme='dark'],
+[data-palette='sky'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #0c181d;
+  --color-surface: #152126;
+  --color-surface-2: #233036;
+  --color-text: #e8f0f4;
+  --color-text-muted: #97a8af;
+  --color-border: #28353b;
+  --color-border-strong: #66747a;
+  --color-primary: #42b3db;
+  --color-primary-hover: #6bccf0;
+  --color-on-primary: #061820;
+  --color-primary-soft: #1e3d49;
+  --color-on-primary-soft: #c9e3ee;
+  --color-header: #152126;
+  --color-sidebar: #131f24;
+  --color-sidebar-text: #e8f0f4;
+  --color-sidebar-accent: #1e3d49;
+  --color-sidebar-accent-text: #c9e3ee;
+  --color-sidebar-hover: #1e2b31;
+  --color-on-header: #e8f0f4;
+  --color-table-head: #1d2a30;
+  --color-table-stripe: #1b282e;
+  --color-table-hover: #1e3640;
+  --color-focus: #42b3db;
+  --color-neutral-chip-bg: #233036;
+  --color-neutral-chip-text: #97a8af;
+}
+
+/* Indigo: a deep blue-violet. */
+[data-palette='indigo'][data-theme='light'],
+[data-palette='indigo'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fbfcff;
+  --color-surface-2: #f0f1f6;
+  --color-text: #181a24;
+  --color-text-muted: #60636e;
+  --color-border: #dcdee4;
+  --color-border-strong: #838591;
+  --color-primary: #6168a8;
+  --color-primary-hover: #50568e;
+  --color-primary-soft: #e2e6ff;
+  --color-on-primary-soft: #282b4a;
+  --color-sidebar: #f9fafd;
+  --color-sidebar-text: #181a24;
+  --color-sidebar-accent: #e2e6ff;
+  --color-sidebar-accent-text: #282b4a;
+  --color-sidebar-hover: #f0f1f6;
+  --color-on-header: #181a24;
+  --color-table-head: #f0f1f6;
+  --color-table-stripe: #f3f4f7;
+  --color-table-hover: #ebeefc;
+  --color-focus: #6168a8;
+  --color-neutral-chip-bg: #f0f1f6;
+  --color-neutral-chip-text: #60636e;
+}
+
+[data-palette='indigo'][data-theme='dark'],
+[data-palette='indigo'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #14161e;
+  --color-surface: #1c1f27;
+  --color-surface-2: #2b2d37;
+  --color-text: #edeef5;
+  --color-text-muted: #a1a4b1;
+  --color-border: #30323c;
+  --color-border-strong: #6e717c;
+  --color-primary: #959ee9;
+  --color-primary-hover: #aeb8fe;
+  --color-on-primary: #121522;
+  --color-primary-soft: #33364d;
+  --color-on-primary-soft: #d9ddf2;
+  --color-header: #1c1f27;
+  --color-sidebar: #1b1d25;
+  --color-sidebar-text: #edeef5;
+  --color-sidebar-accent: #33364d;
+  --color-sidebar-accent-text: #d9ddf2;
+  --color-sidebar-hover: #262832;
+  --color-on-header: #edeef5;
+  --color-table-head: #252731;
+  --color-table-stripe: #23252f;
+  --color-table-hover: #2e3143;
+  --color-focus: #959ee9;
+  --color-neutral-chip-bg: #2b2d37;
+  --color-neutral-chip-text: #a1a4b1;
+}
+
+/* Plum: a muted plum. */
+[data-palette='plum'][data-theme='light'],
+[data-palette='plum'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fefbfd;
+  --color-surface-2: #f4f0f3;
+  --color-text: #20181f;
+  --color-text-muted: #6a6068;
+  --color-border: #e1dce1;
+  --color-border-strong: #8d828b;
+  --color-primary: #925786;
+  --color-primary-hover: #7b4770;
+  --color-primary-soft: #f9dff2;
+  --color-on-primary-soft: #3f2339;
+  --color-sidebar: #fcf9fb;
+  --color-sidebar-text: #20181f;
+  --color-sidebar-accent: #f9dff2;
+  --color-sidebar-accent-text: #3f2339;
+  --color-sidebar-hover: #f4f0f3;
+  --color-on-header: #20181f;
+  --color-table-head: #f4f0f3;
+  --color-table-stripe: #f6f3f5;
+  --color-table-hover: #f7eaf4;
+  --color-focus: #925786;
+  --color-neutral-chip-bg: #f4f0f3;
+  --color-neutral-chip-text: #6a6068;
+}
+
+[data-palette='plum'][data-theme='dark'],
+[data-palette='plum'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #1b131a;
+  --color-surface: #241c23;
+  --color-surface-2: #332a32;
+  --color-text: #f3ecf2;
+  --color-text-muted: #aca1aa;
+  --color-border: #382f37;
+  --color-border-strong: #776e76;
+  --color-primary: #cf8ac0;
+  --color-primary-hover: #e6a6d7;
+  --color-on-primary: #1c111b;
+  --color-primary-soft: #453040;
+  --color-on-primary-soft: #ebd7e6;
+  --color-header: #241c23;
+  --color-sidebar: #221a21;
+  --color-sidebar-text: #f3ecf2;
+  --color-sidebar-accent: #453040;
+  --color-sidebar-accent-text: #ebd7e6;
+  --color-sidebar-hover: #2e252d;
+  --color-on-header: #f3ecf2;
+  --color-table-head: #2d242c;
+  --color-table-stripe: #2b222a;
+  --color-table-hover: #3d2c39;
+  --color-focus: #cf8ac0;
+  --color-neutral-chip-bg: #332a32;
+  --color-neutral-chip-text: #aca1aa;
+}
+
+/* Rose: a pinkish red. */
+[data-palette='rose'][data-theme='light'],
+[data-palette='rose'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fefbfc;
+  --color-surface-2: #f5f0f2;
+  --color-text: #21181c;
+  --color-text-muted: #6b6064;
+  --color-border: #e2dcdf;
+  --color-border-strong: #8e8287;
+  --color-primary: #ac4177;
+  --color-primary-hover: #923564;
+  --color-primary-soft: #ffddeb;
+  --color-on-primary-soft: #4c1932;
+  --color-sidebar: #fcf9fa;
+  --color-sidebar-text: #21181c;
+  --color-sidebar-accent: #ffddeb;
+  --color-sidebar-accent-text: #4c1932;
+  --color-sidebar-hover: #f5f0f2;
+  --color-on-header: #21181c;
+  --color-table-head: #f5f0f2;
+  --color-table-stripe: #f6f3f4;
+  --color-table-hover: #ffe7f0;
+  --color-focus: #ac4177;
+  --color-neutral-chip-bg: #f5f0f2;
+  --color-neutral-chip-text: #6b6064;
+}
+
+[data-palette='rose'][data-theme='dark'],
+[data-palette='rose'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #1c1317;
+  --color-surface: #251c20;
+  --color-surface-2: #342a2f;
+  --color-text: #f4ecef;
+  --color-text-muted: #aea1a6;
+  --color-border: #392f34;
+  --color-border-strong: #796e72;
+  --color-primary: #f074af;
+  --color-primary-hover: #fe99c7;
+  --color-on-primary: #1e1117;
+  --color-primary-soft: #502a3b;
+  --color-on-primary-soft: #f7d2e1;
+  --color-header: #251c20;
+  --color-sidebar: #231a1e;
+  --color-sidebar-text: #f4ecef;
+  --color-sidebar-accent: #502a3b;
+  --color-sidebar-accent-text: #f7d2e1;
+  --color-sidebar-hover: #2f252a;
+  --color-on-header: #f4ecef;
+  --color-table-head: #2e2429;
+  --color-table-stripe: #2c2227;
+  --color-table-hover: #462735;
+  --color-focus: #f074af;
+  --color-neutral-chip-bg: #342a2f;
+  --color-neutral-chip-text: #aea1a6;
+}
+
+/* Crimson: a deep red, turned from the danger red so a button never reads as a warning. */
+[data-palette='crimson'][data-theme='light'],
+[data-palette='crimson'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fefbfb;
+  --color-surface-2: #f5f0f0;
+  --color-text: #221818;
+  --color-text-muted: #6c6060;
+  --color-border: #e3dcdc;
+  --color-border-strong: #908282;
+  --color-primary: #bd3645;
+  --color-primary-hover: #a02a38;
+  --color-primary-soft: #ffdfdf;
+  --color-on-primary-soft: #54131a;
+  --color-sidebar: #fdf9f9;
+  --color-sidebar-text: #221818;
+  --color-sidebar-accent: #ffdfdf;
+  --color-sidebar-accent-text: #54131a;
+  --color-sidebar-hover: #f5f0f0;
+  --color-on-header: #221818;
+  --color-table-head: #f5f0f0;
+  --color-table-stripe: #f7f3f3;
+  --color-table-hover: #ffe8e8;
+  --color-focus: #bd3645;
+  --color-neutral-chip-bg: #f5f0f0;
+  --color-neutral-chip-text: #6c6060;
+}
+
+[data-palette='crimson'][data-theme='dark'],
+[data-palette='crimson'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #1d1313;
+  --color-surface: #261c1c;
+  --color-surface-2: #362b2b;
+  --color-text: #f4ecec;
+  --color-text-muted: #afa1a1;
+  --color-border: #3b2f30;
+  --color-border-strong: #7a6e6e;
+  --color-primary: #fd727a;
+  --color-primary-hover: #ff9fa1;
+  --color-on-primary: #1f1112;
+  --color-primary-soft: #56282a;
+  --color-on-primary-soft: #fed1d1;
+  --color-header: #261c1c;
+  --color-sidebar: #241a1a;
+  --color-sidebar-text: #f4ecec;
+  --color-sidebar-accent: #56282a;
+  --color-sidebar-accent-text: #fed1d1;
+  --color-sidebar-hover: #312626;
+  --color-on-header: #f4ecec;
+  --color-table-head: #302525;
+  --color-table-stripe: #2e2323;
+  --color-table-hover: #4b2627;
+  --color-focus: #fd727a;
+  --color-neutral-chip-bg: #362b2b;
+  --color-neutral-chip-text: #afa1a1;
+}
+
+/* Clay: a warm terracotta. */
+[data-palette='clay'][data-theme='light'],
+[data-palette='clay'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fffbfa;
+  --color-surface-2: #f6f0ed;
+  --color-text: #241812;
+  --color-text-muted: #6e605a;
+  --color-border: #e4dcd9;
+  --color-border-strong: #91837c;
+  --color-primary: #a05842;
+  --color-primary-hover: #864835;
+  --color-primary-soft: #fee0d7;
+  --color-on-primary-soft: #462319;
+  --color-sidebar: #fdf9f7;
+  --color-sidebar-text: #241812;
+  --color-sidebar-accent: #fee0d7;
+  --color-sidebar-accent-text: #462319;
+  --color-sidebar-hover: #f6f0ed;
+  --color-on-header: #241812;
+  --color-table-head: #f6f0ee;
+  --color-table-stripe: #f7f3f1;
+  --color-table-hover: #fbebe5;
+  --color-focus: #a05842;
+  --color-neutral-chip-bg: #f6f0ed;
+  --color-neutral-chip-text: #6e605a;
+}
+
+[data-palette='clay'][data-theme='dark'],
+[data-palette='clay'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #1e130f;
+  --color-surface: #271c17;
+  --color-surface-2: #372b25;
+  --color-text: #f5ede9;
+  --color-text-muted: #b1a19a;
+  --color-border: #3c302a;
+  --color-border-strong: #7b6e68;
+  --color-primary: #e08c72;
+  --color-primary-hover: #f6a78f;
+  --color-on-primary: #21110a;
+  --color-primary-soft: #4a3129;
+  --color-on-primary-soft: #f1d8d0;
+  --color-header: #271c17;
+  --color-sidebar: #251a16;
+  --color-sidebar-text: #f5ede9;
+  --color-sidebar-accent: #4a3129;
+  --color-sidebar-accent-text: #f1d8d0;
+  --color-sidebar-hover: #322620;
+  --color-on-header: #f5ede9;
+  --color-table-head: #31251f;
+  --color-table-stripe: #2f231d;
+  --color-table-hover: #422d26;
+  --color-focus: #e08c72;
+  --color-neutral-chip-bg: #372b25;
+  --color-neutral-chip-text: #b1a19a;
+}
+
+/* Amber: a golden brown. */
+[data-palette='amber'][data-theme='light'],
+[data-palette='amber'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fefcf9;
+  --color-surface-2: #f4f1ec;
+  --color-text: #201a11;
+  --color-text-muted: #6a6258;
+  --color-border: #e1ddd8;
+  --color-border-strong: #8d857a;
+  --color-primary: #946318;
+  --color-primary-hover: #7c5210;
+  --color-primary-soft: #fae4cb;
+  --color-on-primary-soft: #402906;
+  --color-sidebar: #fcfaf7;
+  --color-sidebar-text: #201a11;
+  --color-sidebar-accent: #fae4cb;
+  --color-sidebar-accent-text: #402906;
+  --color-sidebar-hover: #f4f1ec;
+  --color-on-header: #201a11;
+  --color-table-head: #f4f1ed;
+  --color-table-stripe: #f6f4f1;
+  --color-table-hover: #f7ede0;
+  --color-focus: #946318;
+  --color-neutral-chip-bg: #f4f1ec;
+  --color-neutral-chip-text: #6a6258;
+}
+
+[data-palette='amber'][data-theme='dark'],
+[data-palette='amber'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #1b150d;
+  --color-surface: #241e16;
+  --color-surface-2: #332d23;
+  --color-text: #f3eee8;
+  --color-text-muted: #aca398;
+  --color-border: #383228;
+  --color-border-strong: #777067;
+  --color-primary: #d1984c;
+  --color-primary-hover: #e8b370;
+  --color-on-primary: #1d1408;
+  --color-primary-soft: #46351f;
+  --color-on-primary-soft: #ecdbc8;
+  --color-header: #241e16;
+  --color-sidebar: #221c14;
+  --color-sidebar-text: #f3eee8;
+  --color-sidebar-accent: #46351f;
+  --color-sidebar-accent-text: #ecdbc8;
+  --color-sidebar-hover: #2e281e;
+  --color-on-header: #f3eee8;
+  --color-table-head: #2d271d;
+  --color-table-stripe: #2b251b;
+  --color-table-hover: #3e301e;
+  --color-focus: #d1984c;
+  --color-neutral-chip-bg: #332d23;
+  --color-neutral-chip-text: #aca398;
+}
+
+/* Forest: a leaf green. */
+[data-palette='forest'][data-theme='light'],
+[data-palette='forest'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fafdfb;
+  --color-surface-2: #eef3ef;
+  --color-text: #141d16;
+  --color-text-muted: #5c665e;
+  --color-border: #dae0db;
+  --color-border-strong: #7f8980;
+  --color-primary: #417e4c;
+  --color-primary-hover: #346a3e;
+  --color-primary-soft: #d7f0d9;
+  --color-on-primary-soft: #19361e;
+  --color-sidebar: #f8fbf8;
+  --color-sidebar-text: #141d16;
+  --color-sidebar-accent: #d7f0d9;
+  --color-sidebar-accent-text: #19361e;
+  --color-sidebar-hover: #eef3ef;
+  --color-on-header: #141d16;
+  --color-table-head: #eff3ef;
+  --color-table-stripe: #f2f5f2;
+  --color-table-hover: #e6f2e7;
+  --color-focus: #417e4c;
+  --color-neutral-chip-bg: #eef3ef;
+  --color-neutral-chip-text: #5c665e;
+}
+
+[data-palette='forest'][data-theme='dark'],
+[data-palette='forest'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #101912;
+  --color-surface: #19211b;
+  --color-surface-2: #273029;
+  --color-text: #eaf1eb;
+  --color-text-muted: #9da89e;
+  --color-border: #2c352e;
+  --color-border-strong: #6b746c;
+  --color-primary: #73b87d;
+  --color-primary-hover: #91d09a;
+  --color-on-primary: #0d190f;
+  --color-primary-soft: #2a3e2c;
+  --color-on-primary-soft: #d1e4d3;
+  --color-header: #19211b;
+  --color-sidebar: #171f19;
+  --color-sidebar-text: #eaf1eb;
+  --color-sidebar-accent: #2a3e2c;
+  --color-sidebar-accent-text: #d1e4d3;
+  --color-sidebar-hover: #222b24;
+  --color-on-header: #eaf1eb;
+  --color-table-head: #212a23;
+  --color-table-stripe: #1f2821;
+  --color-table-hover: #273729;
+  --color-focus: #73b87d;
+  --color-neutral-chip-bg: #273029;
+  --color-neutral-chip-text: #9da89e;
+}
+
+/* Graphite: slate greys with a quiet blue. */
+[data-palette='graphite'][data-theme='light'],
+[data-palette='graphite'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #fbfcfd;
+  --color-surface-2: #f0f1f3;
+  --color-text: #181b1e;
+  --color-text-muted: #616467;
+  --color-border: #dddee0;
+  --color-border-strong: #83868a;
+  --color-primary: #5d7089;
+  --color-primary-hover: #4d5d73;
+  --color-primary-soft: #e0e9f4;
+  --color-on-primary-soft: #262f3b;
+  --color-sidebar: #f9fafb;
+  --color-sidebar-text: #181b1e;
+  --color-sidebar-accent: #e0e9f4;
+  --color-sidebar-accent-text: #262f3b;
+  --color-sidebar-hover: #f0f1f3;
+  --color-on-header: #181b1e;
+  --color-table-head: #f0f2f3;
+  --color-table-stripe: #f3f4f5;
+  --color-table-hover: #ebeff4;
+  --color-focus: #5d7089;
+  --color-neutral-chip-bg: #f0f1f3;
+  --color-neutral-chip-text: #616467;
+}
+
+[data-palette='graphite'][data-theme='dark'],
+[data-palette='graphite'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #141619;
+  --color-surface: #1d1f22;
+  --color-surface-2: #2b2e31;
+  --color-text: #edeff1;
+  --color-text-muted: #a2a5a9;
+  --color-border: #303336;
+  --color-border-strong: #6f7275;
+  --color-primary: #90a7c4;
+  --color-primary-hover: #abc0db;
+  --color-on-primary: #13161a;
+  --color-primary-soft: #323942;
+  --color-on-primary-soft: #d8dfe7;
+  --color-header: #1d1f22;
+  --color-sidebar: #1b1d20;
+  --color-sidebar-text: #edeff1;
+  --color-sidebar-accent: #323942;
+  --color-sidebar-accent-text: #d8dfe7;
+  --color-sidebar-hover: #26292c;
+  --color-on-header: #edeff1;
+  --color-table-head: #25282b;
+  --color-table-stripe: #232629;
+  --color-table-hover: #2d333a;
+  --color-focus: #90a7c4;
+  --color-neutral-chip-bg: #2b2e31;
+  --color-neutral-chip-text: #a2a5a9;
 }

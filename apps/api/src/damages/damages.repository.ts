@@ -3,6 +3,8 @@ import type { DamageAttribution, ReturnStatus, StockEffect } from '@mizan/ledger
 import type { PriceSource } from '@mizan/money';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
+import { pagingOf } from '../common/paging.js';
+import { containing } from '../common/like.js';
 
 export interface DamageRow {
   id: string;
@@ -24,7 +26,7 @@ export interface DamageRow {
   stock_effect: StockEffect;
   est_value_iqd: string | null;
   est_value_usd_cents: string | null;
-  est_value_source: PriceSource;
+  est_value_source: PriceSource | 'lots';
   status: 'active' | 'void';
   void_reason: string | null;
   voided_by: string | null;
@@ -34,6 +36,8 @@ export interface DamageRow {
   created_by: string;
   updated_at: Date;
   version: number;
+  compensation: 'none' | 'owed' | 'paid_money' | 'paid_materials';
+  compensated_at: Date | null;
 }
 
 export interface DamageListRow extends DamageRow {
@@ -57,6 +61,8 @@ export interface DamageFilters {
   to?: string;
   attribution?: DamageAttribution;
   return_status?: ReturnStatus;
+  /** Owed by a company, or paid back (in money or in materials) — D-062. */
+  compensation?: 'owed' | 'paid';
   /** `pending` plus `returnable` is the chip of 3.3: everything still expected to go back. */
   returnable?: boolean;
   done_by?: string;
@@ -75,14 +81,19 @@ export interface DamageTotals {
   qty_kg: string;
   /** How many records in the period have no valued month price behind them (FR-807). */
   unvalued: number;
+  /** Records a company still owes us for (D-062). */
+  owed_count: number;
   /** Under `cost` so one flag hides the period's value and leaves its quantities (D-022). */
   cost: {
     est_value_iqd: number;
     est_value_usd_cents: number;
+    owed_iqd: number;
+    owed_usd_cents: number;
   };
 }
 
 export interface NewDamage {
+  compensation?: 'none' | 'owed';
   item_id: string;
   qty_count: number | null;
   qty_kg: string | null;
@@ -98,7 +109,7 @@ export interface NewDamage {
   stock_effect: StockEffect;
   est_value_iqd: number | null;
   est_value_usd_cents: number | null;
-  est_value_source: PriceSource;
+  est_value_source: PriceSource | 'lots';
   notes: string | null;
   created_by: string;
 }
@@ -134,6 +145,8 @@ function damageColumns(alias = 'damages'): string {
     'created_by',
     'updated_at',
     'version',
+    'compensation::text AS compensation',
+    'compensated_at',
   ]
     .map((field) =>
       field.startsWith('to_char') ? field.replace('damage_date', `${alias}.damage_date`) : `${alias}.${field}`,
@@ -156,7 +169,10 @@ const LIST_COLUMNS = `i.name AS item_name, i.pricing_unit::text AS pricing_unit,
                       cust.name AS customer_name,
                       p.number::text AS purchase_number,
                       (EXISTS (SELECT 1 FROM company_ledger cl WHERE cl.damage_id = d.id)
-                       OR EXISTS (SELECT 1 FROM customer_ledger cu WHERE cu.damage_id = d.id)) AS credited`;
+                       -- The charge a company's damage puts on their account names the record
+                       -- too, but it is what they owe, not a credit (D-062).
+                       OR EXISTS (SELECT 1 FROM customer_ledger cu
+                                   WHERE cu.damage_id = d.id AND cu.entry_type <> 'damage')) AS credited`;
 
 const JOINS = `
   JOIN items i ON i.id = d.item_id
@@ -229,6 +245,8 @@ export class DamagesRepository {
       values.push(filters.return_status);
       conditions.push(`d.return_status = $${values.length}::return_status`);
     }
+    if (filters.compensation === 'owed') conditions.push(`d.compensation = 'owed'`);
+    if (filters.compensation === 'paid') conditions.push(`d.compensation IN ('paid_money', 'paid_materials')`);
     if (filters.returnable) conditions.push('d.is_returnable = true');
     if (filters.done_by) {
       values.push(filters.done_by);
@@ -248,7 +266,7 @@ export class DamagesRepository {
     }
     const query = filters.q?.trim();
     if (query) {
-      values.push(`%${query}%`);
+      values.push(containing(query));
       const textParam = values.length;
       const asNumber = Number(query.replace(/\D/g, ''));
       values.push(Number.isFinite(asNumber) && asNumber > 0 ? asNumber : null);
@@ -269,8 +287,7 @@ export class DamagesRepository {
     // The list needs the names; the count and the totals need only the rows.
     const aggregateFrom = needsItems ? `FROM damages d JOIN items i ON i.id = d.item_id` : 'FROM damages d';
 
-    const pageSize = Math.min(filters.page_size ?? 25, 100);
-    const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
+    const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
     const [list, count, totals] = await Promise.all([
@@ -294,8 +311,14 @@ export class DamagesRepository {
         est_value_iqd: string;
         est_value_usd_cents: string;
         unvalued: string;
+        owed_count: string;
+        owed_iqd: string;
+        owed_usd_cents: string;
       }>(
         `SELECT count(*)::text AS records,
+                count(*) FILTER (WHERE d.compensation = 'owed')::text AS owed_count,
+                coalesce(sum(d.est_value_iqd) FILTER (WHERE d.compensation = 'owed'), 0)::text AS owed_iqd,
+                coalesce(sum(d.est_value_usd_cents) FILTER (WHERE d.compensation = 'owed'), 0)::text AS owed_usd_cents,
                 coalesce(sum(d.qty_count), 0)::text AS qty_count,
                 coalesce(sum(d.qty_kg), 0)::text AS qty_kg,
                 coalesce(sum(d.est_value_iqd), 0)::text AS est_value_iqd,
@@ -315,9 +338,13 @@ export class DamagesRepository {
         qty_count: Number(row?.qty_count ?? 0),
         qty_kg: Number(row?.qty_kg ?? 0).toFixed(3),
         unvalued: Number(row?.unvalued ?? 0),
+        owed_count: Number(row?.owed_count ?? 0),
         cost: {
           est_value_iqd: Number(row?.est_value_iqd ?? 0),
           est_value_usd_cents: Number(row?.est_value_usd_cents ?? 0),
+          // What companies still owe us for goods they broke, over the whole filter (D-062).
+          owed_iqd: Number(row?.owed_iqd ?? 0),
+          owed_usd_cents: Number(row?.owed_usd_cents ?? 0),
         },
       },
     };
@@ -328,9 +355,11 @@ export class DamagesRepository {
       `INSERT INTO damages
          (item_id, qty_count, qty_kg, damage_date, acting_user_id, reason, attribution,
           order_id, company_id, purchase_id, is_returnable, return_status, stock_effect,
-          est_value_iqd, est_value_usd_cents, est_value_source, notes, created_by, updated_by)
+          est_value_iqd, est_value_usd_cents, est_value_source, notes, created_by, updated_by,
+          compensation)
        VALUES ($1, $2, $3::numeric, $4::date, $5, $6, $7::damage_attribution, $8, $9, $10, $11,
-               $12::return_status, $13::stock_effect, $14, $15, $16::cost_source, $17, $18, $18)
+               $12::return_status, $13::stock_effect, $14, $15, $16::cost_source, $17, $18, $18,
+               $19::damage_compensation)
        RETURNING ${damageColumns()}`,
       [
         input.item_id,
@@ -351,6 +380,7 @@ export class DamagesRepository {
         input.est_value_source,
         input.notes,
         input.created_by,
+        input.compensation ?? 'none',
       ],
     );
     return rows[0] as DamageRow;
@@ -376,12 +406,15 @@ export class DamagesRepository {
       stock_effect: StockEffect;
       est_value_iqd: number | null;
       est_value_usd_cents: number | null;
-      est_value_source: PriceSource;
+      est_value_source: PriceSource | 'lots';
       notes: string | null;
       status: 'active' | 'void';
       void_reason: string | null;
       voided_by: string | null;
       voided_at: Date | null;
+      compensation: 'none' | 'owed' | 'paid_money' | 'paid_materials';
+      compensated_at: Date | null;
+      compensated_by: string | null;
     }>,
     updatedBy: string,
     tx: Db,
@@ -398,6 +431,7 @@ export class DamagesRepository {
       return_status: '::return_status',
       stock_effect: '::stock_effect',
       est_value_source: '::cost_source',
+      compensation: '::damage_compensation',
       status: '::doc_status',
     };
     for (const field of fields) {

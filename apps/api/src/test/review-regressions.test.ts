@@ -57,6 +57,34 @@ describe('iteration 0 review regressions', () => {
     expect(listed.body.total).toBe(1);
   });
 
+  it('refuses a malformed idempotency key, and keeps one user\'s keys apart from another\'s', async () => {
+    for (const bad of ['short', 'x'.repeat(129), 'has spaces in it', 'semi;colon-key']) {
+      const refused = await as(ctx.http, adminSession)
+        .post('/api/v1/users')
+        .set('Idempotency-Key', bad)
+        .send({ display_name: 'Bad key', username: 'badkey', role: 'employee' })
+        .expect(422);
+      expect(refused.body.error.fields[0]).toMatchObject({
+        path: 'Idempotency-Key',
+        message_key: 'errors:idempotency_key_invalid',
+      });
+    }
+
+    // The same key from two admins is two requests (security review, finding 17).
+    const other = await signIn(ctx.http, await seedUser({ username: 'second.admin', role: 'admin' }));
+    const key = '44444444-2222-4333-8444-555555555555';
+    await as(ctx.http, adminSession)
+      .post('/api/v1/users')
+      .set('Idempotency-Key', key)
+      .send({ display_name: 'From one', username: 'fromone', role: 'employee' })
+      .expect(201);
+    await as(ctx.http, other)
+      .post('/api/v1/users')
+      .set('Idempotency-Key', key)
+      .send({ display_name: 'From two', username: 'fromtwo', role: 'employee' })
+      .expect(201);
+  });
+
   it('a permission change is live on the very next request, with no cache window', async () => {
     const employee = await seedUser({ username: 'rebaz', permissions: ['history.view'] });
     const employeeSession = await signIn(ctx.http, employee);

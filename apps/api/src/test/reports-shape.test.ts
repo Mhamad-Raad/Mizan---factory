@@ -64,9 +64,14 @@ describe('the reports read each growing table once (I4 review)', () => {
       .put(`/api/v1/items/${copper}/prices/${today().slice(0, 7)}`)
       .send({ sale: { amount: 850, currency: 'IQD' }, bought: { amount: 700, currency: 'IQD' } })
       .expect(200);
+    // Stock arrives by buying it (D-062), at the bought price.
     await as(ctx.http, admin)
-      .post(`/api/v1/items/${copper}/opening-stock`)
-      .send({ entry_date: today(), qty_kg: '100000.000', note: 'go-live count' })
+      .post('/api/v1/purchases')
+      .send({
+        company_id: null,
+        purchase_date: today(),
+        lines: [{ item_id: copper, qty_kg: '100000.000', unit_price: { amount: 700, currency: 'IQD' } }],
+      })
       .expect(201);
 
     customers.length = 0;
@@ -291,8 +296,12 @@ describe('the reports read each growing table once (I4 review)', () => {
       .send({ sale: { amount: 900, currency: 'IQD' }, bought: { amount: 800, currency: 'IQD' } })
       .expect(200);
     await as(ctx.http, admin)
-      .post(`/api/v1/items/${item}/opening-stock`)
-      .send({ entry_date: today(), qty_kg: '1000.000', note: 'counted' })
+      .post('/api/v1/purchases')
+      .send({
+        company_id: null,
+        purchase_date: today(),
+        lines: [{ item_id: item, qty_kg: '1000.000', unit_price: { amount: 800, currency: 'IQD' } }],
+      })
       .expect(201);
     const sold = (
       await as(ctx.http, admin)

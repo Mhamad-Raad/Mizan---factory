@@ -57,6 +57,16 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
   },
   { key: 'purchases.edit', page: 'purchases', implies: ['purchases.view'], labelKey: 'permissions.purchases.edit' },
   { key: 'purchases.void', page: 'purchases', implies: ['purchases.view'], labelKey: 'permissions.purchases.void' },
+  // The accountant page (D-062): the period's sold, bought, cost, profit, damage and expenses.
+  // Its whole subject is money, so it carries the two money flags with it.
+  {
+    key: 'accounts.view',
+    page: 'purchases',
+    implies: ['purchases.view', 'fields.see_bought_price', 'fields.see_profit'],
+    labelKey: 'permissions.accounts.view',
+  },
+  { key: 'expenses.create', page: 'purchases', implies: ['accounts.view'], labelKey: 'permissions.expenses.create' },
+  { key: 'expenses.void', page: 'purchases', implies: ['accounts.view'], labelKey: 'permissions.expenses.void' },
 
   // Orders
   { key: 'orders.view', page: 'orders', implies: [], labelKey: 'permissions.orders.view' },
@@ -89,15 +99,8 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
 
   // Customers
   { key: 'customers.view', page: 'customers', implies: [], labelKey: 'permissions.customers.view' },
-  {
-    key: 'customers.view_all',
-    page: 'customers',
-    implies: ['customers.view'],
-    labelKey: 'permissions.customers.view_all',
-  },
   { key: 'customers.create', page: 'customers', implies: ['customers.view'], labelKey: 'permissions.customers.create' },
   { key: 'customers.edit', page: 'customers', implies: ['customers.view'], labelKey: 'permissions.customers.edit' },
-  { key: 'customers.assign', page: 'customers', implies: ['customers.view'], labelKey: 'permissions.customers.assign' },
   {
     key: 'customers.opening_balance',
     page: 'customers',
@@ -122,7 +125,6 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
   },
   { key: 'companies.create', page: 'companies', implies: ['companies.view'], labelKey: 'permissions.companies.create' },
   { key: 'companies.edit', page: 'companies', implies: ['companies.view'], labelKey: 'permissions.companies.edit' },
-  { key: 'companies.assign', page: 'companies', implies: ['companies.view'], labelKey: 'permissions.companies.assign' },
   {
     key: 'companies.set_rate',
     page: 'companies',

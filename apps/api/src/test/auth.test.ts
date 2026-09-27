@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import {
   as,
@@ -10,6 +10,8 @@ import {
   withDatabase,
 } from './harness.js';
 import type { TestApp } from './harness.js';
+import { PasswordService } from '../auth/password.service.js';
+import { Database } from '../database/pool.js';
 
 describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
   let ctx: TestApp;
@@ -130,6 +132,121 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
       for (let i = 0; i < 4; i += 1) await attempt('nobody', 'whatever-long-enough').expect(401);
       await attempt('nobody', 'whatever-long-enough').expect(429);
     });
+
+    it('counts every spelling of a phone number and the username as one account', async () => {
+      const user = await seedUser({ username: 'rebaz', phone: '07501234567' });
+      const spellings = ['07501234567', '+9647501234567', '00964 750-123-4567', '٠٧٥٠١٢٣٤٥٦٧'];
+      const left: number[] = [];
+      for (const spelling of spellings) {
+        const response = await attempt(spelling, 'wrong-but-long-enough').expect(401);
+        left.push(response.body.error.params.attempts_left);
+      }
+      expect(left).toEqual([4, 3, 2, 1]);
+
+      const fifth = await attempt('REBAZ', 'wrong-but-long-enough').expect(429);
+      expect(fifth.body.error.params.minutes).toBe(15);
+      // Locked under every name the account answers to, with the right password too.
+      await attempt('rebaz', user.password).expect(429);
+      await attempt('+964 750 123 4567', user.password).expect(429);
+    });
+
+    it('counts the spellings of an unknown phone number as one', async () => {
+      for (const spelling of [
+        '07709999999',
+        '+964 770 999 9999',
+        '009647709999999',
+        '0770-999-9999',
+      ]) {
+        await attempt(spelling, 'whatever-long-enough').expect(401);
+      }
+      await attempt('(0770) 999 9999', 'whatever-long-enough').expect(429);
+    });
+
+    it('gives a burst of parallel guesses no more than five tries', async () => {
+      await seedUser({ username: 'sara' });
+      const responses = await Promise.all(
+        Array.from({ length: 12 }, () => attempt('sara', 'wrong-but-long-enough')),
+      );
+      const statuses = responses.map((response) => response.status).sort();
+      expect(statuses.filter((status) => status === 401)).toHaveLength(4);
+      expect(statuses.filter((status) => status === 429)).toHaveLength(8);
+
+      const recorded = await withDatabase((client) =>
+        client.query<{ count: string }>(
+          `SELECT count(*)::text AS count FROM login_attempts WHERE username_attempted = 'sara' AND NOT succeeded`,
+        ),
+      );
+      expect(Number(recorded.rows[0]?.count)).toBe(5);
+    });
+  });
+
+  it('holds no database connection while the password is checked', async () => {
+    const user = await seedUser({ username: 'sara', role: 'admin' });
+    const database = ctx.app.get(Database);
+    const passwords = ctx.app.get(PasswordService);
+    let open = 0;
+    const seen: number[] = [];
+    const transaction = database.transaction.bind(database);
+    const transactionSpy = vi.spyOn(database, 'transaction').mockImplementation(async (work) => {
+      open += 1;
+      try {
+        return await transaction(work);
+      } finally {
+        open -= 1;
+      }
+    });
+    const verify = passwords.verify.bind(passwords);
+    const verifySpy = vi.spyOn(passwords, 'verify').mockImplementation(async (hash, password) => {
+      seen.push(open);
+      return verify(hash, password);
+    });
+    try {
+      await request(ctx.http)
+        .post('/api/v1/auth/login')
+        .send({ username_or_phone: 'sara', password: 'wrong-but-long-enough' })
+        .expect(401);
+      const session = await signIn(ctx.http, user);
+      await as(ctx.http, session).post('/api/v1/auth/lock').expect(204);
+      await as(ctx.http, session)
+        .post('/api/v1/auth/unlock')
+        .send({ password: user.password })
+        .expect(204);
+    } finally {
+      transactionSpy.mockRestore();
+      verifySpy.mockRestore();
+    }
+    expect(seen).toHaveLength(3);
+    expect(seen.every((count) => count === 0)).toBe(true);
+  });
+
+  it('refuses an old password when an admin reset lands while it is being checked', async () => {
+    const user = await seedUser({ username: 'sara', role: 'admin' });
+    const passwords = ctx.app.get(PasswordService);
+    const verify = passwords.verify.bind(passwords);
+    const verifySpy = vi.spyOn(passwords, 'verify').mockImplementation(async (hash, password) => {
+      const result = await verify(hash, password);
+      // The reset commits after the old password was checked, before the sign-in is recorded.
+      const replaced = await passwords.hash('a-brand-new-password');
+      await withDatabase((client) =>
+        client.query('UPDATE users SET password_hash = $1 WHERE username = $2', [replaced, 'sara']),
+      );
+      return result;
+    });
+    try {
+      await request(ctx.http)
+        .post('/api/v1/auth/login')
+        .send({ username_or_phone: 'sara', password: user.password })
+        .expect(401);
+    } finally {
+      verifySpy.mockRestore();
+    }
+    const sessions = await withDatabase((client) =>
+      client.query(
+        'SELECT count(*)::int AS n FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.username = $1',
+        ['sara'],
+      ),
+    );
+    expect(sessions.rows[0].n).toBe(0);
   });
 
   it('refuses a deactivated account with its own message', async () => {
@@ -171,7 +288,10 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
       const me = await as(ctx.http, session).get('/api/v1/auth/me').expect(200);
       expect(me.body.is_locked).toBe(true);
 
-      await as(ctx.http, session).post('/api/v1/auth/unlock').send({ password: user.password }).expect(204);
+      await as(ctx.http, session)
+        .post('/api/v1/auth/unlock')
+        .send({ password: user.password })
+        .expect(204);
       await as(ctx.http, session).get('/api/v1/users').expect(200);
 
       const actions = (await auditRows()).map((row) => row.action);
@@ -227,6 +347,88 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
       expect((await auditRows({ action: 'password_change' })).length).toBe(1);
     });
 
+    it('does not check the current password while the account is locked out', async () => {
+      const user = await seedUser({ username: 'sara', role: 'admin' });
+      const session = await signIn(ctx.http, user);
+      for (let i = 0; i < 5; i += 1) {
+        await request(ctx.http)
+          .post('/api/v1/auth/login')
+          .send({ username_or_phone: 'sara', password: 'wrong-but-long-enough' });
+      }
+
+      const refused = await as(ctx.http, session)
+        .post('/api/v1/auth/change-password')
+        .send({ current: user.password, new: 'a-brand-new-password' })
+        .expect(429);
+      expect(refused.body.error.code).toBe('RATE_LIMITED');
+      expect(refused.body.error.params.minutes).toBe(15);
+    });
+
+    it('counts a wrong current password toward the same lockout', async () => {
+      const user = await seedUser({ username: 'sara', role: 'admin' });
+      const session = await signIn(ctx.http, user);
+      const change = (current: string) =>
+        as(ctx.http, session)
+          .post('/api/v1/auth/change-password')
+          .send({ current, new: 'a-brand-new-password' });
+
+      const first = await change('wrong-but-long-enough').expect(422);
+      expect(first.body.error.fields[0].params.attempts_left).toBe(4);
+      for (let i = 0; i < 3; i += 1) await change('wrong-but-long-enough').expect(422);
+      await change('wrong-but-long-enough').expect(429);
+      await change(user.password).expect(429);
+      // The Login page sees the same lockout.
+      await request(ctx.http)
+        .post('/api/v1/auth/login')
+        .send({ username_or_phone: 'sara', password: user.password })
+        .expect(429);
+    });
+
+    it('signs out every other session of the user, and keeps this one', async () => {
+      const user = await seedUser({ username: 'sara', role: 'admin' });
+      const here = await signIn(ctx.http, user);
+      const elsewhere = await signIn(ctx.http, user);
+
+      await as(ctx.http, here)
+        .post('/api/v1/auth/change-password')
+        .send({ current: user.password, new: 'a-brand-new-password' })
+        .expect(204);
+
+      await as(ctx.http, here).get('/api/v1/auth/me').expect(200);
+      await as(ctx.http, elsewhere).get('/api/v1/auth/me').expect(401);
+      const [row] = await auditRows({ action: 'password_change' });
+      expect(row?.changes).toEqual({ other_sessions_signed_out: 1 });
+    });
+
+    it('refuses everything but the change itself until a flagged user has chosen a password', async () => {
+      const user = await seedUser({ username: 'sara', role: 'admin', mustChangePassword: true });
+      const session = await signIn(ctx.http, user);
+
+      const refused = await as(ctx.http, session).get('/api/v1/users').expect(403);
+      expect(refused.body.error).toMatchObject({
+        code: 'PASSWORD_CHANGE_REQUIRED',
+        message_key: 'errors:PASSWORD_CHANGE_REQUIRED',
+      });
+      await as(ctx.http, session).get('/api/v1/history/me').expect(403);
+      await as(ctx.http, session).post('/api/v1/customers').send({ name: 'Not yet' }).expect(403);
+
+      // What the change-password screen needs stays open.
+      const me = await as(ctx.http, session).get('/api/v1/auth/me').expect(200);
+      expect(me.body.user.must_change_password).toBe(true);
+      await as(ctx.http, session)
+        .post('/api/v1/auth/change-password')
+        .send({ current: user.password, new: 'a-brand-new-password' })
+        .expect(204);
+
+      await as(ctx.http, session).get('/api/v1/users').expect(200);
+    });
+
+    it('lets a flagged user sign out', async () => {
+      const user = await seedUser({ username: 'sara', mustChangePassword: true });
+      const session = await signIn(ctx.http, user);
+      await as(ctx.http, session).post('/api/v1/auth/logout').expect(204);
+    });
+
     it('refuses a short password, the username itself and a common password', async () => {
       const user = await seedUser({ username: 'sara', role: 'admin' });
       const session = await signIn(ctx.http, user);
@@ -258,7 +460,9 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
       const employeeSession = await signIn(ctx.http, employee);
       const adminSession = await signIn(ctx.http, admin);
 
-      const target = await as(ctx.http, adminSession).get(`/api/v1/users/${employee.id}`).expect(200);
+      const target = await as(ctx.http, adminSession)
+        .get(`/api/v1/users/${employee.id}`)
+        .expect(200);
       await as(ctx.http, adminSession)
         .post(`/api/v1/users/${employee.id}/deactivate`)
         .send({ version: target.body.version })
@@ -278,6 +482,39 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
         .set('Cookie', session.cookies)
         .set('X-CSRF-Token', 'forged')
         .expect(403);
+    });
+
+    it('refuses a write from another site, told by Origin or, without it, by Referer', async () => {
+      const user = await seedUser({ username: 'sara', role: 'admin' });
+      const session = await signIn(ctx.http, user);
+      const lock = () => as(ctx.http, session).post('/api/v1/auth/lock');
+
+      const byOrigin = await lock().set('Origin', 'https://evil.example').expect(403);
+      expect(byOrigin.body.error.message_key).toBe('errors:request_origin_refused');
+      await lock().set('Referer', 'https://evil.example/page').expect(403);
+      await lock().set('Referer', 'not a url').expect(403);
+
+      // The app's own pages pass, and so does a client that sends neither header.
+      await lock().set('Referer', 'http://localhost:5173/orders').expect(204);
+      await as(ctx.http, session)
+        .post('/api/v1/auth/unlock')
+        .send({ password: user.password })
+        .expect(204);
+      await lock().expect(204);
+    });
+
+    it('says why a forged or stale CSRF token was refused', async () => {
+      const user = await seedUser({ username: 'sara', role: 'admin' });
+      const session = await signIn(ctx.http, user);
+      const refused = await request(ctx.http)
+        .post('/api/v1/auth/lock')
+        .set('Cookie', session.cookies)
+        .set('X-CSRF-Token', 'forged')
+        .expect(403);
+      expect(refused.body.error).toMatchObject({
+        code: 'PERMISSION_DENIED',
+        message_key: 'errors:csrf_refused',
+      });
     });
 
     it('allows a safe method without the header', async () => {

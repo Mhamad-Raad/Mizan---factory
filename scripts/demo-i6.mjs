@@ -104,13 +104,6 @@ const saraUser = await call(admin, '/users', {
   method: 'POST',
   body: { display_name: 'Sara Kareem', username: `sara.${unique}`, role: 'employee', preset_key: 'sales' },
 });
-const saraKeys = await call(admin, `/users/${saraUser.body.user.id}/permissions`);
-await call(admin, `/users/${saraUser.body.user.id}/permissions`, {
-  method: 'POST',
-  // The tablet on the floor serves whoever walks in, so this employee sees every customer
-  // (spec 2.6.4); without it the order below is refused, which is the scope rule working.
-  body: { keys: [...new Set([...(saraKeys.body?.keys ?? []), 'customers.view_all'])] },
-});
 const sara = await signInFresh(`sara.${unique}`, saraUser.body.temporary_password);
 check(Boolean(sara), 'a sales employee from the preset, on the tablet');
 
@@ -287,9 +280,7 @@ check(imported.body?.created === 2, 'the two opening debts are imported as ledge
 
 const alNoor = await call(nazdar.session, '/customers', {
   method: 'POST',
-  body: {
-    is_customer: false,
-    is_supplier: true, name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
+  body: { name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
 });
 await call(nazdar.session, `/companies/${alNoor.body.id}/opening-balance`, {
   method: 'POST',
@@ -300,21 +291,12 @@ const listed = await call(admin, `/customers?q=${encodeURIComponent(unique)}&lim
 const importedAccounts = (listed.body?.items ?? []).filter((row) =>
   openingCustomers.some((opening) => row.name === opening.name),
 );
-for (const account of importedAccounts) {
-  await call(admin, `/customers/${account.id}/assignment`, {
-    method: 'PUT',
-    body: { user_id: saraUser.body.user.id, note: 'the accounts this employee keeps', version: account.version },
-  });
-}
-const assignedBack = await call(admin, `/customers?q=${encodeURIComponent(unique)}&limit=50`);
-check(
-  importedAccounts.length === 2 &&
-    (assignedBack.body?.items ?? []).filter((row) => row.assigned_user_id === saraUser.body.user.id).length === 2,
-  'both imported accounts are assigned to the employee who keeps them',
-);
+check(importedAccounts.length === 2, 'both imported accounts are on the Companies page');
 
-const receivables = await call(nazdar.session, `/reports/receivables?${range}&assigned_to=${saraUser.body.user.id}`);
-const rows = receivables.body?.groups ?? [];
+// The two imported accounts, read out of the whole report (accounts are not assigned, D-056).
+const receivables = await call(nazdar.session, `/reports/receivables?${range}`);
+const importedIds = new Set(importedAccounts.map((account) => account.id));
+const rows = (receivables.body?.groups ?? []).filter((row) => importedIds.has(row.key));
 const openingTotal = openingCustomers.reduce((sum, row) => sum + row.amount, 0);
 const reported = rows.reduce((sum, row) => sum + (row.balance?.amount_iqd ?? 0), 0);
 check(

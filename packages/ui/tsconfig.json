@@ -8,5 +8,5 @@
     "types": []
   },
   "include": ["src/**/*"],
-  "references": [{ "path": "../i18n" }]
+  "references": [{ "path": "../i18n" }, { "path": "../text" }]
 }

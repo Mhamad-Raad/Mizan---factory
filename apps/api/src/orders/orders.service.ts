@@ -4,12 +4,13 @@ import {
   completePair,
   computeLineTotals,
   convert,
-  costSnapshotOf,
   defaultLinePrice,
   documentTotals,
   firstOfMonth,
   formatRate,
   impliedRate,
+  roundHalfAwayFromZero,
+  roundOrderTotals,
   selectMonthPrice,
   withinTolerance,
 } from '@mizan/money';
@@ -34,8 +35,10 @@ import { RatesService } from '../rates/rates.service.js';
 import { PeriodService } from '../settings/period.service.js';
 import { SettingsService } from '../settings/settings.service.js';
 import { StockService } from '../stock/stock.service.js';
+import { LotsService } from '../lots/lots.service.js';
+import type { Plan } from '../lots/lots.service.js';
 import { OrdersRepository } from './orders.repository.js';
-import type { NewOrderLine, OrderFilters, OrderListRow, OrderScope } from './orders.repository.js';
+import type { NewOrderLine, OrderFilters, OrderListRow, OrderTotals } from './orders.repository.js';
 import type { OrderDto, OrderLineDto, OrderLineRow, PaymentType } from './order.types.js';
 
 /** How long the creator may undo an order from the save toast (FR-610). */
@@ -70,6 +73,8 @@ export interface CreateOrderInput {
 interface PreparedLine extends NewOrderLine {
   item_name: string;
   price_from_month: string | null;
+  /** Which buys this line takes its stock from, oldest first (D-062); recorded after insert. */
+  lot_plan: Plan;
 }
 
 /**
@@ -96,18 +101,15 @@ export class OrdersService {
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
     private readonly history: HistoryRepository,
+    private readonly lots: LotsService,
   ) {}
-
-  scopeOf(context: RequestContext): OrderScope {
-    return { userId: context.userId, viewAll: can(context, 'customers.view_all') };
-  }
 
   async list(
     context: RequestContext,
     filters: OrderFilters,
-  ): Promise<{ items: OrderDto[]; total: number }> {
-    const { rows, total } = await this.orders.list(filters, this.scopeOf(context));
-    return { items: rows.map((row) => toOrderDto(row, [])), total };
+  ): Promise<{ items: OrderDto[]; total: number; totals: OrderTotals }> {
+    const { rows, total, totals } = await this.orders.list(filters);
+    return { items: rows.map((row) => toOrderDto(row, [])), total, totals };
   }
 
   async get(context: RequestContext, id: string): Promise<OrderDto> {
@@ -117,8 +119,7 @@ export class OrdersService {
   }
 
   private async requireOrder(context: RequestContext, id: string): Promise<OrderListRow> {
-    const row = await this.orders.findById(id, this.scopeOf(context));
-    // Out of scope answers 404, not 403: a refusal would confirm the order exists (2.6.4).
+    const row = await this.orders.findById(id);
     if (!row) throw ApiError.notFound();
     return row;
   }
@@ -136,17 +137,8 @@ export class OrdersService {
       ]);
     }
 
-    const customer = await this.customers.findById(
-      input.customer_id,
-      this.customersService.scopeOf(context),
-    );
+    const customer = await this.customers.findById(input.customer_id);
     if (!customer) throw ApiError.notFound();
-    // A business we only buy from is not somebody an order can be written to (D-054).
-    if (!customer.is_customer) {
-      throw ApiError.validation([
-        { path: 'customer_id', code: 'NOT_A_CUSTOMER', message_key: 'errors:not_a_customer', params: {} },
-      ]);
-    }
     if (!customer.is_active) {
       throw ApiError.validation([
         {
@@ -188,10 +180,14 @@ export class OrdersService {
 
       const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource);
       const discount = this.discountPair(input.discount, rate, rateSource, lines);
-      const totals = documentTotals(lines, {
-        discount_iqd: discount.amount_iqd,
-        discount_usd_cents: discount.amount_usd_cents,
-      });
+      // The total rounds up to the next 250 dinars; the lines keep their prices (D-065).
+      const totals = roundOrderTotals(
+        documentTotals(lines, {
+          discount_iqd: discount.amount_iqd,
+          discount_usd_cents: discount.amount_usd_cents,
+        }),
+        rate,
+      );
 
       const warnings = await this.stock.assertSellable(
         tx,
@@ -221,13 +217,19 @@ export class OrdersService {
       await this.orders.updateOrder(
         order.id,
         order.version,
-        { total_iqd: totals.total_iqd, total_usd_cents: totals.total_usd_cents },
+        {
+          total_iqd: totals.total_iqd,
+          total_usd_cents: totals.total_usd_cents,
+          rounding_iqd: totals.rounding_iqd,
+          rounding_usd_cents: totals.rounding_usd_cents,
+        },
         context.userId,
         tx,
       );
 
       const insertedLines = await this.orders.insertLines(order.id, lines, context.userId, tx);
       await this.writeSaleMovements(tx, context, order.id, input.order_date, insertedLines, lines);
+      await this.recordLots(tx, context, insertedLines, lines);
 
       const creditWarning = await this.writeDocumentEntries(context, tx, locked, {
         orderId: order.id,
@@ -263,7 +265,6 @@ export class OrdersService {
           related: {
             order_id: order.id,
             customer_id: customer.id,
-            assigned_user_id: customer.assigned_user_id,
           },
         },
         tx,
@@ -327,8 +328,6 @@ export class OrdersService {
       if (!locked) throw ApiError.notFound();
 
       const oldLines = await this.orders.linesOf(id, tx);
-      const oldMonth = firstOfMonth(order.order_date);
-      const newMonth = firstOfMonth(input.order_date);
 
       // Step 2 of 2.5.3: reverse everything live that belongs to this document.
       await this.stock.reverseLiveForRef(
@@ -343,15 +342,18 @@ export class OrdersService {
         related: { order_id: id, customer_id: order.customer_id },
       });
 
-      const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource, {
-        previous: oldLines,
-        monthUnchanged: oldMonth === newMonth,
-      });
+      // The old lines give their stock back to the buys it came from before the new lines take.
+      await this.lots.release(tx, { type: 'order_line', ids: oldLines.map((line) => line.id), createdBy: context.userId });
+      const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource);
       const discount = this.discountPair(input.discount, rate, rateSource, lines);
-      const totals = documentTotals(lines, {
-        discount_iqd: discount.amount_iqd,
-        discount_usd_cents: discount.amount_usd_cents,
-      });
+      // The total rounds up to the next 250 dinars; the lines keep their prices (D-065).
+      const totals = roundOrderTotals(
+        documentTotals(lines, {
+          discount_iqd: discount.amount_iqd,
+          discount_usd_cents: discount.amount_usd_cents,
+        }),
+        rate,
+      );
 
       await this.stock.assertSellable(
         tx,
@@ -366,6 +368,7 @@ export class OrdersService {
       await this.orders.softDeleteLines(id, tx);
       const insertedLines = await this.orders.insertLines(id, lines, context.userId, tx);
       await this.writeSaleMovements(tx, context, id, input.order_date, insertedLines, lines);
+      await this.recordLots(tx, context, insertedLines, lines);
 
       const updated = await this.orders.updateOrder(
         id,
@@ -380,6 +383,8 @@ export class OrdersService {
           discount_usd_cents: discount.amount_usd_cents,
           total_iqd: totals.total_iqd,
           total_usd_cents: totals.total_usd_cents,
+          rounding_iqd: totals.rounding_iqd,
+          rounding_usd_cents: totals.rounding_usd_cents,
           acting_user_id: actingUserId,
         },
         context.userId,
@@ -465,6 +470,8 @@ export class OrdersService {
         { ref_type: 'order_line', ref_ids: lines.map((line) => line.id) },
         { created_by: context.userId, note: input.reason, entry_date: order.order_date },
       );
+      // The stock goes back to the very buys it came from, at their prices (D-062).
+      await this.lots.release(tx, { type: 'order_line', ids: lines.map((line) => line.id), createdBy: context.userId });
       await this.ledger.reverseLiveForDocument(context, tx, locked, id, {
         note: input.reason,
         entry_date: order.order_date,
@@ -664,9 +671,8 @@ export class OrdersService {
   ): Promise<WriteResultDto[]> {
     const order = await this.requireOrder(context, id);
     if (order.status === 'void') throw new ApiError('DOCUMENT_VOID', { order_id: id });
-    // The order's own scope rule already authorised this caller — an employee may pay off an
-    // order they entered even after the customer was reassigned to somebody else (2.6.4), so
-    // the customer-level check is not applied a second time here.
+    // The order's own route already authorised this caller (orders.record_payment), so the
+    // account-level check is not applied a second time here.
     return this.customersService.recordPayment(
       context,
       order.customer_id,
@@ -684,7 +690,7 @@ export class OrdersService {
     const [audit, paymentTypes, entries] = await Promise.all([
       this.history.list({ about_order: id, ...options }),
       this.orders.paymentTypeHistory(id),
-      this.ledger.entriesFor(this.database, order.customer_id),
+      this.ledger.entriesOfDocument(this.database, order.customer_id, id),
     ]);
 
     return {
@@ -697,20 +703,18 @@ export class OrdersService {
         changed_at: row.changed_at.toISOString(),
         changed_by_name: row.changed_by_name,
       })),
-      ledger_entries: entries
-        .filter((entry) => entry.refs.order_id === id)
-        .map((entry) => ({
-          id: entry.id,
-          entry_type: entry.entry_type,
-          entry_date: entry.entry_date,
-          amount_iqd: entry.amount_iqd,
-          amount_usd_cents: entry.amount_usd_cents,
-          entered_currency: entry.entered_currency,
-          rate_iqd_per_usd: entry.rate_iqd_per_usd,
-          note: entry.note,
-          voucher_number: entry.voucher_number ?? null,
-          reverses_entry_id: entry.reverses_entry_id,
-        })),
+      ledger_entries: entries.map((entry) => ({
+        id: entry.id,
+        entry_type: entry.entry_type,
+        entry_date: entry.entry_date,
+        amount_iqd: entry.amount_iqd,
+        amount_usd_cents: entry.amount_usd_cents,
+        entered_currency: entry.entered_currency,
+        rate_iqd_per_usd: entry.rate_iqd_per_usd,
+        note: entry.note,
+        voucher_number: entry.voucher_number ?? null,
+        reverses_entry_id: entry.reverses_entry_id,
+      })),
     };
   }
 
@@ -812,10 +816,12 @@ export class OrdersService {
     orderDate: string,
     rate: Rate,
     rateSource: RateSource,
-    carryOver?: { previous: readonly OrderLineRow[]; monthUnchanged: boolean },
   ): Promise<PreparedLine[]> {
     const month = firstOfMonth(orderDate);
     const prepared: PreparedLine[] = [];
+    // What earlier lines of this order already take from each buy, so two lines selling the
+    // same material do not both take the oldest stock.
+    const pending = new Map<string, Decimal>();
 
     for (const [index, input] of inputs.entries()) {
       const item = await this.items.findById(input.item_id, tx);
@@ -916,20 +922,27 @@ export class OrdersService {
         document_rate_source: rateSource,
       });
 
-      // The cost snapshot: kept from the line it replaces when the material and the month are
-      // unchanged, re-taken otherwise (2.2.3 `order_lines`, 2.5.3 step 3).
-      const previous = carryOver?.previous.find((line) => line.item_id === item.id);
-      const cost =
-        previous && carryOver?.monthUnchanged
-          ? {
-              cost_unit_iqd:
-                previous.cost_unit_iqd === null ? null : Number(previous.cost_unit_iqd),
-              cost_unit_usd_cents:
-                previous.cost_unit_usd_cents === null ? null : Number(previous.cost_unit_usd_cents),
-              cost_month_price_id: previous.cost_month_price_id,
-              cost_source: previous.cost_source,
-            }
-          : costSnapshotOf(selectMonthPrice(prices, 'bought', orderDate));
+      // The cost: what the stock this line sells actually cost us, taken from the buys oldest
+      // first (D-062). A material never bought has no cost, and the line no margin.
+      const lotPlan = await this.lots.plan(tx, item.id, String(pricedQuantity), pending);
+      const quantity = new Decimal(String(pricedQuantity));
+      const cost = lotPlan.costed
+        ? {
+            cost_unit_iqd: roundHalfAwayFromZero(new Decimal(lotPlan.cost_total_iqd).dividedBy(quantity)),
+            cost_unit_usd_cents: roundHalfAwayFromZero(new Decimal(lotPlan.cost_total_usd_cents).dividedBy(quantity)),
+            cost_month_price_id: null,
+            cost_source: 'lots' as const,
+            cost_total_iqd: lotPlan.cost_total_iqd,
+            cost_total_usd_cents: lotPlan.cost_total_usd_cents,
+          }
+        : {
+            cost_unit_iqd: null,
+            cost_unit_usd_cents: null,
+            cost_month_price_id: null,
+            cost_source: 'none' as const,
+            cost_total_iqd: null,
+            cost_total_usd_cents: null,
+          };
 
       prepared.push({
         line_no: index + 1,
@@ -951,8 +964,11 @@ export class OrdersService {
         cost_unit_usd_cents: cost.cost_unit_usd_cents,
         cost_month_price_id: cost.cost_month_price_id,
         cost_source: cost.cost_source,
+        cost_total_iqd: cost.cost_total_iqd,
+        cost_total_usd_cents: cost.cost_total_usd_cents,
         note: input.note?.trim() || null,
         price_from_month: priceFromMonth,
+        lot_plan: lotPlan,
       });
     }
 
@@ -998,6 +1014,24 @@ export class OrdersService {
       ]);
     }
     return pair;
+  }
+
+  /** Each line's take from the buys, written against the line now that it has an id (D-062). */
+  private async recordLots(
+    tx: Db,
+    context: RequestContext,
+    inserted: readonly OrderLineRow[],
+    prepared: readonly PreparedLine[],
+  ): Promise<void> {
+    for (const [index, line] of inserted.entries()) {
+      const source = prepared[index] as PreparedLine;
+      await this.lots.record(tx, source.lot_plan, {
+        type: 'order_line',
+        id: line.id,
+        itemId: source.item_id,
+        createdBy: context.userId,
+      });
+    }
   }
 
   /** One `sale_out` movement per line, referencing the line it came from (FR-608). */
@@ -1197,7 +1231,7 @@ export class OrdersService {
   }
 
   private async versionConflict(context: RequestContext, id: string): Promise<ApiError> {
-    const current = await this.orders.findById(id, this.scopeOf(context));
+    const current = await this.orders.findById(id);
     return new ApiError('VERSION_CONFLICT', { entity: 'order', version: current?.version ?? null });
   }
 }
@@ -1303,6 +1337,8 @@ function toOrderDto(row: OrderListRow, lines: readonly OrderLineRow[]): OrderDto
     discount_usd_cents: Number(row.discount_usd_cents),
     total_iqd: Number(row.total_iqd),
     total_usd_cents: Number(row.total_usd_cents),
+    rounding_iqd: Number(row.rounding_iqd ?? 0),
+    rounding_usd_cents: Number(row.rounding_usd_cents ?? 0),
     // The view derives the status; this repeats the kernel's rule for the rows a list joined
     // without it, and the two agree by construction (2.4.3).
     status:

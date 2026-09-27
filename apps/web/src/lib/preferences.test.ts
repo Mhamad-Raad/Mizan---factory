@@ -34,13 +34,31 @@ describe('device preferences (FR-1103)', () => {
     expect(reloaded.fontScale).toBe(1.25);
   });
 
+  it('keeps the colour and the typeface a device chose, and puts them on the page (D-061)', () => {
+    writePreferences({ ...DEFAULT_PREFERENCES, palette: 'plum', typeface: 'naskh' });
+    const reloaded = readPreferences();
+    expect(reloaded.palette).toBe('plum');
+    expect(reloaded.typeface).toBe('naskh');
+
+    applyPreferences(reloaded);
+    expect(document.documentElement.getAttribute('data-palette')).toBe('plum');
+    expect(document.documentElement.getAttribute('data-font')).toBe('naskh');
+  });
+
   it('falls back to defaults on corrupted or hostile stored values', () => {
     localStorage.setItem(PREFERENCES_KEY, 'not json at all');
     expect(readPreferences()).toEqual(DEFAULT_PREFERENCES);
 
     localStorage.setItem(
       PREFERENCES_KEY,
-      JSON.stringify({ lang: 'fr-FR', theme: 'neon', fontScale: 99, numerals: 'roman' }),
+      JSON.stringify({
+        lang: 'fr-FR',
+        theme: 'neon',
+        fontScale: 99,
+        numerals: 'roman',
+        palette: 'rainbow',
+        typeface: 'comic-sans',
+      }),
     );
     expect(readPreferences()).toEqual(DEFAULT_PREFERENCES);
   });

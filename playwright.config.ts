@@ -62,6 +62,8 @@ export default defineConfig({
             APP_BASE_URL: 'http://localhost:5173',
             NODE_ENV: 'development',
             TZ: 'Asia/Baghdad',
+            // The suite types wrong passwords on purpose, all from this machine.
+            SIGN_IN_FAILURES_PER_HOUR: '100000',
           },
         },
         {

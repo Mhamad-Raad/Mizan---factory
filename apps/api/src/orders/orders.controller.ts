@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
+import { stripHistory } from '../history/history-fields.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { OrdersService } from './orders.service.js';
+import { limitField, pageFields } from '../common/paging.js';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const kg = z.string().regex(/^\d{1,9}(\.\d{1,3})?$/);
@@ -14,12 +16,21 @@ const money = z.object({
   currency: z.enum(['IQD', 'USD']),
   other_amount: z.number().int().nullish(),
 });
+/**
+ * A price, a line total or a discount: never below zero. Refused here with the field named,
+ * rather than by the table's CHECK as a 500 (security review, finding 16).
+ */
+const price = z.object({
+  amount: z.number().int().nonnegative(),
+  currency: z.enum(['IQD', 'USD']),
+  other_amount: z.number().int().nonnegative().nullish(),
+});
 
 const lineSchema = z.object({
   item_id: z.string().uuid(),
   qty_count: z.number().int().positive().nullish(),
   qty_kg: kg.nullish(),
-  unit_price: money.nullish(),
+  unit_price: price.nullish(),
   note: z.string().max(500).nullish(),
 });
 
@@ -31,7 +42,7 @@ const createSchema = z.object({
   received_amount: z.number().int().positive().nullish(),
   notes: z.string().max(2000).nullish(),
   rate_iqd_per_usd: z.string().regex(/^\d+(\.\d{1,4})?$/).nullish(),
-  discount: money.nullish(),
+  discount: price.nullish(),
   lines: z.array(lineSchema).min(1).max(200),
   acting_user_id: z.string().uuid().nullish(),
 });
@@ -67,22 +78,20 @@ const listSchema = z.object({
   from: isoDate.optional(),
   to: isoDate.optional(),
   done_by: z.string().uuid().optional(),
-  assigned_to: z.string().uuid().optional(),
   payment_type: z.enum(['cash', 'borrowed']).optional(),
-  status: z.enum(['unpaid', 'partially_paid', 'paid', 'void']).optional(),
+  status: z.enum(['unpaid', 'partially_paid', 'paid', 'void', 'owing']).optional(),
   q: z.string().max(200).optional(),
   include_undone: z.enum(['true', 'false']).optional(),
-  page: z.coerce.number().int().positive().optional(),
-  page_size: z.coerce.number().int().positive().max(100).optional(),
+  ...pageFields,
 });
 
 const historySchema = z.object({
   cursor: z.string().max(200).optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: limitField,
 });
 
 /**
- * Orders (FR-601 to FR-613). Scope is applied in the repository from the request context, and
+ * Orders (FR-601 to FR-613). Every order is visible to whoever may see orders (D-056), and
  * the cost snapshot on each line — a bought price — is stripped for callers without
  * `fields.see_bought_price` (FR-602, spec 2.6.2).
  */
@@ -93,6 +102,8 @@ export class OrdersController {
 
   @Get('orders')
   @RequirePermission('orders.view')
+  // The totals' "still owed" is what customers owe: the balances flag keeps it (2.6.2).
+  @SensitiveFields({ cost: 'fields.see_bought_price', balance: 'fields.see_customer_balances' })
   async list(@Req() request: RequestWithContext, @Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
     return this.orders.list(contextOf(request), {
       ...query,
@@ -100,7 +111,7 @@ export class OrdersController {
     });
   }
 
-  /** The customer's Orders tab; the same scoped list, filtered to one customer (FR-503). */
+  /** The account's Orders tab; the same list, filtered to one account (FR-503). */
   @Get('customers/:id/orders')
   @RequirePermission('orders.view')
   async ofCustomer(
@@ -214,7 +225,11 @@ export class OrdersController {
     @Param('id') id: string,
     @Query(zodBody(historySchema)) query: z.infer<typeof historySchema>,
   ) {
-    return this.orders.historyOf(contextOf(request), id, query);
+    const context = contextOf(request);
+    const page = await this.orders.historyOf(context, id, query);
+    // The damages reported from the order and other rows naming it follow their own kind's
+    // rules; the payments against the order itself stay, as the order shows them anyway.
+    return { ...page, items: stripHistory(context, page.items, { ownOrderId: id }) };
   }
 
   /** Proposed — not requested (FR-613): the figures the client renders as a receipt. */

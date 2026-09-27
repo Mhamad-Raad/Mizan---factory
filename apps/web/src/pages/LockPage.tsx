@@ -7,7 +7,8 @@ import { Doorway } from '../components/Doorway.js';
 import { apiRequest } from '../lib/api.js';
 import { signInError } from '../lib/signInError.js';
 import type { SignInError } from '../lib/signInError.js';
-import { clearAllDrafts } from '../lib/drafts.js';
+import { useQueryClient } from '@tanstack/react-query';
+import { forgetPreviousUser, signOutEverywhereHere } from '../lib/signOut.js';
 import { useMotionAllowed, staggerDelay } from '../lib/motion.js';
 import { readRecentUsers, rememberUser } from '../lib/preferences.js';
 import type { RecentUser } from '../lib/preferences.js';
@@ -30,6 +31,7 @@ interface SwitchResponse {
 export function LockPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const user = useApp((state) => state.user);
   const preferences = useApp((state) => state.preferences);
 
@@ -97,7 +99,8 @@ export function LockPage() {
         },
       });
 
-      clearAllDrafts();
+      // The previous employee's cached answers and drafts go with their session (2.10.2).
+      forgetPreviousUser(queryClient);
       // Their own language, as they left it on this device, before the first screen paints.
       setPreference('lang', entry.lang);
       setSession({ user: response.user, permissions: response.permissions, isLocked: false });
@@ -123,9 +126,7 @@ export function LockPage() {
   };
 
   const signOut = async (): Promise<void> => {
-    await apiRequest('/auth/logout', { method: 'POST' });
-    clearAllDrafts();
-    clearSession();
+    await signOutEverywhereHere(queryClient, clearSession);
     navigate('/login');
   };
 

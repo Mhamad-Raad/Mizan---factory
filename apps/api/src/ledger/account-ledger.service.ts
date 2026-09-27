@@ -147,6 +147,10 @@ export abstract class AccountLedgerService {
     return this.storeFor(tx).entriesFor(ownerId);
   }
 
+  async entriesOfDocument(tx: Db, ownerId: string, documentId: string): Promise<LedgerEntry[]> {
+    return this.storeFor(tx).entriesOfDocument(ownerId, documentId);
+  }
+
   async balanceOf(tx: Db, account: LedgerAccount): Promise<number> {
     return balanceOf(await this.entriesFor(tx, account.id), account.settlement_currency);
   }

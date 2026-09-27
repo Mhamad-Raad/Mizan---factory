@@ -6,6 +6,7 @@ import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { ItemsService } from './items.service.js';
+import { limitField, pageFields } from '../common/paging.js';
 
 const uuid = z.string().uuid();
 const kg = z.string().regex(/^-?\d{1,9}(\.\d{1,3})?$/);
@@ -15,17 +16,21 @@ const money = z.object({
   /** Overwriting the calculated side stores the implied rate as `manual` (spec 2.3.2). */
   other_amount: z.number().int().nullish(),
 });
+/** A bought or sale price: never below zero (security review, finding 16). */
+const price = money.extend({
+  amount: z.number().int().nonnegative(),
+  other_amount: z.number().int().nonnegative().nullish(),
+});
 
 const listSchema = z.object({
   q: z.string().max(200).optional(),
   pricing_unit: z.enum(['per_piece', 'per_kg']).optional(),
   stock: z.enum(['in', 'out']).optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
-  page: z.coerce.number().int().positive().optional(),
-  page_size: z.coerce.number().int().positive().max(100).optional(),
+  ...pageFields,
 });
 
-const createSchema = z.object({
+const baseSchema = z.object({
   name: z.string().min(1).max(200),
   pricing_unit: z.enum(['per_piece', 'per_kg']),
   code: z.string().max(40).nullish(),
@@ -34,12 +39,29 @@ const createSchema = z.object({
   notes: z.string().max(2000).nullish(),
 });
 
-const updateSchema = createSchema.partial().extend({ version: z.number().int().positive() });
+/**
+ * Creating a material is buying it (D-062): the first buy — how much came in and what each one
+ * cost — travels with the material and is written in the same transaction. Optional here only
+ * because the go-live import creates materials by the hundred; the screen always sends it.
+ */
+export const createSchema = baseSchema.extend({
+  buy: z
+    .object({
+      qty_count: z.number().int().positive().nullish(),
+      qty_kg: kg.nullish(),
+      unit_price: price,
+      purchase_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      note: z.string().max(500).nullish(),
+    })
+    .nullish(),
+});
+
+const updateSchema = baseSchema.partial().extend({ version: z.number().int().positive() });
 const versionSchema = z.object({ version: z.number().int().positive() });
 
 const pricesSchema = z.object({
-  bought: money.nullish(),
-  sale: money.nullish(),
+  bought: price.nullish(),
+  sale: price.nullish(),
   note: z.string().max(2000).nullish(),
   version: z.number().int().positive().nullish(),
 });
@@ -50,22 +72,21 @@ const copyMonthSchema = z.object({
   item_ids: z.array(uuid).max(1000).nullish(),
 });
 
-const movementSchema = z.object({
+export const movementSchema = z.object({
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   qty_count: z.number().int().nullish(),
   qty_kg: kg.nullish(),
-  unit_cost: money.nullish(),
+  unit_cost: price.nullish(),
   note: z.string().min(1).max(2000),
 });
 
 const pageSchema = z.object({
-  page: z.coerce.number().int().positive().optional(),
-  page_size: z.coerce.number().int().positive().max(100).optional(),
+  ...pageFields,
 });
 
 const historySchema = z.object({
   cursor: z.string().max(200).optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: limitField,
 });
 
 /**
@@ -99,6 +120,7 @@ export class ItemsController {
   @HttpCode(201)
   async create(@Req() request: RequestWithContext, @Body(zodBody(createSchema)) body: z.infer<typeof createSchema>) {
     return this.items.create(contextOf(request), {
+      buy: body.buy ?? null,
       name: body.name,
       pricing_unit: body.pricing_unit,
       code: body.code ?? null,
@@ -178,10 +200,20 @@ export class ItemsController {
     await this.items.softDelete(contextOf(request), id, body.version);
   }
 
+  /**
+   * The material's stock split by what we paid (D-062): every buy, oldest first, with how much of
+   * it is left. The unit costs are bought prices and leave with the same flag as every other.
+   */
+  @Get('items/:id/lots')
+  @RequirePermission('materials.view')
+  async lots(@Param('id') id: string) {
+    return this.items.lots(id);
+  }
+
   @Get('items/:id/prices')
   @RequirePermission('materials.view')
-  async prices(@Param('id') id: string) {
-    return this.items.prices(id);
+  async prices(@Param('id') id: string, @Query(zodBody(pageSchema)) query: z.infer<typeof pageSchema>) {
+    return this.items.prices(id, query);
   }
 
   @Put('items/:id/prices/:month')

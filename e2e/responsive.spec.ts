@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { ADMIN } from './accounts.js';
+import { ADMIN, API_URL } from './accounts.js';
 
 /**
  * Every screen, in every language, at the largest text size, on the narrowest phone
@@ -35,7 +35,6 @@ const STATIC_ROUTES = [
   '/reports/receivables',
   '/reports/stock',
   '/dashboard',
-  '/search',
   '/settings',
   '/import',
   '/font-check',
@@ -66,7 +65,7 @@ async function signIn(page: Page, lang: string): Promise<void> {
 /** One id per kind, so the detail screens are swept too. */
 async function detailRoutes(page: Page): Promise<string[]> {
   const of = async (path: string, route: string): Promise<string[]> => {
-    const response = await page.request.get(`http://localhost:3000/api/v1${path}`);
+    const response = await page.request.get(`${API_URL}${path}`);
     if (!response.ok()) return [];
     const body = (await response.json()) as { items?: { id: string }[] };
     const id = body.items?.[0]?.id;

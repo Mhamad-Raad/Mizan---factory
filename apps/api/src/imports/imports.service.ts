@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { normalizeForSearch } from '@mizan/text';
-import { ApiError, messageKeyFor } from '../common/errors.js';
+import { ApiError } from '../common/errors.js';
 import type { RequestContext } from '../common/request-context.js';
 import { Database } from '../database/pool.js';
 import { ItemsService } from '../items/items.service.js';
 import { CustomersService } from '../customers/customers.service.js';
 import { CompaniesService } from '../companies/companies.service.js';
 import { PeriodService } from '../settings/period.service.js';
+import type { ZodType } from 'zod';
+import { createSchema as itemCreateSchema, movementSchema } from '../items/items.controller.js';
+import { createSchema as customerCreateSchema, entrySchema as customerEntrySchema } from '../customers/customers.controller.js';
+import { entrySchema as companyEntrySchema } from '../companies/companies.controller.js';
 
 /** What can be imported at go-live (FR-1312). Nothing else; this is not a data-entry API. */
 export type ImportKind =
@@ -197,6 +201,20 @@ export class ImportsService {
           break;
         }
       }
+
+      /*
+       * Then the very schema the form's route validates with, over the body this row would be
+       * (security review, finding 15). The checks above explain the common mistakes in the
+       * spreadsheet's own terms; this one catches everything else the route would refuse — a
+       * name too long, a negative minimum, half a piece — which used to reach the database and
+       * come back as a bare 500. A column that already has its problem is not told twice.
+       */
+      const flagged = new Set(problems.filter((found) => found.row === at).map((found) => found.column));
+      for (const issue of schemaProblems(kind, row)) {
+        if (flagged.has(issue.column) || flagged.has(null)) continue;
+        flagged.add(issue.column);
+        problem(issue.column, issue.message_key, issue.params);
+      }
     }
 
     const badRows = new Set(problems.map((problem) => problem.row));
@@ -231,7 +249,7 @@ export class ImportsService {
           // A field error is the useful one — "row 812: this customer has no name" — so it is
           // preferred over the generic code when the row failed validation.
           message_key: error
-            ? (error.fields[0]?.message_key ?? messageKeyFor(error.code))
+            ? (error.fields[0]?.message_key ?? error.messageKey)
             : 'errors:INTERNAL',
           params: error ? (error.fields[0]?.params ?? error.params) : {},
         });
@@ -242,78 +260,73 @@ export class ImportsService {
   }
 
   private async writeRow(context: RequestContext, kind: ImportKind, row: ImportRow): Promise<void> {
+    // The same parse the preview ran: a row reaches here only when it passed, so this cannot
+    // fail — and if it ever did, it would refuse rather than write a half-read row.
     const today = this.period.today();
 
     switch (kind) {
-      case 'materials':
+      case 'materials': {
+        const body = itemCreateSchema.parse(bodyOf(kind, row, today));
         await this.items.create(context, {
-          name: text(row.name) as string,
-          pricing_unit: text(row.pricing_unit) as 'per_kg' | 'per_piece',
-          code: text(row.code),
-          min_stock_count:
-            text(row.pricing_unit) === 'per_piece' && text(row.min_stock)
-              ? Number(row.min_stock)
-              : null,
-          min_stock_kg: text(row.pricing_unit) === 'per_kg' ? text(row.min_stock) : null,
-          notes: text(row.notes),
+          name: body.name,
+          pricing_unit: body.pricing_unit,
+          code: body.code ?? null,
+          min_stock_count: body.min_stock_count ?? null,
+          min_stock_kg: body.min_stock_kg ?? null,
+          notes: body.notes ?? null,
         });
         return;
+      }
 
       case 'customers':
+      case 'companies': {
+        const body = customerCreateSchema.parse(bodyOf(kind, row, today));
         await this.customers.create(context, {
-          name: text(row.name) as string,
-          phone: text(row.phone),
-          address: text(row.address),
-          settlement_currency: (text(row.settlement_currency) as 'IQD' | 'USD') ?? undefined,
-          notes: text(row.notes),
+          name: body.name,
+          ...(kind === 'companies' ? { contact_name: body.contact_name ?? null } : {}),
+          phone: body.phone ?? null,
+          address: body.address ?? null,
+          settlement_currency: body.settlement_currency,
+          notes: body.notes ?? null,
         });
         return;
-
-      case 'companies':
-        await this.customers.create(context, {
-          name: text(row.name) as string,
-          is_customer: false,
-          is_supplier: true,
-          contact_name: text(row.contact_name),
-          phone: text(row.phone),
-          address: text(row.address),
-          settlement_currency: (text(row.settlement_currency) as 'IQD' | 'USD') ?? undefined,
-          notes: text(row.notes),
-        });
-        return;
+      }
 
       case 'opening_stock': {
+        const body = movementSchema.parse(bodyOf(kind, row, today));
         const item = await this.findByName('items', text(row.material) as string);
         if (!item) throw ApiError.notFound();
         await this.items.recordMovement(context, item, 'opening', {
-          qty_count: text(row.qty_count) ? Number(row.qty_count) : null,
-          qty_kg: text(row.qty_kg),
-          entry_date: text(row.entry_date) ?? today,
-          note: text(row.note) ?? 'Imported at go-live',
+          qty_count: body.qty_count ?? null,
+          qty_kg: body.qty_kg ?? null,
+          entry_date: body.entry_date,
+          note: body.note,
         });
         return;
       }
 
       case 'customer_opening_balance': {
+        const body = customerEntrySchema.parse(bodyOf(kind, row, today));
         const customer = await this.findByName('customers', text(row.customer) as string);
         if (!customer) throw ApiError.notFound();
         await this.customers.recordEntry(context, customer, 'opening', {
-          amount: Number(row.amount),
-          currency: text(row.currency) as 'IQD' | 'USD',
-          entry_date: text(row.entry_date) ?? today,
-          note: text(row.note) ?? 'Opening debt imported at go-live',
+          amount: body.amount,
+          currency: body.currency,
+          entry_date: body.entry_date,
+          note: body.note,
         });
         return;
       }
 
       case 'company_opening_balance': {
+        const body = companyEntrySchema.parse(bodyOf(kind, row, today));
         const company = await this.findByName('companies', text(row.company) as string);
         if (!company) throw ApiError.notFound();
         await this.companies.recordEntry(context, company, 'opening', {
-          amount: Number(row.amount),
-          currency: text(row.currency) as 'IQD' | 'USD',
-          entry_date: text(row.entry_date) ?? today,
-          note: text(row.note) ?? 'Opening debt imported at go-live',
+          amount: body.amount,
+          currency: body.currency,
+          entry_date: body.entry_date,
+          note: body.note,
         });
         return;
       }
@@ -389,7 +402,7 @@ export class ImportsService {
       const error = caught instanceof ApiError ? caught : null;
       problem(
         'entry_date',
-        error ? (error.fields[0]?.message_key ?? messageKeyFor(error.code)) : 'errors:INTERNAL',
+        error ? (error.fields[0]?.message_key ?? error.messageKey) : 'errors:INTERNAL',
         error ? (error.fields[0]?.params ?? error.params) : {},
       );
     }
@@ -404,9 +417,122 @@ function text(value: string | null | undefined): string | null {
 
 /**
  * Where a name is looked up. Customers and companies are one table (D-054): a company is a
- * business with `is_supplier`, so an opening debt to a company only finds suppliers — but a new
+ * ordinary account (not the walk-in, D-055), so an opening debt to a company finds any of them — and a new
  * row of either kind collides with any business of that name, because it would be the same one.
  */
 function sourceOf(table: 'items' | 'customers' | 'companies'): string {
-  return table === 'companies' ? 'customers WHERE is_supplier AND' : `${table} WHERE`;
+  return table === 'companies' ? 'customers WHERE NOT is_system AND' : `${table} WHERE`;
+}
+
+/** A cell as a number: blank is "not given", anything else is read — `NaN` when it is not one. */
+function numberOf(value: string | null | undefined): number | null {
+  const given = text(value);
+  return given === null ? null : Number(given);
+}
+
+/**
+ * The body the form's route would receive for this row, and the spreadsheet column each of its
+ * fields came from — so a refusal names the column the admin has to fix.
+ */
+function bodyOf(kind: ImportKind, row: ImportRow, today: string): Record<string, unknown> {
+  switch (kind) {
+    case 'materials': {
+      const unit = text(row.pricing_unit);
+      return {
+        name: text(row.name) ?? '',
+        pricing_unit: unit,
+        code: text(row.code),
+        min_stock_count: unit === 'per_piece' ? numberOf(row.min_stock) : null,
+        min_stock_kg: unit === 'per_kg' ? text(row.min_stock) : null,
+        notes: text(row.notes),
+      };
+    }
+    case 'customers':
+    case 'companies':
+      return {
+        name: text(row.name) ?? '',
+        contact_name: kind === 'companies' ? text(row.contact_name) : null,
+        phone: text(row.phone),
+        address: text(row.address),
+        settlement_currency: text(row.settlement_currency) ?? undefined,
+        notes: text(row.notes),
+      };
+    case 'opening_stock':
+      return {
+        qty_count: numberOf(row.qty_count),
+        qty_kg: text(row.qty_kg),
+        entry_date: text(row.entry_date) ?? today,
+        note: text(row.note) ?? 'Imported at go-live',
+      };
+    case 'customer_opening_balance':
+    case 'company_opening_balance':
+      return {
+        amount: numberOf(row.amount),
+        currency: text(row.currency),
+        entry_date: text(row.entry_date) ?? today,
+        note: text(row.note) ?? 'Opening debt imported at go-live',
+      };
+  }
+}
+
+const COLUMN_OF: Readonly<Record<string, string>> = {
+  min_stock_count: 'min_stock',
+  min_stock_kg: 'min_stock',
+};
+
+function schemaOf(kind: ImportKind): ZodType {
+  switch (kind) {
+    case 'materials':
+      return itemCreateSchema;
+    case 'customers':
+    case 'companies':
+      return customerCreateSchema;
+    case 'opening_stock':
+      return movementSchema;
+    case 'customer_opening_balance':
+      return customerEntrySchema;
+    case 'company_opening_balance':
+      return companyEntrySchema;
+  }
+}
+
+/** The route schema's refusals for one row, in the preview's shape: column, key, params. */
+function schemaProblems(
+  kind: ImportKind,
+  row: ImportRow,
+): { column: string | null; message_key: string; params: Record<string, unknown> }[] {
+  // The date is only a placeholder here: a missing one defaults to today, and a given one has
+  // its own check with its own message (checkDate).
+  const parsed = schemaOf(kind).safeParse(bodyOf(kind, row, '2000-01-01'));
+  if (parsed.success) return [];
+  return parsed.error.issues.map((raw) => {
+    const issue = raw as typeof raw & { origin?: string; minimum?: unknown; maximum?: unknown; inclusive?: boolean };
+    const field = String(issue.path[0] ?? '');
+    const column = field === '' ? null : (COLUMN_OF[field] ?? field);
+    const value = column ? (text(row[column]) ?? '') : '';
+    const isText = issue.origin === 'string';
+
+    if (issue.code === 'too_big' && isText) {
+      return { column, message_key: 'errors:field.too_long', params: { max: issue.maximum, field: column } };
+    }
+    if (issue.code === 'too_small' && isText) {
+      return { column, message_key: 'errors:field.required', params: { field: column } };
+    }
+    // Below or above the bound, saying which bound: "cannot be negative" was also what a
+    // number over its maximum was told.
+    if (issue.code === 'too_small') {
+      const key = issue.inclusive === false ? 'imports:number_above' : 'imports:number_too_small';
+      return { column, message_key: key, params: { value, min: Number(issue.minimum) } };
+    }
+    if (issue.code === 'too_big') {
+      return { column, message_key: 'imports:number_too_big', params: { value, max: Number(issue.maximum) } };
+    }
+    if (value !== '' && Number.isNaN(Number(value))) {
+      return { column, message_key: 'imports:not_a_number', params: { value } };
+    }
+    if (issue.code === 'invalid_type' && /^-?\d+\.\d+$/.test(value)) {
+      return { column, message_key: 'imports:whole_number_required', params: { value } };
+    }
+    return { column, message_key: 'imports:value_not_accepted', params: { value } };
+  });
 }

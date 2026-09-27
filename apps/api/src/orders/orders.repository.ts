@@ -6,6 +6,8 @@ import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import type { OrderLineRow, OrderRow, PaymentType, PriceSource } from './order.types.js';
 import { countFrom } from '../common/count-from.js';
+import { pagingOf } from '../common/paging.js';
+import { containing } from '../common/like.js';
 
 function orderColumns(alias = 'orders'): string {
   return [
@@ -26,6 +28,8 @@ function orderColumns(alias = 'orders'): string {
     'discount_usd_cents::text AS discount_usd_cents',
     'total_iqd::text AS total_iqd',
     'total_usd_cents::text AS total_usd_cents',
+    'rounding_iqd::text AS rounding_iqd',
+    'rounding_usd_cents::text AS rounding_usd_cents',
     'created_at',
     'created_by',
     'updated_at',
@@ -96,13 +100,6 @@ const LIST_COLUMNS = `c.name AS customer_name, c.is_system AS customer_is_system
                       (SELECT count(*)::text FROM order_lines l
                         WHERE l.order_id = o.id AND l.deleted_at IS NULL) AS line_count`;
 
-/** The scope of the caller for orders (spec 2.6.4). */
-export interface OrderScope {
-  userId: string;
-  /** `customers.view_all`: every order. Otherwise: my customers' orders, plus my own. */
-  viewAll: boolean;
-}
-
 export interface OrderFilters {
   /** FR-802: the damage pickers show only the documents that carried the material. */
   item_id?: string;
@@ -110,9 +107,9 @@ export interface OrderFilters {
   from?: string;
   to?: string;
   done_by?: string;
-  assigned_to?: string;
   payment_type?: PaymentType;
-  status?: 'unpaid' | 'partially_paid' | 'paid' | 'void';
+  /** `owing` is unpaid or partially paid — the account overview's "still owed" list (D-058). */
+  status?: 'unpaid' | 'partially_paid' | 'paid' | 'void' | 'owing';
   q?: string;
   /** Void-by-undo rows are hidden unless the Void filter asks for them (2.4.5). */
   include_undone?: boolean;
@@ -150,29 +147,30 @@ export interface NewOrderLine {
   cost_unit_iqd: number | null;
   cost_unit_usd_cents: number | null;
   cost_month_price_id: string | null;
-  cost_source: 'month' | 'fallback' | 'none';
+  cost_source: 'month' | 'fallback' | 'lots' | 'none';
+  /** The exact cost of the stock sold, from the buys it came from (D-062); drives the margin. */
+  cost_total_iqd?: number | null;
+  cost_total_usd_cents?: number | null;
   note: string | null;
+}
+
+/** The list's figures over the whole filter, not the page (client review). */
+export interface OrderTotals {
+  orders: number;
+  total_iqd: number;
+  total_usd_cents: number;
+  /** Orders that still owe something, in their company's own currency. */
+  owing: number;
+  balance: { owed_iqd: number; owed_usd_cents: number };
 }
 
 @Injectable()
 export class OrdersRepository {
   constructor(private readonly database: Database) {}
 
-  /**
-   * Orders the caller may see: every order with `customers.view_all`, otherwise the orders of
-   * customers assigned to them **or** orders they entered themselves — an employee must not
-   * lose sight of their own work when a customer is reassigned (spec 2.6.4).
-   */
-  private scopeCondition(scope: OrderScope, values: unknown[], alias = 'o'): string | null {
-    if (scope.viewAll) return null;
-    values.push(scope.userId);
-    const param = values.length;
-    return `(c.assigned_user_id = $${param}::uuid OR c.is_system OR ${alias}.created_by = $${param}::uuid)`;
-  }
-
-  async findById(id: string, scope: OrderScope, tx?: Db): Promise<OrderListRow | null> {
+  /** An order by id. Everybody who may see orders sees them all (D-056): no scope to apply. */
+  async findById(id: string, tx?: Db): Promise<OrderListRow | null> {
     const values: unknown[] = [id];
-    const scoped = this.scopeCondition(scope, values);
     const { rows } = await (tx ?? this.database).query<OrderListRow>(
       `SELECT ${orderColumns('o')}, ${LIST_COLUMNS}
          FROM orders o
@@ -181,7 +179,7 @@ export class OrdersRepository {
          LEFT JOIN users v ON v.id = o.voided_by
          ${REMAINING_LATERAL}
          ${RECEIVED_LATERAL}
-        WHERE o.id = $1 AND o.deleted_at IS NULL ${scoped ? `AND ${scoped}` : ''}`,
+        WHERE o.id = $1 AND o.deleted_at IS NULL`,
       values,
     );
     return rows[0] ?? null;
@@ -195,12 +193,10 @@ export class OrdersRepository {
     return rows[0] ?? null;
   }
 
-  async list(filters: OrderFilters, scope: OrderScope): Promise<{ rows: OrderListRow[]; total: number }> {
+  async list(filters: OrderFilters): Promise<{ rows: OrderListRow[]; total: number; totals: OrderTotals }> {
     const conditions = ['o.deleted_at IS NULL'];
     const values: unknown[] = [];
 
-    const scoped = this.scopeCondition(scope, values);
-    if (scoped) conditions.push(scoped);
 
     if (filters.customer_id) {
       values.push(filters.customer_id);
@@ -230,10 +226,6 @@ export class OrdersRepository {
       values.push(filters.done_by);
       conditions.push(`o.acting_user_id = $${values.length}::uuid`);
     }
-    if (filters.assigned_to) {
-      values.push(filters.assigned_to);
-      conditions.push(`c.assigned_user_id = $${values.length}::uuid`);
-    }
     if (filters.payment_type) {
       values.push(filters.payment_type);
       conditions.push(`o.payment_type = $${values.length}::payment_type`);
@@ -241,8 +233,12 @@ export class OrdersRepository {
     if (filters.status) {
       // The status is derived, so filtering by it means deriving it for each candidate row —
       // which is why the date chips of FR-611 matter: they bound the candidate set first.
-      values.push(filters.status);
-      conditions.push(`${STATUS_EXPRESSION} = $${values.length}`);
+      if (filters.status === 'owing') {
+        conditions.push(`${STATUS_EXPRESSION} IN ('unpaid', 'partially_paid')`);
+      } else {
+        values.push(filters.status);
+        conditions.push(`${STATUS_EXPRESSION} = $${values.length}`);
+      }
     }
     if (!filters.include_undone) {
       // Orders voided through the 8-second undo are hidden by default (2.4.5, FR-610).
@@ -250,9 +246,9 @@ export class OrdersRepository {
     }
     const query = filters.q?.trim();
     if (query) {
-      values.push(`%${normalizeForSearch(query)}%`);
+      values.push(containing(normalizeForSearch(query)));
       const nameParam = values.length;
-      values.push(`%${query}%`);
+      values.push(containing(query));
       const textParam = values.length;
       const asNumber = Number(query.replace(/\D/g, ''));
       values.push(Number.isFinite(asNumber) && asNumber > 0 ? asNumber : null);
@@ -290,11 +286,25 @@ export class OrdersRepository {
     ]);
 
     const countValues = [...values];
-    const pageSize = Math.min(filters.page_size ?? 25, 100);
-    const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
+    const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
-    const [list, count] = await Promise.all([
+    // The figures over the whole filter, for the cards above the list (client review): what the
+    // orders came to and what is still owed on them. What is owed is read from the maintained
+    // per-order sum of migration 0015 — one join, not a subquery per order — in both currencies,
+    // and it counts only orders that still owe something in their company's own currency.
+    const forTotals = countFrom(
+      `FROM orders o\n${customer}\nLEFT JOIN order_remaining r ON r.order_id = o.id`,
+      where,
+      [
+        { alias: 'bal.', sql: REMAINING_LATERAL },
+        { alias: 'settle.', sql: RECEIVED_LATERAL },
+      ],
+    );
+    const owes = `o.status = 'active' AND (CASE WHEN c.settlement_currency = 'IQD' THEN r.remaining_iqd
+                                                ELSE r.remaining_usd_cents END) > 0`;
+
+    const [list, count, totals] = await Promise.all([
       this.database.query<OrderListRow>(
         `SELECT ${orderColumns('o')}, ${LIST_COLUMNS}
          ${from}
@@ -304,9 +314,38 @@ export class OrdersRepository {
         values,
       ),
       this.database.query<{ total: string }>(`SELECT count(*)::text AS total ${forCount} ${where}`, countValues),
+      this.database.query<{
+        orders: string;
+        total_iqd: string;
+        total_usd_cents: string;
+        owing: string;
+        owed_iqd: string;
+        owed_usd_cents: string;
+      }>(
+        `SELECT count(*) FILTER (WHERE o.status = 'active')::text AS orders,
+                coalesce(sum(o.total_iqd) FILTER (WHERE o.status = 'active'), 0)::text AS total_iqd,
+                coalesce(sum(o.total_usd_cents) FILTER (WHERE o.status = 'active'), 0)::text AS total_usd_cents,
+                count(*) FILTER (WHERE ${owes})::text AS owing,
+                coalesce(sum(r.remaining_iqd) FILTER (WHERE ${owes}), 0)::text AS owed_iqd,
+                coalesce(sum(r.remaining_usd_cents) FILTER (WHERE ${owes}), 0)::text AS owed_usd_cents
+           ${forTotals} ${where}`,
+        countValues,
+      ),
     ]);
 
-    return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0) };
+    const t = totals.rows[0];
+    return {
+      rows: list.rows,
+      total: Number(count.rows[0]?.total ?? 0),
+      totals: {
+        orders: Number(t?.orders ?? 0),
+        total_iqd: Number(t?.total_iqd ?? 0),
+        total_usd_cents: Number(t?.total_usd_cents ?? 0),
+        owing: Number(t?.owing ?? 0),
+        // Under `balance`, so the flag that hides what customers owe hides this too (2.6.2).
+        balance: { owed_iqd: Number(t?.owed_iqd ?? 0), owed_usd_cents: Number(t?.owed_usd_cents ?? 0) },
+      },
+    };
   }
 
   async linesOf(orderId: string, tx?: Db): Promise<OrderLineRow[]> {
@@ -374,6 +413,8 @@ export class OrdersRepository {
         cost_unit_iqd: line.cost_unit_iqd,
         cost_unit_usd_cents: line.cost_unit_usd_cents,
         cost_source: line.cost_source,
+        cost_total_iqd: line.cost_total_iqd ?? null,
+        cost_total_usd_cents: line.cost_total_usd_cents ?? null,
       });
       const { rows } = await tx.query<OrderLineRow>(
         `INSERT INTO order_lines
@@ -440,6 +481,8 @@ export class OrdersRepository {
       discount_usd_cents: number;
       total_iqd: number;
       total_usd_cents: number;
+      rounding_iqd: number;
+      rounding_usd_cents: number;
       acting_user_id: string;
       status: 'active' | 'void';
       void_reason: string | null;

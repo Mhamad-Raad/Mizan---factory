@@ -65,7 +65,6 @@ const SCREENS: { path: string; who: { username: string; password: string }; name
   { path: '/reports', who: ACCOUNTANT, name: 'reports hub' },
   { path: '/reports/sales', who: ACCOUNTANT, name: 'a report' },
   { path: '/dashboard', who: ACCOUNTANT, name: 'dashboard' },
-  { path: '/search', who: ACCOUNTANT, name: 'search' },
   { path: '/history', who: ADMIN, name: 'history' },
   { path: '/settings', who: ADMIN, name: 'settings' },
   { path: '/users', who: ADMIN, name: 'users' },

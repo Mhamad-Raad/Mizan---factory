@@ -113,9 +113,7 @@ await call(admin, `/items/${copper.body.id}/prices/${month}`, {
 
 const alNoor = await call(nazdar.session, '/customers', {
   method: 'POST',
-  body: {
-    is_customer: false,
-    is_supplier: true, name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
+  body: { name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
 });
 await call(nazdar.session, `/customers/${alNoor.body.id}/rates`, {
   method: 'POST',
@@ -135,7 +133,7 @@ check(purchase.status === 201, `purchase #${purchase.body?.number} brought 1,000
 
 const kawa = await call(admin, '/customers', {
   method: 'POST',
-  body: { name: `Kawa Trading ${unique}`, assigned_user_id: salesUser.body.user.id },
+  body: { name: `Kawa Trading ${unique}` },
 });
 const order = await call(rebaz.session, '/orders', {
   method: 'POST',

@@ -6,6 +6,7 @@ import { ApiError } from '../common/errors.js';
 import type { RequestContext } from '../common/request-context.js';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
+import type { Paging } from '../common/paging.js';
 
 export interface GlobalRateRow {
   id: string;
@@ -74,17 +75,21 @@ export class RatesService {
     return rate.rate_iqd_per_usd;
   }
 
-  async history(limit = 50): Promise<GlobalRateRow[]> {
-    const { rows } = await this.database.query<GlobalRateRow>(
-      `SELECT r.id, r.rate_iqd_per_usd::text AS rate_iqd_per_usd, r.effective_from, r.note,
-              r.created_by, u.display_name AS created_by_name, r.created_at
-         FROM global_rates r
-         LEFT JOIN users u ON u.id = r.created_by
-        ORDER BY r.effective_from DESC
-        LIMIT $1`,
-      [Math.min(limit, 100)],
-    );
-    return rows;
+  /** One page of the global rate's history, newest first, with the count of all of it (D-058). */
+  async history(paging: Paging): Promise<{ rows: GlobalRateRow[]; total: number }> {
+    const [{ rows }, count] = await Promise.all([
+      this.database.query<GlobalRateRow>(
+        `SELECT r.id, r.rate_iqd_per_usd::text AS rate_iqd_per_usd, r.effective_from, r.note,
+                r.created_by, u.display_name AS created_by_name, r.created_at
+           FROM global_rates r
+           LEFT JOIN users u ON u.id = r.created_by
+          ORDER BY r.effective_from DESC, r.id DESC
+          LIMIT $1 OFFSET $2`,
+        [paging.page_size, paging.offset],
+      ),
+      this.database.query<{ total: string }>('SELECT count(*)::text AS total FROM global_rates'),
+    ]);
+    return { rows, total: Number(count.rows[0]?.total ?? 0) };
   }
 
   /** A new rate (FR-1106), kept as append-only history so stored amounts keep their own rate. */

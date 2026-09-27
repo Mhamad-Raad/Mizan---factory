@@ -3,6 +3,8 @@ import { normalizeForSearch } from '@mizan/text';
 import type { Currency, Measure, RateSource } from '@mizan/money';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
+import { pagingOf } from '../common/paging.js';
+import { containing } from '../common/like.js';
 
 export type PriceSource = 'month' | 'override';
 
@@ -35,6 +37,7 @@ export interface PurchaseListRow extends PurchaseRow {
   acting_user_name: string | null;
   voided_by_name: string | null;
   line_count: string;
+  item_names: string | null;
 }
 
 export interface PurchaseLineRow {
@@ -145,7 +148,11 @@ const LINE_COLUMNS = `l.id, l.purchase_id, l.line_no, l.item_id, l.qty_count, l.
 const LIST_COLUMNS = `co.name AS company_name, co.settlement_currency::text AS settlement_currency,
                       u.display_name AS acting_user_name, v.display_name AS voided_by_name,
                       (SELECT count(*)::text FROM purchase_lines l
-                        WHERE l.purchase_id = p.id AND l.deleted_at IS NULL) AS line_count`;
+                        WHERE l.purchase_id = p.id AND l.deleted_at IS NULL) AS line_count,
+                      -- What was bought, by name, so a list of buys says what they were (D-062).
+                      (SELECT string_agg(i.name, ', ' ORDER BY l.line_no) FROM purchase_lines l
+                         JOIN items i ON i.id = l.item_id
+                        WHERE l.purchase_id = p.id AND l.deleted_at IS NULL) AS item_names`;
 
 @Injectable()
 export class PurchasesRepository {
@@ -211,9 +218,9 @@ export class PurchasesRepository {
     }
     const query = filters.q?.trim();
     if (query) {
-      values.push(`%${normalizeForSearch(query)}%`);
+      values.push(containing(normalizeForSearch(query)));
       const nameParam = values.length;
-      values.push(`%${query}%`);
+      values.push(containing(query));
       const textParam = values.length;
       const asNumber = Number(query.replace(/\D/g, ''));
       values.push(Number.isFinite(asNumber) && asNumber > 0 ? asNumber : null);
@@ -232,8 +239,7 @@ export class PurchasesRepository {
     const where = `WHERE ${conditions.join(' AND ')}`;
 
     const countValues = [...values];
-    const pageSize = Math.min(filters.page_size ?? 25, 100);
-    const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
+    const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
     const [list, count] = await Promise.all([

@@ -318,6 +318,12 @@ describe('users and permissions (FR-102 to FR-108, FR-201 to FR-206)', () => {
         password: created.body.temporary_password,
         displayName: 'Karwan',
       });
+      // A temporary password opens nothing but the change-password screen (security review, 6).
+      await as(ctx.http, session).get('/api/v1/orders').expect(403);
+      await as(ctx.http, session)
+        .post('/api/v1/auth/change-password')
+        .send({ current: created.body.temporary_password, new: 'karwan-own-password' })
+        .expect(204);
       await as(ctx.http, session).get('/api/v1/orders').expect(200);
       await as(ctx.http, session).get('/api/v1/companies').expect(403);
     });
@@ -359,6 +365,26 @@ describe('users and permissions (FR-102 to FR-108, FR-201 to FR-206)', () => {
         .expect(200);
       expect(permissions.body.keys).toContain('purchases.create');
       expect(permissions.body.keys).not.toContain('orders.create');
+    });
+  });
+
+  describe('my own profile (client review)', () => {
+    it('lets anyone change their own name and phone, and nothing else, with History keeping it', async () => {
+      const employee = await seedUser({ username: 'rebaz', displayName: 'Rebaz' });
+      const session = await signIn(ctx.http, employee);
+
+      const me = await as(ctx.http, session).get('/api/v1/me/profile').expect(200);
+      expect(me.body).toMatchObject({ display_name: 'Rebaz', username: 'rebaz' });
+
+      const changed = await as(ctx.http, session)
+        .patch('/api/v1/me/profile')
+        .send({ display_name: 'Rebaz Omar', phone: '0750 123 4567', role: 'admin', version: me.body.version })
+        .expect(200);
+      expect(changed.body).toMatchObject({ display_name: 'Rebaz Omar', role: 'employee' });
+      expect(changed.body.phone).toContain('750');
+
+      const rows = await auditRows({ entityId: employee.id, action: 'update' });
+      expect(rows[0]?.changes).toMatchObject({ display_name: { old: 'Rebaz', new: 'Rebaz Omar' } });
     });
   });
 });

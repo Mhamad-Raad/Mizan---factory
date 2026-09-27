@@ -6,6 +6,8 @@ import { todayInBaghdad } from '@mizan/i18n';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import type { ItemRow, PricingUnit } from './item.types.js';
+import { pagingOf, type Paging } from '../common/paging.js';
+import { containing } from '../common/like.js';
 
 /**
  * Column lists take the table alias they are read under, so the same list serves a plain
@@ -178,7 +180,7 @@ export class ItemsRepository {
     }
     const query = filters.q?.trim();
     if (query) {
-      values.push(`%${normalizeForSearch(query)}%`);
+      values.push(containing(normalizeForSearch(query)));
       conditions.push(`(i.name_normalized LIKE $${values.length} OR i.code ILIKE $${values.length})`);
     }
     // The one filter whose cost grows with the number of movements: it has to know each
@@ -211,8 +213,7 @@ export class ItemsRepository {
     const countValues = [...values];
     values.push(month);
     const monthParam = values.length;
-    const pageSize = Math.min(filters.page_size ?? 25, 100);
-    const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
+    const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
     /**
@@ -285,16 +286,30 @@ export class ItemsRepository {
   }
 
   /** Every month price of one material, newest month first (FR-307 Prices tab). */
-  async pricesOf(itemId: string, tx?: Db): Promise<(StoredMonthPrice & { updated_by_name: string | null })[]> {
-    const { rows } = await (tx ?? this.database).query<RawMonthPriceRow & { updated_by_name: string | null }>(
-      `SELECT ${priceColumns('p')}, u.display_name AS updated_by_name
-         FROM item_month_prices p
-         LEFT JOIN users u ON u.id = p.updated_by
-        WHERE p.item_id = $1 AND p.deleted_at IS NULL
-        ORDER BY p.month DESC`,
-      [itemId],
-    );
-    return rows.map((row) => ({ ...toMonthPrice(row), updated_by_name: row.updated_by_name }));
+  /** One page of the material's months, newest first, and how many months it has (D-058). */
+  async pricesOf(
+    itemId: string,
+    paging: Paging,
+  ): Promise<{ rows: (StoredMonthPrice & { updated_by_name: string | null })[]; total: number }> {
+    const [{ rows }, count] = await Promise.all([
+      this.database.query<RawMonthPriceRow & { updated_by_name: string | null }>(
+        `SELECT ${priceColumns('p')}, u.display_name AS updated_by_name
+           FROM item_month_prices p
+           LEFT JOIN users u ON u.id = p.updated_by
+          WHERE p.item_id = $1 AND p.deleted_at IS NULL
+          ORDER BY p.month DESC
+          LIMIT $2 OFFSET $3`,
+        [itemId, paging.page_size, paging.offset],
+      ),
+      this.database.query<{ total: string }>(
+        'SELECT count(*)::text AS total FROM item_month_prices WHERE item_id = $1 AND deleted_at IS NULL',
+        [itemId],
+      ),
+    ]);
+    return {
+      rows: rows.map((row) => ({ ...toMonthPrice(row), updated_by_name: row.updated_by_name })),
+      total: Number(count.rows[0]?.total ?? 0),
+    };
   }
 
   /**

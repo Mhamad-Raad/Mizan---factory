@@ -69,25 +69,27 @@ describe('the reports (FR-1001 to FR-1013)', () => {
 
     copper = await createMaterial('Copper wire 2 mm', 'per_kg', { sale: 850, bought: 700 });
     plates = await createMaterial('Steel plate 10 mm', 'per_piece', { sale: 18_000, bought: 15_000 });
-    await addStock(copper, '6000.000');
-    await addStock(plates, '500.000', 500);
+    // Stock arrives by buying it (D-062), at the bought price — bought last month, so this
+    // month's purchase figures hold only what each test buys itself.
+    await addStock(copper, '6000.000', undefined, 700, beforeThisMonth());
+    await addStock(plates, '500.000', 500, 15_000, beforeThisMonth());
 
-    // Two customers, one per sales employee, so the assigned-to pin has something to hide.
+    // Two customers, each sold to by a different employee.
     kawa = (
       await as(ctx.http, admin)
         .post('/api/v1/customers')
-        .send({ name: 'Kawa Trading', assigned_user_id: rebazId })
+        .send({ name: 'Kawa Trading' })
         .expect(201)
     ).body.id;
     zagros = (
       await as(ctx.http, admin)
         .post('/api/v1/customers')
-        .send({ name: 'Zagros Metals', assigned_user_id: saraId })
+        .send({ name: 'Zagros Metals' })
         .expect(201)
     ).body.id;
 
     alNoor = (
-      await as(ctx.http, admin).post('/api/v1/customers').send({ is_customer: false, is_supplier: true, name: 'Al-Noor Steel Co.' }).expect(201)
+      await as(ctx.http, admin).post('/api/v1/customers').send({ name: 'Al-Noor Steel Co.' }).expect(201)
     ).body.id;
   });
 
@@ -108,11 +110,21 @@ describe('the reports (FR-1001 to FR-1013)', () => {
     return id;
   }
 
-  async function addStock(itemId: string, kg: string, count?: number): Promise<void> {
+  async function addStock(itemId: string, kg: string, count?: number, unitCost = 700, date = today()): Promise<void> {
     await as(ctx.http, admin)
-      .post(`/api/v1/items/${itemId}/opening-stock`)
-      .send({ entry_date: today(), qty_kg: kg, qty_count: count ?? null, note: 'go-live count' })
+      .post('/api/v1/purchases')
+      .send({
+        company_id: null,
+        purchase_date: date,
+        lines: [{ item_id: itemId, qty_kg: kg, qty_count: count ?? null, unit_price: { amount: unitCost, currency: 'IQD' } }],
+      })
       .expect(201);
+  }
+
+  function beforeThisMonth(): string {
+    const day = new Date(`${today().slice(0, 7)}-01T00:00:00Z`);
+    day.setUTCDate(day.getUTCDate() - 1);
+    return day.toISOString().slice(0, 10);
   }
 
   function today(): string {
@@ -331,7 +343,8 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       for (const group of report.body.groups) {
         expect(Math.sign(group.cost.margin_iqd)).toBe(Math.sign(group.cost.margin_usd_cents));
       }
-      expect(report.body.basis).toBe('month_price');
+      // The cost is what the stock sold cost us, from the buys it came from (D-062).
+      expect(report.body.basis).toBe('bought');
     });
 
     it('lists lines with no cost price separately instead of counting them as profit', async () => {
@@ -362,18 +375,20 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       expect(report.body.totals.lines_without_cost).toBe(1);
     });
 
-    it('flags a group whose cost came from an earlier month', async () => {
-      // A material priced only last month: this month's order carries a fallback snapshot.
+    it('costs a sale at its buy, whatever month the stock was bought in (D-062)', async () => {
+      // Priced and bought only last month: this month's sale is costed from that buy, exactly —
+      // there is no "earlier month's price" to fall back to any more.
       const late = await as(ctx.http, admin)
         .post('/api/v1/items')
         .send({ name: 'Brass fitting', pricing_unit: 'per_piece' })
         .expect(201);
       const lastMonth = new Date();
-      lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1);
+      lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1, 15);
       await as(ctx.http, admin)
         .put(`/api/v1/items/${late.body.id}/prices/${lastMonth.toISOString().slice(0, 7)}`)
         .send({ sale: { amount: 3_000, currency: 'IQD' }, bought: { amount: 2_500, currency: 'IQD' } })
         .expect(200);
+      await addStock(late.body.id, '0', 10, 2_500, lastMonth.toISOString().slice(0, 10));
 
       await as(ctx.http, rebaz)
         .post('/api/v1/orders')
@@ -387,7 +402,7 @@ describe('the reports (FR-1001 to FR-1013)', () => {
 
       const report = await as(ctx.http, rebaz).get(`/api/v1/reports/profit?${range()}&group_by=item`).expect(200);
       const row = report.body.groups.find((group: { key: string }) => group.key === late.body.id);
-      expect(row.price_fallback).toBe(true);
+      expect(row.price_fallback).toBe(false);
       expect(row.cost.margin_iqd).toBe(2_000);
     });
 
@@ -399,7 +414,7 @@ describe('the reports (FR-1001 to FR-1013)', () => {
   // ───────────────────────────────── stock (FR-1006) ─────────────────────────────────
 
   describe('the stock report (FR-1006)', () => {
-    it('equals the stock ledger and values it at the month bought price', async () => {
+    it('equals the stock ledger and values it at what each buy cost (D-062)', async () => {
       await seedActivity();
       const report = await as(ctx.http, admin).get(`/api/v1/reports/stock?${range()}`).expect(200);
 
@@ -412,9 +427,10 @@ describe('the reports (FR-1001 to FR-1013)', () => {
         return rows[0]?.kg as string;
       });
       expect(copperRow.stock_kg).toBe(independent);
-      // 6,000 in, 150 sold, 500 bought, 4 damaged = 6,346 kg × 700 د.ع.
+      // 6,000 in, 150 sold, 500 bought, 4 damaged = 6,346 kg. Its value is what is left of each
+      // buy at that buy's price: 5,846 kg of the 700 buy + 500 kg of the 690 buy.
       expect(copperRow.stock_kg).toBe('6346.000');
-      expect(copperRow.cost.value_iqd).toBe(4_442_200);
+      expect(copperRow.cost.value_iqd).toBe(5_846 * 700 + 500 * 690);
       expect(copperRow.price_fallback).toBe(false);
     });
 
@@ -422,7 +438,8 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       await seedActivity();
       const report = await as(ctx.http, admin).get(`/api/v1/reports/stock?${range()}`).expect(200);
       const copperRow = report.body.groups.find((group: { key: string }) => group.key === copper);
-      expect(copperRow.moved_in_kg).toBe('6500.000');
+      // The 6,000 kg fixture buy was last month; this month moved in only the 500 kg bought now.
+      expect(copperRow.moved_in_kg).toBe('500.000');
       expect(copperRow.moved_out_kg).toBe('154.000');
     });
 
@@ -457,11 +474,11 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       expect(report.body.groups[0].balance.received_iqd).toBe(210_000);
     });
 
-    it('pins receivables to the customers assigned to the caller', async () => {
+    it('does not pin receivables to anybody — accounts are not assigned (D-056)', async () => {
       await seedActivity();
-      const own = await as(ctx.http, rebaz).get(`/api/v1/reports/receivables?${range()}`).expect(200);
-      expect(own.body.pinned).toEqual({ filter: 'assigned_to', user_id: rebazId });
-      expect(own.body.groups.map((group: { label: string }) => group.label)).toEqual(['Kawa Trading']);
+      const theirs = await as(ctx.http, rebaz).get(`/api/v1/reports/receivables?${range()}`).expect(200);
+      expect(theirs.body.pinned).toBeUndefined();
+      expect(theirs.body.groups.map((group: { label: string }) => group.label)).toContain('Kawa Trading');
     });
 
     it('sums the company balances and the period movements', async () => {
@@ -700,11 +717,49 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       expect(tile.cost).toBeUndefined();
     });
 
+    it('charts the last fourteen days, today matching its tile, and names who owes us most', async () => {
+      await seedActivity();
+      const dashboard = await as(ctx.http, admin).get('/api/v1/dashboard').expect(200);
+
+      const days = dashboard.body.days as {
+        date: string;
+        sales: { count: number; amount_iqd: number };
+        cost: { amount_iqd: number } | null;
+      }[];
+      expect(days).toHaveLength(14);
+      const tile = dashboard.body.tiles.find((row: { key: string }) => row.key === 'sales_today');
+      const today = days[days.length - 1];
+      expect(today?.sales.count).toBe(tile.count);
+      expect(today?.sales.amount_iqd).toBe(tile.amount_iqd);
+      expect(days.every((day) => day.cost !== null)).toBe(true);
+
+      const debtors = dashboard.body.debtors as { name: string; balance: { amount_iqd: number; net: boolean } }[];
+      expect(debtors.length).toBeGreaterThan(0);
+      expect(debtors[0]?.balance.net).toBe(true);
+      // Ranked in dinars, whatever currency each account settles in.
+      const amounts = debtors.map((row) => row.balance.amount_iqd);
+      expect([...amounts].sort((a, b) => b - a)).toEqual(amounts);
+    });
+
+    it('keeps bought prices and balances out of the charts for a user without their flags', async () => {
+      await seedActivity();
+      const employee = await seedUser({
+        username: 'hawre.charts',
+        permissions: ['dashboard.view', 'orders.view', 'purchases.view', 'customers.view'],
+      });
+      const session = await signIn(ctx.http, employee);
+
+      const dashboard = await as(ctx.http, session).get('/api/v1/dashboard').expect(200);
+      expect(dashboard.body.days).toHaveLength(14);
+      expect(dashboard.body.days.every((day: Record<string, unknown>) => !('cost' in day))).toBe(true);
+      expect(dashboard.body.debtors).toBeNull();
+    });
+
     it('hides the unpaid tile amount from a user without the customer-balances flag', async () => {
       await seedActivity();
       const employee = await seedUser({
         username: 'hawre',
-        permissions: ['dashboard.view', 'orders.view', 'customers.view_all'],
+        permissions: ['dashboard.view', 'orders.view', 'reports.view_all'],
       });
       const session = await signIn(ctx.http, employee);
 
@@ -715,30 +770,6 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       expect(tile.balance).toBeUndefined();
     });
 
-    it('finds a name typed in the other script, and a document by its number', async () => {
-      const seeded = await seedActivity();
-
-      // "كاوا" typed with Arabic kaf finds "Kawa" — the same normalisation the pickers use.
-      const byName = await as(ctx.http, admin).get('/api/v1/search?q=kawa').expect(200);
-      expect(byName.body.hits.some((hit: { kind: string; title: string }) => hit.title === 'Kawa Trading')).toBe(true);
-
-      const byNumber = await as(ctx.http, admin)
-        .get(`/api/v1/search?q=${seeded.kawaOrder.number}`)
-        .expect(200);
-      expect(byNumber.body.hits.some((hit: { kind: string }) => hit.kind === 'order')).toBe(true);
-    });
-
-    it('leaves out the sections the caller may not see', async () => {
-      await seedActivity();
-      const plain = await seedUser({ username: 'shilan', permissions: ['materials.view'] });
-      const session = await signIn(ctx.http, plain);
-
-      const hits = await as(ctx.http, session).get('/api/v1/search?q=copper').expect(200);
-      expect(hits.body.hits.every((hit: { kind: string }) => hit.kind === 'item')).toBe(true);
-
-      const noCustomers = await as(ctx.http, session).get('/api/v1/search?q=kawa').expect(200);
-      expect(noCustomers.body.hits).toEqual([]);
-    });
   });
 });
 

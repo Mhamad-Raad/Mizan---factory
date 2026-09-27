@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BottomSheet, Button, DateField, SegmentedControl, TextField, Toggle } from '@mizan/ui';
+import { BottomSheet, Button, DateField, NumberField, SegmentedControl, TextField, Toggle } from '@mizan/ui';
 import { convert } from '@mizan/money';
 import type { Currency, Rate } from '@mizan/money';
 import { MoneyInput, centsToInput, parseMinor } from './MoneyInput.js';
@@ -40,6 +40,8 @@ export interface PaymentSheetProps {
   remainingLabel?: string;
   saveLabel?: string;
   remainingHint?: string;
+  /** What "Settle in full" closes — an order, a purchase, an account — worded by the caller. */
+  settleHint?: string;
   /**
    * The open purchases of this company, for "More → link to a purchase" (wireframe 3.4.2).
    * Leaving a payment unlinked is the normal case: the oldest-first view allocates it anyway
@@ -69,6 +71,7 @@ export function PaymentSheet({
   remainingLabel,
   saveLabel,
   remainingHint,
+  settleHint,
   purchases,
 }: PaymentSheetProps) {
   const { t } = useTranslation();
@@ -152,22 +155,23 @@ export function PaymentSheet({
             />
             <Toggle
               label={t('glossary:settle_in_full')}
-              hint={t('customers:settle_in_full_hint')}
+              hint={settleHint ?? t('customers:settle_in_full_hint')}
               checked={settleInFull}
               onChange={setSettleInFull}
             />
           </>
         ) : (
           <div className="mz-grid-2">
-            <TextField
+            <NumberField
               label={`${t('customers:amount_received')} · ${t('glossary:iqd')}`}
-              inputMode="numeric"
+              unit={t('common:iqd_symbol')}
               value={splitIqd}
               onChange={(event) => setSplitIqd(event.target.value)}
             />
-            <TextField
+            <NumberField
               label={`${t('customers:amount_received')} · ${t('glossary:usd')}`}
-              inputMode="decimal"
+              unit={t('common:usd_symbol')}
+              decimals={2}
               value={splitUsd}
               onChange={(event) => setSplitUsd(event.target.value)}
             />

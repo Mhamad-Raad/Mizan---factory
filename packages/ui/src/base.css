@@ -64,12 +64,24 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-/* Numeric and phone inputs stay LTR inside an RTL form (spec 2.10.6 point 5). */
+/*
+ * Numeric and phone inputs stay LTR inside an RTL form (spec 2.10.6 point 5) — the digits of
+ * 1,250,000 always run left to right — but the text sits where the page starts reading: at the
+ * right in Kurdish and Arabic, at the left in English. Inside an LTR field `end` is the right
+ * edge, which is the RTL page's start; an English page puts it back at `start`, the left edge.
+ * (It was `end` everywhere, which is why English numbers sat at the right.)
+ */
 input[inputmode='decimal'],
 input[inputmode='numeric'],
 input[type='tel'] {
   direction: ltr;
   text-align: end;
+}
+
+html[dir='ltr'] input[inputmode='decimal'],
+html[dir='ltr'] input[inputmode='numeric'],
+html[dir='ltr'] input[type='tel'] {
+  text-align: start;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1890,7 +1902,10 @@ html[data-mirroring='true'] body {
     inset-block-start: 0;
     inset-inline: auto;
     color: var(--color-sidebar-text);
-    overflow-y: auto;
+
+    /* Not a scroller itself: the links scroll inside `.mz-sidebar__nav`, and a scrolling
+       sidebar clipped the account menu that opens out of its foot (client review). */
+    overflow: visible;
   }
 
   /* A nav row: 36 px, rounded, icon then label, the current page marked twice over. */
@@ -2551,6 +2566,11 @@ html[data-mirroring='true'] body {
   overflow: hidden;
 }
 
+/* The permission matrix wears the same stripes as every other table. */
+.mz-matrix tbody tr:nth-child(odd) {
+  background: var(--color-table-stripe);
+}
+
 .mz-matrix th,
 .mz-matrix td {
   border-block-end: 1px solid var(--color-border);
@@ -2570,7 +2590,7 @@ html[data-mirroring='true'] body {
 }
 
 .mz-matrix thead th {
-  background: var(--color-surface-2);
+  background: var(--color-table-head);
   color: var(--color-text-muted);
   font-size: 0.8125rem;
   font-weight: 600;
@@ -2719,11 +2739,26 @@ html[data-mirroring='true'] body {
 
 /* ─────────────────── the list, as a table ───────────────────
  *
- * From 64rem up a DataList is a real table (DataList.tsx), and so are the movements and history
- * on a material. The class carried the clickable-row behaviour but no look, so the rows sat as
- * bare browser defaults. This is a light data table — no boxed frame, just a quiet header, a
- * rule under each row and a hover — the airy shape the office is used to reading down a column.
+ * From 64rem up a DataList is a real table (DataList.tsx), and so are the ledgers, the movements
+ * and history on a material, a user's activity and the dashboard's figures. Every one is framed
+ * the way the delivery dashboard frames its tables (client review): a bordered, rounded surface
+ * that stands off the page, a tinted header, the odd rows a shade darker so the eye keeps its line
+ * across a wide row, and a hover in the brand's soft tint.
  */
+.mz-table-wrap {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  background: var(--color-surface);
+  max-inline-size: 100%;
+  overflow-x: auto;
+}
+
+/* Inside a card the table is already on a surface: the frame stays, the second shadow goes. */
+.mz-card .mz-table-wrap {
+  box-shadow: none;
+}
+
 .mz-table {
   inline-size: 100%;
   border-collapse: collapse;
@@ -2740,10 +2775,24 @@ html[data-mirroring='true'] body {
 }
 
 .mz-table thead th {
-  block-size: 2.75rem;
+  border-block-end-color: var(--color-border);
+  background: var(--color-table-head);
+  block-size: 2.5rem;
   color: var(--color-text-muted);
-  font-weight: 500;
+  font-size: 0.75rem;
+  font-weight: 600;
   white-space: nowrap;
+}
+
+/* Capitals and tracking only for English: Kurdish and Arabic have no capitals, and spacing the
+   letters of a joined script pulls its words apart. */
+:root:lang(en) .mz-table thead th {
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mz-table tbody tr:nth-child(odd) {
+  background: var(--color-table-stripe);
 }
 
 /* An amount still owed reads in the warning colour so a column of balances shows at a glance who
@@ -2773,7 +2822,7 @@ html[data-mirroring='true'] body {
 }
 
 .mz-table tbody tr:hover {
-  background: var(--color-surface-2);
+  background: var(--color-table-hover);
 }
 
 /* ─────────────── a table row is clickable, all of it ───────────────
@@ -3293,4 +3342,888 @@ html[data-mirroring='true'] body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* A typeface card's specimen (D-061): a Kurdish line and an amount, set in the face it names —
+   the box carries `data-font`, so `--font-arabic` here is that face's, whatever is chosen. */
+.mz-typeface {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-1);
+  background: var(--color-surface-2);
+  padding: var(--space-3);
+  block-size: 96px;
+  font-family: var(--font-arabic);
+}
+
+.mz-typeface__sample {
+  overflow: hidden;
+  font-size: 1.125rem;
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mz-typeface__figures {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+/* ── Today: stat tiles, the two-week chart, who owes us, recent orders (client review) ── */
+
+/* Headline numbers: two across on a phone, four on a desktop; each opens the list it counts. */
+.mz-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+@media (width >= 64rem) {
+  .mz-kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+}
+
+.mz-kpi {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  transition: border-color var(--duration-micro) var(--ease-out);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  min-inline-size: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.mz-kpi:hover {
+  border-color: var(--color-border-strong);
+}
+
+.mz-kpi:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.mz-kpi__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.mz-kpi__icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  inline-size: 2rem;
+  block-size: 2rem;
+  color: var(--color-primary);
+}
+
+.mz-kpi__count {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+/* The trend is wide and the list of who owes us is narrow: side by side on a desktop. */
+.mz-dashboard__grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+@media (width >= 64rem) {
+  .mz-dashboard__grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+
+  .mz-dashboard__grid > :only-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.mz-dashboard__grid > .mz-card,
+.mz-dashboard > .mz-card {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  min-inline-size: 0;
+}
+
+.mz-chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.mz-chart-head > .mz-button {
+  flex: none;
+  padding-inline: var(--space-2);
+}
+
+.mz-chart-empty {
+  padding-block: var(--space-6);
+  text-align: center;
+}
+
+.mz-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  list-style: none;
+}
+
+.mz-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mz-legend__swatch {
+  display: inline-block;
+  flex: none;
+  border-radius: 3px;
+  inline-size: 10px;
+  block-size: 10px;
+}
+
+.mz-chart {
+  position: relative;
+  min-inline-size: 0;
+}
+
+.mz-chart svg {
+  display: block;
+  overflow: visible;
+}
+
+.mz-chart__grid {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.mz-chart__axis {
+  fill: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.mz-chart__hit {
+  cursor: pointer;
+  outline: none;
+  fill: transparent;
+}
+
+.mz-chart__hit:focus-visible {
+  stroke: var(--color-focus);
+  stroke-width: 2;
+}
+
+.mz-chart__tooltip {
+  position: absolute;
+  inset-block-start: 0;
+  z-index: 2;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sheet);
+  background: var(--color-surface);
+  padding: var(--space-2) var(--space-3);
+  min-inline-size: 180px;
+  pointer-events: none;
+  font-size: 0.875rem;
+}
+
+.mz-tooltip-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: var(--space-2);
+}
+
+.mz-tooltip-row > :last-child {
+  grid-column: 2;
+}
+
+/* Who owes us most: a name and its amount over a bar scaled to the largest. */
+.mz-barlist {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mz-barlist__row {
+  display: grid;
+  gap: var(--space-1);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  color: inherit;
+  text-decoration: none;
+}
+
+.mz-barlist__row:hover {
+  background: var(--color-surface-2);
+}
+
+.mz-barlist__row:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 0;
+}
+
+.mz-barlist__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  min-inline-size: 0;
+}
+
+/* The name keeps at least 8rem; when the amount does not fit beside it, the amount wraps under. */
+.mz-barlist__label {
+  flex: 1 1 8rem;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mz-barlist__value {
+  flex: none;
+  text-align: end;
+}
+
+.mz-barlist__track {
+  display: block;
+  border-radius: 4px;
+  background: var(--color-surface-2);
+  block-size: 8px;
+  overflow: hidden;
+}
+
+.mz-barlist__bar {
+  display: block;
+  border-radius: 4px;
+  block-size: 100%;
+}
+
+/* ── the foot of a paged list (client review, D-058) ─────────────────────────────── */
+
+/* Rows per page at the start, the range in the true middle, the arrows at the end: two equal
+   outer columns, so the range is centred on the row whatever width the size box has. On a
+   phone the size and the arrows share the first line and the range sits centred beneath. */
+.mz-pager {
+  display: grid;
+  grid-template-areas: 'size range arrows';
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding-block-start: var(--space-1);
+}
+
+.mz-pager__size {
+  display: inline-flex;
+  grid-area: size;
+  justify-self: start;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mz-pager__select {
+  inline-size: auto;
+  min-inline-size: 5rem;
+}
+
+.mz-pager__range {
+  grid-area: range;
+  text-align: center;
+}
+
+.mz-pager__arrows {
+  display: inline-flex;
+  grid-area: arrows;
+  justify-self: end;
+  gap: var(--space-1);
+}
+
+.mz-pager__arrows .mz-icon-button {
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.mz-pager__arrows .mz-icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (width < 30rem) {
+  .mz-pager {
+    grid-template-areas:
+      'size arrows'
+      'range range';
+    grid-template-columns: 1fr auto;
+  }
+}
+
+/* A link inside a row's title: the title's own ink with a quiet underline, never the browser's
+   blue — the row is already the thing to tap, the name only says where it leads. */
+.mz-quiet-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--color-border-strong);
+  text-underline-offset: 3px;
+}
+
+.mz-quiet-link:hover {
+  text-decoration-color: currentcolor;
+}
+
+/* ── materials: the stock-by-price hint under an order line (D-062) ── */
+.mz-lot-hint {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ── a company's damage: owed, then paid back (D-062, damage screens) ─────────── */
+
+/* The block that says a company owes us for a damage carries a warning edge while it is owed
+   and a success edge once it is paid back; the words and the icon say the same thing, so the
+   colour is never the only signal. */
+.mz-damage-owed {
+  border-inline-start: 4px solid var(--color-warning);
+}
+
+.mz-damage-owed[data-state='paid'] {
+  border-inline-start-color: var(--color-success);
+  color: var(--color-success);
+}
+
+/* ── the accountant page (client review, D-062) ──────────────────────────────────── */
+
+/* The period: the quick choice and its two dates side by side, one under another on a phone. */
+.mz-accounts__period {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  align-items: end;
+  gap: var(--space-3);
+}
+
+/* A select that sits in a row of form fields — the period beside its two dates — is as tall as
+   they are, so the three labels and the three boxes line up; the compact `.mz-select` is for
+   toolbars. */
+.mz-select--field {
+  padding-block: var(--space-3);
+  font-size: 1rem;
+}
+
+/* The date boxes carry the browser's own height, which is not the select's: the period row
+   sets one height for all three (in rem, so it follows the text size). */
+.mz-accounts__period .mz-field__control,
+.mz-accounts__period .mz-select--field {
+  block-size: 3.25rem;
+}
+
+/* What is left, first and largest: the one figure the page exists to answer. */
+.mz-accounts__net {
+  display: grid;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-inline-start: 4px solid var(--color-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  background: var(--color-surface);
+  padding: var(--space-4);
+}
+
+.mz-accounts__net[data-sign='-1'] {
+  border-inline-start-color: var(--color-danger);
+}
+
+.mz-accounts__net-label {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* A loss reads in the danger colour, a gain in the success colour; zero stays plain ink. */
+.mz-accounts__tile[data-sign='1'] .mz-dual,
+.mz-accounts__signed[data-sign='1'] .mz-dual {
+  color: var(--color-success);
+}
+
+.mz-accounts__tile[data-sign='-1'] .mz-dual,
+.mz-accounts__signed[data-sign='-1'] .mz-dual,
+.mz-accounts__net[data-sign='-1'] .mz-dual {
+  color: var(--color-danger);
+}
+
+/* The expenses table carries its own buttons, so its rows are not whole-row links. */
+.mz-accounts__plain-table tbody tr {
+  cursor: default;
+}
+
+/* ── broken goods: the period's three tiles (client review, D-062) ─────────────────── */
+
+/* Three across from a tablet up; stacked two-and-one on a phone like every tile row. */
+@media (width >= 48rem) {
+  .mz-kpis--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* A tile that is also a filter — "Owed by companies" narrows the list to what is still owed.
+   It is a real button (keyboard, screen reader), dressed as the tile beside it. */
+.mz-kpi--button {
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.mz-kpi--button[aria-pressed='true'] {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+/* ── broken goods: the record form on a desktop (client review) ─────────────────────── */
+
+/* A picker that reads as a field: the choice (or its placeholder) in a bordered box the height
+   of an input, an icon at the start and a chevron at the reading end — not a big button. */
+.mz-picker-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding-block: var(--space-3);
+  padding-inline: var(--space-3);
+  min-block-size: var(--tap-target);
+  inline-size: 100%;
+  color: var(--color-text);
+  font: inherit;
+  text-align: start;
+}
+
+.mz-picker-field:hover {
+  border-color: var(--color-primary);
+}
+
+.mz-picker-field:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.mz-picker-field__value {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Stock now → after the save, beside the date on a desktop. */
+.mz-damage-stock {
+  display: flex;
+  align-items: center;
+  align-self: end;
+  gap: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  min-block-size: var(--tap-target);
+}
+
+.mz-damage-stock__cell {
+  display: grid;
+  gap: 2px;
+}
+
+/* Who broke it: two options side by side from a tablet up, each with what it means. */
+.mz-damage-who {
+  display: grid;
+  gap: var(--space-2);
+}
+
+@media (width >= 48rem) {
+  .mz-damage-who {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+}
+
+.mz-damage-who__option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  color: var(--color-text);
+  font: inherit;
+  text-align: start;
+}
+
+.mz-damage-who__option:hover {
+  border-color: var(--color-border-strong);
+}
+
+.mz-damage-who__option:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.mz-damage-who__option--on {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.mz-damage-who__icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  color: var(--color-text-muted);
+}
+
+.mz-damage-who__option--on .mz-damage-who__icon {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.mz-damage-who__body {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.mz-damage-who__title {
+  font-weight: 600;
+}
+
+/* What the save means in money, said before it is made. */
+.mz-damage-effect {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  border-block-start: 1px solid var(--color-border);
+  padding-block-start: var(--space-3);
+}
+
+/* The recorded facts of a saved record, read-only, in a compact grid. */
+.mz-damage-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.mz-damage-facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* On a desktop the stock sentence leads the footer row and the actions sit at its end. */
+.mz-damage-form__summary:empty {
+  display: none;
+}
+
+/* Cancel: at the end of the form on a desktop, before Save; on a phone the app bar's Back does
+   it, so the thumb-zone bar stays one button tall. */
+.mz-damage-form__cancel {
+  display: none;
+}
+
+@media (width >= 64rem) {
+  .mz-damage-form .mz-sticky-footer .mz-damage-form__summary {
+    order: -1;
+    margin-inline-end: auto;
+    color: var(--color-text-muted);
+  }
+
+  .mz-damage-form__cancel {
+    display: contents;
+  }
+}
+
+/* ── Reports: one page, a tab per report (client review) ─────────────────────────── */
+
+/* The page's own line and "Download everything", side by side and wrapping on a phone. */
+.mz-reports__head,
+.mz-reports__bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.mz-reports__bar {
+  align-items: flex-end;
+}
+
+.mz-reports__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mz-reports__actions .mz-select {
+  inline-size: auto;
+}
+
+/* A table to read, not to open: its rows are not links, so they do not pretend to be. */
+.mz-table--static tbody tr {
+  cursor: default;
+}
+
+/* ── History: a day's work, read as a diary (client review) ────────────────────────── */
+
+.mz-activity {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* The day heading, with how many things happened in it. */
+.mz-activity__day {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.mz-activity__list {
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  background: var(--color-surface);
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+}
+
+/* One thing that happened: who, what, to which record, when — and what changed. */
+.mz-activity__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  border-block-end: 1px solid var(--color-border);
+  padding-block: var(--space-3);
+  padding-inline: var(--space-4);
+}
+
+.mz-activity__item:last-child {
+  border-block-end: 0;
+}
+
+.mz-activity__item:nth-child(odd) {
+  background: var(--color-table-stripe);
+}
+
+.mz-activity__item[data-open='true'] {
+  background: var(--color-table-hover);
+}
+
+/* The person, as initials in the palette's soft tint. */
+.mz-activity__avatar {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  color: var(--color-on-primary-soft);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.mz-activity__body {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.mz-activity__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+}
+
+.mz-activity__record {
+  font-weight: 600;
+}
+
+.mz-activity__change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.mz-activity__arrow {
+  display: inline-flex;
+  color: var(--color-text-muted);
+}
+
+.mz-activity__note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+.mz-activity__detail {
+  display: grid;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+  border-block-start: 1px dashed var(--color-border);
+  padding-block-start: var(--space-2);
+}
+
+.mz-activity__earlier {
+  display: grid;
+  gap: var(--space-1);
+  border-inline-start: 2px solid var(--color-border);
+  padding-inline-start: var(--space-3);
+}
+
+/* The time and "Details" at the end of the row. */
+.mz-activity__side {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+/* ── the account menu at the foot of the sidebar opens upward (client review) ─────── */
+
+/* Its button sits at the bottom of the screen, so a menu opening downward landed below the
+   window's edge where nothing could be clicked. Here it opens above the button instead. */
+
+/* Folded to its icons, the row is one avatar wide: the menu opens at its own width, over the page. */
+[data-sidebar='collapsed'] .mz-sidebar__user .mz-menu__list {
+  inset-inline-end: auto;
+  min-inline-size: 11rem;
+}
+
+/* The menu is anchored to the whole profile row rather than its small button, so it opens
+   above the name at the row's width and never runs past the sidebar's edge, which clips it. */
+.mz-sidebar__user {
+  position: relative;
+}
+
+.mz-sidebar__user .mz-menu {
+  position: static;
+}
+
+.mz-sidebar__user .mz-menu__list {
+  z-index: 60;
+  inset-block: auto calc(100% + var(--space-1));
+  inset-inline: 0;
+  inline-size: auto;
+  min-inline-size: 0;
+}
+
+/* A money entry's kind and a new record's facts, in the History row. */
+.mz-activity__kind {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.mz-activity__fact {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* The whole profile row opens the account menu, not only its three dots (client review): the
+   dots' button stretches an invisible layer over the row, so it stays one real button — one
+   tab stop, one name for a screen reader — with a target the size of the row. */
+.mz-sidebar__user .mz-menu > .mz-icon-button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+}
+
+.mz-sidebar__user:hover {
+  border-radius: var(--radius-md);
+  background: var(--color-sidebar-hover);
+  cursor: pointer;
+}
+
+/* ── Me: my own page (client review) ──────────────────────────────────────────────── */
+
+.mz-me__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.mz-me__avatar {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  inline-size: 4rem;
+  block-size: 4rem;
+  color: var(--color-on-primary-soft);
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+/* Details and password side by side on a desktop, one under the other on a phone. */
+.mz-me__grid {
+  display: grid;
+  align-items: start;
+  gap: var(--space-4);
+}
+
+@media (width >= 48rem) {
+  .mz-me__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* "Rounded up by 125 د.ع" under the order form's total (D-065). */
+.mz-totals__note {
+  margin: 0;
+  text-align: end;
 }

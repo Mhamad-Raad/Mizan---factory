@@ -8,9 +8,12 @@ import { apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { QueryStates } from '../components/states.js';
+import { DualAmount } from '../components/DualAmount.js';
 import { FilterChip } from './MaterialsPage.js';
 import { useFormatter } from '../lib/store.js';
 import { OrderTable } from '../components/OrderTable.js';
+import { Pager } from '../components/Pager.js';
+import { usePaging } from '../lib/paging.js';
 
 export interface OrderRow {
   id: string;
@@ -38,6 +41,15 @@ export interface OrderRow {
 }
 
 type DateChip = 'today' | 'week' | 'month' | 'all';
+
+/** The list's figures over the whole filter; `balance` is absent without the balances flag. */
+interface OrderTotals {
+  orders: number;
+  total_iqd: number;
+  total_usd_cents: number;
+  owing: number;
+  balance?: { owed_iqd: number; owed_usd_cents: number } | null;
+}
 
 /**
  * The Orders page (FR-611). It opens on today and yesterday, newest first, because that is
@@ -94,18 +106,22 @@ export function OrdersPage() {
   });
 
   const range = rangeOf(chip, formatter.today());
+  const paging = usePaging({ storageKey: 'orders', resetOn: [chip, unpaidOnly, paymentType, doneBy, query] });
 
   const orders = useQuery({
-    queryKey: ['orders', chip, unpaidOnly, paymentType, doneBy, query],
+    queryKey: ['orders', chip, unpaidOnly, paymentType, doneBy, query, paging.page, paging.pageSize],
     queryFn: () => {
       const params = new URLSearchParams();
       if (range.from) params.set('from', range.from);
       if (range.to) params.set('to', range.to);
-      if (unpaidOnly) params.set('status', 'unpaid');
+      // "Unpaid" is every order still owing something — unpaid or partly paid (client review).
+      if (unpaidOnly) params.set('status', 'owing');
       if (paymentType !== 'all') params.set('payment_type', paymentType);
       if (doneBy) params.set('done_by', doneBy);
       if (query) params.set('q', query);
-      return apiRequest<{ items: OrderRow[]; total: number }>(`/orders?${params.toString()}`);
+      return apiRequest<{ items: OrderRow[]; total: number; totals: OrderTotals }>(
+        `/orders?${params.toString()}&${paging.query}`,
+      );
     },
     // Keep the current rows on screen while a filter change refetches, so the table dims for a
     // moment instead of collapsing to a skeleton on every keystroke or dropdown change.
@@ -120,6 +136,7 @@ export function OrdersPage() {
   });
 
   const rows = orders.data?.items ?? [];
+  const totals = orders.data?.totals;
 
   usePageTitle(t('orders:title'));
 
@@ -187,6 +204,55 @@ export function OrdersPage() {
           </Can>
         </div>
 
+        {/* The figures of the whole filter (client review), as the other lists have them: how
+            many orders, what they came to, and what is still to collect — that last card is
+            also the "Unpaid" filter. */}
+        {totals ? (
+          <div className="mz-kpis mz-kpis--three">
+            <div className="mz-kpi">
+              <span className="mz-kpi__head">
+                <span className="mz-kpi__icon" aria-hidden="true">
+                  <Icon name="orders" size={18} />
+                </span>
+                <span className="mz-caption">{t('orders:tile_orders')}</span>
+              </span>
+              <span className="mz-kpi__count" data-tabular>
+                {formatter.number(totals.orders)}
+              </span>
+            </div>
+            <div className="mz-kpi">
+              <span className="mz-kpi__head">
+                <span className="mz-kpi__icon" aria-hidden="true">
+                  <Icon name="chart" size={18} />
+                </span>
+                <span className="mz-caption">{t('orders:tile_sold')}</span>
+              </span>
+              <DualAmount amount_iqd={totals.total_iqd} amount_usd_cents={totals.total_usd_cents} />
+            </div>
+            <button
+              type="button"
+              className="mz-kpi mz-kpi--button"
+              aria-pressed={unpaidOnly}
+              onClick={() => setUnpaidOnly(!unpaidOnly)}
+            >
+              <span className="mz-kpi__head">
+                <span className="mz-kpi__icon" aria-hidden="true">
+                  <Icon name="clock" size={18} />
+                </span>
+                <span className="mz-caption">{t('orders:tile_to_collect')}</span>
+              </span>
+              <span className="mz-kpi__count" data-tabular>
+                {formatter.number(totals.owing)}
+              </span>
+              {totals.balance ? (
+                <span className="mz-owed">
+                  <DualAmount amount_iqd={totals.balance.owed_iqd} amount_usd_cents={totals.balance.owed_usd_cents} />
+                </span>
+              ) : null}
+            </button>
+          </div>
+        ) : null}
+
         <QueryStates
           query={orders}
           isEmpty={rows.length === 0}
@@ -202,6 +268,13 @@ export function OrdersPage() {
           <div className="mz-refreshable" data-busy={refreshing ? 'true' : undefined} aria-busy={refreshing}>
           <OrderTable rows={rows} />
           </div>
+          <Pager
+            page={paging.page}
+            pageSize={paging.pageSize}
+            total={orders.data?.total ?? 0}
+            onPage={paging.setPage}
+            onPageSize={paging.setPageSize}
+          />
         </QueryStates>
       </div>
 
@@ -216,11 +289,16 @@ export function OrdersPage() {
   );
 }
 
-/** Today and yesterday by default (FR-611); the week and month chips widen it. */
+/**
+ * Today and yesterday by default (FR-611); the week chip widens it to seven days, and "This
+ * month" is the calendar month — the 1st to today — as on the Accounts page, so the Sold card
+ * here and the Sold figure there agree (it was the last 30 days, which reached into last month).
+ */
 function rangeOf(chip: DateChip, today: string): { from?: string; to?: string } {
   if (chip === 'all') return {};
+  if (chip === 'month') return { from: `${today.slice(0, 7)}-01`, to: today };
   const to = today;
-  const days = chip === 'today' ? 1 : chip === 'week' ? 7 : 30;
+  const days = chip === 'today' ? 1 : 7;
   const from = new Date(`${today}T00:00:00Z`);
   from.setUTCDate(from.getUTCDate() - days);
   return { from: from.toISOString().slice(0, 10), to };

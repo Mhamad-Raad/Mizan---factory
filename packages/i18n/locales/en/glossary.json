@@ -1,11 +1,10 @@
 {
   "order": "Order",
   "purchase": "Purchase",
-  "customer": "Customer",
   "company": "Company",
   "material": "Material",
   "materials": "Materials",
-  "damaged_items": "Damaged items",
+  "damaged_items": "Broken goods",
   "cash": "Cash",
   "borrowed": "Borrowed",
   "paid": "Paid",
@@ -59,7 +58,6 @@
   "refund": "Refund",
   "reversal": "Reversal",
   "settlement_currency": "Settlement currency",
-  "assigned_to": "Assigned to",
   "done_by": "Done by",
   "discount": "Discount",
   "receipt": "Receipt",
@@ -69,7 +67,7 @@
   "document_rate": "Rate for this order",
   "period_lock": "Period lock",
   "walk_in_customer": "Walk-in customer",
-  "damaged_item": "Damaged item",
+  "damaged_item": "Broken item",
   "returnable": "Returnable",
   "returned": "Returned",
   "written_off": "Written off",
@@ -81,8 +79,9 @@
   "companies": "Companies",
   "purchases": "Purchases",
   "system_rate": "the system rate",
-  "customer_rate": "the customer's rate",
   "order_rate": "this order's rate",
   "item": "Item",
-  "amount": "Amount"
+  "amount": "Amount",
+  "customer": "Company",
+  "customer_rate": "the company rate"
 }

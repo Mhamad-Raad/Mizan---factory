@@ -5,6 +5,7 @@ import type { Measure } from '@mizan/money';
 import { ApiError } from '../common/errors.js';
 import type { Db } from '../database/pool.js';
 import { SettingsService } from '../settings/settings.service.js';
+import { pagingOf } from '../common/paging.js';
 
 interface StockRow {
   id: string;
@@ -131,8 +132,7 @@ export class StockService {
     itemId: string,
     options: { page?: number; page_size?: number } = {},
   ): Promise<{ items: MovementDto[]; total: number }> {
-    const pageSize = Math.min(options.page_size ?? 25, 100);
-    const offset = Math.max((options.page ?? 1) - 1, 0) * pageSize;
+    const { page_size: pageSize, offset } = pagingOf(options);
     const [list, count, reversed] = await Promise.all([
       tx.query<StockRow>(
         `SELECT ${movementColumns('s')}, u.display_name AS created_by_name

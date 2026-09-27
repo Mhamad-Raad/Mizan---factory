@@ -1,11 +1,10 @@
 {
   "order": "فرۆشتن",
   "purchase": "کڕین",
-  "customer": "کڕیار",
   "company": "کۆمپانیا",
   "material": "کەرەستە",
   "materials": "کەرەستەکان",
-  "damaged_items": "کاڵا زیانلێکەوتووەکان",
+  "damaged_items": "کاڵای شکاو",
   "cash": "نەقد",
   "borrowed": "قەرز",
   "paid": "دراوە",
@@ -59,7 +58,6 @@
   "refund": "گەڕاندنەوەی پارە",
   "reversal": "پێچەوانەکردنەوە",
   "settlement_currency": "دراوی حیساب",
-  "assigned_to": "سپێردراوە بە",
   "done_by": "لەلایەن",
   "discount": "داشکاندن",
   "receipt": "پسوولە",
@@ -69,7 +67,7 @@
   "document_rate": "نرخی ئاڵوگۆڕی ئەم مامەڵەیە",
   "period_lock": "داخستنی ماوە",
   "walk_in_customer": "کڕیاری نەقد",
-  "damaged_item": "کاڵای زیانلێکەوتوو",
+  "damaged_item": "کاڵای شکاو",
   "returnable": "دەگەڕێتەوە",
   "returned": "گەڕێندرایەوە",
   "written_off": "سڕدرایەوە",
@@ -81,8 +79,9 @@
   "companies": "کۆمپانیاکان",
   "purchases": "کڕینەکان",
   "system_rate": "نرخی سیستەم",
-  "customer_rate": "نرخی زبوون",
   "order_rate": "نرخی ئەم داواکارییە",
   "item": "کاڵا",
-  "amount": "بڕ"
+  "amount": "بڕ",
+  "customer": "کۆمپانیا",
+  "customer_rate": "نرخی کۆمپانیا"
 }

@@ -77,7 +77,6 @@ const TARGETS = [
   ['GET /damages (this month)', `/damages?from=${month}&to=${today}&page_size=25`, 300],
   ['GET /history (first page)', '/history?limit=50', 300],
   ['GET /dashboard', '/dashboard', 300],
-  ['GET /search', '/search?q=volume', 300],
   ['GET /reports/sales (month)', `/reports/sales?from=${month}&to=${today}`, 300],
   // Stated rather than assumed, like the year's margin: grouping a year by material reads
   // every line of that year, and no index shortens a sum of everything (REVIEW-I6).

@@ -79,7 +79,6 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
         'orders.credit',
         'orders.view',
         'customers.view',
-        'customers.view_all',
         'fields.see_company_balances',
         'fields.see_customer_balances',
         'fields.see_bought_price',
@@ -112,7 +111,7 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     // order that took some of it away again — the three things damage can be attributed to.
     const company = await as(ctx.http, admin)
       .post('/api/v1/customers')
-      .send({ is_customer: false, is_supplier: true, name: 'Al-Noor Steel Co.' })
+      .send({ name: 'Al-Noor Steel Co.' })
       .expect(201);
     alNoor = company.body.id;
     await as(ctx.http, admin)
@@ -231,7 +230,7 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
   // ─────────────────────────── the record and its stock effect (FR-801, FR-804) ───────────────────────────
 
   describe('recording damage and what it does to stock (FR-801, FR-804, A-30)', () => {
-    it('reduces stock and values the loss at the month bought price when it came from a supplier', async () => {
+    it('reduces stock and values the loss at what the damaged stock cost us (D-062)', async () => {
       const before = await stockOf(copper);
 
       const response = await recordDamage(warehouse, {
@@ -245,8 +244,8 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
       expect(response.body.number).toBe(1);
       expect(response.body.stock_effect).toBe('reduced');
       expect(response.body.return_status).toBe('pending');
-      // 4 kg × 700 د.ع, the month's bought price — not the 5,900 the purchase line paid.
-      expect(response.body.cost).toMatchObject({ est_value_iqd: 2_800, est_value_source: 'month' });
+      // 4 kg × 5,900 د.ع, what the buy it came from cost — no longer the month's 700.
+      expect(response.body.cost).toMatchObject({ est_value_iqd: 23_600, est_value_source: 'lots' });
 
       const after = await stockOf(copper);
       expect(Number(after.qty_kg)).toBe(Number(before.qty_kg) - 4);
@@ -334,7 +333,7 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     it('logs the record in History with its quantity, attribution and stock effect', async () => {
       const response = await recordDamage(warehouse, { attribution: 'us' }).expect(201);
       const rows = await auditRows({ entityId: response.body.id, action: 'create' });
-      expect(rows[0]?.entity_label).toBe('Damage #1');
+      expect(rows[0]?.entity_label).toBe('Broken #1');
       expect(rows[0]?.changes).toMatchObject({
         attribution: { old: null, new: 'us' },
         stock_effect: { old: null, new: 'reduced' },
@@ -371,7 +370,7 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
     it('refuses a purchase that belongs to another company', async () => {
       const other = await as(ctx.http, admin)
         .post('/api/v1/customers')
-        .send({ is_customer: false, is_supplier: true, name: 'Zagros Metals' })
+        .send({ name: 'Zagros Metals' })
         .expect(201);
 
       const response = await recordDamage(warehouse, {
@@ -417,63 +416,28 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
   // ─────────────────────────── editing, voiding, returning to stock (FR-804) ───────────────────────────
 
   describe('editing and voiding a record (FR-804)', () => {
-    it('writes compensating movements when the quantity changes', async () => {
+    it('keeps a damage as it was booked: its quantity, attribution and date are not rewritten (D-062)', async () => {
       const created = await recordDamage(warehouse, { attribution: 'us' }).expect(201);
-      const before = await stockOf(copper);
 
+      // It took its stock from a buy and, for a company, would have put its cost on their
+      // account: changing what it was is a void and a new record.
+      for (const change of [
+        { qty_kg: '6.000' },
+        { attribution: 'customer_order', order_id: order },
+        { damage_date: '2020-01-15' },
+      ]) {
+        const refused = await as(ctx.http, warehouse)
+          .patch(`/api/v1/damages/${created.body.id}`)
+          .send({ version: created.body.version, ...change })
+          .expect(409);
+        expect(refused.body.error.code).toBe('EDIT_WINDOW_CLOSED');
+      }
+
+      // The texts stay editable.
       await as(ctx.http, warehouse)
         .patch(`/api/v1/damages/${created.body.id}`)
-        .send({ version: created.body.version, qty_kg: '6.000' })
+        .send({ version: created.body.version, reason: 'dropped from the rack' })
         .expect(200);
-
-      const movements = await movementsOf(copper);
-      const damageRows = movements.filter((movement) => movement.ref_id === created.body.id);
-      // The old 4 kg out, its reversal, and the new 6 kg out: the ledger tells the whole story.
-      expect(damageRows.map((row) => row.movement_type)).toEqual([
-        'damage_out',
-        'reversal',
-        'damage_out',
-      ]);
-      expect(Number((await stockOf(copper)).qty_kg)).toBe(Number(before.qty_kg) - 2);
-
-      const rows = await auditRows({ entityId: created.body.id, action: 'update' });
-      expect(rows[0]?.changes).toMatchObject({
-        quantity: { old: { qty_kg: '4.000' }, new: { qty_kg: '6.000' } },
-      });
-    });
-
-    it('moves the stock effect when the attribution changes', async () => {
-      const created = await recordDamage(warehouse, { attribution: 'us' }).expect(201);
-      const before = await stockOf(copper);
-
-      const updated = await as(ctx.http, warehouse)
-        .patch(`/api/v1/damages/${created.body.id}`)
-        .send({ version: created.body.version, attribution: 'customer_order', order_id: order })
-        .expect(200);
-
-      expect(updated.body.stock_effect).toBe('none');
-      // The goods were never out of stock after all, so the damage_out is reversed and nothing
-      // replaces it: stock returns to where it was before the record existed.
-      expect(Number((await stockOf(copper)).qty_kg)).toBe(Number(before.qty_kg) + 4);
-    });
-
-    it('re-values the record when the date moves to a month with a different price', async () => {
-      const created = await recordDamage(warehouse, { attribution: 'us' }).expect(201);
-      expect(created.body.cost.est_value_iqd).toBe(2_800);
-
-      const lastMonth = new Date();
-      lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1);
-      const month = lastMonth.toISOString().slice(0, 7);
-      await as(ctx.http, admin)
-        .put(`/api/v1/items/${copper}/prices/${month}`)
-        .send({ bought: { amount: 500, currency: 'IQD' } })
-        .expect(200);
-
-      const updated = await as(ctx.http, warehouse)
-        .patch(`/api/v1/damages/${created.body.id}`)
-        .send({ version: created.body.version, damage_date: `${month}-15` })
-        .expect(200);
-      expect(updated.body.cost).toMatchObject({ est_value_iqd: 2_000, est_value_source: 'month' });
     });
 
     it('reverses the movements on a void and keeps the reason', async () => {
@@ -810,7 +774,8 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
         purchase_id: purchase,
         is_returnable: true,
       }).expect(201);
-      expect(created.body.cost.est_value_iqd).toBe(2_800);
+      // 4 kg × 5,900, what the buy it came from cost (D-062).
+      expect(created.body.cost.est_value_iqd).toBe(23_600);
 
       // …and then somebody decides the material is sold by the piece (`PATCH /items/:id`).
       const material = await as(ctx.http, admin).get(`/api/v1/items/${copper}`).expect(200);
@@ -830,14 +795,16 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
       const list = await as(ctx.http, accountant).get('/api/v1/damages').expect(200);
       expect(list.body.total).toBe(1);
 
-      // …and an edit that gives the measure the material is now priced in values it again:
-      // 3 pieces × 700 د.ع. Nothing had to be voided to recover from the re-classification.
-      const edited = await as(ctx.http, warehouse)
+      // …and it can still be voided, which is how a booked damage is corrected (D-062): the
+      // quantity it took from the buy is not rewritten in place.
+      await as(ctx.http, warehouse)
         .patch(`/api/v1/damages/${created.body.id}`)
         .send({ version: reread.body.version, qty_count: 3, qty_kg: null })
+        .expect(409);
+      await as(ctx.http, admin)
+        .post(`/api/v1/damages/${created.body.id}/void`)
+        .send({ reason: 'recorded in the wrong measure' })
         .expect(200);
-      expect(edited.body.cost).toMatchObject({ est_value_iqd: 2_100, est_value_source: 'month' });
-      expect(edited.body.credit_prefill?.amount_iqd).toBe(17_700);
     });
   });
 
@@ -863,9 +830,11 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
       const list = await as(ctx.http, accountant).get('/api/v1/damages?page_size=1').expect(200);
       expect(list.body.items).toHaveLength(1);
       expect(list.body.total).toBe(3);
-      // 4 kg + 4 kg of copper, 2 plates; 2,800 + 2,800 + 30,000 د.ع.
+      // 4 kg + 4 kg of copper, 2 plates. The company's 4 kg and the plates left stock, so they are
+      // valued at what their buys cost (4 × 5,900 and 2 × 15,000, D-062); the customer's 4 kg had
+      // already been sold and never left stock again, so it keeps the month price (4 × 700).
       expect(list.body.totals).toMatchObject({ records: 3, qty_kg: '8.000', qty_count: 2 });
-      expect(list.body.totals.cost).toMatchObject({ est_value_iqd: 35_600 });
+      expect(list.body.totals.cost).toMatchObject({ est_value_iqd: 23_600 + 2_800 + 30_000 });
     });
 
     it('filters by material, attribution, return status and employee', async () => {

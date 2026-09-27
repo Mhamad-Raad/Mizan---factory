@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { Client } from 'pg';
 import { request, test as setup } from '@playwright/test';
 import { todayInBaghdad } from '@mizan/i18n';
-import { ACCOUNTANT, ADMIN, SALES, WAREHOUSE } from './accounts.js';
+import { ACCOUNTANT, ADMIN, API_URL, SALES, WAREHOUSE } from './accounts.js';
 
 /**
  * Seeds the data the selling screens are photographed with (spec 2.12, Definition of done
@@ -14,7 +14,7 @@ import { ACCOUNTANT, ADMIN, SALES, WAREHOUSE } from './accounts.js';
  * application role has no DELETE on the append-only tables, and that is the point.
  */
 
-const BASE = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
+const BASE = API_URL;
 const INITIAL_ADMIN_PASSWORD = 'mizan-e2e-initial-2026';
 const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgresql://mizan_app:mizan_app@localhost:5432/mizan_test';
@@ -77,7 +77,7 @@ async function seedFixture(): Promise<void> {
 
   await post(context, session, '/settings/global-rates', { rate_iqd_per_usd: '1310' });
 
-  const salesUser = await ensureSalesEmployee(context, session);
+  await ensureSalesEmployee(context, session);
 
   const copperId = await createMaterial(context, session, {
     name: 'Copper wire 2 mm',
@@ -96,7 +96,7 @@ async function seedFixture(): Promise<void> {
     openingCount: 500,
   });
 
-  const customerId = await createCustomer(context, session, salesUser, today);
+  const customerId = await createCustomer(context, session, today);
   const orderId = await createOrder(context, session, { customerId, copperId, steelId, today });
 
   // Iteration 2: the supplier side of the same yard — a company with its own rate, a purchase
@@ -211,8 +211,6 @@ async function createCompany(
   session: Headers,
 ): Promise<string> {
   const created = (await post(context, session, '/customers', {
-    is_customer: false,
-    is_supplier: true,
     name: 'Al-Noor Steel Co.',
     contact_name: 'Abu Ahmad',
     phone: '0751 222 3344',
@@ -334,13 +332,11 @@ async function createMaterial(
 async function createCustomer(
   context: Awaited<ReturnType<typeof request.newContext>>,
   session: Headers,
-  assignedTo: string,
   today: string,
 ): Promise<string> {
   const created = (await post(context, session, '/customers', {
     name: 'Kawa Trading',
     phone: '0770 123 4567',
-    assigned_user_id: assignedTo,
   })) as { id: string };
 
   await post(context, session, `/customers/${created.id}/opening-balance`, {

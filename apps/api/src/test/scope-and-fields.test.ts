@@ -6,20 +6,19 @@ import type { Session, TestApp } from './harness.js';
  * The adversarial pass of the system-wide review, kept as a test.
  *
  * `permission-matrix.test.ts` proves every route refuses the wrong *permission*. It says
- * nothing about **data scope**: whether an employee who may not see a colleague's customer can
- * reach that customer sideways — by its id, through one of its orders, through search, through
- * a report or through History — nor whether a **field** the employee may not see is absent from
- * every response that could carry it.
+ * nothing about whether a **field** the employee may not see — a bought price, a profit, a
+ * balance — is absent from every response that could carry it.
  *
- * Those are the two leaks that never announce themselves: the screens hide what they are told
- * to hide (2.6.4: "the frontend only hides"), so a leak is invisible until somebody reads a
- * response body. The review read eighteen of them by hand and found none; this is that audit
- * as a gate, because the next change to a repository is the one that would undo it.
+ * That is the leak that never announces itself: the screens hide what they are told to hide
+ * (2.6.4: "the frontend only hides"), so it is invisible until somebody reads a response body.
+ * The review read eighteen of them by hand and found none; this is that audit as a gate. (It
+ * also walked data scope — a colleague's customer reached sideways — until accounts stopped
+ * being assigned, D-056: every account is visible to whoever may see accounts.)
  */
-describe('data scope and field stripping cannot be walked around (spec 2.6.4, 2.6.5)', () => {
+describe('field stripping cannot be walked around (spec 2.6.5)', () => {
   let ctx: TestApp;
   let admin: Session;
-  /** The employee who may see only their own customers, and the colleague who owns one. */
+  /** The employee who may not see bought prices or profit. */
   let sara: Session;
   let hidden: { id: string; name: string; orderId: string; orderNumber: number };
 
@@ -36,7 +35,7 @@ describe('data scope and field stripping cannot be walked around (spec 2.6.4, 2.
     admin = await signIn(ctx.http, adminUser);
     await as(ctx.http, admin).post('/api/v1/settings/global-rates').send({ rate_iqd_per_usd: '1300' }).expect(201);
 
-    // Sara sells, and holds no key to other people's customers, bought prices or profit.
+    // Sara sells, and holds no key to bought prices or profit.
     const saraUser = await seedUser({
       username: 'sara',
       displayName: 'Sara',
@@ -52,16 +51,11 @@ describe('data scope and field stripping cannot be walked around (spec 2.6.4, 2.
       ],
     });
     sara = await signIn(ctx.http, saraUser);
-    const rebazUser = await seedUser({ username: 'rebaz', displayName: 'Rebaz', permissions: ['orders.view'] });
 
     const customer = await as(ctx.http, admin)
       .post('/api/v1/customers')
       .send({ name: 'Rebaz Only Trading' })
       .expect(201);
-    await as(ctx.http, admin)
-      .put(`/api/v1/customers/${customer.body.id}/assignment`)
-      .send({ user_id: rebazUser.id, note: 'his account', version: customer.body.version })
-      .expect(200);
 
     const item = await as(ctx.http, admin)
       .post('/api/v1/items')
@@ -100,48 +94,6 @@ describe('data scope and field stripping cannot be walked around (spec 2.6.4, 2.
     };
   }, 60_000);
 
-  it('answers 404 — not 403 — on every direct route to a customer out of scope', async () => {
-    // 404 rather than 403 on purpose: a refusal would confirm the record exists (2.6.4).
-    for (const path of [
-      `/api/v1/customers/${hidden.id}`,
-      `/api/v1/customers/${hidden.id}/ledger`,
-      `/api/v1/customers/${hidden.id}/statement`,
-      `/api/v1/customers/${hidden.id}/history`,
-      `/api/v1/orders/${hidden.orderId}`,
-      `/api/v1/orders/${hidden.orderId}/receipt`,
-      `/api/v1/orders/${hidden.orderId}/history`,
-    ]) {
-      const response = await as(ctx.http, sara).get(path);
-      expect(response.status, `${path} answered ${response.status}`).toBe(404);
-    }
-  });
-
-  it('never names that customer in a list, a search, a report or History', async () => {
-    const month = new Date().toISOString().slice(0, 7);
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(new Date());
-    const range = `from=${month}-01&to=${today}`;
-
-    for (const path of [
-      '/api/v1/customers?page_size=100',
-      '/api/v1/orders?page_size=100',
-      `/api/v1/customers/${hidden.id}/orders`,
-      `/api/v1/search?q=${encodeURIComponent(hidden.name)}`,
-      `/api/v1/search?q=${hidden.orderNumber}`,
-      `/api/v1/reports/receivables?${range}`,
-      `/api/v1/reports/sales?${range}&group_by=customer`,
-      '/api/v1/history?limit=100',
-      '/api/v1/dashboard',
-    ]) {
-      const response = await as(ctx.http, sara).get(path);
-      expect([200, 403], `${path} answered ${response.status}`).toContain(response.status);
-      if (response.status !== 200) continue;
-      // The search echoes the query, so the name is looked for in the *answer*, not the request.
-      const answer = JSON.stringify({ ...response.body, query: undefined });
-      expect(answer, `${path} named a customer out of scope`).not.toContain(hidden.name);
-      expect(answer, `${path} carried that customer's note`).not.toContain('a note Sara may not read');
-    }
-  });
-
   it('strips the bought price and the profit from every response that could carry them', async () => {
     const month = new Date().toISOString().slice(0, 7);
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(new Date());
@@ -173,7 +125,7 @@ describe('data scope and field stripping cannot be walked around (spec 2.6.4, 2.
     const blind = await seedUser({
       username: 'blind',
       displayName: 'Blind',
-      permissions: ['customers.view', 'customers.view_all', 'orders.view', 'reports.view'],
+      permissions: ['customers.view', 'orders.view', 'reports.view'],
     });
     const session = await signIn(ctx.http, blind);
 

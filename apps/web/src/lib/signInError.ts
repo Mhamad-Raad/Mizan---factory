@@ -19,6 +19,14 @@ export function signInError(t: TFunction, caught: unknown): SignInError {
   if (!(caught instanceof ApiError)) return { message: t('errors:INTERNAL'), warning: null };
 
   if (caught.code === 'RATE_LIMITED') {
+    // The per-address ceiling rather than this account's lockout (security review, finding 4):
+    // the same wait, but a different reason, and the user should know which.
+    if (caught.params.reason === 'too_many_requests') {
+      return {
+        message: t('auth:too_many_from_network', { minutes: caught.params.minutes as number }),
+        warning: null,
+      };
+    }
     return {
       message: t('auth:locked_out', { minutes: caught.params.minutes as number }),
       warning: null,

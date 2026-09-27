@@ -114,7 +114,13 @@ for (const directory of SCAN_DIRS) {
   }
 }
 
-const apiKeyPattern = /message_key: '([a-z_]+:[A-Za-z0-9_.]+)'/g;
+/*
+ * Every quoted `'<namespace>:<key>'` in the API, not only the ones written as `message_key:` —
+ * a key can also reach the client as the more specific sentence of an `ApiError`
+ * (`ApiError.permissionDenied(key, 'errors:…')`), and a check that reads only one of those
+ * shapes lets the other ship untranslated (review lesson 11).
+ */
+const apiKeyPattern = new RegExp(`'((?:${namespaces.join('|')}):[A-Za-z0-9_.]+)'`, 'g');
 let apiCount = 0;
 for (const file of walk(API_DIR)) {
   const source = readFileSync(file, 'utf8');

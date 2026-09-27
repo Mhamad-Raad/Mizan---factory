@@ -185,3 +185,17 @@ describe('the formatting service covers every locale', () => {
     expect(formatter.timestamp(new Date('2026-09-18T11:02:00Z'))).toBeTruthy();
   });
 });
+
+describe('quantities read without trailing zeros (client review)', () => {
+  const formatter = createFormatter({ locale: 'en', numerals: 'latn' });
+
+  it('drops the zeros after the point, and the point with them', () => {
+    expect(formatter.quantity('170.000')).toBe('170');
+    expect(formatter.quantity('20.500')).toBe('20.5');
+    expect(formatter.quantity('12.345')).toBe('12.345');
+    expect(formatter.quantity('6346.000')).toBe('6,346');
+    expect(formatter.quantity(125)).toBe('125');
+    expect(formatter.quantity('0.000')).toBe('0');
+    expect(formatter.quantity('-4.000')).toBe('−4');
+  });
+});

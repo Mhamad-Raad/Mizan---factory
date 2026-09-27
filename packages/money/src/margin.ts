@@ -32,7 +32,15 @@ export interface MarginLine {
   /** The bought-price snapshot; null when the material had no month price at save time. */
   cost_unit_iqd: number | null;
   cost_unit_usd_cents: number | null;
-  cost_source: 'month' | 'fallback' | 'none';
+  cost_source: 'month' | 'fallback' | 'lots' | 'none';
+  /**
+   * The exact cost of the stock this line sold, summed over the buys it took it from (D-062).
+   * Present when `cost_source` is `lots`: the margin is then the line's revenue less this
+   * figure, rather than a rounded average unit cost times the quantity, so two buys at $1.00
+   * and $1.50 cost the line exactly what they cost us.
+   */
+  cost_total_iqd?: number | null;
+  cost_total_usd_cents?: number | null;
 }
 
 export interface LineMargin {
@@ -52,7 +60,11 @@ export function lineMargin(line: MarginLine): LineMargin | null {
   const unitPrice = entered === 'IQD' ? line.unit_price_iqd : line.unit_price_usd_cents;
   const unitCost = entered === 'IQD' ? line.cost_unit_iqd : line.cost_unit_usd_cents;
 
-  const marginEntered = roundHalfAwayFromZero(new Decimal(unitPrice).minus(unitCost).times(quantity));
+  const costTotal = entered === 'IQD' ? line.cost_total_iqd : line.cost_total_usd_cents;
+  const marginEntered =
+    line.cost_source === 'lots' && costTotal !== undefined && costTotal !== null
+      ? roundHalfAwayFromZero(new Decimal(unitPrice).times(quantity)) - costTotal
+      : roundHalfAwayFromZero(new Decimal(unitPrice).minus(unitCost).times(quantity));
   const marginOther = convert(marginEntered, entered, line.rate_iqd_per_usd);
 
   return {

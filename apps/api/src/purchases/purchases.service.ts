@@ -27,6 +27,7 @@ import { RatesService } from '../rates/rates.service.js';
 import { PeriodService } from '../settings/period.service.js';
 import { SettingsService } from '../settings/settings.service.js';
 import { StockService } from '../stock/stock.service.js';
+import { LotsService } from '../lots/lots.service.js';
 import { PurchasesRepository } from './purchases.repository.js';
 import type {
   NewPurchaseLine,
@@ -108,6 +109,8 @@ export interface PurchaseDto {
   voided_by_name: string | null;
   voided_at: string | null;
   line_count: number;
+  /** The materials bought, by name (D-062). */
+  item_names: string | null;
   cost: {
     discount_iqd: number;
     discount_usd_cents: number;
@@ -149,6 +152,7 @@ export class PurchasesService {
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
     private readonly history: HistoryRepository,
+    private readonly lots: LotsService,
   ) {}
 
   async list(filters: PurchaseFilters): Promise<{ items: PurchaseDto[]; total: number }> {
@@ -200,91 +204,119 @@ export class PurchasesService {
     );
     const actingUserId = await this.actingUser(context, input.acting_user_id);
 
-    const created = await this.database.transaction(async (tx) => {
-      // A company is locked before its balance is touched (2.9.5); a stock-only purchase has
-      // no counterparty to lock.
-      const account = company ? await this.ledger.lockOwner(tx, company.id) : null;
-      if (company && !account) throw ApiError.notFound();
-
-      const lines = await this.prepareLines(tx, input.lines, input.purchase_date, rate, rateSource);
-      const discount = this.discountPair(input.discount, rate, rateSource, lines);
-      const totals = documentTotals(lines, {
-        discount_iqd: discount.amount_iqd,
-        discount_usd_cents: discount.amount_usd_cents,
-      });
-
-      const purchase = await this.purchases.createPurchase(
-        {
-          company_id: company?.id ?? null,
-          purchase_date: input.purchase_date,
-          acting_user_id: actingUserId,
-          notes: input.notes?.trim() || null,
-          rate_iqd_per_usd: rate,
-          rate_source: rateSource,
-          discount_iqd: discount.amount_iqd,
-          discount_usd_cents: discount.amount_usd_cents,
-          created_by: context.userId,
-        },
-        tx,
-      );
-      await this.purchases.updatePurchase(
-        purchase.id,
-        purchase.version,
-        { total_iqd: totals.total_iqd, total_usd_cents: totals.total_usd_cents },
-        context.userId,
-        tx,
-      );
-
-      const insertedLines = await this.purchases.insertLines(
-        purchase.id,
-        lines,
-        context.userId,
-        tx,
-      );
-      await this.writeStockIn(tx, context, input.purchase_date, insertedLines, lines);
-
-      if (account) {
-        await this.writeCompanyEntry(context, tx, account, {
-          purchaseId: purchase.id,
-          purchaseDate: input.purchase_date,
-          totals,
-          rate,
-          rateSource,
-        });
-      }
-
-      await this.audit.record(
-        context,
-        {
-          action: 'create',
-          entity_type: 'purchase',
-          entity_id: purchase.id,
-          entity_label: `Purchase #${purchase.number}`,
-          changes: {
-            company_id: { old: null, new: company?.id ?? null },
-            purchase_date: { old: null, new: input.purchase_date },
-            rate_iqd_per_usd: { old: null, new: rate },
-            lines: { old: null, new: lines.map(lineSummary) },
-            purchase_total: {
-              old: null,
-              new: { iqd: totals.total_iqd, usd_cents: totals.total_usd_cents },
-            },
-          },
-          note: input.notes?.trim() || null,
-          related: {
-            purchase_id: purchase.id,
-            company_id: company?.id ?? null,
-            assigned_user_id: company?.assigned_user_id ?? null,
-          },
-        },
-        tx,
-      );
-
-      return { id: purchase.id, duplicates: duplicateItems(lines) };
-    });
+    const created = await this.database.transaction((tx) =>
+      this.writePurchase(tx, context, input, company, rate, rateSource, actingUserId),
+    );
 
     const dto = await this.get(created.id);
     return { ...dto, duplicate_item_warning: created.duplicates };
+  }
+
+  /**
+   * A buy of one material inside a transaction somebody else opened — creating a material *is*
+   * buying it (D-062), so the material and its first buy are one decision: both are written or
+   * neither is.
+   */
+  async createWithin(
+    tx: Db,
+    context: RequestContext,
+    input: CreatePurchaseInput,
+  ): Promise<{ id: string }> {
+    this.period.assertNotFuture(input.purchase_date, 'purchase_date');
+    const { rate, rateSource } = await this.rateFor(null, input.rate_iqd_per_usd);
+    const actingUserId = await this.actingUser(context, input.acting_user_id);
+    const written = await this.writePurchase(tx, context, input, null, rate, rateSource, actingUserId);
+    return { id: written.id };
+  }
+
+  private async writePurchase(
+    tx: Db,
+    context: RequestContext,
+    input: CreatePurchaseInput,
+    company: NonNullable<Awaited<ReturnType<CompaniesRepository['findById']>>> | null,
+    rate: Rate,
+    rateSource: RateSource,
+    actingUserId: string,
+  ): Promise<{ id: string; duplicates: ReturnType<typeof duplicateItems> }> {
+    // A company is locked before its balance is touched (2.9.5); a stock-only purchase has
+    // no counterparty to lock.
+    const account = company ? await this.ledger.lockOwner(tx, company.id) : null;
+    if (company && !account) throw ApiError.notFound();
+
+    const lines = await this.prepareLines(tx, input.lines, input.purchase_date, rate, rateSource);
+    const discount = this.discountPair(input.discount, rate, rateSource, lines);
+    const totals = documentTotals(lines, {
+      discount_iqd: discount.amount_iqd,
+      discount_usd_cents: discount.amount_usd_cents,
+    });
+
+    const purchase = await this.purchases.createPurchase(
+      {
+        company_id: company?.id ?? null,
+        purchase_date: input.purchase_date,
+        acting_user_id: actingUserId,
+        notes: input.notes?.trim() || null,
+        rate_iqd_per_usd: rate,
+        rate_source: rateSource,
+        discount_iqd: discount.amount_iqd,
+        discount_usd_cents: discount.amount_usd_cents,
+        created_by: context.userId,
+      },
+      tx,
+    );
+    await this.purchases.updatePurchase(
+      purchase.id,
+      purchase.version,
+      { total_iqd: totals.total_iqd, total_usd_cents: totals.total_usd_cents },
+      context.userId,
+      tx,
+    );
+
+    const insertedLines = await this.purchases.insertLines(
+      purchase.id,
+      lines,
+      context.userId,
+      tx,
+    );
+    await this.writeStockIn(tx, context, input.purchase_date, insertedLines, lines);
+
+    if (account) {
+      await this.writeCompanyEntry(context, tx, account, {
+        purchaseId: purchase.id,
+        purchaseDate: input.purchase_date,
+        totals,
+        rate,
+        rateSource,
+      });
+    }
+
+    await this.audit.record(
+      context,
+      {
+        action: 'create',
+        entity_type: 'purchase',
+        entity_id: purchase.id,
+        entity_label: `Purchase #${purchase.number}`,
+        changes: {
+          company_id: { old: null, new: company?.id ?? null },
+          purchase_date: { old: null, new: input.purchase_date },
+          rate_iqd_per_usd: { old: null, new: rate },
+          lines: { old: null, new: lines.map(lineSummary) },
+          purchase_total: {
+            old: null,
+            new: { iqd: totals.total_iqd, usd_cents: totals.total_usd_cents },
+          },
+        },
+        note: input.notes?.trim() || null,
+        related: {
+          purchase_id: purchase.id,
+          company_id: company?.id ?? null,
+        },
+      },
+      tx,
+    );
+
+    return { id: purchase.id, duplicates: duplicateItems(lines) };
   }
 
   /**
@@ -332,6 +364,11 @@ export class PurchasesService {
       if (purchase.company_id && !account) throw ApiError.notFound();
 
       const oldLines = await this.purchases.linesOf(id, tx);
+      // A buy is the cost of every sale that took from it (D-062): once any of its stock has
+      // gone out, rewriting it would change what those sales cost.
+      if (await this.lots.anyTaken(tx, oldLines.map((line) => line.id))) {
+        throw new ApiError('BUY_IN_USE', { purchase_id: id });
+      }
 
       await this.stock.reverseLiveForRef(
         tx,
@@ -444,6 +481,9 @@ export class PurchasesService {
         ? await this.ledger.lockOwner(tx, purchase.company_id)
         : null;
       const lines = await this.purchases.linesOf(id, tx);
+      if (await this.lots.anyTaken(tx, lines.map((line) => line.id))) {
+        throw new ApiError('BUY_IN_USE', { purchase_id: id });
+      }
 
       await this.stock.reverseLiveForRef(
         tx,
@@ -496,30 +536,28 @@ export class PurchasesService {
     const [audit, entries] = await Promise.all([
       this.history.list({ entity_type: 'purchase', entity_id: id, ...options }),
       purchase.company_id
-        ? this.ledger.entriesFor(this.database, purchase.company_id)
+        ? this.ledger.entriesOfDocument(this.database, purchase.company_id, id)
         : Promise.resolve([]),
     ]);
 
     return {
       ...audit,
-      ledger_entries: entries
-        .filter((entry) => entry.refs.purchase_id === id)
-        .map((entry) => ({
-          id: entry.id,
-          entry_type: entry.entry_type,
-          entry_date: entry.entry_date,
-          entered_currency: entry.entered_currency,
-          rate_iqd_per_usd: entry.rate_iqd_per_usd,
-          note: entry.note,
-          voucher_number: entry.voucher_number ?? null,
-          reverses_entry_id: entry.reverses_entry_id,
-          // The amounts a purchase put on the account are purchase amounts: they travel under
-          // `cost` so the same flag hides them here as on the document (spec 2.4.4, 2.6.2).
-          cost: {
-            amount_iqd: entry.amount_iqd,
-            amount_usd_cents: entry.amount_usd_cents,
-          },
-        })),
+      ledger_entries: entries.map((entry) => ({
+        id: entry.id,
+        entry_type: entry.entry_type,
+        entry_date: entry.entry_date,
+        entered_currency: entry.entered_currency,
+        rate_iqd_per_usd: entry.rate_iqd_per_usd,
+        note: entry.note,
+        voucher_number: entry.voucher_number ?? null,
+        reverses_entry_id: entry.reverses_entry_id,
+        // The amounts a purchase put on the account are purchase amounts: they travel under
+        // `cost` so the same flag hides them here as on the document (spec 2.4.4, 2.6.2).
+        cost: {
+          amount_iqd: entry.amount_iqd,
+          amount_usd_cents: entry.amount_usd_cents,
+        },
+      })),
     };
   }
 
@@ -1011,6 +1049,7 @@ function toPurchaseDto(row: PurchaseListRow, lines: readonly PurchaseLineRow[]):
     voided_by_name: row.voided_by_name,
     voided_at: row.voided_at?.toISOString() ?? null,
     line_count: Number(row.line_count ?? 0),
+    item_names: row.item_names ?? null,
     cost: {
       discount_iqd: Number(row.discount_iqd),
       discount_usd_cents: Number(row.discount_usd_cents),

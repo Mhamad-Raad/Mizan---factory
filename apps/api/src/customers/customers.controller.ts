@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { AdminOnly, RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
+import { stripHistory } from '../history/history-fields.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { CustomersService } from './customers.service.js';
+import { limitField, pageFields, pageSchema } from '../common/paging.js';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const money = z.object({
@@ -22,36 +24,26 @@ const rateSchema = z.object({
 
 const listSchema = z.object({
   q: z.string().max(200).optional(),
-  side: z.enum(['customer', 'supplier']).optional(),
-  assigned_to: z.string().uuid().optional(),
   balance: z.enum(['owes', 'settled', 'credit']).optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
   sort: z.enum(['name', 'balance']).optional(),
-  page: z.coerce.number().int().positive().optional(),
-  page_size: z.coerce.number().int().positive().max(100).optional(),
+  ...pageFields,
 });
 
-const createSchema = z.object({
+export const createSchema = z.object({
   name: z.string().min(1).max(200),
+  /** The account's own rate, typed on the form; empty means the system-wide rate (D-055). */
+  rate_iqd_per_usd: rate.nullish(),
   contact_name: z.string().max(200).nullish(),
-  is_customer: z.boolean().optional(),
-  is_supplier: z.boolean().optional(),
   phone: z.string().max(40).nullish(),
   address: z.string().max(500).nullish(),
   notes: z.string().max(2000).nullish(),
   settlement_currency: z.enum(['IQD', 'USD']).optional(),
-  assigned_user_id: z.string().uuid().nullish(),
   credit_limit: money.nullish(),
 });
 
 const updateSchema = createSchema.partial().extend({ version: z.number().int().positive() });
 const statusSchema = z.object({ version: z.number().int().positive(), note: z.string().max(2000).nullish() });
-const assignSchema = z.object({
-  user_id: z.string().uuid().nullable(),
-  note: z.string().max(2000).nullish(),
-  version: z.number().int().positive().optional(),
-});
-
 const currencySchema = z.object({
   currency: z.enum(['IQD', 'USD']),
   note: z.string().min(1).max(2000),
@@ -70,7 +62,7 @@ const paymentSchema = money.extend({
   note: z.string().max(2000).nullish(),
 });
 
-const entrySchema = money.extend({
+export const entrySchema = money.extend({
   entry_date: isoDate,
   note: z.string().min(1).max(2000),
   order_id: z.string().uuid().nullish(),
@@ -86,13 +78,25 @@ const ledgerSchema = z.object({
   money_only: z.enum(['true', 'false']).optional(),
   include_undone: z.enum(['true', 'false']).optional(),
   as_of: isoDate.optional(),
-  limit: z.coerce.number().int().positive().max(500).optional(),
+  ...pageFields,
 });
 
 const statementSchema = z.object({ from: isoDate.optional(), to: isoDate.optional() });
 const historySchema = z.object({
+  /** One kind of action — "rate changes", "money", "edits" — for the account's History tab. */
+  action: z
+    .enum([
+      'create',
+      'update',
+      'rate_change',
+      'ledger_entry',
+      'assignment_change',
+      'status_change',
+      'delete',
+    ])
+    .optional(),
   cursor: z.string().max(200).optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: limitField,
 });
 
 /**
@@ -112,8 +116,6 @@ export class CustomersController {
   async list(@Req() request: RequestWithContext, @Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
     return this.customers.list(contextOf(request), {
       q: query.q,
-      side: query.side,
-      assigned_to: query.assigned_to,
       balance: query.balance,
       include_inactive: query.include_inactive === 'true',
       sort: query.sort,
@@ -133,9 +135,9 @@ export class CustomersController {
   }
 
   /*
-   * The routes that change the record itself are open to anybody who may see it; the service
-   * then asks for the permission of each side the record takes part in — `customers.<action>`
-   * for a customer, `companies.<action>` for a supplier, both for both (D-054).
+   * The routes that change the account itself are open to anybody who may see it; the service
+   * then asks for either side's permission — `customers.<action>` or `companies.<action>` —
+   * because every account is a company on both sides (D-055).
    */
   @Post('customers')
   @RequirePermission('customers.view')
@@ -144,13 +146,11 @@ export class CustomersController {
     return this.customers.create(contextOf(request), {
       name: body.name,
       contact_name: body.contact_name ?? null,
-      is_customer: body.is_customer,
-      is_supplier: body.is_supplier,
+      rate_iqd_per_usd: body.rate_iqd_per_usd ?? null,
       phone: body.phone ?? null,
       address: body.address ?? null,
       notes: body.notes ?? null,
       settlement_currency: body.settlement_currency,
-      assigned_user_id: body.assigned_user_id ?? null,
       credit_limit: body.credit_limit ?? null,
     });
   }
@@ -211,16 +211,6 @@ export class CustomersController {
     await this.customers.softDelete(contextOf(request), id, body.version);
   }
 
-  @Put('customers/:id/assignment')
-  @RequirePermission('customers.view')
-  async assign(
-    @Req() request: RequestWithContext,
-    @Param('id') id: string,
-    @Body(zodBody(assignSchema)) body: z.infer<typeof assignSchema>,
-  ) {
-    return this.customers.assign(contextOf(request), id, body);
-  }
-
   @Put('customers/:id/settlement-currency')
   @AdminOnly()
   async setSettlementCurrency(
@@ -238,8 +228,12 @@ export class CustomersController {
 
   @Get('customers/:id/rates')
   @RequirePermission('customers.view')
-  async rates(@Req() request: RequestWithContext, @Param('id') id: string) {
-    return this.customers.rateHistoryOf(contextOf(request), id);
+  async rates(
+    @Req() request: RequestWithContext,
+    @Param('id') id: string,
+    @Query(zodBody(pageSchema)) query: z.infer<typeof pageSchema>,
+  ) {
+    return this.customers.rateHistoryOf(contextOf(request), id, query);
   }
 
   @Post('customers/:id/rates')
@@ -268,7 +262,8 @@ export class CustomersController {
       money_only: query.money_only === 'true',
       include_undone: query.include_undone === 'true',
       as_of: query.as_of,
-      limit: query.limit,
+      page: query.page,
+      page_size: query.page_size,
     });
   }
 
@@ -372,7 +367,11 @@ export class CustomersController {
     @Param('id') id: string,
     @Query(zodBody(historySchema)) query: z.infer<typeof historySchema>,
   ) {
-    return this.customers.historyOf(contextOf(request), id, query);
+    const context = contextOf(request);
+    const page = await this.customers.historyOf(context, id, query);
+    // Its rows are of several kinds — the business's selling and buying sides, their ledgers —
+    // so the per-kind rules of the History page apply, not only this controller's `balance`.
+    return { ...page, items: stripHistory(context, page.items) };
   }
 }
 

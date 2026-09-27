@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Database } from '../database/pool.js';
+import { limitOf } from '../common/paging.js';
 
 export interface AuditRow {
   id: string;
@@ -19,12 +20,6 @@ export interface AuditRow {
 
 export interface HistoryFilters {
   done_by?: string;
-  /**
-   * The employee the *record* is assigned to, which is a different question from who did it
-   * (spec 2.9.4): it reads `related.assigned_user_id`, written by every audit row that belongs
-   * to a customer or a company, and is served by the GIN index on `related`.
-   */
-  assigned_to?: string;
   from?: string;
   to?: string;
   entity_type?: string;
@@ -42,6 +37,8 @@ export interface HistoryFilters {
    */
   about_party?: string;
   action?: string;
+  /** False leaves out signing in and out, locking and switching user — the noise of a day. */
+  sessions?: boolean;
   /** Collapse an edit storm into one entry per record (spec 2.4.5, last row). */
   group_edits?: boolean;
   /**
@@ -69,12 +66,6 @@ export class HistoryRepository {
     if (filters.done_by) {
       values.push(filters.done_by);
       conditions.push(`a.actor_user_id = $${values.length}`);
-    }
-    // Containment rather than `->>`: `audit_log_related_idx` is a GIN index on the whole
-    // document, so `related @> {...}` is an index scan while a field extraction is a filter.
-    if (filters.assigned_to) {
-      values.push(JSON.stringify({ assigned_user_id: filters.assigned_to }));
-      conditions.push(`a.related @> $${values.length}::jsonb`);
     }
     // Business days are Asia/Baghdad days, whatever the server's time zone (spec 2.9.4).
     //
@@ -114,6 +105,11 @@ export class HistoryRepository {
       values.push(filters.action);
       conditions.push(`a.action = $${values.length}::audit_action`);
     }
+    if (filters.sessions === false) {
+      conditions.push(
+        `a.action NOT IN ('login', 'logout', 'login_failed', 'lockout', 'lock', 'unlock', 'switch_user')`,
+      );
+    }
     if (filters.cursor) {
       const [occurredAt, id] = filters.cursor.split('|');
       values.push(occurredAt, id);
@@ -122,7 +118,7 @@ export class HistoryRepository {
       conditions.push(`(a.occurred_at, a.id) < ($${values.length - 1}::timestamptz, $${values.length}::bigint)`);
     }
 
-    const limit = Math.min(filters.limit ?? 50, 100);
+    const limit = limitOf(filters.limit);
     values.push(limit + 1);
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

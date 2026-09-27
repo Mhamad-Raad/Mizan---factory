@@ -51,8 +51,7 @@ const CustomerDetailPage = chunk(
   'CustomerDetailPage',
 );
 const NewCustomerPage = chunk(() => import('./pages/NewCustomerPage.js'), 'NewCustomerPage');
-const PurchasesPage = chunk(() => import('./pages/PurchasesPage.js'), 'PurchasesPage');
-const PurchaseFormPage = chunk(() => import('./pages/PurchaseFormPage.js'), 'PurchaseFormPage');
+const AccountsPage = chunk(() => import('./pages/AccountsPage.js'), 'AccountsPage');
 const PurchaseDetailPage = chunk(
   () => import('./pages/PurchaseDetailPage.js'),
   'PurchaseDetailPage',
@@ -68,25 +67,26 @@ const NewUserPage = chunk(() => import('./pages/NewUserPage.js'), 'NewUserPage')
 const UserDetailPage = chunk(() => import('./pages/UserDetailPage.js'), 'UserDetailPage');
 const HistoryPage = chunk(() => import('./pages/HistoryPage.js'), 'HistoryPage');
 const ReportsPage = chunk(() => import('./pages/ReportsPage.js'), 'ReportsPage');
-const ReportPage = chunk(() => import('./pages/ReportPage.js'), 'ReportPage');
 const DashboardPage = chunk(() => import('./pages/DashboardPage.js'), 'DashboardPage');
-const SearchPage = chunk(() => import('./pages/SearchPage.js'), 'SearchPage');
 const SettingsPage = chunk(() => import('./pages/SettingsPage.js'), 'SettingsPage');
+const MePage = chunk(() => import('./pages/MePage.js'), 'MePage');
 const FontCheckPage = chunk(() => import('./pages/FontCheckPage.js'), 'FontCheckPage');
 const ImportPage = chunk(() => import('./pages/ImportPage.js'), 'ImportPage');
 
 /**
  * Where a user lands after signing in: the first tab they may open, in the order the bottom
- * bar shows them (spec 2.10.1, 2.6.3). An admin holds every key, so they land on Orders.
+ * bar shows them (spec 2.10.1, 2.6.3). Today comes first; an admin holds every key, so lands there.
  */
 function landingFor(user: SessionUser | null, permissions: string[]): string {
   const may = (key: string) => user?.role === 'admin' || permissions.includes(key);
+  // Today first: the dashboard is where the day starts (client review).
+  if (may('dashboard.view')) return '/dashboard';
   if (may('orders.view')) return '/orders';
   if (may('materials.view')) return '/materials';
   if (may('customers.view')) return '/customers';
   if (may('companies.view')) return '/customers';
   if (may('damages.view')) return '/damages';
-  if (may('purchases.view')) return '/purchases';
+  if (may('accounts.view')) return '/accounts';
   if (user?.role === 'admin') return '/users';
   if (may('history.view')) return '/history';
   return '/settings';
@@ -114,6 +114,9 @@ export function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const user = useApp((state) => state.user);
+  // The session's own permissions, set the moment sign-in answers — `me` may still hold the
+  // unauthenticated answer from before it, which sent everybody to Settings (client review).
+  const sessionPermissions = useApp((state) => state.permissions);
   const isLocked = useApp((state) => state.isLocked);
   const setSession = useApp((state) => state.setSession);
   const clearSession = useApp((state) => state.clearSession);
@@ -229,13 +232,16 @@ export function App() {
             <Route path="/customers/new" element={<NewCustomerPage />} />
             <Route path="/customers/:id" element={<CustomerDetailPage />} />
             {/* Companies are businesses on the Customers page now (D-054); old links still land. */}
-            <Route path="/companies" element={<Navigate to="/customers?side=supplier" replace />} />
-            <Route path="/companies/new" element={<Navigate to="/customers/new?side=supplier" replace />} />
+            <Route path="/companies" element={<Navigate to="/customers" replace />} />
+            <Route path="/companies/new" element={<Navigate to="/customers/new" replace />} />
             <Route path="/companies/:id" element={<CompanyRedirect />} />
-            <Route path="/purchases" element={<PurchasesPage />} />
-            <Route path="/purchases/new" element={<PurchaseFormPage mode="create" />} />
+            {/* The accountant page took the Purchases page's place (D-062); buying is done in
+                Materials now, so the old purchase form's links land there. A buy's own page stays. */}
+            <Route path="/accounts" element={<AccountsPage />} />
+            <Route path="/purchases" element={<Navigate to="/accounts" replace />} />
+            <Route path="/purchases/new" element={<Navigate to="/materials" replace />} />
             <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
-            <Route path="/purchases/:id/edit" element={<PurchaseFormPage mode="edit" />} />
+            <Route path="/purchases/:id/edit" element={<Navigate to="/materials" replace />} />
             <Route path="/damages" element={<DamagesPage />} />
             <Route path="/damages/new" element={<DamageFormPage mode="create" />} />
             <Route path="/damages/:id" element={<DamageDetailPage />} />
@@ -245,10 +251,11 @@ export function App() {
             <Route path="/users/:id" element={<UserDetailPage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/reports/:name" element={<ReportPage />} />
+            {/* One Reports page with a tab per report; an old link to one report opens its tab. */}
+            <Route path="/reports/:name" element={<ReportRedirect />} />
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/search" element={<SearchPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/me" element={<MePage />} />
             {/* A test fixture with a URL, deliberately not in the navigation (spec 3.7.1). */}
             <Route path="/font-check" element={<FontCheckPage />} />
             {/* Go-live import (FR-1312, Proposed — not requested); the API is admin-only. */}
@@ -256,7 +263,7 @@ export function App() {
             {/* The home route sends each user to the first page they may open (spec 2.10.1). */}
             <Route
               path="/"
-              element={<Navigate to={landingFor(user, me.data?.permissions ?? [])} replace />}
+              element={<Navigate to={landingFor(user, [...sessionPermissions])} replace />}
             />
             <Route
               path="*"
@@ -281,4 +288,10 @@ export function App() {
 function CompanyRedirect() {
   const { id = '' } = useParams();
   return <Navigate to={`/customers/${id}`} replace />;
+}
+
+/** `/reports/sales` from before the tabs: the same report, as a tab of the one Reports page. */
+function ReportRedirect() {
+  const { name = 'sales' } = useParams();
+  return <Navigate to={`/reports?tab=${name}`} replace />;
 }

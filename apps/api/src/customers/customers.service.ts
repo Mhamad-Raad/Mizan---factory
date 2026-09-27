@@ -17,7 +17,7 @@ import { PeriodService } from '../settings/period.service.js';
 import { SettingsService } from '../settings/settings.service.js';
 import { CompaniesService } from '../companies/companies.service.js';
 import { CustomersRepository } from './customers.repository.js';
-import type { CustomerFilters, CustomerScope } from './customers.repository.js';
+import type { CustomerFilters } from './customers.repository.js';
 import type {
   BalanceDto,
   CustomerDto,
@@ -25,6 +25,7 @@ import type {
   CustomerRow,
   LedgerGroupDto,
 } from './customer.types.js';
+import { pageOfArray, pagingOf } from '../common/paging.js';
 
 export interface MoneyInput {
   amount: number;
@@ -36,14 +37,15 @@ export interface MoneyInput {
 export interface CreateCustomerInput {
   name: string;
   contact_name?: string | null;
-  /** The sides of the business this record takes part in (D-054); a customer by default. */
-  is_customer?: boolean;
-  is_supplier?: boolean;
+  /**
+   * The account's own IQD-per-USD rate, typed on the form (D-055). Written as a new rate row —
+   * never an edit of the old one — so every order keeps the rate it was made at.
+   */
+  rate_iqd_per_usd?: string | null;
   phone?: string | null;
   address?: string | null;
   notes?: string | null;
   settlement_currency?: Currency;
-  assigned_user_id?: string | null;
   /** Proposed — not requested (FR-616). */
   credit_limit?: MoneyInput | null;
 }
@@ -119,14 +121,6 @@ export class CustomersService {
     private readonly suppliers: CompaniesService,
   ) {}
 
-  scopeOf(context: RequestContext): CustomerScope {
-    return {
-      userId: context.userId,
-      viewAll: can(context, 'customers.view_all'),
-      seesSuppliers: can(context, 'companies.view'),
-    };
-  }
-
   /**
    * Which balances this caller may read (FR-503, FR-704). The net figure needs both: from the
    * net and one side anybody could work out the side they may not see.
@@ -139,29 +133,13 @@ export class CustomersService {
   }
 
   /**
-   * A record takes part in the selling side, the buying side or both, and each side keeps the
-   * permission it always had: creating or editing a customer needs `customers.<action>`, a
-   * supplier `companies.<action>`, and a record that is both needs both (D-054).
+   * Creating or editing an account (D-055). Every account is a company we both buy
+   * from and sell to, so either side's permission is enough: `customers.<action>` or
+   * `companies.<action>`.
    */
-  private requireSides(
-    context: RequestContext,
-    sides: { is_customer: boolean; is_supplier: boolean },
-    action: 'create' | 'edit' | 'assign',
-  ): void {
-    const missing =
-      (sides.is_customer && !can(context, `customers.${action}`)) ||
-      (sides.is_supplier && !can(context, `companies.${action}`));
-    if (missing) {
-      throw ApiError.permissionDenied(
-        sides.is_supplier && !can(context, `companies.${action}`)
-          ? `companies.${action}`
-          : `customers.${action}`,
-      );
-    }
-    if (!sides.is_customer && !sides.is_supplier) {
-      throw ApiError.validation([
-        { path: 'is_customer', code: 'NO_SIDE', message_key: 'errors:customer_no_side', params: {} },
-      ]);
+  private requireEither(context: RequestContext, action: 'create' | 'edit'): void {
+    if (!can(context, `customers.${action}`) && !can(context, `companies.${action}`)) {
+      throw ApiError.permissionDenied(`companies.${action}`);
     }
   }
 
@@ -180,7 +158,7 @@ export class CustomersService {
     context: RequestContext,
     filters: CustomerFilters,
   ): Promise<{ items: CustomerDto[]; total: number }> {
-    const { rows, total } = await this.customers.list(filters, this.scopeOf(context));
+    const { rows, total } = await this.customers.list(filters);
     const sight = this.sightOf(context);
     // The list values balances at the global rate; a customer's own rate is applied on the
     // detail, where a single per-row lookup is not thousands of them.
@@ -191,7 +169,6 @@ export class CustomersService {
     return {
       items: rows.map((row) =>
         toCustomerDto(row, {
-          assigned_user_name: row.assigned_user_name,
           balance: Number(row.balance),
           payable: Number(row.payable),
           rate: rateInfo,
@@ -213,12 +190,11 @@ export class CustomersService {
     tx?: Db,
   ): Promise<CustomerDto> {
     const db = tx ?? this.database;
-    const [balance, payable, customerRate, globalRate, assignee] = await Promise.all([
+    const [balance, payable, customerRate, globalRate] = await Promise.all([
       this.customers.balanceOf(row.id, db),
       this.customers.payableOf(row.id, db),
       this.customers.currentRate(row.id, db),
       this.rates.current(db),
-      this.assigneeName(db, row.assigned_user_id),
     ]);
     // The customer's own rate is authoritative; a customer with none falls back to the global.
     const rateInfo: CustomerRateInfo | null = customerRate
@@ -230,62 +206,27 @@ export class CustomersService {
       : globalRate
         ? { rate_iqd_per_usd: globalRate.rate_iqd_per_usd, since: null, is_customer_rate: false }
         : null;
-    return toCustomerDto(row, { assigned_user_name: assignee, balance, payable, rate: rateInfo, sight });
-  }
-
-  private async assigneeName(db: Db, userId: string | null): Promise<string | null> {
-    if (!userId) return null;
-    const { rows } = await db.query<{ display_name: string }>(
-      'SELECT display_name FROM users WHERE id = $1',
-      [userId],
-    );
-    return rows[0]?.display_name ?? null;
+    return toCustomerDto(row, { balance, payable, rate: rateInfo, sight });
   }
 
   /** 404 rather than 403 when the customer is out of the caller's scope (spec 2.6.4). */
   private async requireCustomer(context: RequestContext, id: string): Promise<CustomerRow> {
-    const row = await this.customers.findById(id, this.scopeOf(context));
+    const row = await this.customers.findById(id);
     if (!row) throw ApiError.notFound();
     return row;
   }
 
-  /**
-   * The duplicate check of FR-501, run over every customer whatever the caller may see. When
-   * the twin belongs to someone else the answer is not "open it" — the employee cannot — but
-   * "ask your admin to assign it to you", which is what stops the directory fragmenting.
-   */
-  async checkDuplicates(name: string): Promise<{
-    duplicates: {
-      id: string;
-      name: string;
-      assigned_user_name: string | null;
-      assigned_to_me: boolean;
-    }[];
-  }> {
+  /** The duplicate check of FR-501: an account of the same name, to open instead of repeating. */
+  async checkDuplicates(name: string): Promise<{ duplicates: { id: string; name: string }[] }> {
     const rows = await this.customers.findDuplicates(name);
-    return {
-      duplicates: rows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        assigned_user_name: row.assigned_user_name,
-        assigned_to_me: false,
-      })),
-    };
+    return { duplicates: rows.map((row) => ({ id: row.id, name: row.name })) };
   }
 
   async create(context: RequestContext, input: CreateCustomerInput): Promise<CustomerDto> {
     const name = input.name.trim();
-    const scope = this.scopeOf(context);
-    const sides = { is_customer: input.is_customer ?? true, is_supplier: input.is_supplier ?? false };
-    this.requireSides(context, sides, 'create');
-
-    // A customer created by someone who sees only their own is assigned to them, or they
-    // could not use the record they just made (FR-501).
-    const assignedTo = can(context, 'customers.assign')
-      ? (input.assigned_user_id ?? (scope.viewAll ? null : context.userId))
-      : scope.viewAll
-        ? null
-        : context.userId;
+    this.requireEither(context, 'create');
+    const ownRate = input.rate_iqd_per_usd ? validRate(input.rate_iqd_per_usd) : null;
+    if (ownRate) this.requireRatePermission(context);
 
     const defaultCurrency = await this.settings.get('default_customer_currency');
     const rate = input.credit_limit ? await this.rates.requireCurrent() : null;
@@ -300,12 +241,10 @@ export class CustomersService {
         {
           name,
           contact_name: input.contact_name?.trim() || null,
-          ...sides,
           phone: input.phone?.trim() || null,
           address: input.address?.trim() || null,
           notes: input.notes?.trim() || null,
           settlement_currency: input.settlement_currency ?? defaultCurrency,
-          assigned_user_id: assignedTo,
           credit_limit_iqd: limit?.amount_iqd ?? null,
           credit_limit_usd_cents: limit?.amount_usd_cents ?? null,
           created_by: context.userId,
@@ -322,16 +261,14 @@ export class CustomersService {
           entity_label: `Customer: ${row.name}`,
           changes: {
             name: { old: null, new: row.name },
-            is_customer: { old: null, new: row.is_customer },
-            is_supplier: { old: null, new: row.is_supplier },
             phone: { old: null, new: row.phone },
             settlement_currency: { old: null, new: row.settlement_currency },
-            assigned_user_id: { old: null, new: row.assigned_user_id },
           },
-          related: { customer_id: row.id, assigned_user_id: row.assigned_user_id },
+          related: { customer_id: row.id },
         },
         tx,
       );
+      if (ownRate) await this.writeRate(context, tx, row, ownRate, null);
       return row;
     });
 
@@ -360,18 +297,13 @@ export class CustomersService {
         ]);
       }
 
-      const sides = {
-        is_customer: input.is_customer ?? before.is_customer,
-        is_supplier: input.is_supplier ?? before.is_supplier,
-      };
-      this.requireSides(context, sides, 'edit');
-      await this.assertSidesStillFree(before, sides, tx);
+      this.requireEither(context, 'edit');
+      const ownRate = input.rate_iqd_per_usd ? validRate(input.rate_iqd_per_usd) : null;
+      if (ownRate) this.requireRatePermission(context);
 
       const patch: Record<string, unknown> = {};
       if (input.name !== undefined) patch.name = input.name.trim();
       if (input.contact_name !== undefined) patch.contact_name = input.contact_name?.trim() || null;
-      if (sides.is_customer !== before.is_customer) patch.is_customer = sides.is_customer;
-      if (sides.is_supplier !== before.is_supplier) patch.is_supplier = sides.is_supplier;
       if (input.phone !== undefined) patch.phone = input.phone?.trim() || null;
       if (input.address !== undefined) patch.address = input.address?.trim() || null;
       if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
@@ -390,8 +322,6 @@ export class CustomersService {
       const changes = diffOf({ ...before } as Record<string, unknown>, patch, [
         'name',
         'contact_name',
-        'is_customer',
-        'is_supplier',
         'phone',
         'address',
         'notes',
@@ -412,6 +342,7 @@ export class CustomersService {
           tx,
         );
       }
+      if (ownRate) await this.writeRate(context, tx, row, ownRate, null);
       return row;
     });
 
@@ -433,7 +364,7 @@ export class CustomersService {
     const updated = await this.database.transaction(async (tx) => {
       const before = await this.customers.lock(id, tx);
       if (!before) throw ApiError.notFound();
-      this.requireSides(context, before, 'edit');
+      this.requireEither(context, 'edit');
       if (before.is_system) {
         throw ApiError.validation([
           {
@@ -517,71 +448,6 @@ export class CustomersService {
     });
   }
 
-  /** Assignment: who sees the customer and whose list they appear on (FR-502, A-15). */
-  async assign(
-    context: RequestContext,
-    id: string,
-    input: { user_id: string | null; note?: string | null; version?: number },
-  ): Promise<CustomerDto> {
-    const updated = await this.database.transaction(async (tx) => {
-      const before = await this.customers.lock(id, tx);
-      if (!before) throw ApiError.notFound();
-      this.requireSides(context, before, 'assign');
-      if (before.is_system) {
-        throw ApiError.validation([
-          {
-            path: 'id',
-            code: 'SYSTEM_CUSTOMER',
-            message_key: 'errors:system_customer',
-            params: {},
-          },
-        ]);
-      }
-      if (input.user_id) {
-        const { rowCount } = await tx.query(
-          'SELECT 1 FROM users WHERE id = $1 AND deleted_at IS NULL AND is_active = true',
-          [input.user_id],
-        );
-        if (!rowCount) {
-          throw ApiError.validation([
-            {
-              path: 'user_id',
-              code: 'NOT_FOUND',
-              message_key: 'errors:field.required',
-              params: {},
-            },
-          ]);
-        }
-      }
-
-      const row = await this.customers.update(
-        id,
-        input.version ?? before.version,
-        { assigned_user_id: input.user_id },
-        context.userId,
-        tx,
-      );
-      if (!row) throw await this.versionConflict(id);
-
-      await this.audit.record(
-        context,
-        {
-          action: 'assignment_change',
-          entity_type: 'customer',
-          entity_id: id,
-          entity_label: `Customer: ${row.name}`,
-          changes: { assigned_user_id: { old: before.assigned_user_id, new: input.user_id } },
-          note: input.note?.trim() || null,
-          related: { customer_id: id, assigned_user_id: input.user_id },
-        },
-        tx,
-      );
-      return row;
-    });
-
-    return this.detailOf(updated, this.sightOf(context));
-  }
-
   /**
    * Changing the settlement currency (spec 2.3.5, FR-503).
    *
@@ -613,7 +479,7 @@ export class CustomersService {
       const balanceOld = balanceOf(entries, before.settlement_currency);
       const sumNewColumn = balanceOf(entries, input.currency);
 
-      const payableOld = before.is_supplier ? await this.customers.payableOf(id, tx) : 0;
+      const payableOld = before.is_system ? 0 : await this.customers.payableOf(id, tx);
       if ((balanceOld !== 0 || payableOld !== 0) && !input.rebase_rate) {
         throw new ApiError('REBASE_RATE_REQUIRED', {
           balance: balanceOld - payableOld,
@@ -653,9 +519,9 @@ export class CustomersService {
       // One settlement currency per business (D-054): the buying side's ledger is re-based in the
       // same transaction and at the same agreed rate, or the net figure would subtract a balance
       // in dollars from one in dinars.
-      const supplierSide = before.is_supplier
-        ? await this.suppliers.rebaseBook(context, tx, before, input.currency, rate, input.note)
-        : null;
+      const supplierSide = before.is_system
+        ? null
+        : await this.suppliers.rebaseBook(context, tx, before, input.currency, rate, input.note);
 
       const row = await this.customers.update(
         id,
@@ -701,8 +567,9 @@ export class CustomersService {
       money_only?: boolean;
       as_of?: string;
       include_undone?: boolean;
-      /** The bound the I2 review added on both ledgers: a long account is not a page. */
-      limit?: number;
+      /** One page of it (D-058): a long account is never sent whole. */
+      page?: number;
+      page_size?: number;
     },
   ): Promise<{
     customer: { id: string; name: string; settlement_currency: Currency; is_system: boolean };
@@ -710,6 +577,8 @@ export class CustomersService {
     balance_as_of: number | null;
     items: LedgerGroupDto[];
     total: number;
+    page: number;
+    page_size: number;
     has_more: boolean;
   }> {
     const row = await this.requireCustomer(context, id);
@@ -730,8 +599,8 @@ export class CustomersService {
     // Newest first on screen; the running balance was computed in posting order (2.4.1), over
     // the whole ledger, so the page returned still carries the figures History recorded.
     const newestFirst = [...visible].reverse();
-    const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
-    const page = newestFirst.slice(0, limit);
+    const paging = pagingOf(options);
+    const page = pageOfArray(newestFirst, paging);
     const names = await this.userNames(
       page.flatMap((group) => group.rows.map((line) => line.entry)),
     );
@@ -749,7 +618,9 @@ export class CustomersService {
         : null,
       items: page.map((group) => toGroupDto(group, names)),
       total: visible.length,
-      has_more: newestFirst.length > page.length,
+      page: paging.page,
+      page_size: paging.page_size,
+      has_more: paging.offset + page.length < newestFirst.length,
     };
   }
 
@@ -1101,7 +972,7 @@ export class CustomersService {
   async historyOf(
     context: RequestContext,
     id: string,
-    options: { cursor?: string; limit?: number },
+    options: { cursor?: string; limit?: number; action?: string },
   ) {
     await this.requireCustomer(context, id);
     return this.history.list({ about_party: id, ...options });
@@ -1370,60 +1241,28 @@ export class CustomersService {
   // ─────────────────────────────── rates ───────────────────────────────
 
   /** The customer's rate history — the current rate and every rate before it. */
-  async rateHistoryOf(context: RequestContext, id: string) {
+  async rateHistoryOf(context: RequestContext, id: string, options: { page?: number; page_size?: number } = {}) {
     await this.requireCustomer(context, id);
+    const paging = pagingOf(options);
     const [current, history] = await Promise.all([
       this.customers.currentRate(id),
-      this.customers.rateHistory(id),
+      this.customers.rateHistory(id, paging),
     ]);
     return {
       current: current
         ? { rate_iqd_per_usd: formatRate(current.rate), since: current.since.toISOString() }
         : null,
-      items: history.map((row) => ({
+      items: history.rows.map((row) => ({
         id: row.id,
         rate_iqd_per_usd: formatRate(row.rate_iqd_per_usd),
         effective_from: row.effective_from.toISOString(),
         note: row.note,
         created_by_name: row.created_by_name,
       })),
+      total: history.total,
+      page: paging.page,
+      page_size: paging.page_size,
     };
-  }
-
-  /**
-   * A side may be switched off only while nothing on it names the record: a customer with orders
-   * or selling-side entries stays a customer, a supplier with purchases, buying-side entries or
-   * damage returns stays a supplier. Otherwise the record would own documents it no longer shows.
-   */
-  private async assertSidesStillFree(
-    before: CustomerRow,
-    sides: { is_customer: boolean; is_supplier: boolean },
-    tx: Db,
-  ): Promise<void> {
-    const checks: { off: boolean; path: string; sql: string }[] = [
-      {
-        off: before.is_customer && !sides.is_customer,
-        path: 'is_customer',
-        sql: `SELECT EXISTS (SELECT 1 FROM orders WHERE customer_id = $1)
-                  OR EXISTS (SELECT 1 FROM customer_ledger WHERE customer_id = $1) AS used`,
-      },
-      {
-        off: before.is_supplier && !sides.is_supplier,
-        path: 'is_supplier',
-        sql: `SELECT EXISTS (SELECT 1 FROM purchases WHERE company_id = $1)
-                  OR EXISTS (SELECT 1 FROM company_ledger WHERE company_id = $1)
-                  OR EXISTS (SELECT 1 FROM damages WHERE company_id = $1) AS used`,
-      },
-    ];
-    for (const check of checks) {
-      if (!check.off) continue;
-      const { rows } = await tx.query<{ used: boolean }>(check.sql, [before.id]);
-      if (rows[0]?.used) {
-        throw ApiError.validation([
-          { path: check.path, code: 'SIDE_IN_USE', message_key: 'errors:customer_side_in_use', params: {} },
-        ]);
-      }
-    }
   }
 
   /** Give the business its own IQD-per-USD rate (append-only — never edited, D-054). */
@@ -1433,44 +1272,63 @@ export class CustomersService {
     input: { rate_iqd_per_usd: string; note?: string | null },
   ): Promise<{ rate_iqd_per_usd: Rate; since: string }> {
     const row = await this.requireCustomer(context, id);
-    // One rate per business (D-054): either side's permission may set it, for a record on that side.
-    const mayRate =
-      (row.is_customer && can(context, 'customers.set_rate')) ||
-      (row.is_supplier && can(context, 'companies.set_rate'));
-    if (!mayRate) {
-      throw ApiError.permissionDenied(row.is_customer ? 'customers.set_rate' : 'companies.set_rate');
-    }
-    const rate = formatRate(input.rate_iqd_per_usd);
-    if (Number(rate) <= 0) {
-      throw ApiError.validation([
-        { path: 'rate_iqd_per_usd', code: 'INVALID', message_key: 'errors:field.required', params: {} },
-      ]);
-    }
-
-    const previous = await this.customers.currentRate(id);
+    // One rate per account (D-054): either side's permission may set it.
+    this.requireRatePermission(context);
+    const rate = validRate(input.rate_iqd_per_usd);
     return this.database.transaction(async (tx) => {
-      await this.customers.insertRate(
-        { customer_id: id, rate, note: input.note?.trim() || null, created_by: context.userId },
-        tx,
-      );
-      await this.audit.record(
-        context,
-        {
-          action: 'rate_change',
-          entity_type: 'customer',
-          entity_id: id,
-          entity_label: `Customer: ${row.name}`,
-          changes: {
-            rate_iqd_per_usd: { old: previous ? formatRate(previous.rate) : null, new: rate },
-          },
-          note: input.note?.trim() || null,
-          related: { customer_id: id },
-        },
-        tx,
-      );
+      await this.writeRate(context, tx, row, rate, input.note?.trim() || null);
       return { rate_iqd_per_usd: rate, since: new Date().toISOString() };
     });
   }
+
+  /**
+   * One new rate for an account, with its History row: who set it, when, from what to what
+   * (rule 3). Rates are append-only — an order keeps the rate it was made at, so the old one is
+   * never edited — and a rate equal to the current one writes nothing.
+   */
+  private async writeRate(
+    context: RequestContext,
+    tx: Db,
+    row: CustomerRow,
+    rate: Rate,
+    note: string | null,
+  ): Promise<void> {
+    const previous = await this.customers.currentRate(row.id, tx);
+    if (previous && formatRate(previous.rate) === rate) return;
+    await this.customers.insertRate({ customer_id: row.id, rate, note, created_by: context.userId }, tx);
+    await this.audit.record(
+      context,
+      {
+        action: 'rate_change',
+        entity_type: 'customer',
+        entity_id: row.id,
+        entity_label: `Customer: ${row.name}`,
+        changes: {
+          rate_iqd_per_usd: { old: previous ? formatRate(previous.rate) : null, new: rate },
+        },
+        note,
+        related: { customer_id: row.id },
+      },
+      tx,
+    );
+  }
+
+  /** A rate typed on a form needs `set_rate` on either side, like the rate sheet does. */
+  private requireRatePermission(context: RequestContext): void {
+    if (!can(context, 'customers.set_rate') && !can(context, 'companies.set_rate')) {
+      throw ApiError.permissionDenied('companies.set_rate');
+    }
+  }
+}
+
+function validRate(value: string): Rate {
+  const rate = formatRate(value);
+  if (Number(rate) <= 0) {
+    throw ApiError.validation([
+      { path: 'rate_iqd_per_usd', code: 'INVALID', message_key: 'errors:field.required', params: {} },
+    ]);
+  }
+  return rate;
 }
 
 function pairIsEmpty(pair: MoneyPair): boolean {
@@ -1536,7 +1394,6 @@ function toGroupDto(group: LedgerGroup, names: Map<string, string>): LedgerGroup
 function toCustomerDto(
   row: CustomerRow,
   extra: {
-    assigned_user_name: string | null;
     balance: number;
     payable: number;
     rate: CustomerRateInfo | null;
@@ -1564,14 +1421,10 @@ function toCustomerDto(
     id: row.id,
     name: row.name,
     contact_name: row.contact_name,
-    is_customer: row.is_customer,
-    is_supplier: row.is_supplier,
     phone: row.phone,
     address: row.address,
     notes: row.notes,
     settlement_currency: row.settlement_currency,
-    assigned_user_id: row.assigned_user_id,
-    assigned_user_name: extra.assigned_user_name,
     is_system: row.is_system,
     credit_limit:
       row.credit_limit_iqd === null || row.credit_limit_usd_cents === null
@@ -1582,7 +1435,7 @@ function toCustomerDto(
           },
     is_active: row.is_active,
     balance,
-    payable: row.is_supplier && extra.sight.buying ? asBalance(extra.payable) : null,
+    payable: !row.is_system && extra.sight.buying ? asBalance(extra.payable) : null,
     net:
       extra.sight.selling && extra.sight.buying ? asBalance(extra.balance - extra.payable) : null,
     version: row.version,

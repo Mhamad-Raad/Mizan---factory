@@ -127,10 +127,10 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
     body: Record<string, unknown>,
     session: Session = accountant,
   ): Promise<string> {
-    // A company is a business we buy from (D-054): created on the one record, as a supplier.
+    // A company is an account like any other (D-055).
     const created = await as(ctx.http, session)
       .post('/api/v1/customers')
-      .send({ is_customer: false, is_supplier: true, ...body })
+      .send({ ...body })
       .expect(201);
     return created.body.id as string;
   }
@@ -240,8 +240,8 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       expect(response.body.duplicates.map((row: { id: string }) => row.id)).toEqual([alNoor]);
     });
 
-    it('shows every company to every user with companies.view, assigned or not (FR-711)', async () => {
-      await createCompany({ name: 'Zagros Metals', assigned_user_id: accountantUserId });
+    it('shows every company to every user with companies.view (FR-711)', async () => {
+      await createCompany({ name: 'Zagros Metals' });
       const mine = await as(ctx.http, accountant).get('/api/v1/companies').expect(200);
       const theirs = await as(ctx.http, warehouse).get('/api/v1/companies').expect(200);
       expect(mine.body.total).toBe(2);
@@ -1038,7 +1038,7 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       // The bound, and the running balance still computed over the whole ledger: the newest
       // row's balance is the account balance, not a sum of the page.
       const bounded = await as(ctx.http, accountant)
-        .get(`/api/v1/companies/${alNoor}/ledger?limit=2`)
+        .get(`/api/v1/companies/${alNoor}/ledger?page_size=2`)
         .expect(200);
       expect(bounded.body.items).toHaveLength(2);
       expect(bounded.body.total).toBe(4);
@@ -1115,12 +1115,35 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       }
 
       const bounded = await as(ctx.http, admin)
-        .get(`/api/v1/customers/${customer.body.id}/ledger?limit=2`)
+        .get(`/api/v1/customers/${customer.body.id}/ledger?page_size=2`)
         .expect(200);
       expect(bounded.body.items).toHaveLength(2);
       expect(bounded.body.total).toBe(3);
       expect(bounded.body.has_more).toBe(true);
       expect(bounded.body.items[0].balance_after).toBe(6_000);
+
+      // The next page carries on where the first stopped, its running balance still the one
+      // computed over the whole ledger (D-058).
+      const next = await as(ctx.http, admin)
+        .get(`/api/v1/customers/${customer.body.id}/ledger?page_size=2&page=2`)
+        .expect(200);
+      expect(next.body.items).toHaveLength(1);
+      expect(next.body.items[0].balance_after).toBe(1_000);
+      expect(next.body).toMatchObject({ total: 3, page: 2, page_size: 2, has_more: false });
+    });
+
+    it('sends 25 rows unless asked for more, and never more than 100 (D-058)', async () => {
+      for (const path of ['/api/v1/orders', '/api/v1/customers', '/api/v1/purchases', '/api/v1/items']) {
+        await as(ctx.http, admin).get(`${path}?page_size=101`).expect(422);
+      }
+      await as(ctx.http, admin).get(`/api/v1/companies/${alNoor}/ledger?page_size=101`).expect(422);
+      await as(ctx.http, admin).get('/api/v1/history?limit=101').expect(422);
+      await as(ctx.http, admin).get('/api/v1/reports/sales?page_size=101').expect(422);
+
+      const ledger = await as(ctx.http, admin).get(`/api/v1/companies/${alNoor}/ledger`).expect(200);
+      expect(ledger.body).toMatchObject({ page: 1, page_size: 25 });
+      const report = await as(ctx.http, admin).get('/api/v1/reports/sales?group_by=day').expect(200);
+      expect(report.body).toMatchObject({ page: 1, page_size: 25 });
     });
   });
 

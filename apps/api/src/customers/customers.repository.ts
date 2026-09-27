@@ -5,6 +5,8 @@ import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import type { CustomerRow } from './customer.types.js';
 import { countFrom } from '../common/count-from.js';
+import { pagingOf, type Paging } from '../common/paging.js';
+import { containing } from '../common/like.js';
 
 /** Alias-aware column list, so the same fields serve a plain read and the list query. */
 function customerColumns(alias = 'customers'): string {
@@ -13,14 +15,11 @@ function customerColumns(alias = 'customers'): string {
     'name',
     'name_normalized',
     'contact_name',
-    'is_customer',
-    'is_supplier',
     'phone',
     'phone_normalized',
     'address',
     'notes',
     'settlement_currency::text AS settlement_currency',
-    'assigned_user_id',
     'is_system',
     'credit_limit_iqd::text AS credit_limit_iqd',
     'credit_limit_usd_cents::text AS credit_limit_usd_cents',
@@ -34,35 +33,8 @@ function customerColumns(alias = 'customers'): string {
     .join(', ');
 }
 
-/**
- * The scope of the caller (spec 2.6.4). It is applied *here*, in the repository, from the
- * request context — never in a controller — so no list, search or picker can forget it.
- */
-export interface CustomerScope {
-  userId: string;
-  /** `customers.view_all`: sees every customer. Otherwise only their own, plus the walk-in. */
-  viewAll: boolean;
-  /**
-   * `companies.view`: sees every supplier. Suppliers were never scoped (FR-711) and still are
-   * not — a warehouse employee records purchases from any of them — so a record that is a
-   * supplier is visible to them even when it is also somebody else's customer (D-054).
-   */
-  seesSuppliers: boolean;
-}
-
-/** The scope predicate over alias `c`, with the caller's values at `$userParam`, `$suppliersParam`. */
-function scopeCondition(alias: string, userParam: number, suppliersParam: number): string {
-  return (
-    `(${alias}.is_system OR ${alias}.assigned_user_id = $${userParam}::uuid` +
-    ` OR (${alias}.is_supplier AND $${suppliersParam}::boolean))`
-  );
-}
-
 export interface CustomerFilters {
   q?: string;
-  /** One side of the business: the order form asks for customers, the purchase form suppliers. */
-  side?: 'customer' | 'supplier';
-  assigned_to?: string;
   /** On the net figure: `owes` = they owe us, `credit` = we owe them, `settled` = zero (FR-505). */
   balance?: 'owes' | 'settled' | 'credit';
   include_inactive?: boolean;
@@ -72,7 +44,6 @@ export interface CustomerFilters {
 }
 
 export interface CustomerListRow extends CustomerRow {
-  assigned_user_name: string | null;
   /** What they owe us, what we owe them, and the difference — all in the settlement currency. */
   balance: string;
   payable: string;
@@ -84,26 +55,20 @@ export class CustomersRepository {
   constructor(private readonly database: Database) {}
 
   /**
-   * A customer the caller may open. Out of scope returns null so the service can answer 404
-   * rather than 403: a "forbidden" would confirm that the customer exists (spec 2.6.4).
+   * An account by id. Every account is visible to whoever may see accounts (D-055, D-056), so
+   * there is no scope to apply — the route's permission is the whole of the rule.
    */
-  async findById(id: string, scope: CustomerScope, tx?: Db): Promise<CustomerRow | null> {
-    const { rows } = await (tx ?? this.database).query<CustomerRow>(
-      `SELECT ${customerColumns()} FROM customers
-        WHERE id = $1 AND deleted_at IS NULL
-          AND ($2::boolean OR ${scopeCondition('customers', 3, 4)})`,
-      [id, scope.viewAll, scope.userId, scope.seesSuppliers],
-    );
-    return rows[0] ?? null;
-  }
-
-  /** Unscoped read, for the paths that must see every customer: duplicate checks and admin. */
-  async findByIdUnscoped(id: string, tx?: Db): Promise<CustomerRow | null> {
+  async findById(id: string, tx?: Db): Promise<CustomerRow | null> {
     const { rows } = await (tx ?? this.database).query<CustomerRow>(
       `SELECT ${customerColumns()} FROM customers WHERE id = $1 AND deleted_at IS NULL`,
       [id],
     );
     return rows[0] ?? null;
+  }
+
+  /** The same read as `findById`; kept for the callers that name it (D-056). */
+  async findByIdUnscoped(id: string, tx?: Db): Promise<CustomerRow | null> {
+    return this.findById(id, tx);
   }
 
   async lock(id: string, tx: Db): Promise<CustomerRow | null> {
@@ -122,23 +87,19 @@ export class CustomersRepository {
   }
 
   /**
-   * The duplicate check of FR-501 runs over **all** customers whatever the caller's scope:
+   * The duplicate check of FR-501 runs over **all** accounts:
    * the directory must not fragment into twins because an employee cannot see the original.
-   * The assignee's name comes back so the warning can say "ask your admin".
    */
   async findDuplicates(
     name: string,
     tx?: Db,
-  ): Promise<{ id: string; name: string; assigned_user_id: string | null; assigned_user_name: string | null }[]> {
+  ): Promise<{ id: string; name: string }[]> {
     const { rows } = await (tx ?? this.database).query<{
       id: string;
       name: string;
-      assigned_user_id: string | null;
-      assigned_user_name: string | null;
     }>(
-      `SELECT c.id, c.name, c.assigned_user_id, u.display_name AS assigned_user_name
+      `SELECT c.id, c.name
          FROM customers c
-         LEFT JOIN users u ON u.id = c.assigned_user_id
         WHERE c.deleted_at IS NULL AND c.name_normalized = $1
         ORDER BY c.created_at ASC
         LIMIT 5`,
@@ -149,29 +110,17 @@ export class CustomersRepository {
 
   async list(
     filters: CustomerFilters,
-    scope: CustomerScope,
   ): Promise<{ rows: CustomerListRow[]; total: number }> {
     const conditions = ['c.deleted_at IS NULL'];
     const values: unknown[] = [];
 
-    // Scope first, so every later condition narrows an already-permitted set (spec 2.6.4).
-    if (!scope.viewAll) {
-      values.push(scope.userId, scope.seesSuppliers);
-      conditions.push(scopeCondition('c', values.length - 1, values.length));
-    }
-    if (filters.side === 'customer') conditions.push('c.is_customer');
-    if (filters.side === 'supplier') conditions.push('c.is_supplier');
     if (!filters.include_inactive) conditions.push('c.is_active = true');
-    if (filters.assigned_to) {
-      values.push(filters.assigned_to);
-      conditions.push(`c.assigned_user_id = $${values.length}::uuid`);
-    }
     const query = filters.q?.trim();
     if (query) {
-      values.push(`%${normalizeForSearch(query)}%`);
+      values.push(containing(normalizeForSearch(query)));
       const nameParam = values.length;
       const phone = normalizePhone(query);
-      values.push(phone === '' ? null : `%${phone}%`);
+      values.push(phone === '' ? null : containing(phone));
       const phoneParam = values.length;
       conditions.push(
         `(c.name_normalized LIKE $${nameParam}` +
@@ -187,7 +136,6 @@ export class CustomersRepository {
 
     // The balance is a sum over the customer's own rows, which `customer_ledger_running_idx`
     // serves as one index scan per customer rather than an aggregate of the whole ledger.
-    const assignee = 'LEFT JOIN users u ON u.id = c.assigned_user_id';
     const balance = `
       LEFT JOIN LATERAL (
         SELECT coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0)
@@ -203,26 +151,24 @@ export class CustomersRepository {
           FROM company_ledger l
          WHERE l.company_id = c.id
       ) pay ON true`;
-    const from = `FROM customers c\n${assignee}${balance}${payable}`;
+    const from = `FROM customers c\n${balance}${payable}`;
     const where = `WHERE ${conditions.join(' AND ')}`;
     // Counting thirty thousand customers does not need each one's balance summed — only a
     // filter on the balance does (`countFrom`, the system-wide review).
     const forCount = countFrom('FROM customers c', where, [
-      { alias: 'u.', sql: assignee },
       { alias: 'bal.', sql: balance },
       { alias: 'pay.', sql: payable },
     ]);
 
     const countValues = [...values];
-    const pageSize = Math.min(filters.page_size ?? 25, 100);
-    const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
+    const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
     const order = filters.sort === 'balance' ? `${net} DESC, c.name ASC` : 'c.name ASC';
 
     const [list, count] = await Promise.all([
       this.database.query<CustomerListRow>(
-        `SELECT ${customerColumns('c')}, u.display_name AS assigned_user_name, bal.balance::text AS balance,
+        `SELECT ${customerColumns('c')}, bal.balance::text AS balance,
                 pay.payable::text AS payable, ${net}::text AS net
          ${from} ${where}
          ORDER BY ${order}
@@ -235,7 +181,7 @@ export class CustomersRepository {
     return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0) };
   }
 
-  /** What we owe this business on the buying side (0 when it has never been a supplier). */
+  /** What we owe this account on the buying side (0 when we have never bought from it). */
   async payableOf(id: string, tx?: Db): Promise<number> {
     const { rows } = await (tx ?? this.database).query<{ payable: string }>(
       `SELECT payable::text AS payable FROM party_balances WHERE customer_id = $1`,
@@ -257,13 +203,10 @@ export class CustomersRepository {
     input: {
       name: string;
       contact_name: string | null;
-      is_customer: boolean;
-      is_supplier: boolean;
       phone: string | null;
       address: string | null;
       notes: string | null;
       settlement_currency: Currency;
-      assigned_user_id: string | null;
       credit_limit_iqd: number | null;
       credit_limit_usd_cents: number | null;
       created_by: string;
@@ -272,10 +215,9 @@ export class CustomersRepository {
   ): Promise<CustomerRow> {
     const { rows } = await tx.query<CustomerRow>(
       `INSERT INTO customers (name, name_normalized, phone, phone_normalized, address, notes,
-                              settlement_currency, assigned_user_id, credit_limit_iqd,
-                              credit_limit_usd_cents, created_by, updated_by,
-                              contact_name, is_customer, is_supplier)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::currency, $8, $9, $10, $11, $11, $12, $13, $14)
+                              settlement_currency, credit_limit_iqd, credit_limit_usd_cents,
+                              created_by, updated_by, contact_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::currency, $8, $9, $10, $10, $11)
        RETURNING ${customerColumns()}`,
       [
         input.name,
@@ -285,13 +227,10 @@ export class CustomersRepository {
         input.address,
         input.notes,
         input.settlement_currency,
-        input.assigned_user_id,
         input.credit_limit_iqd,
         input.credit_limit_usd_cents,
         input.created_by,
         input.contact_name,
-        input.is_customer,
-        input.is_supplier,
       ],
     );
     return rows[0] as CustomerRow;
@@ -303,13 +242,10 @@ export class CustomersRepository {
     patch: Partial<{
       name: string;
       contact_name: string | null;
-      is_customer: boolean;
-      is_supplier: boolean;
       phone: string | null;
       address: string | null;
       notes: string | null;
       settlement_currency: Currency;
-      assigned_user_id: string | null;
       credit_limit_iqd: number | null;
       credit_limit_usd_cents: number | null;
       is_active: boolean;
@@ -385,24 +321,35 @@ export class CustomersRepository {
     return rows[0] ?? null;
   }
 
-  async rateHistory(id: string, limit = 50) {
+  /** One page of the account's rates, newest first, and how many there are in all (D-058). */
+  async rateHistory(id: string, paging: Paging) {
     const { rows } = await this.database.query<{
       id: string;
       rate_iqd_per_usd: string;
       effective_from: Date;
       note: string | null;
       created_by_name: string | null;
+      total: string;
     }>(
       `SELECT r.id, r.rate_iqd_per_usd::text AS rate_iqd_per_usd, r.effective_from, r.note,
-              u.display_name AS created_by_name
+              u.display_name AS created_by_name, count(*) OVER ()::text AS total
          FROM customer_rates r
          LEFT JOIN users u ON u.id = r.created_by
         WHERE r.customer_id = $1
-        ORDER BY r.effective_from DESC
-        LIMIT $2`,
-      [id, Math.min(limit, 100)],
+        ORDER BY r.effective_from DESC, r.id DESC
+        LIMIT $2 OFFSET $3`,
+      [id, paging.page_size, paging.offset],
     );
-    return rows;
+    return { rows, total: rows.length > 0 ? Number(rows[0]?.total) : await this.rateCount(id) };
+  }
+
+  /** A page past the end has no row to carry the count; ask for it on its own. */
+  private async rateCount(id: string): Promise<number> {
+    const { rows } = await this.database.query<{ total: string }>(
+      'SELECT count(*)::text AS total FROM customer_rates WHERE customer_id = $1',
+      [id],
+    );
+    return Number(rows[0]?.total ?? 0);
   }
 
   async insertRate(

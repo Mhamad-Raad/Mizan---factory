@@ -728,3 +728,379 @@ never reached its orders because the order side did not know companies existed.
 is the Customers page, and each record says which sides it takes part in. The new strings are
 listed for the glossary review (Q-26). Relied on: the client's instruction; 2.2.6 (balances
 are sums), 2.3.3 (the document's rate), 2.3.5 (re-basing), 2.6.4 (scope in repositories).
+
+## D-055 · 2026-09-26 · client review · One kind of account: a company, with its rate on its form
+
+The client, on D-054's two flags: "the term we buy from them or we sell to them does not matter
+… there is no customer or company, there is only company", and the checkbox choosing between
+them was "more work for no reason".
+
+**Choice:**
+
+- **The flags are gone** (migration 0024). Every account is a company we sell to and buy from;
+  its orders, its purchases and both ledgers hang off the one record, and its balance is the
+  net of the two (D-054, unchanged). The one exception is the walk-in customer (`is_system`):
+  cash at the counter, never a purchase — every check that asked "is this a supplier?" now asks
+  "is this a real account?".
+- **Visibility.** Whoever may see the companies (`companies.view`) sees every account, as the
+  buying side always did (FR-711); somebody with the customer keys alone still sees only the
+  accounts assigned to them, plus the walk-in (2.6.4). Creating, editing or assigning an
+  account needs that permission on either side.
+- **The account's own rate is on its form.** New company and Edit carry "Conversion rate — IQD
+  for $1"; empty means the system-wide rate. A changed rate is a **new** rate row, never an
+  edit, so every order and purchase keeps the rate it was made at (it is snapshotted on the
+  document, 2.3.3), and the order's chip now says which rate it was — the company's, the
+  system's, or one typed for that order. Setting a rate still needs `set_rate` on either side.
+- **History filters by action** on the account's page — rate changes, money, edits, creation,
+  assignment, hidden/shown — and a rate change reads "Rate 1,315 → 1,325" with who and when.
+- **Words.** "Customer" reads "Company" wherever the glossary is used (the walk-in keeps its
+  name); the page is Companies. For the glossary review (Q-26).
+
+Relied on: the client's instruction; 2.3.3 (the document's rate), 2.6.4 (scope in repositories),
+rule 3 (every change in History).
+
+## D-056 · 2026-09-26 · client review · Accounts are not assigned to employees
+
+The client, asked what assignment was for (FR-502: which salesman sees which customers, and
+whose account it is): "remove that from the system".
+
+**Choice** (migration 0025):
+
+- **The column and three permissions go:** `customers.assigned_user_id`, `customers.assign`,
+  `companies.assign`, and `customers.view_all` — "sees every customer, not only the assigned
+  ones" is now what `customers.view` means by itself. Grants of the three keys are deleted; the
+  Sales preset and the simple editor lose "Sees all customers" (five extras, not six).
+- **Nobody's view is narrowed by assignment.** Whoever may see accounts sees every account;
+  whoever may see orders sees every order. The dashboard of somebody without
+  `reports.view_all` is the orders *they entered*, not "their customers'"; Receivables is no
+  longer pinned to anybody; reports lose the "assigned employee" grouping and filter; History
+  loses the "assigned to" filter.
+- **History keeps every assignment ever made** — audit rows are append-only (rule 2).
+- **Found on the way:** once every salesman could open every company, the company page showed
+  the purchases side to people without `purchases.view` (an error box) and a one-sided balance
+  as if it were the whole account ("Settled" for a company we owe millions). The purchases parts
+  now show only with `purchases.view`, and a balance of one side says which side it is.
+
+Relied on: the client's instruction; 2.6.4 (the scope rules this empties); rule 2.
+
+## D-057 · 2026-09-26 · client review · Today shows two weeks, who owes us most, and the latest orders
+
+The client: "make the today ui better with charts and if needed tables of the recent orders".
+
+- **Stat tiles stay first**, each still opening the list it counts, four across on a desktop.
+- **Sales and purchases over the last fourteen days** as grouped columns on one axis in
+  dinars (never two scales), a legend, a tooltip with both currencies and the counts, and a
+  "show as table" view with the same figures. Purchases appear only for `purchases.view` with
+  `fields.see_bought_price`; the sales series follows the same scope as the Today tile
+  (own orders without `reports.view_all`). Colours are two chart tokens, validated for
+  colour-blind separation and contrast in both themes.
+- **Who owes us most:** the six largest balances in our favour — the net balance with
+  `fields.see_company_balances`, the sales side alone without it, and absent without
+  `fields.see_customer_balances`. Ranked in dinars at today's rate so dollar and dinar accounts
+  compare fairly; the rate only orders the list and every amount shown is the stored one (rule 1).
+- **Recent orders:** the latest eight, exactly as the Orders page lists them.
+
+Relied on: the client's instruction; 1.5.4 (field flags); 2.3 (dual currency); rule 7.
+
+## D-058 · 2026-09-26 · client review · Every list is paged: 25 a page, never more than 100
+
+The client: "add pagination to fetching lists of data … this will be used for a long time with
+no update and if the data becomes too much the backend can fail — default 25 per page, max a
+hundred", pointing at the delivery dashboard's pager.
+
+- **One rule on the API** (`common/paging.ts`): every list takes `page` and `page_size`,
+  answers 25 rows by default, and refuses more than 100 (422). The main lists already paged
+  this way; now the ledgers, both rate histories, a material's price history, the purchase
+  breakdown and every report do too, and each answer says its `page`, `page_size` and total.
+  The cap of 200 groups on reports (D-032) and the growing `limit` of 100–500 on the ledgers are
+  gone.
+- **The audit trail pages by cursor**, 25 at a time: it only ever grows, and "the rows after
+  this one" stays as quick on its millionth row as on its first, where an offset would not.
+  It has no total, so its pager reads "Page 3" with Previous and Next.
+- **What still reads a whole account on the server, and why:** a ledger's running balance and
+  the oldest-first allocation of payments to purchases are defined over every row before the
+  page (2.4.1 rule 5, FR-712), so they are computed over the account and only the page is sent.
+  An account is thousands of rows after years, not millions, so this is bounded by one
+  business's history. The stock report now values every material so its totals are the whole
+  stock's (before, its totals silently covered only the rows it sent).
+- **Found on the way:** an order's or a purchase's History tab read the whole account ledger to
+  find that document's payments; it now asks the database for the document's rows only. A
+  company's "Unpaid orders" card filtered the first 25 orders in the browser, so an account with
+  many paid orders showed none unpaid; it now asks for `status=owing` (unpaid or partly paid).
+- **Left whole on purpose:** a statement (a date-bounded printed document, capped at 500 rows as
+  before), an order's or purchase's lines (at most 200 by the form), the employee directory
+  behind the "done by" pickers (a factory's staff), and the last 20 sessions of a user.
+- **On screen:** one `Pager` under every list — rows per page (25, 50, 100, remembered per
+  list in this browser), "26–50 of 312", and arrows from the icon registry so they point the
+  reading way. Page and size live in the address, so Back and a shared link keep the page; two
+  lists on one screen use separate names. Changing a filter goes back to page one. The pager
+  shows under every list that has rows, even when they fit on one page, so the size can always
+  be changed; only an empty list has none.
+
+Relied on: the client's instruction; NFR-03 and NFR-13 (a phone on a slow line, years of data);
+2.4.1; 2.10.6 (mirrored directional icons).
+
+## D-059 · 2026-09-26 · client review · Purchases look and work like Orders
+
+The client: "improve the purchases UI generally like the orders page".
+
+- **The list:** the Orders toolbar — search, a date select (today, this week, this month, any
+  date, or a custom range that opens its two dates in place), "done by", and the Stock only and
+  Voided chips — with "Add material" at its end. The rows go through a new `PurchaseTable`, the
+  buying twin of `OrderTable`: a table on a desktop (number and date, company or "Stock only"
+  with who recorded it, materials, total), a card per purchase on a phone. A company's
+  Purchases tab uses the same component, with the remaining column its allocation provides
+  (FR-712). A standing purchase carries no status chip; only Void does.
+- **The detail:** the order's layout — the purchase number as the title, the company as a link,
+  the date and who did it; the total with its rate beside "We owe for this purchase" in red while
+  something is owed; the actions in the order's three groups (pay; edit, duplicate, damaged
+  items; Void apart at the end); Lines, Payments and History as one segmented control. Lines
+  read "5,000 kg × IQD 760" with a chip when the price was typed for the purchase.
+- **"Pay for this purchase"** records a company payment that names this purchase
+  (`purchase_id`), pre-filled with what this purchase still owes, so the money comes off this
+  purchase first rather than the oldest one. The Payments tab lists what was paid or credited
+  against it.
+- **Found on the way:** the company page passed its "Settle in full" hint in place of the
+  "Remaining before this payment" caption; the sheet now takes the hint as its own prop.
+
+Relied on: the client's instruction; FR-407, FR-712; 2.10.2 (one list, two layouts).
+
+## D-060 · 2026-09-26 · client review · Tables are framed, with striped rows
+
+The client: "all the tables … need to be outlined in a nice way so it separates from the
+background, and rows have a nice colour for odds and the others normal — like the dashboard".
+
+Every data table (`.mz-table` in its `.mz-table-wrap`: the lists on a desktop, the ledgers, a
+material's movements and history, a user's activity, the dashboard's figures) now sits in a
+bordered, rounded surface with the card shadow (no second shadow inside a card), under a tinted
+header in small bold type — capitals and tracking in English only, because Kurdish and Arabic
+have no capitals and spacing a joined script breaks its words. Odd rows take a stripe a shade off
+the surface; hover takes the brand's soft tint. Three tokens per theme (`--color-table-head`,
+`-stripe`, `-hover`), so dark mode has its own steps. The permission matrix wears the same
+header and stripes. The pager lost its top rule, which doubled the table's frame.
+
+Relied on: the client's instruction; rule 9 (identity through tokens, no forked component).
+
+## D-061 · 2026-09-26 · client review · A colour palette and a typeface per device
+
+The client: "check the themes changing inside the item management system — the user can pick a
+variation of fonts and themes — implement that here as well; all preferences saved in local
+storage".
+
+- **Colour:** eleven palettes — Teal (Mizan's own, the default), Ocean, Sky, Indigo, Plum, Rose,
+  Crimson, Clay, Amber, Forest, Graphite (the client asked for more, and for "a couple of red
+  ones": Rose, a pinkish red, and Crimson, a deep red turned away from the danger red so a
+  brand-red button never reads as the red of what is owed or of Void). Each
+  is Mizan's ramp turned to another hue in OKLCH, brand steps and tinted greys alike, at the same
+  lightness, in both themes. Paid/owed/warning colours, brass and the two chart series are not
+  palette colours, so they keep their meaning in every palette; the single-series "who owes us
+  most" bars take the palette's primary. `check:contrast` now measures every palette in both
+  themes (484 pairs).
+- **Typeface:** five faces for Kurdish and Arabic text, each carrying every Sorani letter, all
+  self-hosted (`font-src 'self'`): Vazirmatn (default), IBM Plex Sans Arabic (which also sets the
+  English text), Noto Sans Arabic, Noto Kufi, Noto Naskh. English otherwise stays in Inter. A face
+  nobody chooses is never downloaded.
+- **Where and how:** two new groups of cards in Settings beside Theme and Text size, each drawing
+  its choice — the app in miniature in that palette, a Kurdish line, the Sorani letters and an
+  amount in that face. Saved in `mizan.prefs.v1` in local storage with the rest, validated on
+  read, and applied by the pre-paint script, so the first frame is already in the chosen colour
+  and face. The inline script changed, so `ops/docker/csp-hash.sh` must be run again at deploy
+  (as the runbook says).
+
+Relied on: the client's instruction; FR-1103 (appearance is per device); rule 9 (identity
+through tokens); spec 3.7.1 (self-hosted fonts).
+
+## D-062 · 2026-09-26 · client review · A warehouse with an accountant page
+
+The client rethought what the system is for: "the system will become a giant warehouse that has
+an accountant page, and keeps track of orders and companies that buy from us."
+
+- **Buying is ours alone, and it happens in Materials.** Creating a material is buying it — the
+  first quantity and what each one cost travel with it and are written in one transaction — and
+  "Add stock" on a material buys more. No company is involved; the separate purchase form and
+  the Purchases list are gone from the screens (the API keeps them: a buy is still a purchase
+  with one line and no company). "Opening stock" and "Correct stock" are removed from the
+  material page: stock arrives by buying it, and what is lost is damage.
+- **Every buy keeps its own price.** Bottles bought at $1.00 and bottles bought at $1.50 are one
+  material on one row; the material page splits its stock by what we paid, and the order form
+  shows that split under a line. A sale takes stock from the **oldest buy first**
+  (`lot_allocations`, append-only like every ledger: giving stock back is a negative row), and
+  its cost is what those units cost us — summed per buy, never an average times the quantity
+  (the margin kernel takes the exact total, `cost_source = 'lots'`). Selling past every buy
+  costs the rest at the latest buy's price. A buy whose stock has gone out can no longer be
+  voided or edited (`BUY_IN_USE`), or the sales that took from it would change cost.
+- **Damage is ours or a buying company's.** Ours is a loss. A company's puts its cost — from the
+  buys, like a sale — on that company's account as a `damage` entry (they owe us), and it stays
+  a cost until someone marks it **paid back**: in money (a payment clears it) or in materials (a
+  credit clears it and the stock returns to the very buys it came from). A booked damage's
+  quantity, attribution and date are not rewritten; it is voided and recorded again.
+- **The accountant page replaces Purchases.** For a period (1st of the month → today by
+  default): sold, cost of what was sold, profit (margins less discounts), bought, the
+  accountant's own expenses (new `expenses` table: an amount in both currencies with its rate,
+  voided with a reason, never edited), damage still a cost, damage paid back, and what is left
+  (profit − expenses − damage). Tabs list the orders with their profit, the buys, each
+  material's sold/cost/profit/bought/stock, and the expenses — each searchable and paged.
+  New permissions `accounts.view` (brings the bought-price and profit flags), `expenses.create`,
+  `expenses.void`; the accountant preset gains the first two (voiding is never preset).
+- **Companies only buy from us.** The buying side of a company — its purchases, "we owe them",
+  paying them — is gone from the screens; its balance is what it owes us.
+
+Demo data was wiped and reseeded in this shape. The monthly *bought* price remains only as the
+suggestion a buy opens with; the monthly *sale* price is unchanged.
+
+Relied on: the client's instructions (2026-09-26); rules 1–3 and 10; 2.4.1.
+
+## D-063 · 2026-09-26 · client review · "Damaged items" are called "Broken goods"
+
+The client asked for a friendlier name than "damage" and chose **Broken goods** (Kurdish
+کاڵای شکاو, Arabic البضاعة المكسورة): the sidebar, the page, "Record broken goods", a record is
+"Broken #3", the account row and the accountant tiles say so too. Only the words changed — the
+routes, tables and permission keys keep `damage`, so nothing stored moves; notes already written on
+a ledger keep the words they were written with (append-only). The page is laid out as Orders is:
+one toolbar (search, period, who broke it, owed or paid back, who recorded it, voided), three tiles
+(recorded, what it cost us, owed by companies — the last one also a filter), and a table on a
+desktop, cards on a phone. The list API gained `compensation=owed|paid` and the owed total; the
+Today tile that counted returns (which the D-062 flow never creates) now counts broken goods a
+company still owes for.
+
+## D-064 · 2026-09-27 · client review · One Reports page, with Excel
+
+The client: "reports page … basically tabs … show case data and be able to create excel sheets …
+information about everything in this system and can filter with dates".
+
+- **One page, one period, a tab per report:** Sales, Profit, Bought, Stock, Companies owe us,
+  Broken goods, Expenses, Employee activity, Daily cash-up — each offered only to those whose
+  flags the API would accept. The period (presets or two dates) and the tab live in the address;
+  `/reports/<name>` from before still opens that tab. Payables left with the buying side (D-062).
+- **Each tab:** its totals as tiles (the whole period, never the page), a chart of the headline
+  figure when grouped by day or month (a period of two months or less opens by day), the table on
+  a desktop and cards on a phone, paged; names lead to the company, the material, or the
+  employee's History.
+- **Excel:** "Download Excel" writes the tab — every group, fetched a page of 100 at a time — and
+  "Download everything" writes one workbook with a sheet per report. The files are real .xlsx
+  (a small writer over `fflate`, tested and opened with an independent reader): numbers are
+  numbers with formats (whole dinars, dollars with cents, kilograms to the gram), dinars and
+  dollars in their own columns, a frozen header with filters, a bold totals row, and a Kurdish or
+  Arabic workbook opens right to left.
+- **Found on the way:** the Stock report valued stock at the month's price list and showed
+  materials sold by the piece as "0 kg". Stock is now valued at what is left of each buy at its
+  own price — the figure the material page splits by price — and a piece material reads in
+  pieces.
+
+## D-065 · 2026-09-27 · client review · An order's total rounds up to the next 250 dinars
+
+- **Asked:** "630 should turn to 750" — the order total in IQD rounds up to a multiple of 250,
+  the dollar total follows, only the total (never a line's price), and it says it was rounded.
+- **Chosen:** after the discount, the total rounds **up** to the next 250 IQD
+  (`roundOrderTotals`, `@mizan/money`). The added dinars are converted at the order's own rate
+  and added to the USD total, so both currencies still describe the same amount (2.3.4). The
+  order keeps what was added (`rounding_iqd`, `rounding_usd_cents`, migration 0027), so the
+  lines still sum to the total before rounding and the difference is explained rather than
+  hidden: the form's totals, the order page ("Rounded up by IQD 10 to a round 250") and the
+  receipt ("Rounding +10") all show it.
+- **Where it applies:** new orders, and an order when it is edited. Orders already saved keep
+  the total they were saved with (rule 1: history is never recalculated).
+- **Money:** the customer owes the rounded total; on the Accounts page the rounding counts as
+  profit, next to the margins and against the discount.
+
+## D-066 · 2026-09-26 · security review · What the security fixes decided
+
+A security review listed twenty-one findings; the fixes are on `fix/security-review`, one commit
+each. Where a fix had to choose, this is the choice.
+
+- **The sign-in lockout is per account.** When the typed name resolves, the count is kept under
+  the username, whichever alias was typed; when it does not, under the name normalised as the
+  lookup normalises it (a phone number in any spelling is one key). Login, unlock and
+  change-password share that key. Check-and-record runs under
+  `pg_advisory_xact_lock(hashtext(key))` in one transaction, with an in-process queue per key in
+  front so a burst does not hold pooled connections while it waits; the transaction spans the
+  Argon2 check (tens of milliseconds), which the pool of ten absorbs at 30 users. An unknown name
+  is checked against a dummy hash, so it costs the same time. Relied on: 2.8, FR-101.
+- **Changing your own password** answers to the lockout (checked before the password is) and
+  signs out every other session of the user; the device it was changed on stays signed in.
+  Relied on: 2.8, FR-108.
+- **Paid back on a damage** needs `companies.record_payment` (money) or `companies.record_credit`
+  (materials) besides `damages.mark_returned`, checked in the service with the method known, and
+  refused with a message naming the missing permission. **Recording** a company-attributed damage
+  is *not* gated on a company key: that charge is a document posting like a purchase's or an
+  order's, which need only their own create key — gating it would stop the warehouse preset from
+  recording supplier damage at all. Relied on: 1.5.2, 2.6.2, D-062.
+- **Must change password** is enforced by the guard: until then only `me`, change-password,
+  logout, lock and unlock answer; everything else is `403 PASSWORD_CHANGE_REQUIRED`. Relied on:
+  FR-101, FR-108.
+- **The global History page** strips the same fields the per-record History tabs do, per kind
+  of record (a purchase's `unit_price` is a bought price, an order's is not; `balance` follows the
+  customer or the company flag). Relied on: 2.4.4, 2.6.2.
+- **Per-address ceiling** on sign-in, unlock and change-password only: 30 a minute and 200 an
+  hour per address per door (`SIGN_IN_LIMIT_PER_MINUTE`, `SIGN_IN_LIMIT_PER_HOUR`), counted by
+  `request.ip` with `TRUST_PROXY` (default off; `compose.yml` sets 1 for Caddy). **No global
+  limit**: the whole factory reaches the server from one address, and a limit loose enough for a
+  busy day at thirty users protects nothing a login ceiling does not. In memory per replica.
+  Relied on: 2.8, NFR-13, C-07.
+- **The API no longer holds the migrate role.** Migration 0027 grants the app role `SELECT` on
+  `mizan_migrations`; migrations run from a one-off `migrate` service in `compose.yml`. Making
+  `mizan_migrate` a non-superuser on the existing volume is a manual step (runbook), not code.
+  Relied on: 2.13, 2.14.
+- **Backups have no local-only mode** (the runbook never described one): a copy that cannot leave
+  the host fails the run and withholds the heartbeat. Encrypted copies carry an HMAC-SHA256 tag;
+  restore refuses a copy whose tag does not match and decrypts an untagged (older) copy with a
+  warning. Relied on: 2.13, 2.14, NFR-08.
+- **Development settings refuse a public address**: `NODE_ENV=development` (the default) with an
+  `APP_BASE_URL` that is not localhost or a private network stops the API at start-up. Relied on:
+  2.8 (Secure cookie), D-007.
+- **CSRF, partly.** A write whose `Referer` names another site is refused when `Origin` is absent;
+  a request with neither is still left to the double-submit token, because non-browser clients
+  send neither. Binding the token to the session was not done: the custom header already cannot
+  be sent cross-site without a preflight the API only grants to `APP_BASE_URL`. Relied on: 2.8,
+  2.13.
+- **A malformed record id is 404** (global pipe over `id`, `entryId`, `sessionId`, after the
+  guard); **idempotency keys** must be 8–128 of `[A-Za-z0-9_-]` and are unique per user
+  (migration 0028). Relied on: 2.9.1, 2.9.2, FR-1305.
+- **Numbers refused by a schema** now say so as numbers (`errors:field.number_too_small` with
+  `min`), and every field error carries its `min`/`max`. Relied on: 2.9.2.
+
+## D-067 · 2026-09-27 · security review follow-up · What the second pass decided
+
+A review of `fix/security-review` found the per-address ceiling could lock out the factory, the
+password check held a pooled connection, and History still read ledger amounts to readers
+without the flags. This supersedes the per-address and backup bullets of D-066.
+
+- **The per-address ceiling counts only wrong passwords.** 100 an hour per address across
+  sign-in, unlock and change-password (`SIGN_IN_FAILURES_PER_HOUR`); reaching it refuses the
+  address for 5 minutes (`SIGN_IN_BLOCK_MINUTES`), doubling for each further block within a
+  day, capped at an hour. Right passwords never count, so a shift change or a day of
+  idle-locked tablets behind the factory's one public address cannot trip it. A check under way
+  counts until it succeeds, so a parallel burst across usernames cannot overshoot. IPv6 is
+  counted by its /64 (`normalizeIp` of `@nestjs/throttler`), IPv4-mapped IPv6 as IPv4. In
+  memory per replica, as before; `ThrottlerModule` and its guard are gone.
+  Relied on: 2.8, NFR-13, C-07.
+- **No connection is held while Argon2 runs.** Per throttle key, in the in-process queue: a
+  short read of the failures (locked → refused, password not checked), the password check
+  outside any transaction, then a short transaction under the advisory lock that reads the
+  failures again and records the result. On one replica a burst still gets exactly five checks;
+  across replicas the count stays exact and at most one check per other replica can be in
+  flight when the fifth failure lands — answered as locked if another replica locked the key
+  meanwhile. Relied on: 2.8, FR-101.
+- **History's ledger rows follow the Ledger tab's flags.** A row on a customer's or a company's
+  ledger (`changes.entry`, `changes.balance`) shows its amount only with that ledger's flag
+  (`fields.see_customer_balances` / `fields.see_company_balances`); one whose amount *is* a bought
+  figure — a purchase on a company's account, its reversal, and anything naming a damage (the
+  charge at cost, its reversal, the payment or credit that settles it) — also needs
+  `fields.see_bought_price`. A customer row's `payable` (the supplier side re-based with the
+  settlement currency) needs the company flag. The per-kind rules now apply on the global page,
+  My activity, and the customer, company and order History tabs; on an order's tab the payments
+  against that order keep their amounts, because the order shows them to anyone who may open it.
+  Audited money fields checked: purchase `unit_price`/`line_total`/`purchase_total`, item
+  `bought`/unit costs, damage `est_value`, order `cost`/`balance`, customer/company `balance`,
+  expense `amount` — all already covered. **Left as it is:** the company Ledger tab itself shows
+  purchase amounts under the company flag alone (FR-704 vs. the Purchases row of 2.6.2); the
+  spec reads both ways, so the owner should decide. Relied on: 2.4.4, 2.6.2, FR-503, FR-704.
+- **Backups.** A copy without its `.hmac` is refused unless `--allow-untagged` is given. The MAC
+  key is PBKDF2 (200,000 rounds, SHA-512, fixed salt "mizanmac") of the passphrase via
+  `openssl enc -P`, which reads the passphrase from the environment; tags are
+  `hmac-sha256-v2`. Nothing was deployed, so v1 tags are not verified. An empty
+  `AWS_ENDPOINT_URL` is unset. Relied on: 2.13, 2.14, NFR-08.
+- **Smaller.** Origin/Referer and CORS compare with `new URL(APP_BASE_URL).origin`; the runbook
+  demotes `mizan_migrate` only after the first migrate (0002 creates `mizan_app`) and sets
+  `mizan_app`'s password; an import number too big says so (`imports:number_too_big`,
+  `number_too_small`, `number_above`); `api` and `migrate` share `mizan-api:${MIZAN_IMAGE_TAG}`.

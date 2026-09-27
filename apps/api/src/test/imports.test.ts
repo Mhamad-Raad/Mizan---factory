@@ -122,6 +122,52 @@ describe('CSV import of go-live data (FR-1312)', () => {
     });
   });
 
+  describe('what the forms refuse, the import refuses (security review, finding 15)', () => {
+    it('reads each row with the route schema and names the column, instead of answering 500', async () => {
+      const rows = [
+        { name: 'Bolt M8', pricing_unit: 'per_piece', min_stock: 'twenty' },
+        { name: 'Nut M8', pricing_unit: 'per_piece', min_stock: '-5' },
+        { name: 'Washer M8', pricing_unit: 'per_piece', min_stock: '2.5' },
+        { name: 'x'.repeat(201), pricing_unit: 'per_kg' },
+        { name: 'Copper wire 2 mm', pricing_unit: 'per_kg', min_stock: '50.000' },
+        { name: 'Screw M8', pricing_unit: 'per_piece', min_stock: '99999999999999999999' },
+      ];
+      const checked = await preview('materials', rows).expect(201);
+      const byRow = new Map<number, { column: string; message_key: string; params: Record<string, unknown> }>(
+        checked.body.problems.map((problem: { row: number }) => [problem.row, problem]),
+      );
+      expect(byRow.get(1)).toMatchObject({ column: 'min_stock', message_key: 'imports:not_a_number', params: { value: 'twenty' } });
+      expect(byRow.get(2)).toMatchObject({
+        column: 'min_stock',
+        message_key: 'imports:number_too_small',
+        params: { value: '-5', min: 0 },
+      });
+      // Too big is told as too big, not as "cannot be negative".
+      expect(byRow.get(6)).toMatchObject({ column: 'min_stock', message_key: 'imports:number_too_big' });
+      expect(byRow.get(6)?.params.max).toEqual(expect.any(Number));
+      expect(byRow.get(3)).toMatchObject({ column: 'min_stock', message_key: 'imports:whole_number_required' });
+      expect(byRow.get(4)).toMatchObject({ column: 'name', message_key: 'errors:field.too_long', params: { max: 200 } });
+      expect(byRow.has(5)).toBe(false);
+      expect(checked.body.ready).toBe(1);
+
+      // The import writes the good row and reports the rest — no row answers 500.
+      const imported = await run('materials', rows).expect(201);
+      expect(imported.body.created).toBe(1);
+      expect(imported.body.failed).toEqual([]);
+    });
+
+    it('holds a customer, a stock line and a debt to the same limits as their forms', async () => {
+      const customers = await preview('customers', [{ name: 'Kawa Trading', phone: '0'.repeat(41) }]).expect(201);
+      expect(customers.body.problems[0]).toMatchObject({ row: 1, column: 'phone', message_key: 'errors:field.too_long' });
+
+      await as(ctx.http, admin).post('/api/v1/customers').send({ name: 'Kawa Trading' }).expect(201);
+      const debts = await preview('customer_opening_balance', [
+        { customer: 'Kawa Trading', amount: '12.5', currency: 'IQD' },
+      ]).expect(201);
+      expect(debts.body.problems[0]).toMatchObject({ column: 'amount', message_key: 'imports:whole_number_required' });
+    });
+  });
+
   describe('the import itself', () => {
     it('creates materials, customers and companies as the forms would', async () => {
       const materials = await run('materials', [

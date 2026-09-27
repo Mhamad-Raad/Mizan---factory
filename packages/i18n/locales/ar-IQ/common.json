@@ -58,6 +58,8 @@
   "count_symbol": "قطعة",
   "rate_used": "بسعر الصرف {{rate}}",
   "manual_rate": "سعر صرف يدوي {{rate}}",
+  "rate_company": "سعر الشركة {{rate}}",
+  "rate_system": "سعر النظام {{rate}}",
   "draft_found": "لديك عمل غير محفوظ من {{time}}",
   "draft_restore": "استعادته",
   "statement_window": "يغطي هذا الكشف آخر اثني عشر شهراً؛ وما قبلها داخل الرصيد الافتتاحي.",
@@ -66,7 +68,7 @@
   "date_to": "إلى تاريخ",
   "status": "الحالة",
   "number_column": "الرقم",
-  "nav_daily": "عمل اليوم",
+  "nav_trade": "المبيعات والمشتريات",
   "nav_records": "السجلات",
   "nav_insight": "التقارير والاطلاع",
   "nav_admin": "الإدارة",
@@ -81,5 +83,10 @@
   "theme_menu": "المظهر",
   "text_size_menu": "حجم النص",
   "entered_separately": "يُدخَل كل منهما على حدة",
-  "rate_at_source": "حسب {{source}}: {{rate}}"
+  "rate_at_source": "حسب {{source}}: {{rate}}",
+  "pager_rows": "صفوف في الصفحة",
+  "pager_range": "{{range}} من {{total}}",
+  "pager_page": "الصفحة {{page}}",
+  "pager_previous": "الصفحة السابقة",
+  "pager_next": "الصفحة التالية"
 }

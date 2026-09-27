@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
+import { stripHistory } from '../history/history-fields.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { CompaniesService } from './companies.service.js';
+import { limitField, pageFields, pageSchema } from '../common/paging.js';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const money = z.object({
@@ -17,11 +19,9 @@ const method = z.enum(['cash', 'transfer', 'other']);
 
 const listSchema = z.object({
   q: z.string().max(200).optional(),
-  assigned_to: z.string().uuid().optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
   sort: z.enum(['name', 'balance']).optional(),
-  page: z.coerce.number().int().positive().optional(),
-  page_size: z.coerce.number().int().positive().max(100).optional(),
+  ...pageFields,
 });
 
 const paymentSchema = money.extend({
@@ -34,7 +34,7 @@ const paymentSchema = money.extend({
   note: z.string().max(2000).nullish(),
 });
 
-const entrySchema = money.extend({
+export const entrySchema = money.extend({
   entry_date: isoDate,
   note: z.string().min(1).max(2000),
   purchase_id: z.string().uuid().nullish(),
@@ -83,13 +83,13 @@ const ledgerSchema = z.object({
   from: isoDate.optional(),
   to: isoDate.optional(),
   done_by: z.string().uuid().optional(),
-  limit: z.coerce.number().int().positive().max(500).optional(),
+  ...pageFields,
 });
 
 const statementSchema = z.object({ from: isoDate.optional(), to: isoDate.optional() });
 const historySchema = z.object({
   cursor: z.string().max(200).optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: limitField,
 });
 
 /**
@@ -112,7 +112,6 @@ export class CompaniesController {
   ) {
     return this.companies.list(contextOf(request), {
       q: query.q,
-      assigned_to: query.assigned_to,
       include_inactive: query.include_inactive === 'true',
       sort: query.sort,
       page: query.page,
@@ -141,7 +140,8 @@ export class CompaniesController {
       from: query.from,
       to: query.to,
       done_by: query.done_by,
-      limit: query.limit,
+      page: query.page,
+      page_size: query.page_size,
     });
   }
 
@@ -150,8 +150,7 @@ export class CompaniesController {
   @RequirePermission('companies.view', 'fields.see_company_balances')
   async breakdown(
     @Param('id') id: string,
-    @Query(zodBody(z.object({ limit: z.coerce.number().int().positive().max(200).optional() })))
-    query: { limit?: number },
+    @Query(zodBody(pageSchema)) query: z.infer<typeof pageSchema>,
   ) {
     return this.companies.purchaseBreakdown(id, query);
   }
@@ -248,10 +247,13 @@ export class CompaniesController {
   @Get('companies/:id/history')
   @RequirePermission('companies.view')
   async history(
+    @Req() request: RequestWithContext,
     @Param('id') id: string,
     @Query(zodBody(historySchema)) query: z.infer<typeof historySchema>,
   ) {
-    return this.companies.historyOf(id, query);
+    const page = await this.companies.historyOf(id, query);
+    // A ledger row's amount needs the balance flag, and a purchase's the bought-price flag too.
+    return { ...page, items: stripHistory(contextOf(request), page.items) };
   }
 }
 

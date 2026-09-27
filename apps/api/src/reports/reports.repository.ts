@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Currency } from '@mizan/money';
 import { Database } from '../database/pool.js';
+import type { Paging } from '../common/paging.js';
 
 /**
  * All SQL for the reports (spec 2.11).
@@ -17,7 +18,7 @@ import { Database } from '../database/pool.js';
  *     soft-deleted rows.
  */
 
-export type GroupBy = 'month' | 'day' | 'customer' | 'company' | 'item' | 'employee' | 'assigned';
+export type GroupBy = 'month' | 'day' | 'customer' | 'company' | 'item' | 'employee';
 /** The damage report also groups by where the goods came from and where they went (FR-1009). */
 export type DamageGroupBy = GroupBy | 'attribution' | 'return_status';
 
@@ -25,7 +26,6 @@ export interface ReportFilters {
   from: string;
   to: string;
   done_by?: string;
-  assigned_to?: string;
   group_by?: GroupBy;
   /** Narrows Payables to one company, which is what makes per-purchase remaining affordable. */
   company_id?: string;
@@ -83,10 +83,6 @@ export class ReportsRepository {
       values.push(filters.done_by);
       conditions.push(`o.acting_user_id = $${values.length}::uuid`);
     }
-    if (filters.assigned_to) {
-      values.push(filters.assigned_to);
-      conditions.push(`c.assigned_user_id = $${values.length}::uuid`);
-    }
 
     if (groupBy === 'item') {
       if (filters.item_id) {
@@ -121,7 +117,6 @@ export class ReportsRepository {
       {
         customer: { key: 'c.id::text', label: 'c.name' },
         employee: { key: 'o.acting_user_id::text', label: 'u.display_name' },
-        assigned: { key: 'c.assigned_user_id::text', label: 'a.display_name' },
       },
       'sum(o.total_iqd)',
     );
@@ -144,7 +139,6 @@ export class ReportsRepository {
          FROM orders o
          JOIN customers c ON c.id = o.customer_id
          LEFT JOIN users u ON u.id = o.acting_user_id
-         LEFT JOIN users a ON a.id = c.assigned_user_id
         WHERE ${conditions.join(' AND ')}
         GROUP BY ${grouping.group}
         ORDER BY ${grouping.order}`,
@@ -164,10 +158,6 @@ export class ReportsRepository {
     if (filters.done_by) {
       values.push(filters.done_by);
       conditions.push(`l.performed_by_user_id = $${values.length}::uuid`);
-    }
-    if (filters.assigned_to) {
-      values.push(filters.assigned_to);
-      conditions.push(`c.assigned_user_id = $${values.length}::uuid`);
     }
     const { rows } = await this.database.query<{ iqd: string; usd_cents: string }>(
       `SELECT coalesce(-sum(l.amount_iqd), 0)::text AS iqd,
@@ -293,10 +283,6 @@ export class ReportsRepository {
       values.push(filters.done_by);
       conditions.push(`o.acting_user_id = $${values.length}::uuid`);
     }
-    if (filters.assigned_to) {
-      values.push(filters.assigned_to);
-      conditions.push(`c.assigned_user_id = $${values.length}::uuid`);
-    }
     if (filters.item_id) {
       values.push(filters.item_id);
       conditions.push(`ol.item_id = $${values.length}::uuid`);
@@ -325,7 +311,7 @@ export class ReportsRepository {
     // material and the employee (the I3 review's lesson about aggregates and their joins).
     const joins = [
       groupBy === 'item' ? 'JOIN items i ON i.id = ol.item_id' : '',
-      groupBy === 'customer' || filters.assigned_to ? 'JOIN customers c ON c.id = o.customer_id' : '',
+      groupBy === 'customer' ? 'JOIN customers c ON c.id = o.customer_id' : '',
       groupBy === 'employee' ? 'LEFT JOIN users u ON u.id = o.acting_user_id' : '',
     ]
       .filter(Boolean)
@@ -362,7 +348,8 @@ export class ReportsRepository {
 
   // ───────────────────────────────── stock (FR-1006) ─────────────────────────────────
 
-  async stock(filters: ReportFilters, limit: number) {
+  /** `limit` null values every material (LIMIT NULL is no limit), which the paged report does. */
+  async stock(filters: ReportFilters, limit: number | null) {
     const values: unknown[] = [filters.from, filters.to];
     const conditions = ['i.deleted_at IS NULL'];
     if (filters.item_id) {
@@ -389,6 +376,8 @@ export class ReportsRepository {
       bought_iqd: string | null;
       bought_usd_cents: string | null;
       price_month: string | null;
+      lots_value_iqd: string | null;
+      lots_value_usd_cents: string | null;
     }>(
       // The page of materials is chosen first and everything else hangs off those rows: the
        // report sends two hundred groups (D-032), and computing five thousand materials' stock,
@@ -411,7 +400,9 @@ export class ReportsRepository {
               coalesce(moved.out_kg, 0)::text AS out_kg,
               price.bought_iqd::text AS bought_iqd,
               price.bought_usd_cents::text AS bought_usd_cents,
-              to_char(price.month, 'YYYY-MM-DD') AS price_month
+              to_char(price.month, 'YYYY-MM-DD') AS price_month,
+              lots.value_iqd::text AS lots_value_iqd,
+              lots.value_usd_cents::text AS lots_value_usd_cents
          FROM page
          JOIN items i ON i.id = page.id
          LEFT JOIN item_stock st ON st.item_id = i.id
@@ -454,6 +445,19 @@ export class ReportsRepository {
             ORDER BY p.month DESC
             LIMIT 1
          ) price ON true
+         -- What the stock on hand cost us (D-062): what is left of every buy, at that buy's
+         -- own price — the same figure the material page splits by price. The month price
+         -- above stands in only for a material with no buys (stock from before D-062).
+         LEFT JOIN LATERAL (
+           SELECT round(sum(((CASE WHEN l.priced_measure = 'count' THEN l.qty_count::numeric ELSE l.qty_kg END)
+                             - coalesce(a.taken, 0)) * l.unit_price_iqd)) AS value_iqd,
+                  round(sum(((CASE WHEN l.priced_measure = 'count' THEN l.qty_count::numeric ELSE l.qty_kg END)
+                             - coalesce(a.taken, 0)) * l.unit_price_usd_cents)) AS value_usd_cents
+             FROM purchase_lines l
+             JOIN purchases p ON p.id = l.purchase_id
+             LEFT JOIN LATERAL (SELECT sum(qty) AS taken FROM lot_allocations WHERE purchase_line_id = l.id) a ON true
+            WHERE l.item_id = i.id AND l.deleted_at IS NULL AND p.status = 'active' AND p.deleted_at IS NULL
+         ) lots ON true
         ORDER BY i.name ASC`,
       values,
     );
@@ -473,20 +477,15 @@ export class ReportsRepository {
    * page. Counting unpaid orders for all of them meant grouping every order ever placed: 2.3
    * seconds at the design point of NFR-13, for two hundred rows (REVIEW-I6).
    */
-  async receivables(filters: ReportFilters, limit: number) {
+  async receivables(filters: ReportFilters, paging: Paging) {
     const values: unknown[] = [filters.from, filters.to];
     const conditions = ['c.deleted_at IS NULL', 'c.is_system = false'];
-    if (filters.assigned_to) {
-      values.push(filters.assigned_to);
-      conditions.push(`c.assigned_user_id = $${values.length}::uuid`);
-    }
-    values.push(limit);
+    values.push(paging.page_size, paging.offset);
 
     const { rows } = await this.database.query<{
       key: string;
       label: string;
       settlement_currency: Currency;
-      assigned_user_name: string | null;
       balance: string;
       balance_iqd: string;
       balance_usd_cents: string;
@@ -500,7 +499,7 @@ export class ReportsRepository {
       total_received_usd_cents: string;
     }>(
       `WITH per_customer AS (
-         SELECT c.id, c.name, c.settlement_currency, c.assigned_user_id,
+         SELECT c.id, c.name, c.settlement_currency,
                 -- As of the end of the range: a balance is "all time up to that day", not
                 -- "in the period", which is what makes it a balance (2.11).
                 coalesce(sum(CASE WHEN l.entry_date <= $2::date
@@ -523,7 +522,7 @@ export class ReportsRepository {
            -- the ones with money against their name (REVIEW-I6).
            JOIN customer_ledger l ON l.customer_id = c.id
           WHERE ${conditions.join(' AND ')}
-          GROUP BY c.id, c.name, c.settlement_currency, c.assigned_user_id
+          GROUP BY c.id, c.name, c.settlement_currency
        ),
        page AS (
          SELECT *,
@@ -533,12 +532,11 @@ export class ReportsRepository {
                 sum(received_iqd) OVER () AS total_received_iqd,
                 sum(received_usd_cents) OVER () AS total_received_usd_cents
            FROM per_customer
-          ORDER BY balance DESC
-          LIMIT $${values.length}
+          ORDER BY balance DESC, id
+          LIMIT $${values.length - 1} OFFSET $${values.length}
        )
        SELECT p.id::text AS key, p.name AS label,
               p.settlement_currency::text AS settlement_currency,
-              u.display_name AS assigned_user_name,
               p.balance::text AS balance,
               p.balance_iqd::text AS balance_iqd,
               p.balance_usd_cents::text AS balance_usd_cents,
@@ -551,7 +549,6 @@ export class ReportsRepository {
               p.total_received_usd_cents::text AS total_received_usd_cents,
               coalesce(unpaid.n, 0)::text AS unpaid_orders
          FROM page p
-         LEFT JOIN users u ON u.id = p.assigned_user_id
          -- Only for the rows that are actually sent, and from the maintained per-order sum of
          -- migration 0015: one index scan of that customer's orders, no pass over the ledger.
          LEFT JOIN LATERAL (
@@ -570,15 +567,11 @@ export class ReportsRepository {
 
   async payables(filters: ReportFilters) {
     const values: unknown[] = [filters.from, filters.to];
-    // A company is a business with `is_supplier` (D-054).
-    const conditions = ['co.deleted_at IS NULL', 'co.is_supplier'];
+    // Every account but the walk-in is a company (D-055).
+    const conditions = ['co.deleted_at IS NULL', 'NOT co.is_system'];
     if (filters.company_id) {
       values.push(filters.company_id);
       conditions.push(`co.id = $${values.length}::uuid`);
-    }
-    if (filters.assigned_to) {
-      values.push(filters.assigned_to);
-      conditions.push(`co.assigned_user_id = $${values.length}::uuid`);
     }
 
     const { rows } = await this.database.query<{
@@ -872,7 +865,7 @@ export class ReportsRepository {
         label: dimension.label,
         group: `${dimension.key}, ${dimension.label}`,
         // Largest first, not alphabetically: a customer list read by name is a directory, and
-        // the response is capped, so the order decides which rows a phone is sent at all.
+        // the response is paged, so the order decides which rows the first page shows.
         order: `${measure} DESC, ${dimension.label} ASC NULLS LAST`,
       };
     }

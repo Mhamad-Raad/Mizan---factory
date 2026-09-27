@@ -30,5 +30,10 @@
   "bad_date": "\"{{value}}\" is not a date (YYYY-MM-DD)",
   "not_a_number": "\"{{value}}\" is not a number",
   "quantity_required": "Give a count or a weight",
-  "patience": "A large file takes its time: ten thousand rows is about a minute. Leave this screen open."
+  "patience": "A large file takes its time: ten thousand rows is about a minute. Leave this screen open.",
+  "number_too_small": "\"{{value}}\" is too small here — it must be {{min}} or more",
+  "number_above": "\"{{value}}\" is too small here — it must be more than {{min}}",
+  "number_too_big": "\"{{value}}\" is too large here — it must be {{max}} or less",
+  "whole_number_required": "\"{{value}}\" must be a whole number",
+  "value_not_accepted": "\"{{value}}\" is not accepted in this column"
 }

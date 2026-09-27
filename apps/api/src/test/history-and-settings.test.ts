@@ -62,6 +62,175 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
   });
 
   describe('the History page (FR-902)', () => {
+    it('withholds bought prices and balances the reader has no flag for, as the record tabs do', async () => {
+      await as(ctx.http, adminSession).post('/api/v1/settings/global-rates').send({ rate_iqd_per_usd: '1310' }).expect(201);
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(new Date());
+      const item = await as(ctx.http, adminSession)
+        .post('/api/v1/items')
+        .send({
+          name: 'Glass bottle 1 L',
+          pricing_unit: 'per_piece',
+          buy: { qty_count: 100, unit_price: { amount: 1_310, currency: 'IQD' }, purchase_date: today },
+        })
+        .expect(201);
+      const kawa = (await as(ctx.http, adminSession).post('/api/v1/customers').send({ name: 'Kawa Trading' }).expect(201))
+        .body.id;
+      await as(ctx.http, adminSession)
+        .post('/api/v1/purchases')
+        .send({
+          company_id: kawa,
+          purchase_date: today,
+          lines: [{ item_id: item.body.id, qty_count: 20, unit_price: { amount: 1_965, currency: 'IQD' } }],
+        })
+        .expect(201);
+
+      type Entry = { entity_type: string; changes: Record<string, unknown>; rows: { changes: unknown }[] };
+      const read = async (permissions: string[], username: string) => {
+        const session = await signIn(ctx.http, await seedUser({ username, permissions }));
+        const body = (await as(ctx.http, session).get('/api/v1/history?limit=100').expect(200)).body as {
+          items: Entry[];
+        };
+        const of = (type: string) => JSON.stringify(body.items.filter((entry) => entry.entity_type === type));
+        return { purchase: of('purchase'), company: of('company'), all: body.items };
+      };
+
+      const everything = await read(['history.view_all', 'fields.see_bought_price', 'fields.see_company_balances'], 'full');
+      // The fixture really does carry the figures, or the assertions below would prove nothing.
+      expect(everything.purchase).toContain('"unit_price"');
+      expect(everything.purchase).toContain('"purchase_total"');
+      expect(everything.company).toContain('"balance"');
+
+      const plain = await read(['history.view_all'], 'plain');
+      // Rows are thinned, never dropped.
+      const records = (entries: Entry[]) => entries.filter((entry) => entry.entity_type !== 'session').length;
+      expect(records(plain.all)).toBe(records(everything.all));
+      for (const key of ['"unit_price"', '"line_total"', '"purchase_total"', '"cost"']) {
+        expect(plain.purchase).not.toContain(key);
+      }
+      expect(plain.company).not.toContain('"balance"');
+      // What is not a bought price stays: the purchase's lines and their quantities.
+      expect(plain.purchase).toContain('"qty_count"');
+    });
+
+    it('withholds ledger amounts without the ledger flag, and bought figures without the price flag, on every History route', async () => {
+      await as(ctx.http, adminSession).post('/api/v1/settings/global-rates').send({ rate_iqd_per_usd: '1310' }).expect(201);
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(new Date());
+      const item = await as(ctx.http, adminSession)
+        .post('/api/v1/items')
+        .send({
+          name: 'Copper wire',
+          pricing_unit: 'per_piece',
+          buy: { qty_count: 100, unit_price: { amount: 1_310, currency: 'IQD' }, purchase_date: today },
+        })
+        .expect(201);
+      const kawa = (await as(ctx.http, adminSession).post('/api/v1/customers').send({ name: 'Kawa Trading' }).expect(201))
+        .body.id as string;
+      // Buying side: a purchase (its total is a bought figure) and a plain payment.
+      await as(ctx.http, adminSession)
+        .post('/api/v1/purchases')
+        .send({
+          company_id: kawa,
+          purchase_date: today,
+          lines: [{ item_id: item.body.id, qty_count: 20, unit_price: { amount: 1_965, currency: 'IQD' } }],
+        })
+        .expect(201);
+      await as(ctx.http, adminSession)
+        .post(`/api/v1/companies/${kawa}/payments`)
+        .send({ amount: 7_000, currency: 'IQD', entry_date: today, note: 'cash' })
+        .expect(201);
+      // Selling side: a payment, and a damage charged to the business at what the stock cost.
+      await as(ctx.http, adminSession)
+        .post(`/api/v1/customers/${kawa}/payments`)
+        .send({ amount: 5_000, currency: 'IQD', entry_date: today })
+        .expect(201);
+      await as(ctx.http, adminSession)
+        .post('/api/v1/damages')
+        .send({
+          item_id: item.body.id,
+          qty_count: 2,
+          damage_date: today,
+          attribution: 'company',
+          company_id: kawa,
+        })
+        .expect(201);
+
+      type Entry = {
+        entity_type: string;
+        changes: { entry?: { type: string; amount_iqd?: number }; balance?: unknown };
+        rows?: Entry[];
+      };
+      const ledgerRows = (items: Entry[]): Entry[] =>
+        items.flatMap((entry) => [...(entry.changes.entry ? [entry] : []), ...ledgerRows(entry.rows ?? [])]);
+      /** `<kind>:<entry type>` → whether its amount and the balance around it were sent. */
+      const shown = (items: Entry[]) =>
+        Object.fromEntries(
+          ledgerRows(items).map((row) => [
+            `${row.entity_type}:${row.changes.entry?.type}`,
+            row.changes.entry?.amount_iqd !== undefined || row.changes.balance !== undefined,
+          ]),
+        );
+      const read = async (permissions: string[], username: string) => {
+        const session = await signIn(
+          ctx.http,
+          await seedUser({ username, permissions: ['history.view_all', 'customers.view', 'companies.view', ...permissions] }),
+        );
+        const get = async (url: string) => (await as(ctx.http, session).get(url).expect(200)).body.items as Entry[];
+        return {
+          page: shown(await get('/api/v1/history?limit=100')),
+          customer: shown(await get(`/api/v1/customers/${kawa}/history`)),
+          company: shown(await get(`/api/v1/companies/${kawa}/history`)),
+        };
+      };
+
+      const full = await read(
+        ['fields.see_customer_balances', 'fields.see_company_balances', 'fields.see_bought_price'],
+        'full',
+      );
+      // The fixture really does carry every kind of row, or the assertions below would prove nothing.
+      const everything = {
+        'company:purchase': true,
+        'company:payment': true,
+        'customer:payment': true,
+        'customer:damage': true,
+      };
+      expect(full.page).toEqual(everything);
+      expect(full.customer).toEqual(everything);
+      expect(full.company).toEqual({ 'company:purchase': true, 'company:payment': true });
+
+      const none = await read([], 'none');
+      const nothing = {
+        'company:purchase': false,
+        'company:payment': false,
+        'customer:payment': false,
+        'customer:damage': false,
+      };
+      expect(none.page).toEqual(nothing);
+      expect(none.customer).toEqual(nothing);
+      expect(none.company).toEqual({ 'company:purchase': false, 'company:payment': false });
+
+      // Both balances but no bought prices: the money movements, but not a purchase total or
+      // what the damaged stock cost.
+      const balances = await read(['fields.see_customer_balances', 'fields.see_company_balances'], 'balances');
+      const movements = {
+        'company:purchase': false,
+        'company:payment': true,
+        'customer:payment': true,
+        'customer:damage': false,
+      };
+      expect(balances.page).toEqual(movements);
+      expect(balances.customer).toEqual(movements);
+      expect(balances.company).toEqual({ 'company:purchase': false, 'company:payment': true });
+
+      // One ledger's flag opens only that ledger.
+      const customerSide = await read(['fields.see_customer_balances', 'fields.see_bought_price'], 'customerside');
+      expect(customerSide.customer).toEqual({
+        'company:purchase': false,
+        'company:payment': false,
+        'customer:payment': true,
+        'customer:damage': true,
+      });
+    });
+
     it('returns newest first with a cursor, and the cursor pages backwards without gaps', async () => {
       for (let index = 0; index < 5; index += 1) {
         await as(ctx.http, adminSession)

@@ -58,6 +58,8 @@
   "count_symbol": "pcs",
   "rate_used": "At the rate {{rate}}",
   "manual_rate": "Manual rate {{rate}}",
+  "rate_company": "Company rate {{rate}}",
+  "rate_system": "System rate {{rate}}",
   "draft_found": "You have unsaved work from {{time}}",
   "draft_restore": "Restore it",
   "statement_window": "This statement covers the last twelve months; anything earlier is inside the opening balance.",
@@ -66,7 +68,7 @@
   "date_to": "To date",
   "status": "Status",
   "number_column": "Number",
-  "nav_daily": "Daily work",
+  "nav_trade": "Sales & purchases",
   "nav_records": "Records",
   "nav_insight": "Insight",
   "nav_admin": "Administration",
@@ -81,5 +83,10 @@
   "theme_menu": "Theme",
   "text_size_menu": "Text size",
   "entered_separately": "Entered separately",
-  "rate_at_source": "At {{source}}: {{rate}}"
+  "rate_at_source": "At {{source}}: {{rate}}",
+  "pager_rows": "Rows per page",
+  "pager_range": "{{range}} of {{total}}",
+  "pager_page": "Page {{page}}",
+  "pager_previous": "Previous page",
+  "pager_next": "Next page"
 }

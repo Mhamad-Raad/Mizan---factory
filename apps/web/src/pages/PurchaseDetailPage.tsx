@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, TextField, Toast } from '@mizan/ui';
-import type { Currency } from '@mizan/money';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { BottomSheet, Button, Card, Chip, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { Can } from '../components/Can.js';
 import { QueryStates } from '../components/states.js';
+import { Pager } from '../components/Pager.js';
+import { useCursorPaging } from '../lib/paging.js';
 import { PriceFromMonth, RateBadge } from '../components/chips.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import type { PurchaseDetail } from './PurchasesPage.js';
@@ -16,24 +17,16 @@ import type { PurchaseDetail } from './PurchasesPage.js';
 type Tab = 'lines' | 'history';
 
 interface PurchaseHistory {
+  next_cursor: string | null;
   items: { id: string; action: string; occurred_at: string; actor_display_name: string | null; note: string | null }[];
-  ledger_entries: {
-    id: string;
-    entry_type: string;
-    entry_date: string;
-    entered_currency: Currency | null;
-    rate_iqd_per_usd: string;
-    note: string | null;
-    voucher_number: number | null;
-    reverses_entry_id: string | null;
-    cost?: { amount_iqd: number; amount_usd_cents: number } | null;
-  }[];
 }
 
 /**
- * The purchase detail page (spec 3.3): the header with the company — or "Stock only" — the
- * totals, "We owe for this purchase" for those allowed to see money (FR-712), the lines with
- * their price source, and History including the company entries that name this purchase.
+ * One buy (D-062): stock we bought for ourselves — made by creating a material or adding to one
+ * in Materials, never with a company. The header says when and who, the total at its rate, the
+ * materials it brought in at their own prices, and its History. It can be voided while none of its
+ * stock has gone out; once some has been sold or damaged it is the cost of those, and the API
+ * refuses (BUY_IN_USE) — the sheet says so in words.
  */
 export function PurchaseDetailPage() {
   const { id = '' } = useParams();
@@ -41,8 +34,6 @@ export function PurchaseDetailPage() {
   const formatter = useFormatter();
   const queryClient = useQueryClient();
   const mayVoid = usePermission('purchases.void');
-  const mayEdit = usePermission('purchases.edit');
-  const maySeeBalance = usePermission('fields.see_company_balances');
 
   const [tab, setTab] = useState<Tab>('lines');
   const [voiding, setVoiding] = useState(false);
@@ -53,22 +44,24 @@ export function PurchaseDetailPage() {
     queryKey: ['purchases', id],
     queryFn: () => apiRequest<PurchaseDetail>(`/purchases/${id}`),
   });
+  const data = purchase.data;
 
-  const balance = useQuery({
-    queryKey: ['purchases', id, 'balance'],
-    queryFn: () =>
-      apiRequest<{
-        settlement_currency: Currency | null;
-        cost: { total: number | null; linked: number | null; allocated: number | null; remaining: number | null };
-      }>(`/purchases/${id}/balance`),
-    enabled: maySeeBalance && Boolean(purchase.data?.company_id),
-  });
 
+  // The audit trail is paged by cursor (D-058).
+  const historyPaging = useCursorPaging({ storageKey: 'record-history', resetOn: [id] });
   const history = useQuery({
-    queryKey: ['purchases', id, 'history'],
-    queryFn: () => apiRequest<PurchaseHistory>(`/purchases/${id}/history`),
+    queryKey: ['purchases', id, 'history', historyPaging.cursor, historyPaging.pageSize],
+    queryFn: () => apiRequest<PurchaseHistory>(`/purchases/${id}/history?${historyPaging.query}`),
     enabled: tab === 'history',
+    placeholderData: keepPreviousData,
   });
+  const historyNext = history.data?.next_cursor ?? null;
+
+  const invalidate = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['purchases'] });
+    await queryClient.invalidateQueries({ queryKey: ['items'] });
+    await queryClient.invalidateQueries({ queryKey: ['accounts'] });
+  };
 
   const voidPurchase = useMutation({
     mutationFn: () =>
@@ -80,15 +73,12 @@ export function PurchaseDetailPage() {
     onSuccess: async () => {
       setVoiding(false);
       setToast(t('purchases:voided'));
-      await queryClient.invalidateQueries({ queryKey: ['purchases'] });
-      await queryClient.invalidateQueries({ queryKey: ['companies'] });
-      await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await invalidate();
     },
   });
 
-  const data = purchase.data;
   const settlement = data?.settlement_currency ?? 'IQD';
-  const remaining = balance.data?.cost.remaining ?? null;
+  const active = data?.doc_status === 'active';
 
   usePageTitle(data ? t('purchases:number', { number: formatter.number(data.number) }) : t('purchases:title'));
 
@@ -108,147 +98,144 @@ export function PurchaseDetailPage() {
               ) : null}
 
               <Card>
-                <div className="mz-row mz-row--between">
-                  <div>
-                    <h2 className="mz-title">
-                      {data.company_id ? (
-                        <Link to={`/companies/${data.company_id}`}><bdi>{data.company_name}</bdi></Link>
-                      ) : (
-                        t('purchases:stock_only_badge')
-                      )}
-                    </h2>
+                <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+                  <div className="mz-stack" style={{ gap: '2px', minInlineSize: 0 }}>
+                    <h2 className="mz-title">{t('purchases:number', { number: formatter.number(data.number) })}</h2>
+                    <span className="mz-caption">{t('purchases:buy_caption')}</span>
                     <span className="mz-caption" style={{ display: 'block' }}>
                       {formatter.date(data.purchase_date)}
-                      {data.acting_user_name ? ` · ${data.acting_user_name}` : ''}
+                      {data.acting_user_name ? ` · ${t('glossary:done_by')}: ${data.acting_user_name}` : ''}
                     </span>
-                    {data.notes ? <span className="mz-caption">{data.notes}</span> : null}
+                    {data.notes ? (
+                      <span className="mz-caption" style={{ display: 'block' }}>
+                        <bdi>{data.notes}</bdi>
+                      </span>
+                    ) : null}
                   </div>
-                  <span className="mz-list__end">
+                  <span className="mz-row" style={{ gap: 'var(--space-1)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {data.doc_status === 'void' ? (
                       <Chip tone="danger" icon="close">
                         {t('glossary:void')}
                       </Chip>
                     ) : null}
-                    <RateBadge rate={data.rate_iqd_per_usd} source={data.rate_source} />
                   </span>
                 </div>
 
-                {data.cost ? (
-                  <div style={{ marginBlockStart: 'var(--space-3)' }}>
-                    <span className="mz-caption" style={{ display: 'block' }}>
-                      {t('glossary:total')}
+                <hr className="mz-divider" />
+
+                <div className="mz-detail-summary">
+                  <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
+                    <span className="mz-figure__label">{t('glossary:total')}</span>
+                    {data.cost ? (
+                      <DualAmount
+                        amount_iqd={data.cost.total_iqd}
+                        amount_usd_cents={data.cost.total_usd_cents}
+                        primary={settlement}
+                        size="large"
+                      />
+                    ) : (
+                      <span className="mz-muted">—</span>
+                    )}
+                    <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                      <RateBadge rate={data.rate_iqd_per_usd} source={data.rate_source} />
                     </span>
-                    <DualAmount
-                      amount_iqd={data.cost.total_iqd}
-                      amount_usd_cents={data.cost.total_usd_cents}
-                      primary={settlement}
-                      size="large"
-                    />
-                    {data.cost.discount_iqd > 0 ? (
-                      <div className="mz-row mz-row--between">
-                        <span className="mz-caption">{t('glossary:discount')}</span>
-                        <DualAmount
-                          amount_iqd={data.cost.discount_iqd}
-                          amount_usd_cents={data.cost.discount_usd_cents}
-                          primary={settlement}
-                        />
+                  </div>
+
+                  <div className="mz-detail-figures">
+                    {data.cost && data.cost.discount_iqd > 0 ? (
+                      <div className="mz-figure">
+                        <span className="mz-figure__label">{t('glossary:discount')}</span>
+                        <span className="mz-figure__value" data-tabular>
+                          {formatter.money(data.cost.discount_iqd, 'IQD')}
+                        </span>
                       </div>
                     ) : null}
                   </div>
-                ) : null}
-
-                {/* "We owe for this purchase" (FR-712): its total less what is linked to it and
-                    less its oldest-first share of the payments that named no purchase. */}
-                {data.company_id && remaining !== null ? (
-                  <div className="mz-row mz-row--between" style={{ marginBlockStart: 'var(--space-2)' }}>
-                    <span className="mz-caption">{t('purchases:we_owe_for_this')}</span>
-                    <span data-tabular>{formatter.money(remaining, settlement)}</span>
-                  </div>
-                ) : null}
+                </div>
               </Card>
 
-              <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                {data.doc_status === 'active' && mayEdit ? (
-                  <Link to={`/purchases/${id}/edit`} className="mz-button mz-button--secondary">
-                    {t('common:edit')}
-                  </Link>
+              {/* Its damage, and — set apart at the end — Void, so it is never a slip. Buying more
+                  is done from the material itself (D-062). */}
+              <div className="mz-actions">
+                <div className="mz-actions__group">
+                  {/* What arrived damaged in this delivery (FR-802, FR-805). */}
+                  <Can permission="damages.view">
+                    <Link to={`/damages?purchase=${id}`} className="mz-button mz-button--secondary">
+                      <Icon name="warning" />
+                      {t('glossary:damaged_items')}
+                    </Link>
+                  </Can>
+                </div>
+
+                {active && mayVoid ? (
+                  <div className="mz-actions__group mz-actions__group--end">
+                    <Button variant="danger" icon="trash" onClick={() => setVoiding(true)}>
+                      {t('purchases:void_purchase')}
+                    </Button>
+                  </div>
                 ) : null}
-                {data.doc_status === 'active' && mayVoid ? (
-                  <Button variant="secondary" onClick={() => setVoiding(true)}>
-                    {t('purchases:void_purchase')}
-                  </Button>
-                ) : null}
-                <Link
-                  to={`/purchases/new${data.company_id ? `?company=${data.company_id}` : ''}`}
-                  className="mz-button mz-button--ghost"
-                >
-                  {t('purchases:duplicate')}
-                </Link>
-                {/* What arrived damaged in this delivery (FR-802, FR-805). */}
-                <Can permission="damages.view">
-                  <Link to={`/damages?purchase=${id}`} className="mz-button mz-button--ghost">
-                    {t('glossary:damaged_items')}
-                  </Link>
-                </Can>
               </div>
 
-              <div className="mz-row" style={{ gap: 'var(--space-2)' }}>
-                <Button variant={tab === 'lines' ? 'secondary' : 'ghost'} onClick={() => setTab('lines')}>
-                  {t('orders:lines')}
-                </Button>
-                <Button variant={tab === 'history' ? 'secondary' : 'ghost'} onClick={() => setTab('history')}>
-                  {t('glossary:history')}
-                </Button>
-              </div>
+              <SegmentedControl
+                label={t('common:more')}
+                value={tab}
+                onChange={setTab}
+                options={[
+                  { value: 'lines', label: t('orders:lines') },
+                  { value: 'history', label: t('glossary:history') },
+                ]}
+              />
 
               {tab === 'lines' ? (
-                <Card>
-                  <ul className="mz-list">
-                    {data.lines.map((line) => (
-                      <li key={line.id} className="mz-list__item">
-                        <span className="mz-list__body">
-                          <span className="mz-list__title">
-                            <Link to={`/materials/${line.item_id}`}><bdi>{line.item_name}</bdi></Link>
-                          </span>
-                          <span className="mz-caption" style={{ display: 'block' }}>
-                            {line.priced_measure === 'kg'
-                              ? `${formatter.number(line.qty_kg ?? '0', 3)} ${t('common:kg_symbol')}`
-                              : `${formatter.number(line.qty_count ?? 0)} ${t('common:count_symbol')}`}
-                            {line.priced_measure === 'kg' && line.qty_count !== null
-                              ? ` · ${formatter.number(line.qty_count)} ${t('common:count_symbol')}`
-                              : ''}
-                            {line.priced_measure === 'count' && line.qty_kg !== null
-                              ? ` · ${formatter.number(line.qty_kg, 3)} ${t('common:kg_symbol')}`
-                              : ''}
-                          </span>
-                          {line.cost ? (
-                            <span className="mz-caption" style={{ display: 'block' }}>
-                              {line.cost.price_source === 'month'
-                                ? t('orders:from_month_price')
-                                : t('purchases:price_override')}
-                              {line.cost.price_from_month ? (
-                                <PriceFromMonth month={line.cost.price_from_month} />
-                              ) : null}
-                            </span>
-                          ) : null}
-                          {line.note ? <span className="mz-caption"><bdi>{line.note}</bdi></span> : null}
+                <ul className="mz-list">
+                  {data.lines.map((line) => (
+                    <li key={line.id} className="mz-list__item mz-list__item--detail">
+                      <span className="mz-row-lead">
+                        <Icon name="materials" size={18} />
+                      </span>
+                      <span className="mz-list__body">
+                        <span className="mz-list__title">
+                          <Link to={`/materials/${line.item_id}`} className="mz-quiet-link">
+                            <bdi>{line.item_name}</bdi>
+                          </Link>
                         </span>
-                        {line.cost ? (
-                          <span className="mz-list__end">
-                            <DualAmount
-                              amount_iqd={line.cost.line_total_iqd}
-                              amount_usd_cents={line.cost.line_total_usd_cents}
-                              primary={settlement}
-                            />
-                            <span className="mz-caption" style={{ display: 'block' }} data-tabular>
-                              {formatter.money(line.cost.unit_price_iqd, 'IQD')}
-                            </span>
+                        <span className="mz-caption" style={{ display: 'block' }} data-tabular>
+                          {quantityOf(line, formatter, t)}
+                          {line.cost ? (
+                            <>
+                              {' × '}
+                              {formatter.money(
+                                line.cost.price_entered_currency === 'IQD'
+                                  ? line.cost.unit_price_iqd
+                                  : line.cost.unit_price_usd_cents,
+                                line.cost.price_entered_currency,
+                              )}
+                            </>
+                          ) : null}
+                        </span>
+                        {line.cost?.price_source === 'override' ? (
+                          <Chip tone="warning">{t('purchases:price_override')}</Chip>
+                        ) : line.cost?.price_from_month ? (
+                          <PriceFromMonth month={line.cost.price_from_month} />
+                        ) : null}
+                        {line.note ? (
+                          <span className="mz-caption" style={{ display: 'block' }}>
+                            <bdi>{line.note}</bdi>
                           </span>
                         ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
+                      </span>
+                      {line.cost ? (
+                        <span className="mz-list__end">
+                          <DualAmount
+                            amount_iqd={line.cost.line_total_iqd}
+                            amount_usd_cents={line.cost.line_total_usd_cents}
+                            primary={settlement}
+                          />
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
               ) : null}
 
               {tab === 'history' ? (
@@ -257,45 +244,36 @@ export function PurchaseDetailPage() {
                   isEmpty={(history.data?.items.length ?? 0) === 0}
                   emptyTitle={t('history:empty')}
                 >
-                  <Card>
-                    <ul className="mz-list">
-                      {(history.data?.items ?? []).map((row) => (
-                        <li key={row.id} className="mz-list__item">
-                          <span className="mz-list__body">
-                            <span className="mz-list__title">{t(`history:action.${row.action}`)}</span>
-                            <span className="mz-caption">
-                              {formatter.timestamp(new Date(row.occurred_at))}
-                              {row.actor_display_name ? ` · ${row.actor_display_name}` : ''}
-                              {row.note ? ` · ${row.note}` : ''}
-                            </span>
+                  <ul className="mz-list">
+                    {(history.data?.items ?? []).map((row) => (
+                      <li key={row.id} className="mz-list__item mz-list__item--detail">
+                        <span className="mz-row-lead">
+                          <Icon name={row.action === 'void' ? 'close' : row.action === 'create' ? 'plus' : 'history'} size={18} />
+                        </span>
+                        <span className="mz-list__body">
+                          <span className="mz-list__title">{t(`history:action.${row.action}`)}</span>
+                          <span className="mz-caption">
+                            {formatter.timestamp(new Date(row.occurred_at))}
+                            {row.actor_display_name ? ` · ${row.actor_display_name}` : ''}
                           </span>
-                        </li>
-                      ))}
-                    </ul>
-
-                    {(history.data?.ledger_entries ?? []).length > 0 ? (
-                      <ul className="mz-list">
-                        {(history.data?.ledger_entries ?? []).map((entry) => (
-                          <li key={entry.id} className="mz-list__item">
-                            <span className="mz-list__body">
-                              <span className="mz-list__title">{t(`companies:entry.${entry.entry_type}`)}</span>
-                              <span className="mz-caption">
-                                {formatter.date(entry.entry_date)}
-                                {entry.note ? ` · ${entry.note}` : ''}
-                              </span>
+                          {row.note ? (
+                            <span className="mz-caption" style={{ display: 'block' }}>
+                              <bdi>{row.note}</bdi>
                             </span>
-                            {entry.cost ? (
-                              <DualAmount
-                                amount_iqd={entry.cost.amount_iqd}
-                                amount_usd_cents={entry.cost.amount_usd_cents}
-                                primary={settlement}
-                              />
-                            ) : null}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </Card>
+                          ) : null}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <Pager
+                    page={historyPaging.page}
+                    pageSize={historyPaging.pageSize}
+                    hasNext={Boolean(historyNext)}
+                    onPage={(page) =>
+                      page > historyPaging.page && historyNext ? historyPaging.next(historyNext) : historyPaging.previous()
+                    }
+                    onPageSize={historyPaging.setPageSize}
+                  />
                 </QueryStates>
               ) : null}
             </>
@@ -343,4 +321,16 @@ export function PurchaseDetailPage() {
       </div>
     </>
   );
+}
+
+/** The priced measure first, the other one after it when it was recorded too. */
+function quantityOf(
+  line: PurchaseDetail['lines'][number],
+  formatter: ReturnType<typeof useFormatter>,
+  t: (key: string) => string,
+): string {
+  const kg = line.qty_kg !== null ? `${formatter.quantity(line.qty_kg)} ${t('common:kg_symbol')}` : null;
+  const count = line.qty_count !== null ? `${formatter.number(line.qty_count)} ${t('common:count_symbol')}` : null;
+  const [first, second] = line.priced_measure === 'kg' ? [kg, count] : [count, kg];
+  return [first, second].filter(Boolean).join(' · ');
 }

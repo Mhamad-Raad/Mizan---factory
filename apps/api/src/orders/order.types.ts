@@ -22,6 +22,8 @@ export interface OrderRow {
   discount_usd_cents: string;
   total_iqd: string;
   total_usd_cents: string;
+  rounding_iqd: string;
+  rounding_usd_cents: string;
   created_at: Date;
   created_by: string;
   updated_at: Date;
@@ -111,6 +113,9 @@ export interface OrderDto {
   discount_usd_cents: number;
   total_iqd: number;
   total_usd_cents: number;
+  /** What was added to reach a round 250 dinars (D-065); zero on orders from before it. */
+  rounding_iqd: number;
+  rounding_usd_cents: number;
   status: OrderStatus;
   doc_status: 'active' | 'void';
   void_reason: string | null;

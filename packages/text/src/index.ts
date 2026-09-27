@@ -108,3 +108,27 @@ export function normalizePhone(phone: string): string {
   if (withoutPlus.startsWith('964')) return `0${withoutPlus.slice(3)}`;
   return withoutPlus;
 }
+
+/**
+ * Thousands separators in a number **as it is typed** — presentation only (client review): the
+ * field shows `1,250,000` while the value the form keeps, and the API receives, is `1250000`.
+ *
+ * The digits are Latin because a numeric field is an LTR island in every language (2.10.6), and
+ * the grouping is always three-by-three with a comma, which is how the factory writes amounts on
+ * paper in all three languages. The fraction is left exactly as typed — a trailing `.` or a
+ * trailing zero is somebody halfway through typing, not something to tidy away.
+ */
+export function groupDigits(raw: string): string {
+  const match = /^(-?)(\d+)(\.\d*)?$/.exec(raw);
+  if (!match) return raw;
+  const [, sign, whole, fraction = ''] = match;
+  return `${sign}${(whole as string).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${fraction}`;
+}
+
+/**
+ * The value behind a grouped field: separators removed — the comma, and the Arabic thousands
+ * sign `٬` a phone keyboard may insert — and the Arabic decimal sign `٫` read as a point.
+ */
+export function ungroupDigits(display: string): string {
+  return display.replace(/[,٬\s]/g, '').replace(/٫/g, '.');
+}

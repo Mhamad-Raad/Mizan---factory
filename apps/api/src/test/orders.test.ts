@@ -27,7 +27,6 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
   /** Sara: another sales employee, to prove the scope rules. */
   let otherSales: Session;
   let salesUserId: string;
-  let otherSalesUserId: string;
   let copper: string;
   let steel: string;
   let kawa: string;
@@ -71,7 +70,6 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       permissions: ['orders.create', 'customers.create', 'fields.see_customer_balances'],
     });
     salesUserId = salesUser.id;
-    otherSalesUserId = otherUser.id;
 
     admin = await signIn(ctx.http, adminUser);
     sales = await signIn(ctx.http, salesUser);
@@ -87,13 +85,14 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       sale: 18_000,
       bought: 15_000,
     });
-    await addStock(copper, '6000.000');
-    await addStock(steel, '500.000', 500);
+    // Stock arrives by buying it (D-062), at the bought price: 700 د.ع a kilo, 15,000 a sheet.
+    await addStock(copper, '6000.000', undefined, 700);
+    await addStock(steel, '500.000', 500, 15_000);
 
-    // "Kawa Trading", assigned to Rebaz (the demo script's customer).
+    // "Kawa Trading" (the demo script's customer).
     const customer = await as(ctx.http, admin)
       .post('/api/v1/customers')
-      .send({ name: 'Kawa Trading', phone: '0770 123 4567', assigned_user_id: salesUserId })
+      .send({ name: 'Kawa Trading', phone: '0770 123 4567' })
       .expect(201);
     kawa = customer.body.id;
 
@@ -128,14 +127,20 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
     return id;
   }
 
-  async function addStock(itemId: string, kg: string, count?: number): Promise<void> {
+  async function addStock(itemId: string, kg: string, count?: number, unitCost = 700): Promise<void> {
     await as(ctx.http, admin)
-      .post(`/api/v1/items/${itemId}/opening-stock`)
+      .post('/api/v1/purchases')
       .send({
-        entry_date: today(),
-        qty_kg: kg,
-        qty_count: count ?? null,
-        note: 'go-live count',
+        company_id: null,
+        purchase_date: today(),
+        lines: [
+          {
+            item_id: itemId,
+            qty_kg: kg,
+            qty_count: count ?? null,
+            unit_price: { amount: unitCost, currency: 'IQD' },
+          },
+        ],
       })
       .expect(201);
   }
@@ -184,8 +189,16 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       expect(
         response.body.lines.map((line: { line_total_iqd: number }) => line.line_total_iqd),
       ).toEqual([10_625, 720_000]);
-      expect(response.body.total_iqd).toBe(730_625);
-      expect(response.body.total_usd_cents).toBe(811 + 54_962);
+      // The lines add up to 730,625; the total rounds up to the next 250 — 730,750 — and the
+      // 125 added moves the dollars by 125 ÷ 1,310 = 9.54 → 10 cents (D-065).
+      expect(response.body.total_iqd).toBe(730_750);
+      expect(response.body.rounding_iqd).toBe(125);
+      expect(response.body.rounding_usd_cents).toBe(10);
+      expect(response.body.total_usd_cents).toBe(811 + 54_962 + 10);
+
+      // The company owes the rounded total.
+      const customer = await as(ctx.http, sales).get(`/api/v1/customers/${kawa}`).expect(200);
+      expect(customer.body.balance.amount_iqd ?? customer.body.balance).toBe(730_750);
     });
 
     it('defaults the price from the month list and marks an override', async () => {
@@ -218,7 +231,7 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
     it("defaults an order to the customer's own rate, not the global one", async () => {
       const rateCo = await as(ctx.http, admin)
         .post('/api/v1/customers')
-        .send({ name: 'Rate Co', assigned_user_id: salesUserId })
+        .send({ name: 'Rate Co' })
         .expect(201);
       // Give the customer their own rate (1,300), apart from the global 1,310.
       await as(ctx.http, admin)
@@ -243,7 +256,8 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
         lines: [{ item_id: copper, qty_kg: '10.000' }],
       }).expect(201);
       const asAdmin = await as(ctx.http, admin).get(`/api/v1/orders/${order.body.id}`).expect(200);
-      expect(asAdmin.body.lines[0].cost).toMatchObject({ unit_iqd: 700, source: 'month' });
+      // The cost is what the stock it sold cost us — the buy at 700 — not the month's price.
+      expect(asAdmin.body.lines[0].cost).toMatchObject({ unit_iqd: 700, source: 'lots' });
 
       await as(ctx.http, admin)
         .put(`/api/v1/items/${copper}/prices/${new Date().toISOString().slice(0, 7)}`)
@@ -272,6 +286,67 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       }).expect(201);
       const read = await as(ctx.http, sales).get(`/api/v1/orders/${order.body.id}`).expect(200);
       expect('cost' in read.body.lines[0]).toBe(false);
+    });
+  });
+
+  describe('the cost of a sale is what the stock it sold cost us (D-062)', () => {
+    async function lotsOf(itemId: string) {
+      const read = await as(ctx.http, admin).get(`/api/v1/items/${itemId}/lots`).expect(200);
+      return read.body.items as { remaining: string; unit_cost_iqd: number }[];
+    }
+
+    it('takes the oldest buy first and costs a sale across two buys exactly', async () => {
+      // Copper already has 6,000 kg bought at 700; a second buy of 1,000 kg costs 900.
+      await addStock(copper, '1000.000', undefined, 900);
+      const order = await createOrder(sales, {
+        lines: [{ item_id: copper, qty_kg: '6500.000' }],
+      }).expect(201);
+
+      // 6,000 kg × 700 + 500 kg × 900 = 4,650,000 د.ع of cost; sold at 850 → 5,525,000 revenue.
+      const read = await as(ctx.http, admin).get(`/api/v1/orders/${order.body.id}`).expect(200);
+      expect(read.body.lines[0].cost).toMatchObject({ source: 'lots' });
+      const report = await as(ctx.http, admin).get('/api/v1/accounts/summary').expect(200);
+      expect(report.body.cost_of_sold.amount_iqd).toBe(4_650_000);
+      expect(report.body.profit.amount_iqd).toBe(5_525_000 - 4_650_000);
+
+      const lots = await lotsOf(copper);
+      expect(lots.map((lot) => [lot.unit_cost_iqd, lot.remaining])).toEqual([
+        [700, '0.000'],
+        [900, '500.000'],
+      ]);
+    });
+
+    it('gives the stock back to the very buys it came from when the order is voided', async () => {
+      await addStock(copper, '1000.000', undefined, 900);
+      const order = await createOrder(sales, {
+        lines: [{ item_id: copper, qty_kg: '6500.000' }],
+      }).expect(201);
+      await as(ctx.http, admin)
+        .post(`/api/v1/orders/${order.body.id}/void`)
+        .send({ reason: 'typed twice' })
+        .expect(200);
+
+      const lots = await lotsOf(copper);
+      expect(lots.map((lot) => lot.remaining)).toEqual(['6000.000', '1000.000']);
+    });
+
+    it('refuses to void a buy whose stock has already been sold', async () => {
+      const bought = await as(ctx.http, admin)
+        .post('/api/v1/purchases')
+        .send({
+          company_id: null,
+          purchase_date: today(),
+          lines: [{ item_id: steel, qty_count: 10, unit_price: { amount: 16_000, currency: 'IQD' } }],
+        })
+        .expect(201);
+      // Selling 505 sheets reaches into the second buy.
+      await createOrder(sales, { lines: [{ item_id: steel, qty_count: 505 }] }).expect(201);
+
+      const refused = await as(ctx.http, admin)
+        .post(`/api/v1/purchases/${bought.body.id}/void`)
+        .send({ reason: 'wrong' })
+        .expect(409);
+      expect(refused.body.error.code).toBe('BUY_IN_USE');
     });
   });
 
@@ -595,7 +670,7 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       const plain = await seedUser({
         username: 'plain',
         displayName: 'Plain',
-        permissions: ['customers.view', 'customers.view_all', 'orders.view'],
+        permissions: ['customers.view', 'orders.view'],
       });
       const session = await signIn(ctx.http, plain);
       const stripped = await as(ctx.http, session)
@@ -722,7 +797,7 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
         .get(`/api/v1/items/${copper}/movements`)
         .expect(200);
       const types = movements.body.items.map((row: { movement_type: string }) => row.movement_type);
-      expect(types).toEqual(['sale_out', 'reversal', 'sale_out', 'opening']);
+      expect(types).toEqual(['sale_out', 'reversal', 'sale_out', 'purchase_in']);
 
       const material = await as(ctx.http, admin).get(`/api/v1/items/${copper}`).expect(200);
       expect(material.body.stock.stock_kg).toBe('5920.000');
@@ -873,72 +948,17 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
     });
   });
 
-  describe('scope and assignment (FR-501, FR-502, spec 2.6.4)', () => {
-    it("hides another employee's customer and their orders, with 404 rather than 403", async () => {
-      const order = await createOrder(sales, {
+  describe('every account and every order is visible (D-056)', () => {
+    it("shows a salesman every company and a colleague's orders — accounts are nobody's", async () => {
+      const theirs = await createOrder(otherSales, {
+        customer_id: kawa,
         lines: [{ item_id: copper, qty_kg: '10.000' }],
       }).expect(201);
 
-      await as(ctx.http, otherSales).get(`/api/v1/customers/${kawa}`).expect(404);
-      await as(ctx.http, otherSales).get(`/api/v1/orders/${order.body.id}`).expect(404);
-
-      const list = await as(ctx.http, otherSales).get('/api/v1/customers').expect(200);
-      expect(list.body.items.map((row: { name: string }) => row.name)).toEqual([
-        'Walk-in customer',
-      ]);
-    });
-
-    it('names the assignee when a duplicate belongs to someone else (FR-501)', async () => {
-      const duplicates = await as(ctx.http, otherSales)
-        .get('/api/v1/customers/duplicates?name=Kawa%20Trading')
-        .expect(200);
-      expect(duplicates.body.duplicates[0]).toMatchObject({
-        name: 'Kawa Trading',
-        assigned_user_name: 'Rebaz',
-      });
-    });
-
-    it('assigns a customer created by a scoped employee to that employee (FR-501)', async () => {
-      const created = await as(ctx.http, otherSales)
-        .post('/api/v1/customers')
-        .send({ name: 'Zana Metals' })
-        .expect(201);
-      expect(created.body.assigned_user_id).toBe(otherSalesUserId);
-
-      const mine = await as(ctx.http, otherSales).get('/api/v1/customers').expect(200);
-      expect(mine.body.items.map((row: { name: string }) => row.name)).toContain('Zana Metals');
-    });
-
-    it('opens the customer up once an admin grants "sees all customers"', async () => {
-      await as(ctx.http, admin)
-        .post(`/api/v1/users/${otherSalesUserId}/permissions`)
-        .send({
-          keys: [
-            'orders.create',
-            'customers.create',
-            'customers.view_all',
-            'fields.see_customer_balances',
-          ],
-        })
-        .expect(201);
-
-      const list = await as(ctx.http, otherSales).get('/api/v1/customers').expect(200);
-      expect(list.body.items.map((row: { name: string }) => row.name)).toContain('Kawa Trading');
-    });
-
-    it('keeps an order visible to the employee who entered it after a reassignment', async () => {
-      const order = await createOrder(sales, {
-        lines: [{ item_id: copper, qty_kg: '10.000' }],
-      }).expect(201);
-      await as(ctx.http, admin)
-        .put(`/api/v1/customers/${kawa}/assignment`)
-        .send({ user_id: otherSalesUserId, note: 'handover' })
-        .expect(200);
-
-      const stillVisible = await as(ctx.http, sales)
-        .get(`/api/v1/orders/${order.body.id}`)
-        .expect(200);
-      expect(stillVisible.body.id).toBe(order.body.id);
+      const companies = await as(ctx.http, sales).get('/api/v1/customers').expect(200);
+      expect(companies.body.items.some((row: { id: string }) => row.id === kawa)).toBe(true);
+      await as(ctx.http, sales).get(`/api/v1/orders/${theirs.body.id}`).expect(200);
+      expect(companies.body.items[0]).not.toHaveProperty('assigned_user_id');
     });
   });
 
@@ -1000,7 +1020,7 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       const plain = await seedUser({
         username: 'plain',
         displayName: 'Plain',
-        permissions: ['customers.view', 'customers.view_all', 'orders.view'],
+        permissions: ['customers.view', 'orders.view'],
       });
       const session = await signIn(ctx.http, plain);
 
@@ -1051,7 +1071,6 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
         .post('/api/v1/customers')
         .send({
           name: 'Small Shop',
-          assigned_user_id: salesUserId,
           credit_limit: { amount: 50_000, currency: 'IQD' },
         })
         .expect(201);
@@ -1138,6 +1157,37 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
   });
 
   describe('the orders list (FR-611)', () => {
+    it('adds up the whole filter for the cards above the list: sold, and still owed', async () => {
+      // 100 kg of copper at 850, borrowed, 30,000 of it paid: 85,000 sold, 55,000 still owed.
+      const borrowed = await createOrder(sales, { lines: [{ item_id: copper, qty_kg: '100.000' }] }).expect(201);
+      await as(ctx.http, sales)
+        .post(`/api/v1/orders/${borrowed.body.id}/payments`)
+        .send({ amount: 30_000, currency: 'IQD', entry_date: today() })
+        .expect(201);
+      // One sheet of steel for cash: 18,000 sold, nothing owed.
+      await as(ctx.http, sales)
+        .post('/api/v1/orders')
+        .send({
+          customer_id: walkIn,
+          order_date: today(),
+          payment_type: 'cash',
+          received_currency: 'IQD',
+          lines: [{ item_id: steel, qty_count: 1 }],
+        })
+        .expect(201);
+
+      const list = await as(ctx.http, sales).get('/api/v1/orders?page_size=1').expect(200);
+      expect(list.body.items).toHaveLength(1);
+      expect(list.body.totals).toMatchObject({ orders: 2, total_iqd: 103_000, owing: 1 });
+      expect(list.body.totals.balance.owed_iqd).toBe(55_000);
+
+      // Whoever may not see what customers owe gets the counts, never the owed amount.
+      const viewer = await seedUser({ username: 'viewer.orders', permissions: ['orders.view'] });
+      const plain = await as(ctx.http, await signIn(ctx.http, viewer)).get('/api/v1/orders').expect(200);
+      expect(plain.body.totals.owing).toBe(1);
+      expect('balance' in plain.body.totals).toBe(false);
+    });
+
     it('filters by status, payment type, customer, employee and free text', async () => {
       const borrowed = await createOrder(sales, {
         lines: [{ item_id: copper, qty_kg: '10.000' }],
@@ -1217,9 +1267,6 @@ describe('iteration 1 review regressions', () => {
   let ctx: TestApp;
   let admin: Session;
   let sales: Session;
-  let salesUserId: string;
-  let otherSalesUserId: string;
-  let otherSales: Session;
   let copper: string;
   let kawa: string;
 
@@ -1260,17 +1307,9 @@ describe('iteration 1 review regressions', () => {
         'fields.see_customer_balances',
       ],
     });
-    const other = await seedUser({
-      username: 'sara.review',
-      displayName: 'Sara',
-      permissions: ['orders.view', 'customers.view', 'fields.see_customer_balances'],
-    });
-    salesUserId = salesUser.id;
-    otherSalesUserId = other.id;
 
     admin = await signIn(ctx.http, adminUser);
     sales = await signIn(ctx.http, salesUser);
-    otherSales = await signIn(ctx.http, other);
 
     await as(ctx.http, admin)
       .post('/api/v1/settings/global-rates')
@@ -1293,7 +1332,7 @@ describe('iteration 1 review regressions', () => {
 
     const customer = await as(ctx.http, admin)
       .post('/api/v1/customers')
-      .send({ name: 'Kawa Trading', assigned_user_id: salesUserId })
+      .send({ name: 'Kawa Trading' })
       .expect(201);
     kawa = customer.body.id;
   });
@@ -1368,42 +1407,10 @@ describe('iteration 1 review regressions', () => {
     expect(customer.body.balance.amount_iqd).toBe(0);
   });
 
-  it('lets the employee who entered an order pay it off after the customer is reassigned', async () => {
-    const order = await as(ctx.http, sales)
-      .post('/api/v1/orders')
-      .send({
-        customer_id: kawa,
-        order_date: today(),
-        payment_type: 'borrowed',
-        lines: [{ item_id: copper, qty_kg: '100.000' }],
-      })
-      .expect(201);
-
-    await as(ctx.http, admin)
-      .put(`/api/v1/customers/${kawa}/assignment`)
-      .send({ user_id: otherSalesUserId, note: 'handover' })
-      .expect(200);
-
-    // The customer is out of Rebaz's scope now, but the order he entered is not (2.6.4).
-    await as(ctx.http, sales).get(`/api/v1/customers/${kawa}`).expect(404);
-    const payment = await as(ctx.http, sales)
-      .post(`/api/v1/orders/${order.body.id}/payments`)
-      .send({ amount: 30_000, currency: 'IQD', entry_date: today() })
-      .expect(201);
-    expect(payment.body[0].order.status).toBe('partially_paid');
-
-    // A payment not tied to an order still obeys the customer scope.
-    await as(ctx.http, sales)
-      .post(`/api/v1/customers/${kawa}/payments`)
-      .send({ amount: 1_000, currency: 'IQD', entry_date: today() })
-      .expect(404);
-    expect(otherSales).toBeDefined();
-  });
-
   it('refuses an edit that would move the order to another customer', async () => {
     const other = await as(ctx.http, admin)
       .post('/api/v1/customers')
-      .send({ name: 'Zana Metals', assigned_user_id: salesUserId })
+      .send({ name: 'Zana Metals' })
       .expect(201);
     const order = await as(ctx.http, sales)
       .post('/api/v1/orders')

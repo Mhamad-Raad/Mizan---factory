@@ -117,13 +117,6 @@ const nazdarUser = await call(admin, '/users', {
     preset_key: 'accountant',
   },
 });
-// Sara serves a customer who is assigned to Rebaz, which is the whole point of step 1 — and a
-// sales employee only reaches their own customers unless somebody says otherwise (spec 2.6.4).
-const saraKeys = await call(admin, `/users/${saraUser.body.user.id}/permissions`);
-await call(admin, `/users/${saraUser.body.user.id}/permissions`, {
-  method: 'POST',
-  body: { keys: [...new Set([...(saraKeys.body?.keys ?? []), 'customers.view_all'])] },
-});
 
 const rebaz = await signInFresh(`rebaz.${unique}`, rebazUser.body.temporary_password);
 const sara = await signInFresh(`sara.${unique}`, saraUser.body.temporary_password);
@@ -162,14 +155,14 @@ await call(admin, `/items/${brass.body.id}/opening-stock`, {
 
 const kawa = await call(admin, '/customers', {
   method: 'POST',
-  body: { name: `Kawa Trading ${unique}`, assigned_user_id: rebazUser.body.user.id },
+  body: { name: `Kawa Trading ${unique}` },
 });
-const zagros = await call(admin, '/customers', {
+await call(admin, '/customers', {
   method: 'POST',
-  body: { name: `Zagros Metals ${unique}`, assigned_user_id: saraUser.body.user.id },
+  body: { name: `Zagros Metals ${unique}` },
 });
 
-// Sara serves Rebaz's customer: the case that makes "done by" and "assigned to" differ.
+// Sara serves Kawa: "done by" answers who recorded it.
 const order = await call(sara.session, '/orders', {
   method: 'POST',
   body: {
@@ -223,9 +216,7 @@ const cashOrder = await call(rebaz.session, '/orders', {
 
 const alNoor = await call(nazdar.session, '/customers', {
   method: 'POST',
-  body: {
-    is_customer: false,
-    is_supplier: true, name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
+  body: { name: `Al-Noor Steel Co. ${unique}`, settlement_currency: 'IQD' },
 });
 const purchase = await call(admin, '/purchases', {
   method: 'POST',
@@ -258,7 +249,7 @@ const damage = await call(admin, '/damages', {
 
 step(
   1,
-  'History: "Done by Sara" and "Assigned to Rebaz" over the same order, and the edits as one entry',
+  'History: "Done by Sara" over the order, and the edits as one entry',
 );
 const byDoer = await call(admin, `/history?done_by=${saraUser.body.user.id}&entity_type=order`);
 check(
@@ -266,19 +257,10 @@ check(
   'filtering by who did it finds the order Sara recorded',
 );
 
-const byAssignee = await call(
-  admin,
-  `/history?assigned_to=${rebazUser.body.user.id}&entity_type=order`,
-);
-check(
-  byAssignee.body?.items?.some((row) => row.entity_id === order.body.id),
-  "filtering by whose customer it is finds the same order under Rebaz's name",
-);
-
 const rebazDid = await call(admin, `/history?done_by=${rebazUser.body.user.id}&entity_type=order`);
 check(
   !rebazDid.body?.items?.some((row) => row.entity_id === order.body.id),
-  'and the two are different questions: Rebaz did not record it',
+  'and filtering by Rebaz does not: he did not record it',
 );
 
 const grouped = await call(admin, `/history?entity_type=order&action=update`);
@@ -365,34 +347,10 @@ check(
     receivables.body?.groups?.[1]?.balance?.amount || receivables.body?.groups?.length < 2,
   'sorted by what they owe, highest first',
 );
-const ownOnly = await call(rebaz.session, `/reports/receivables?${range}`);
+const theirs = await call(rebaz.session, `/reports/receivables?${range}`);
 check(
-  ownOnly.body?.pinned?.filter === 'assigned_to',
-  'and a sales employee sees only their own customers, which the response says out loud',
-);
-check(
-  ownOnly.body?.groups?.every((group) => group.label.startsWith('Kawa')),
-  `${ownOnly.body?.groups?.length} of them: ${ownOnly.body?.groups?.map((group) => group.label).join(', ')}`,
-);
-/**
- * The claim worth making is about **scope**, not about presence.
- *
- * Receivables reports who owes something, so a customer who owes nothing is absent from
- * everybody's copy — including the accountant's — and asserting that Sara's customer *appears*
- * there makes the check depend on whether the demo's own earlier steps happened to leave that
- * account in debt. What must always hold is the other half: whatever Rebaz can see, none of it
- * is Sara's.
- */
-const sarasCustomers = (receivables.body?.groups ?? []).filter(
-  (group) => group.assigned_user_name === 'Sara Kareem',
-);
-check(
-  !ownOnly.body?.groups?.some((group) => group.key === zagros.body.id),
-  "Sara's customer is absent from Rebaz's report — the same query, pinned to him",
-);
-check(
-  sarasCustomers.every((group) => !(ownOnly.body?.groups ?? []).some((own) => own.key === group.key)),
-  `and so is every other account of hers (${sarasCustomers.length} in the accountant's copy)`,
+  theirs.body?.pinned === undefined,
+  'and a sales employee sees the same report — accounts are not assigned to anybody (D-056)',
 );
 
 const payables = await call(nazdar.session, `/reports/payables?${range}`);
@@ -437,9 +395,9 @@ check(
   `and Nazdar paid out ${nazdarCash?.paid_out_iqd} د.ع, a net of ${nazdarCash?.net_iqd}`,
 );
 
-// ─────────────────────── 4. the dashboard and search ───────────────────────
+// ─────────────────────── 4. the dashboard ───────────────────────
 
-step(4, 'The dashboard for an owner against a sales employee, and search across the scripts');
+step(4, 'The dashboard for an owner against a sales employee');
 const ownerTiles = await call(nazdar.session, '/dashboard');
 const ownerKeys = (ownerTiles.body?.tiles ?? []).map((tile) => tile.key);
 check(
@@ -455,16 +413,6 @@ check(
 );
 check(ownerTiles.body?.rate !== null, `and both carry today's rate, with its stale marker`);
 
-const byName = await call(nazdar.session, `/search?q=kawa`);
-check(
-  byName.body?.hits?.some((hit) => hit.kind === 'customer'),
-  'search finds "Kawa" typed in Latin letters',
-);
-const byNumber = await call(nazdar.session, `/search?q=${order.body.number}`);
-check(
-  byNumber.body?.hits?.some((hit) => hit.kind === 'order'),
-  `and order #${order.body.number} by its number alone`,
-);
 
 // ─────────────────────── the invariant ───────────────────────
 

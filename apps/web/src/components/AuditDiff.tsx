@@ -62,6 +62,20 @@ export function AuditValue({ value }: { value: unknown }) {
   const amount = amountOf(value);
   if (amount) return <span data-tabular>{formatter.money(amount.amount, amount.currency)}</span>;
 
+  // A quantity as the damage and stock rows record it: pieces and / or kilograms, as people read them.
+  if (value && typeof value === 'object' && ('qty_kg' in value || 'qty_count' in value)) {
+    const quantity = value as { qty_kg?: string | null; qty_count?: number | null };
+    const parts = [
+      quantity.qty_count !== null && quantity.qty_count !== undefined
+        ? `${formatter.number(quantity.qty_count)} ${t('common:count_symbol')}`
+        : null,
+      quantity.qty_kg !== null && quantity.qty_kg !== undefined
+        ? `${formatter.quantity(quantity.qty_kg)} ${t('common:kg_symbol')}`
+        : null,
+    ].filter(Boolean);
+    return <span data-tabular>{parts.length > 0 ? parts.join(' · ') : '—'}</span>;
+  }
+
   if (typeof value === 'boolean') return <span>{value ? t('common:yes') : t('common:no')}</span>;
   if (typeof value === 'number') return <span data-tabular>{formatter.number(value)}</span>;
 
@@ -80,7 +94,8 @@ export function AuditValue({ value }: { value: unknown }) {
         </span>
       );
     }
-    return <span>{value}</span>;
+    // A recorded code — "paid_materials", "per_piece" — reads as words where there are some.
+    return <span>{t(`history:value.${value}`, { defaultValue: value })}</span>;
   }
 
   if (Array.isArray(value)) {

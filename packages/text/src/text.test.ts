@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  groupDigits,
+  ungroupDigits,
   normalizeForSearch,
   normalizeForSearchFuzzy,
   normalizePhone,
@@ -117,5 +119,31 @@ describe('normalizePhone (spec 2.10.7)', () => {
 
   it('returns an empty string for empty input', () => {
     expect(normalizePhone('')).toBe('');
+  });
+});
+
+describe('thousands separators in a number field (presentation only)', () => {
+  it('groups the whole part in threes and leaves the rest as typed', () => {
+    expect(groupDigits('1000')).toBe('1,000');
+    expect(groupDigits('10000')).toBe('10,000');
+    expect(groupDigits('1250')).toBe('1,250');
+    expect(groupDigits('1250000')).toBe('1,250,000');
+    expect(groupDigits('999')).toBe('999');
+    expect(groupDigits('1310.0000')).toBe('1,310.0000');
+    expect(groupDigits('1234.')).toBe('1,234.');
+    expect(groupDigits('-45000')).toBe('-45,000');
+    expect(groupDigits('')).toBe('');
+  });
+
+  it('leaves anything that is not a plain number alone', () => {
+    expect(groupDigits('12a3')).toBe('12a3');
+    expect(groupDigits('-')).toBe('-');
+  });
+
+  it('gives back exactly the value that was grouped', () => {
+    for (const raw of ['0', '1000', '1250000', '1310.0000', '1234.', '-45000', '12.5']) {
+      expect(ungroupDigits(groupDigits(raw))).toBe(raw);
+    }
+    expect(ungroupDigits('1٬250٫5')).toBe('1250.5');
   });
 });

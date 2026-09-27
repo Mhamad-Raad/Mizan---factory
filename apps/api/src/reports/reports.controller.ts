@@ -6,6 +6,7 @@ import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { ReportsService } from './reports.service.js';
+import { pageFields } from '../common/paging.js';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -13,13 +14,13 @@ const baseSchema = z.object({
   from: isoDate.optional(),
   to: isoDate.optional(),
   done_by: z.string().uuid().optional(),
-  assigned_to: z.string().uuid().optional(),
   company_id: z.string().uuid().optional(),
   item_id: z.string().uuid().optional(),
+  ...pageFields,
 });
 
 const salesSchema = baseSchema.extend({
-  group_by: z.enum(['month', 'day', 'customer', 'item', 'employee', 'assigned']).optional(),
+  group_by: z.enum(['month', 'day', 'customer', 'item', 'employee']).optional(),
 });
 const purchasesSchema = baseSchema.extend({
   group_by: z.enum(['month', 'day', 'company', 'item', 'employee']).optional(),

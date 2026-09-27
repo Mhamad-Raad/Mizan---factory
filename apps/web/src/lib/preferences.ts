@@ -11,10 +11,27 @@ export const RECENT_USERS_KEY = 'mizan.recentUsers.v1';
 
 export type Theme = 'light' | 'dark' | 'auto';
 export type FontScale = 0.875 | 1 | 1.125 | 1.25;
+/** The colour the app wears (D-061): teal is Mizan's own, the rest are the same ramp turned. */
+export type Palette =
+  | 'teal'
+  | 'ocean'
+  | 'sky'
+  | 'indigo'
+  | 'plum'
+  | 'rose'
+  | 'crimson'
+  | 'clay'
+  | 'amber'
+  | 'forest'
+  | 'graphite';
+/** The typeface of Kurdish and Arabic text (D-061); each carries every Sorani letter. */
+export type Typeface = 'vazirmatn' | 'plex' | 'noto' | 'kufi' | 'naskh';
 
 export interface Preferences {
   lang: Locale;
   theme: Theme;
+  palette: Palette;
+  typeface: Typeface;
   fontScale: FontScale;
   numerals: Numerals;
   sharedDevice: boolean;
@@ -26,6 +43,8 @@ export interface Preferences {
 export const DEFAULT_PREFERENCES: Preferences = {
   lang: 'ckb-IQ',
   theme: 'auto',
+  palette: 'teal',
+  typeface: 'vazirmatn',
   fontScale: 1,
   numerals: 'latn',
   sharedDevice: false,
@@ -42,6 +61,10 @@ const LOCALES: Locale[] = ['ckb-IQ', 'ar-IQ', 'en'];
  */
 export const THEMES: readonly Theme[] = ['light', 'dark', 'auto'];
 export const FONT_SCALES: readonly FontScale[] = [0.875, 1, 1.125, 1.25];
+export const PALETTES: readonly Palette[] = [
+  'teal', 'ocean', 'sky', 'indigo', 'plum', 'rose', 'crimson', 'clay', 'amber', 'forest', 'graphite',
+];
+export const TYPEFACES: readonly Typeface[] = ['vazirmatn', 'plex', 'noto', 'kufi', 'naskh'];
 
 const SCALES = FONT_SCALES;
 
@@ -69,6 +92,10 @@ export function readPreferences(): Preferences {
       theme: ['light', 'dark', 'auto'].includes(parsed.theme as string)
         ? (parsed.theme as Theme)
         : DEFAULT_PREFERENCES.theme,
+      palette: PALETTES.includes(parsed.palette as Palette) ? (parsed.palette as Palette) : DEFAULT_PREFERENCES.palette,
+      typeface: TYPEFACES.includes(parsed.typeface as Typeface)
+        ? (parsed.typeface as Typeface)
+        : DEFAULT_PREFERENCES.typeface,
       fontScale: SCALES.includes(parsed.fontScale as FontScale)
         ? (parsed.fontScale as FontScale)
         : DEFAULT_PREFERENCES.fontScale,
@@ -124,6 +151,8 @@ export function applyPreferences(preferences: Preferences): void {
   root.setAttribute('data-locale', preferences.lang);
   root.setAttribute('dir', direction);
   root.setAttribute('data-theme', resolveTheme(preferences.theme));
+  root.setAttribute('data-palette', preferences.palette);
+  root.setAttribute('data-font', preferences.typeface);
   root.style.setProperty('--font-scale', String(preferences.fontScale));
   document
     .querySelector('meta[name="theme-color"]')

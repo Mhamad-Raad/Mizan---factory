@@ -3,6 +3,8 @@ import { normalizeForSearch, normalizePhone } from '@mizan/text';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import type { DirectoryEntryDto, UserRole, UserRow } from './user.types.js';
+import { pagingOf } from '../common/paging.js';
+import { containing } from '../common/like.js';
 
 const COLUMNS = `id, username::text AS username, phone, display_name, role, password_hash,
                  must_change_password, preset_key, preset_version,
@@ -27,6 +29,18 @@ export class UsersRepository {
   async findById(id: string, tx?: Db): Promise<UserRow | null> {
     const { rows } = await (tx ?? this.database).query<UserRow>(
       `SELECT ${COLUMNS} FROM users WHERE id = $1 AND deleted_at IS NULL`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * The same row, locked until the transaction ends — so a password reset or a deactivation
+   * either finishes before the caller reads it, or waits until the caller's work has committed.
+   */
+  async findByIdForUpdate(id: string, tx: Db): Promise<UserRow | null> {
+    const { rows } = await tx.query<UserRow>(
+      `SELECT ${COLUMNS} FROM users WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
       [id],
     );
     return rows[0] ?? null;
@@ -74,10 +88,10 @@ export class UsersRepository {
     if (query) {
       // Names are matched after script normalisation, so a name typed on an Arabic keyboard
       // is found from a Kurdish one (FR-1205, FR-206).
-      values.push(`%${normalizeForSearch(query)}%`);
+      values.push(containing(normalizeForSearch(query)));
       const nameParam = values.length;
       const phone = normalizePhone(query);
-      values.push(phone === '' ? null : `%${phone}%`);
+      values.push(phone === '' ? null : containing(phone));
       const phoneParam = values.length;
       conditions.push(
         `(display_name_normalized LIKE $${nameParam}` +
@@ -87,8 +101,7 @@ export class UsersRepository {
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
-    const pageSize = Math.min(filters.page_size ?? 25, 100);
-    const offset = Math.max((filters.page ?? 1) - 1, 0) * pageSize;
+    const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
     const [list, count] = await Promise.all([
@@ -252,8 +265,9 @@ export class UsersRepository {
     username: string,
     windowMinutes: number,
     lookbackMinutes: number,
+    tx?: Db,
   ): Promise<{ recent: number; run: number; lastFailureAt: Date | null }> {
-    const { rows } = await this.database.query<{
+    const { rows } = await (tx ?? this.database).query<{
       recent: number;
       run: number;
       last_failure_at: Date | null;

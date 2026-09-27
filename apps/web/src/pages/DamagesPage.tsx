@@ -1,15 +1,18 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, TextField } from '@mizan/ui';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { Chip, Icon, TextField } from '@mizan/ui';
 import type { Currency, Measure } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { QueryStates } from '../components/states.js';
-import { AttributionChip, ReturnStatusChip } from '../components/chips.js';
+import { DataList } from '../components/DataList.js';
+import type { Column } from '../components/DataList.js';
+import { Pager } from '../components/Pager.js';
+import { usePaging } from '../lib/paging.js';
 import type { DamageAttribution, ReturnStatus } from '../components/chips.js';
 import { FilterChip } from './MaterialsPage.js';
 import { useFormatter } from '../lib/store.js';
@@ -47,11 +50,17 @@ export interface DamageRow {
   voided_by_name: string | null;
   version: number;
   created_at: string;
+  /**
+   * A company's damage is owed by that company until it is marked paid back, in money or in
+   * materials (D-062); our own damage is simply a loss (`none`).
+   */
+  compensation: 'none' | 'owed' | 'paid_money' | 'paid_materials';
+  compensated_at: string | null;
   /** Absent for a caller without `fields.see_bought_price` (FR-807). */
   cost?: {
     est_value_iqd: number | null;
     est_value_usd_cents: number | null;
-    est_value_source: 'month' | 'fallback' | 'none';
+    est_value_source: 'month' | 'fallback' | 'lots' | 'none';
   } | null;
 }
 
@@ -82,30 +91,31 @@ export interface DamageTotals {
   qty_count: number;
   qty_kg: string;
   unvalued: number;
-  cost?: { est_value_iqd: number; est_value_usd_cents: number } | null;
+  /** Records a company still owes us for (D-062). */
+  owed_count: number;
+  cost?: { est_value_iqd: number; est_value_usd_cents: number; owed_iqd: number; owed_usd_cents: number } | null;
 }
 
-type DateFilter = 'all' | 'month';
+type DateFilter = 'month' | 'last_month' | 'all';
+type Who = '' | DamageAttribution;
+type Status = '' | 'owed' | 'paid';
 
 /**
- * The Damaged items page (FR-801, FR-807, spec 3.3): the chips an owner scans with — what is
- * still expected back, what can go back at all, this period — the period totals of FR-807, and
- * rows that lead with the material and its quantity. The value appears only for those allowed
- * to see bought prices; the quantities never disappear.
+ * Broken goods (FR-801, FR-807, spec 3.3; D-062; renamed from "damaged items" at the client's
+ * request), laid out as the Orders page is: one toolbar — search, the period, who broke it,
+ * whether a company still owes for it, who recorded it, voided — with "Record broken goods" at
+ * its end; the period's figures as tiles; then the records as a table on a desktop and cards on
+ * a phone. Values only for those allowed to see bought prices; quantities always.
  */
 export function DamagesPage() {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const [query, setQuery] = useState('');
   const [dates, setDates] = useState<DateFilter>('month');
-  const [pending, setPending] = useState(false);
-  const [returnable, setReturnable] = useState(false);
   const [voided, setVoided] = useState(false);
-  const [filters, setFilters] = useState(false);
   const [doneBy, setDoneBy] = useState('');
-  const [attribution, setAttribution] = useState<DamageAttribution | ''>('');
-  // The links from a material, an order and a purchase arrive as a filter on this list rather
-  // than as a page of their own (FR-807: the list is where damage is listed).
+  const [who, setWho] = useState<Who>('');
+  const [status, setStatus] = useState<Status>('');
   const [searchParams] = useSearchParams();
   const linked = {
     item_id: searchParams.get('item'),
@@ -114,11 +124,13 @@ export function DamagesPage() {
   };
   const isLinked = Boolean(linked.item_id || linked.order_id || linked.purchase_id);
 
-  // A link from a document shows everything it has had damaged, whatever the period chip says.
-  const range =
-    dates === 'month' && !isLinked
-      ? { from: `${formatter.today().slice(0, 7)}-01`, to: formatter.today() }
-      : {};
+  const today = formatter.today();
+  const range = isLinked ? {} : rangeOf(dates, today);
+
+  const paging = usePaging({
+    storageKey: 'damages',
+    resetOn: [query, range.from, range.to, voided, doneBy, who, status, linked.item_id, linked.order_id, linked.purchase_id],
+  });
 
   const damages = useQuery({
     queryKey: [
@@ -126,14 +138,15 @@ export function DamagesPage() {
       query,
       range.from,
       range.to,
-      pending,
-      returnable,
       voided,
       doneBy,
-      attribution,
+      who,
+      status,
       linked.item_id,
       linked.order_id,
       linked.purchase_id,
+      paging.page,
+      paging.pageSize,
     ],
     queryFn: () => {
       const params = new URLSearchParams({ q: query });
@@ -142,21 +155,22 @@ export function DamagesPage() {
       if (linked.item_id) params.set('item_id', linked.item_id);
       if (linked.order_id) params.set('order_id', linked.order_id);
       if (linked.purchase_id) params.set('purchase_id', linked.purchase_id);
-      if (pending) params.set('return_status', 'pending');
-      if (returnable) params.set('returnable', 'true');
       if (voided) params.set('include_void', 'true');
       if (doneBy) params.set('done_by', doneBy);
-      if (attribution) params.set('attribution', attribution);
+      if (who) params.set('attribution', who);
+      if (status) params.set('compensation', status);
       return apiRequest<{ items: DamageRow[]; total: number; totals: DamageTotals }>(
-        `/damages?${params.toString()}`,
+        `/damages?${params.toString()}&${paging.query}`,
       );
     },
+    // Keep the rows on screen while a filter or a page change refetches, as Orders does.
+    placeholderData: keepPreviousData,
   });
+  const refreshing = damages.isFetching && damages.isPlaceholderData;
 
   const directory = useQuery({
     queryKey: ['users', 'directory'],
     queryFn: () => apiRequest<{ id: string; display_name: string; is_active: boolean }[]>('/users/directory'),
-    enabled: filters,
   });
 
   const rows = damages.data?.items ?? [];
@@ -164,169 +178,263 @@ export function DamagesPage() {
 
   usePageTitle(t('damages:title'));
 
-  return (
-    <>
-      <div className="mz-stack">
-        <TextField
-          label={t('common:search')}
-          placeholder={t('damages:search_hint')}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          type="search"
-          inputMode="search"
-        />
+  const quantities = totals
+    ? [
+        Number(totals.qty_kg) > 0 ? `${formatter.quantity(totals.qty_kg)} ${t('common:kg_symbol')}` : null,
+        totals.qty_count > 0 ? `${formatter.number(totals.qty_count)} ${t('common:count_symbol')}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
 
-        <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          <FilterChip active={pending} onClick={() => setPending(!pending)}>
-            {t('damages:filter_pending')}
-          </FilterChip>
-          <FilterChip active={returnable} onClick={() => setReturnable(!returnable)}>
-            {t('damages:filter_returnable')}
-          </FilterChip>
+  const whoOf = (damage: DamageRow) =>
+    damage.attribution === 'company' && damage.company_name ? (
+      <bdi>{damage.company_name}</bdi>
+    ) : (
+      <span className="mz-muted">{t('damages:ours_label')}</span>
+    );
+
+  const value = (damage: DamageRow) =>
+    damage.cost && damage.cost.est_value_iqd !== null ? (
+      <DualAmount amount_iqd={damage.cost.est_value_iqd} amount_usd_cents={damage.cost.est_value_usd_cents ?? 0} />
+    ) : (
+      <span className="mz-muted">—</span>
+    );
+
+  const statusOf = (damage: DamageRow) => (
+    <span className="mz-rowcard__chips">
+      <CompensationChip compensation={damage.compensation} />
+      {damage.doc_status === 'void' ? (
+        <Chip tone="danger" icon="close">
+          {t('glossary:void')}
+        </Chip>
+      ) : null}
+    </span>
+  );
+
+  const columns: Column<DamageRow>[] = [
+    {
+      header: t('common:number_column'),
+      cell: (damage) => (
+        <span className="mz-cell__body">
+          <strong>{t('damages:number', { number: formatter.number(damage.number) })}</strong>
+          <span className="mz-caption">{formatter.date(damage.damage_date)}</span>
+        </span>
+      ),
+    },
+    {
+      header: t('damages:material_column'),
+      cell: (damage) => (
+        <span className="mz-cell__body">
+          <bdi>{damage.item_name}</bdi>
+          <span className="mz-caption" data-tabular>
+            {quantityOf(damage, formatter, t)}
+          </span>
+        </span>
+      ),
+    },
+    { header: t('damages:who_column'), cell: whoOf },
+    { header: t('common:status'), cell: statusOf },
+    {
+      header: t('glossary:done_by'),
+      secondary: true,
+      cell: (damage) =>
+        damage.acting_user_name ? <bdi>{damage.acting_user_name}</bdi> : <span className="mz-muted">—</span>,
+    },
+    { header: t('damages:value_column'), numeric: true, cell: value },
+  ];
+
+  return (
+    <div className="mz-stack">
+      <div className="mz-toolbar">
+        <div className="mz-toolbar__filters">
+          <div className="mz-toolbar__search">
+            <TextField
+              label={t('common:search')}
+              placeholder={t('damages:search_hint')}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              type="search"
+              inputMode="search"
+            />
+          </div>
           {!isLinked ? (
-            <FilterChip active={dates === 'month'} onClick={() => setDates(dates === 'month' ? 'all' : 'month')}>
-              {t('common:this_month')}
-            </FilterChip>
+            <select
+              className="mz-select"
+              aria-label={t('common:date')}
+              value={dates}
+              onChange={(event) => setDates(event.target.value as DateFilter)}
+            >
+              <option value="month">{t('common:this_month')}</option>
+              <option value="last_month">{t('damages:last_month')}</option>
+              <option value="all">{t('orders:any_date')}</option>
+            </select>
           ) : null}
+          <select
+            className="mz-select"
+            aria-label={t('damages:who_column')}
+            value={who}
+            onChange={(event) => setWho(event.target.value as Who)}
+          >
+            <option value="">{t('damages:who_anyone')}</option>
+            <option value="us">{t('damages:who.us')}</option>
+            <option value="company">{t('damages:who.company')}</option>
+          </select>
+          <select
+            className="mz-select"
+            aria-label={t('common:status')}
+            value={status}
+            onChange={(event) => setStatus(event.target.value as Status)}
+          >
+            <option value="">{t('damages:status_any')}</option>
+            <option value="owed">{t('damages:compensation.owed')}</option>
+            <option value="paid">{t('damages:compensation.paid')}</option>
+          </select>
+          <select
+            className="mz-select"
+            aria-label={t('glossary:done_by')}
+            value={doneBy}
+            onChange={(event) => setDoneBy(event.target.value)}
+          >
+            <option value="">{t('orders:anyone')}</option>
+            {(directory.data ?? [])
+              .filter((user) => user.is_active)
+              .map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.display_name}
+                </option>
+              ))}
+          </select>
           <FilterChip active={voided} onClick={() => setVoided(!voided)}>
             {t('damages:filter_voided')}
           </FilterChip>
-          <FilterChip active={filters} onClick={() => setFilters(true)}>
-            {t('orders:more_filters')}
-          </FilterChip>
         </div>
 
-        {/* The period totals of FR-807: quantities always, value with the permission. */}
-        {totals ? (
-          <Card>
-            <div className="mz-row mz-row--between">
-              <span className="mz-caption">{t('damages:period_totals')}</span>
-              <span className="mz-caption">{t('damages:totals_records', { count: totals.records })}</span>
-            </div>
-            <div className="mz-row mz-row--between">
-              <span data-tabular>
-                {Number(totals.qty_kg) > 0
-                  ? `${formatter.number(totals.qty_kg, 3)} ${t('common:kg_symbol')}`
-                  : null}
-                {totals.qty_count > 0
-                  ? ` ${formatter.number(totals.qty_count)} ${t('common:count_symbol')}`
-                  : null}
-              </span>
-              {totals.cost ? (
-                <DualAmount
-                  amount_iqd={totals.cost.est_value_iqd}
-                  amount_usd_cents={totals.cost.est_value_usd_cents}
-                />
-              ) : null}
-            </div>
-            {totals.cost && totals.unvalued > 0 ? (
-              <span className="mz-caption">{t('damages:totals_unvalued', { count: totals.unvalued })}</span>
-            ) : null}
-          </Card>
-        ) : null}
-
         <Can permission="damages.create">
-          <Link to="/damages/new" className="mz-button mz-button--primary mz-button--block">
+          <Link to="/damages/new" className="mz-button mz-button--primary">
+            <Icon name="plus" />
             {t('damages:record')}
           </Link>
         </Can>
-
-        <QueryStates
-          query={damages}
-          isEmpty={rows.length === 0}
-          emptyTitle={query ? t('damages:empty_search', { query }) : t('damages:empty')}
-          emptyAction={
-            <Can permission="damages.create">
-              <Link to="/damages/new" className="mz-button mz-button--primary">
-                {t('damages:record')}
-              </Link>
-            </Can>
-          }
-        >
-          <ul className="mz-list">
-            {rows.map((damage) => (
-              <li key={damage.id}>
-                <Link to={`/damages/${damage.id}`} className="mz-list__item mz-list__item--interactive">
-                  {/* Everything in the body, chips included: a trailing chip column squeezed
-                      the material's name to one word per line (REVIEW-I1 finding 9). */}
-                  <span className="mz-list__body">
-                    <span className="mz-list__title"><bdi>{damage.item_name}</bdi></span>
-                    <span className="mz-caption" style={{ display: 'block' }} data-tabular>
-                      {quantityOf(damage, formatter, t)} · {formatter.date(damage.damage_date)}
-                      {damage.acting_user_name ? ` · ${damage.acting_user_name}` : ''}
-                    </span>
-                    {damage.reason ? <span className="mz-caption">{damage.reason}</span> : null}
-                    <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                      <AttributionChip attribution={damage.attribution} />
-                      <ReturnStatusChip status={damage.return_status} />
-                      {damage.doc_status === 'void' ? (
-                        <Chip tone="danger" icon="close">
-                          {t('glossary:void')}
-                        </Chip>
-                      ) : null}
-                    </span>
-                    {damage.cost?.est_value_iqd !== null && damage.cost ? (
-                      <DualAmount
-                        amount_iqd={damage.cost.est_value_iqd ?? 0}
-                        amount_usd_cents={damage.cost.est_value_usd_cents ?? 0}
-                      />
-                    ) : null}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </QueryStates>
-
-        {filters ? (
-          <BottomSheet
-            title={t('orders:more_filters')}
-            open
-            onClose={() => setFilters(false)}
-            closeLabel={t('common:close')}
-          >
-            <div className="mz-stack">
-              <label className="mz-field">
-                <span className="mz-field__label">{t('damages:attribution')}</span>
-                <select
-                  className="mz-field__control"
-                  value={attribution}
-                  onChange={(event) => setAttribution(event.target.value as DamageAttribution | '')}
-                >
-                  <option value="">{t('common:all')}</option>
-                  {(['customer_order', 'us', 'company', 'none'] as DamageAttribution[]).map((value) => (
-                    <option key={value} value={value}>
-                      {t(`damages:attribution.${value}`)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="mz-field">
-                <span className="mz-field__label">{t('common:done_by')}</span>
-                <select
-                  className="mz-field__control"
-                  value={doneBy}
-                  onChange={(event) => setDoneBy(event.target.value)}
-                >
-                  <option value="">{t('history:everyone')}</option>
-                  {(directory.data ?? [])
-                    .filter((user) => user.is_active)
-                    .map((user) => (
-                      <option key={user.id} value={user.id}>
-                        <bdi>{user.display_name}</bdi>
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <Button block onClick={() => setFilters(false)}>
-                {t('common:close')}
-              </Button>
-            </div>
-          </BottomSheet>
-        ) : null}
       </div>
-    </>
+
+      {/* The period's figures (FR-807): how much broke, what it cost us, and what companies
+          still owe us for — quantities always, money with the bought-price permission. */}
+      {totals ? (
+        <div className="mz-kpis mz-kpis--three">
+          <div className="mz-kpi">
+            <span className="mz-kpi__head">
+              <span className="mz-kpi__icon" aria-hidden="true">
+                <Icon name="warning" size={18} />
+              </span>
+              <span className="mz-caption">{t('damages:tile_recorded')}</span>
+            </span>
+            <span className="mz-kpi__count" data-tabular>
+              {formatter.number(totals.records)}
+            </span>
+            <span className="mz-caption" data-tabular>
+              {quantities || '—'}
+            </span>
+          </div>
+          {totals.cost ? (
+            <div className="mz-kpi">
+              <span className="mz-kpi__head">
+                <span className="mz-kpi__icon" aria-hidden="true">
+                  <Icon name="materials" size={18} />
+                </span>
+                <span className="mz-caption">{t('damages:tile_value')}</span>
+              </span>
+              <DualAmount amount_iqd={totals.cost.est_value_iqd} amount_usd_cents={totals.cost.est_value_usd_cents} />
+              {totals.unvalued > 0 ? (
+                <span className="mz-caption">{t('damages:totals_unvalued', { count: totals.unvalued })}</span>
+              ) : null}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="mz-kpi mz-kpi--button"
+            aria-pressed={status === 'owed'}
+            onClick={() => setStatus(status === 'owed' ? '' : 'owed')}
+          >
+            <span className="mz-kpi__head">
+              <span className="mz-kpi__icon" aria-hidden="true">
+                <Icon name="clock" size={18} />
+              </span>
+              <span className="mz-caption">{t('damages:tile_owed')}</span>
+            </span>
+            <span className="mz-kpi__count" data-tabular>
+              {formatter.number(totals.owed_count)}
+            </span>
+            {totals.cost ? (
+              <DualAmount amount_iqd={totals.cost.owed_iqd} amount_usd_cents={totals.cost.owed_usd_cents} />
+            ) : null}
+          </button>
+        </div>
+      ) : null}
+
+      <QueryStates
+        query={damages}
+        isEmpty={rows.length === 0}
+        emptyTitle={query ? t('damages:empty_search', { query }) : t('damages:empty')}
+        emptyAction={
+          <Can permission="damages.create">
+            <Link to="/damages/new" className="mz-button mz-button--primary">
+              {t('damages:record')}
+            </Link>
+          </Can>
+        }
+      >
+        <div className="mz-refreshable" data-busy={refreshing ? 'true' : undefined} aria-busy={refreshing}>
+          <DataList
+            rows={rows}
+            rowKey={(damage) => damage.id}
+            href={(damage) => `/damages/${damage.id}`}
+            columns={columns}
+            card={(damage) => (
+              <span className="mz-rowcard">
+                <span className="mz-rowcard__head">
+                  <span className="mz-list__title">
+                    <bdi>{damage.item_name}</bdi>
+                  </span>
+                  {statusOf(damage)}
+                </span>
+                <span className="mz-caption" data-tabular>
+                  {t('damages:number', { number: formatter.number(damage.number) })} ·{' '}
+                  {quantityOf(damage, formatter, t)} · {formatter.date(damage.damage_date)}
+                </span>
+                {damage.reason ? (
+                  <span className="mz-caption">
+                    <bdi>{damage.reason}</bdi>
+                  </span>
+                ) : null}
+                <span className="mz-rowcard__foot">
+                  <span className="mz-caption">{whoOf(damage)}</span>
+                  {value(damage)}
+                </span>
+              </span>
+            )}
+          />
+        </div>
+        <Pager
+          page={paging.page}
+          pageSize={paging.pageSize}
+          total={damages.data?.total ?? 0}
+          onPage={paging.setPage}
+          onPageSize={paging.setPageSize}
+        />
+      </QueryStates>
+    </div>
   );
+}
+
+/** The period chips, from today's Baghdad day. */
+function rangeOf(filter: DateFilter, today: string): { from?: string; to?: string } {
+  if (filter === 'all') return {};
+  if (filter === 'month') return { from: `${today.slice(0, 7)}-01`, to: today };
+  const first = new Date(`${today.slice(0, 7)}-01T00:00:00Z`);
+  first.setUTCDate(0);
+  const last = first.toISOString().slice(0, 10);
+  return { from: `${last.slice(0, 7)}-01`, to: last };
 }
 
 /** The quantity as the material measures it, with the other measure when it was recorded. */
@@ -336,7 +444,28 @@ export function quantityOf(
   t: (key: string) => string,
 ): string {
   const parts: string[] = [];
-  if (damage.qty_kg !== null) parts.push(`${formatter.number(damage.qty_kg, 3)} ${t('common:kg_symbol')}`);
+  if (damage.qty_kg !== null) parts.push(`${formatter.quantity(damage.qty_kg)} ${t('common:kg_symbol')}`);
   if (damage.qty_count !== null) parts.push(`${formatter.number(damage.qty_count)} ${t('common:count_symbol')}`);
   return damage.priced_measure === 'kg' ? parts.join(' · ') : parts.reverse().join(' · ');
+}
+
+/**
+ * Where a company's damage stands (D-062): owed until it is paid back. Our own damage has no
+ * chip — it is a loss, and there is nothing to wait for. Icon and word, never colour alone.
+ */
+export function CompensationChip({ compensation }: { compensation: DamageRow['compensation'] }) {
+  const { t } = useTranslation();
+  if (compensation === 'none') return null;
+  if (compensation === 'owed') {
+    return (
+      <Chip tone="warning" icon="clock">
+        {t('damages:compensation.owed')}
+      </Chip>
+    );
+  }
+  return (
+    <Chip tone="success" icon="check">
+      {t('damages:compensation.paid')}
+    </Chip>
+  );
 }

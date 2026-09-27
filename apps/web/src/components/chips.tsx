@@ -34,10 +34,13 @@ export function RateBadge({ rate, source }: { rate: Rate; source: string }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   return (
-    <Chip tone={source === 'manual' ? 'warning' : 'neutral'}>
-      {source === 'manual'
-        ? t('common:manual_rate', { rate: formatter.rate(rate) })
-        : t('common:rate_used', { rate: formatter.rate(rate) })}
+    // Which rate the document was made at, snapshotted on it (2.3.3, D-055): the company's own,
+    // the system-wide one, or one typed for this document alone.
+    <Chip tone={source === 'manual' ? 'warning' : source === 'company' ? 'primary' : 'neutral'}>
+      {t(
+        source === 'manual' ? 'common:manual_rate' : source === 'company' ? 'common:rate_company' : 'common:rate_system',
+        { rate: formatter.rate(rate) },
+      )}
     </Chip>
   );
 }

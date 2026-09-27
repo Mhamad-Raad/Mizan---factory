@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { expandImplied } from '@mizan/permissions';
 import {
   ADMIN_ONLY_KEY,
+  ALLOW_BEFORE_PASSWORD_CHANGE_KEY,
   ALLOW_WHEN_LOCKED_KEY,
   PERMISSION_KEY,
   PUBLIC_KEY,
@@ -64,6 +65,14 @@ export class AuthGuard implements CanActivate {
         controller,
       ]);
       if (!allowedWhenLocked) throw new ApiError('SESSION_LOCKED');
+    }
+
+    if (session.must_change_password) {
+      const allowedBeforeChange = this.reflector.getAllAndOverride<boolean>(ALLOW_BEFORE_PASSWORD_CHANGE_KEY, [
+        handler,
+        controller,
+      ]);
+      if (!allowedBeforeChange) throw new ApiError('PASSWORD_CHANGE_REQUIRED');
     }
 
     const keys = session.role === 'admin' ? new Set<string>() : await this.permissionsOf(session.user_id);

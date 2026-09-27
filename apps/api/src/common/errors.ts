@@ -9,6 +9,8 @@ export const ERROR_CODES = {
   UNAUTHENTICATED: 401,
   SESSION_LOCKED: 423,
   PERMISSION_DENIED: 403,
+  /** The user must choose their own password before anything else (FR-101, FR-108). */
+  PASSWORD_CHANGE_REQUIRED: 403,
   NOT_FOUND: 404,
   VALIDATION_FAILED: 422,
   VERSION_CONFLICT: 409,
@@ -18,6 +20,8 @@ export const ERROR_CODES = {
   RECEIVED_AMOUNT_OUT_OF_TOLERANCE: 422,
   DOCUMENT_VOID: 409,
   STOCK_INSUFFICIENT: 422,
+  /** A buy whose stock has already gone out in a sale or a damage cannot be voided or edited (D-062). */
+  BUY_IN_USE: 409,
   IDEMPOTENCY_MISMATCH: 422,
   RATE_LIMITED: 429,
   /** A request body larger than the API will read — a CSV import of more than 10,000 rows. */
@@ -39,6 +43,12 @@ export class ApiError extends HttpException {
     public readonly code: ErrorCode,
     public readonly params: Record<string, unknown> = {},
     public readonly fields: FieldError[] = [],
+    /**
+     * A more specific sentence than the code's own, when the code alone would leave the user
+     * guessing — "you need the Pay a company permission" rather than "you do not have
+     * permission". Defaults to `errors:<code>`.
+     */
+    public readonly messageKey: string = messageKeyFor(code),
   ) {
     super({ code, params, fields }, ERROR_CODES[code]);
   }
@@ -47,8 +57,8 @@ export class ApiError extends HttpException {
     return new ApiError('VALIDATION_FAILED', {}, fields);
   }
 
-  static permissionDenied(required: string): ApiError {
-    return new ApiError('PERMISSION_DENIED', { required });
+  static permissionDenied(required: string, messageKey?: string): ApiError {
+    return new ApiError('PERMISSION_DENIED', { required }, [], messageKey);
   }
 
   static notFound(): ApiError {

@@ -1,11 +1,10 @@
 {
   "order": "طلب بيع",
   "purchase": "شراء",
-  "customer": "زبون",
   "company": "شركة",
   "material": "مادة",
   "materials": "المواد",
-  "damaged_items": "المواد التالفة",
+  "damaged_items": "البضاعة المكسورة",
   "cash": "نقد",
   "borrowed": "آجل (دين)",
   "paid": "مدفوع",
@@ -59,7 +58,6 @@
   "refund": "استرجاع مبلغ",
   "reversal": "قيد عكسي",
   "settlement_currency": "عملة الحساب",
-  "assigned_to": "مُسنَد إلى",
   "done_by": "بواسطة",
   "discount": "خصم",
   "receipt": "وصل",
@@ -69,7 +67,7 @@
   "document_rate": "سعر الصرف لهذه العملية",
   "period_lock": "إقفال الفترة",
   "walk_in_customer": "زبون نقدي",
-  "damaged_item": "مادة تالفة",
+  "damaged_item": "مادة مكسورة",
   "returnable": "قابلة للإرجاع",
   "returned": "أُرجعت",
   "written_off": "شُطبت",
@@ -81,8 +79,9 @@
   "companies": "الشركات",
   "purchases": "المشتريات",
   "system_rate": "سعر النظام",
-  "customer_rate": "سعر الزبون",
   "order_rate": "سعر هذا الطلب",
   "item": "الصنف",
-  "amount": "المبلغ"
+  "amount": "المبلغ",
+  "customer": "شركة",
+  "customer_rate": "سعر الشركة"
 }

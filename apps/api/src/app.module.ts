@@ -1,5 +1,6 @@
 import { Inject, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { SignInAddressLimiter } from './auth/sign-in-throttle.js';
 import { ENV, loadEnv } from './config/env.js';
 import type { Env } from './config/env.js';
 import { AuditService } from './audit/audit.service.js';
@@ -13,6 +14,7 @@ import { SessionService } from './auth/session.service.js';
 import { CsrfMiddleware } from './common/csrf.middleware.js';
 import { ErrorFilter } from './common/error.filter.js';
 import { IdempotencyInterceptor } from './common/idempotency.interceptor.js';
+import { IdParamPipe } from './common/id-param.pipe.js';
 import { RequestIdMiddleware } from './common/request-id.middleware.js';
 import { SensitiveFieldInterceptor } from './common/sensitive-field.interceptor.js';
 import { Database } from './database/pool.js';
@@ -44,9 +46,12 @@ import { ReportsController } from './reports/reports.controller.js';
 import { ReportsRepository } from './reports/reports.repository.js';
 import { ReportsService } from './reports/reports.service.js';
 import { DashboardController } from './dashboard/dashboard.controller.js';
-import { SearchController } from './search/search.controller.js';
 import { PeriodService } from './settings/period.service.js';
 import { StockService } from './stock/stock.service.js';
+import { LotsService } from './lots/lots.service.js';
+import { AccountsController } from './accounts/accounts.controller.js';
+import { AccountsService } from './accounts/accounts.service.js';
+import { ExpensesService } from './accounts/expenses.service.js';
 import { SettingsController } from './settings/settings.controller.js';
 import { SettingsService } from './settings/settings.service.js';
 import { UsersController } from './users/users.controller.js';
@@ -73,8 +78,8 @@ import { UsersService } from './users/users.service.js';
     DamagesController,
     ReportsController,
     DashboardController,
-    SearchController,
     ImportsController,
+    AccountsController,
     HealthController,
   ],
   providers: [
@@ -85,6 +90,7 @@ import { UsersService } from './users/users.service.js';
     SessionService,
     AuthService,
     AuthGuard,
+    SignInAddressLimiter,
     UsersRepository,
     UsersService,
     HistoryRepository,
@@ -92,6 +98,9 @@ import { UsersService } from './users/users.service.js';
     PeriodService,
     RatesService,
     StockService,
+    LotsService,
+    AccountsService,
+    ExpensesService,
     CustomerLedgerService,
     CompanyLedgerService,
     ItemsRepository,
@@ -113,6 +122,8 @@ import { UsersService } from './users/users.service.js';
     // The guard runs on every route: a route without a decorator is refused, not opened.
     { provide: APP_GUARD, useExisting: AuthGuard },
     { provide: APP_FILTER, useClass: ErrorFilter },
+    // A record id that is not a UUID is a wrong link: 404, never a database error.
+    { provide: APP_PIPE, useClass: IdParamPipe },
     { provide: APP_INTERCEPTOR, useClass: SensitiveFieldInterceptor },
     { provide: APP_INTERCEPTOR, useExisting: IdempotencyInterceptor },
   ],

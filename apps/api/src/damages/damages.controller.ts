@@ -6,6 +6,7 @@ import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { DamagesService } from './damages.service.js';
+import { limitField, pageFields } from '../common/paging.js';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const kg = z.string().regex(/^\d{1,9}(\.\d{1,3})?$/);
@@ -36,6 +37,13 @@ const voidSchema = z.object({
   version: z.number().int().positive().optional(),
 });
 
+const paidBackSchema = z.object({
+  method: z.enum(['money', 'materials']),
+  entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  note: z.string().max(2000).nullish(),
+  version: z.number().int().positive().optional(),
+});
+
 const returnSchema = z.object({
   status: z.enum(['returned', 'written_off']),
   returned_at: isoDate.nullish(),
@@ -61,19 +69,19 @@ const listSchema = z.object({
     .enum(['not_returnable', 'pending', 'returned', 'returned_credited', 'written_off'])
     .optional(),
   returnable: z.enum(['true', 'false']).optional(),
+  compensation: z.enum(['owed', 'paid']).optional(),
   done_by: z.string().uuid().optional(),
   company_id: z.string().uuid().optional(),
   order_id: z.string().uuid().optional(),
   purchase_id: z.string().uuid().optional(),
   include_void: z.enum(['true', 'false']).optional(),
   q: z.string().max(200).optional(),
-  page: z.coerce.number().int().positive().optional(),
-  page_size: z.coerce.number().int().positive().max(100).optional(),
+  ...pageFields,
 });
 
 const historySchema = z.object({
   cursor: z.string().max(200).optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: limitField,
 });
 
 /**
@@ -86,7 +94,8 @@ const historySchema = z.object({
  * (FR-807, D-022).
  */
 @Controller()
-@SensitiveFields({ cost: 'fields.see_bought_price' })
+// `est_value` is the same cost as it was recorded in a History row's diff.
+@SensitiveFields({ cost: 'fields.see_bought_price', est_value: 'fields.see_bought_price' })
 export class DamagesController {
   constructor(private readonly damages: DamagesService) {}
 
@@ -153,6 +162,21 @@ export class DamagesController {
    * `companies.record_credit`, which the service checks with the record loaded — the credit is
    * optional, so it cannot be a second key on the route (the same shape as D-023's converse).
    */
+  /**
+   * "Paid back" (D-062): a company settled a damage it owes us for, in money or in materials.
+   * Until this is confirmed the damage is a cost and a debt on their account; after it, neither.
+   */
+  @Post('damages/:id/paid-back')
+  @RequirePermission('damages.mark_returned')
+  @HttpCode(200)
+  async paidBack(
+    @Req() request: RequestWithContext,
+    @Param('id') id: string,
+    @Body(zodBody(paidBackSchema)) body: z.infer<typeof paidBackSchema>,
+  ) {
+    return this.damages.paidBack(contextOf(request), id, body);
+  }
+
   @Post('damages/:id/return')
   @RequirePermission('damages.mark_returned')
   @HttpCode(200)

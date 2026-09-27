@@ -105,22 +105,20 @@ await client.query(
 
 say('customers and companies');
 await client.query(
-  `INSERT INTO customers (name, name_normalized, settlement_currency, assigned_user_id, created_by, updated_by)
+  `INSERT INTO customers (name, name_normalized, settlement_currency, created_by, updated_by)
    SELECT 'Volume customer ' || g, 'volume customer ' || g,
           (CASE WHEN g % 10 = 0 THEN 'USD' ELSE 'IQD' END)::currency,
-          (SELECT id FROM users WHERE username = 'volume.' || (1 + g % $3)),
           $1, $1
      FROM generate_series(1, $2) g
-   ON CONFLICT DO NOTHING`,
-  [actor, CUSTOMERS, EMPLOYEES],
+    WHERE NOT EXISTS (SELECT 1 FROM customers c WHERE c.name_normalized = 'volume customer ' || g)`,
+  [actor, CUSTOMERS],
 );
 await client.query(
-  // A company is a business we buy from (D-054). Names are not unique any more, so a re-run is
-  // kept idempotent by asking rather than by a conflict.
-  `INSERT INTO customers (name, name_normalized, settlement_currency, is_customer, is_supplier,
-                         created_by, updated_by)
+  // Every account is a company (D-055). Names are not unique any more, so a re-run is kept
+  // idempotent by asking rather than by a conflict.
+  `INSERT INTO customers (name, name_normalized, settlement_currency, created_by, updated_by)
    SELECT 'Volume supplier ' || g, 'volume supplier ' || g,
-          (CASE WHEN g % 5 = 0 THEN 'USD' ELSE 'IQD' END)::currency, false, true, $1, $1
+          (CASE WHEN g % 5 = 0 THEN 'USD' ELSE 'IQD' END)::currency, $1, $1
      FROM generate_series(1, $2) g
     WHERE NOT EXISTS (SELECT 1 FROM customers c WHERE c.name_normalized = 'volume supplier ' || g)`,
   [actor, COMPANIES],
@@ -277,7 +275,7 @@ for (let year = 0; year < YEARS; year += 1) {
         related, request_id, auth_method)
      SELECT o.created_at, o.acting_user_id, 'create', 'order', o.id::text,
             'Order #' || o.number, '{}'::jsonb,
-            jsonb_build_object('customer_id', o.customer_id, 'assigned_user_id', c.assigned_user_id),
+            jsonb_build_object('customer_id', o.customer_id),
             gen_random_uuid(), 'password'
        FROM orders o JOIN customers c ON c.id = o.customer_id
       WHERE o.order_date >= (now() - $1::interval)::date
@@ -340,7 +338,7 @@ const { rows: totals } = await client.query(
           (SELECT count(*) FROM order_lines) AS order_lines,
           (SELECT count(*) FROM purchases) AS purchases,
           (SELECT count(*) FROM customers) AS customers,
-          (SELECT count(*) FROM customers WHERE is_supplier) AS companies,
+          (SELECT count(*) FROM customers WHERE name LIKE 'Volume supplier %') AS companies,
           (SELECT count(*) FROM items) AS materials,
           (SELECT count(*) FROM customer_ledger) AS customer_ledger,
           (SELECT count(*) FROM company_ledger) AS company_ledger,

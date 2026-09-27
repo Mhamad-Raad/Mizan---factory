@@ -30,7 +30,7 @@ export class ErrorFilter implements ExceptionFilter {
       response.status(ERROR_CODES[exception.code]).json({
         error: {
           code: exception.code,
-          message_key: messageKeyFor(exception.code),
+          message_key: exception.messageKey,
           params: exception.params,
           fields: exception.fields,
           request_id: requestId,

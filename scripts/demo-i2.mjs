@@ -106,8 +106,6 @@ check(Boolean(hemin && nazdar), 'both signed in and set their own passwords');
 const alNoor = await call(nazdar.session, '/customers', {
   method: 'POST',
   body: {
-    is_customer: false,
-    is_supplier: true,
     name: `Al-Noor Steel Co. ${unique}`,
     contact_name: 'Abu Ahmad',
     phone: '0751 222 3344',
@@ -272,7 +270,7 @@ check(guard.status === 422 && guard.body?.error?.code === 'RATE_GUARD', 'a rate 
 
 const gulf = await call(nazdar.session, '/customers', {
   method: 'POST',
-  body: { is_customer: false, is_supplier: true, name: `Gulf Steel FZE ${unique}`, settlement_currency: 'USD' },
+  body: { name: `Gulf Steel FZE ${unique}`, settlement_currency: 'USD' },
 });
 await call(nazdar.session, `/customers/${gulf.body.id}/rates`, {
   method: 'POST',
@@ -375,7 +373,7 @@ check(steelNow.body?.stock?.stock_count === 20, `steel stock is back to ${steelN
 step(7, 'Record an opening debt for a new company with a note, share its statement, and sort the list by balance');
 const zagros = await call(nazdar.session, '/customers', {
   method: 'POST',
-  body: { is_customer: false, is_supplier: true, name: `Zagros Metals ${unique}`, settlement_currency: 'IQD' },
+  body: { name: `Zagros Metals ${unique}`, settlement_currency: 'IQD' },
 });
 const openingDebt = await call(nazdar.session, `/companies/${zagros.body.id}/opening-balance`, {
   method: 'POST',

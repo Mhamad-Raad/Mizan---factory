@@ -18,12 +18,18 @@ which is what lets the session cookie stay `SameSite=Lax` with no cross-site exc
    `openssl rand -base64 32`.
 3. Set the CSP hash for the inline pre-paint script:
    `MIZAN_CSP_INLINE_HASH=$(sh ops/docker/csp-hash.sh)`.
-4. `docker compose up -d --build`.
-5. Run the migrations: `docker compose exec api node apps/api/dist/database/migrate.js`.
-6. Seed the first admin: `docker compose exec api node apps/api/dist/database/seed.js`,
+4. Build, migrate, then start: `docker compose --profile tools build`, `docker compose run --rm migrate`,
+   `docker compose up -d`. The API does not hold the migrate role's credentials — only the
+   one-off `migrate` job does — and it refuses to start while a migration is pending, so the
+   migrations go first. The first migrate creates the application role `mizan_app` without a
+   password; give it the one in `DATABASE_URL` before `up`:
+   `docker compose exec db psql -U mizan_migrate -d mizan -c "ALTER ROLE mizan_app PASSWORD '<the DATABASE_URL password>'"`.
+   Then take the superuser away from `mizan_migrate` (below, "The migrate role and the
+   superuser") — **after** this first migrate, never before it.
+5. Seed the first admin: `docker compose exec api node apps/api/dist/database/seed.js`,
    then **sign in once and change the password** — the account is created with
    `must_change_password`, and the value in `.env` should be removed afterwards.
-7. Check `https://<domain>/api/v1/health` returns `{"status":"ok"}`.
+6. Check `https://<domain>/api/v1/health` returns `{"status":"ok"}`.
 
 ## Ordinary deployment
 
@@ -32,13 +38,37 @@ while a migration is pending — so a half-deployed schema cannot serve requests
 
 ```sh
 git pull                                                   # on a release tag
-docker compose build api web
-docker compose run --rm api node apps/api/dist/database/migrate.js
+docker compose build api web migrate
+docker compose run --rm migrate                            # the only container with the migrate role
 docker compose up -d api web
 docker compose logs -f api | head -40                      # expect "listening on 3000"
 ```
 
 Deploys go outside 07:00–19:00 Asia/Baghdad unless it is a hot fix (section 2.14).
+
+The API checks for pending migrations as the application role (`0028_app_reads_migrations`
+grants it `SELECT` on `mizan_migrations`, nothing else). If it logs "the application role may
+not read mizan_migrations", the migrate job has not run yet: run it, then start the API.
+
+**The migrate role and the superuser (one-time, by hand).** `compose.yml` creates the database
+with `POSTGRES_USER=mizan_migrate`, which makes the schema owner a PostgreSQL **superuser** — more
+than migrations need. **Order matters**: the first migrate must already have run, because
+migration `0002` creates the `mizan_app` role, and creating a role needs `CREATEROLE` (which a
+superuser has, and the demoted role below does not). On a new host that is right after step 4
+of "First deployment"; on an existing one, at a planned maintenance window:
+
+```sh
+docker compose exec db psql -U mizan_migrate -d mizan -c "CREATE ROLE pg_admin LOGIN SUPERUSER PASSWORD '<new, from openssl rand -base64 32>'"
+docker compose exec db psql -U pg_admin -d mizan -c "ALTER ROLE mizan_migrate NOSUPERUSER CREATEDB"
+```
+
+then keep the `pg_admin` password with the backup key (off the host) and use it only for
+restores and emergencies. Migrations, the nightly dump and the restore drill keep working as
+`mizan_migrate`, which still owns the schema. A later migration that has to create or alter a
+role will fail as `mizan_migrate` with "permission denied to create role": run that one as
+`pg_admin`, or grant `CREATEROLE` for the window and revoke it after. This is not automated
+because the init scripts of the `postgres` image run only on an empty volume, and the
+production volume is not empty.
 
 **Rolling back** is redeploying the previous tag. A migration is never rolled back by
 un-applying it: write a new forward migration. The runner refuses to re-apply a file whose
@@ -109,9 +139,19 @@ copies it encrypted are still in retention, which is thirteen months.
 ## Backups
 
 Nightly at 03:00 Asia/Baghdad the `backup` container dumps, **verifies the dump is readable**,
-encrypts with AES-256, uploads to `BACKUP_BUCKET`, and prunes to 30 daily and 12 monthly
-copies. WAL segments are archived continuously with `archive_timeout=900`, which bounds loss
-at fifteen minutes (NFR-08: RPO 15 minutes, RTO 4 hours).
+encrypts with AES-256, writes an HMAC-SHA256 integrity tag beside it (`<file>.hmac`, its key
+stretched from `BACKUP_ENCRYPTION_KEY` with PBKDF2 and distinct from the encryption key), uploads both to `BACKUP_BUCKET`, syncs the WAL, and prunes to 30 daily
+and 12 monthly copies. WAL segments are archived continuously with `archive_timeout=900`, which
+bounds loss at fifteen minutes (NFR-08: RPO 15 minutes, RTO 4 hours), and leave the host every
+five minutes.
+
+The container is built from `ops/docker/Dockerfile.backup` (pg_dump, `openssl`, the `aws`
+client) and needs the off-site store's credentials in `.env`: `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, and for Backblaze B2 / Wasabi / any other
+S3-compatible store `AWS_ENDPOINT_URL`. **There is no "local only" mode**: if the copy cannot
+leave the host — client missing, bucket or credentials wrong, upload refused — the run fails
+with a `FAILED:` line naming the cause and sends **no** heartbeat, and the loop logs `ERROR:` on
+every WAL sync it cannot do. A missed heartbeat is therefore always a real problem.
 
 Set `BACKUP_HEARTBEAT_URL` to a dead-man's-switch monitor. **Silence is the alert**: a backup
 that quietly stopped working is otherwise discovered on the day it is needed.
@@ -119,8 +159,9 @@ that quietly stopped working is otherwise discovered on the day it is needed.
 Check it is working:
 
 ```sh
-docker compose logs backup | tail -20                      # a "done:" line each night
-aws s3 ls "$BACKUP_BUCKET/daily/" | tail -5
+docker compose logs backup | tail -20                      # a "done:" line each night, no "ERROR:"
+aws s3 ls "$BACKUP_BUCKET/daily/" | tail -5                # each .dump.enc with its .dump.enc.hmac
+docker compose exec backup sh /opt/mizan/backup.sh         # run one now, e.g. after changing credentials
 ```
 
 ## Restore
@@ -129,10 +170,16 @@ Rehearsed before go-live and every quarter (I6). Record each rehearsal in
 `ops/runbook/restore-drills.md`.
 
 ```sh
-# 1 — fetch and decrypt the chosen copy
+# 1 — fetch the chosen copy with its integrity tag, check the tag, decrypt
 aws s3 cp "$BACKUP_BUCKET/daily/mizan-<stamp>.dump.enc" .
-openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
-  -in mizan-<stamp>.dump.enc -out mizan.dump -pass env:BACKUP_ENCRYPTION_KEY
+aws s3 cp "$BACKUP_BUCKET/daily/mizan-<stamp>.dump.enc.hmac" .
+sh ops/backup/restore-decrypt.sh mizan-<stamp>.dump.enc mizan.dump
+#   "REFUSED … does not match" means the copy was damaged or altered (or the key is wrong):
+#   take another copy. "REFUSED … not found" means the .hmac was not fetched: fetch it. Only
+#   for a copy that truly has no tag (made before tags existed, or the tag is lost) add
+#   --allow-untagged before the file names; it is then only as trustworthy as where it came from.
+#   The script needs `openssl`; the backup container has it:
+#   docker compose run --rm --entrypoint sh -v "$PWD:/restore" -w /restore backup /opt/mizan/restore-decrypt.sh …
 
 # 2 — restore into a fresh database (never over a live one)
 createdb -O mizan_migrate mizan_restore
