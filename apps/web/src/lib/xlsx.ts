@@ -217,7 +217,8 @@ export function buildXlsx(sheets: readonly Sheet[], options: { rtl?: boolean } =
 /** Builds the workbook and hands it to the browser as a download. */
 export function downloadXlsx(fileName: string, sheets: readonly Sheet[], options: { rtl?: boolean } = {}): void {
   const bytes = buildXlsx(sheets, options);
-  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  // zipSync allocates a plain ArrayBuffer; the cast only narrows its type for Blob.
+  const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

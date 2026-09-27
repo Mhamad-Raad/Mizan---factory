@@ -440,7 +440,7 @@ function rangeOf(filter: DateFilter, today: string): { from?: string; to?: strin
 /** The quantity as the material measures it, with the other measure when it was recorded. */
 export function quantityOf(
   damage: Pick<DamageRow, 'priced_measure' | 'qty_count' | 'qty_kg'>,
-  formatter: { number: (value: string | number, decimals?: number) => string },
+  formatter: ReturnType<typeof useFormatter>,
   t: (key: string) => string,
 ): string {
   const parts: string[] = [];

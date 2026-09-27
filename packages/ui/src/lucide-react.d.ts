@@ -47,4 +47,9 @@ declare module 'lucide-react' {
   export const ShoppingCart: LucideIcon;
   export const Ellipsis: LucideIcon;
   export const Filter: LucideIcon;
+  export const ChartColumn: LucideIcon;
+  export const LayoutDashboard: LucideIcon;
+  export const Download: LucideIcon;
+  export const Pencil: LucideIcon;
+  export const Printer: LucideIcon;
 }
