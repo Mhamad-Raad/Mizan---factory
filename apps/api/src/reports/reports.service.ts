@@ -145,7 +145,10 @@ export class ReportsService {
    */
   async profit(context: RequestContext, request: ReportRequest) {
     const { filters, meta } = this.resolve(context, request, 'done_by');
-    const rows = await this.reports.margins(filters);
+    const [rows, adjustments] = await Promise.all([
+      this.reports.margins(filters),
+      this.reports.orderAdjustments(filters),
+    ]);
 
     const byGroup = new Map<
       string,
@@ -174,6 +177,27 @@ export class ReportsService {
       });
     }
 
+    // The round-up less the order discount is money the order took or gave up with no line
+    // behind it: it moves what was sold and the margin alike, as on the Accounts page (D-072).
+    // A group the order decides takes its own share; a figure no group can hold (grouped by
+    // material) stays out of the rows and is carried into the totals below.
+    const unassigned = { iqd: 0, usd_cents: 0 };
+    for (const adjustment of adjustments) {
+      const iqd = Number(adjustment.adjustment_iqd);
+      const usdCents = Number(adjustment.adjustment_usd_cents);
+      // Keys match the margins' own, a null one included (an order with no acting employee).
+      const group = byGroup.get(adjustment.group_key as string);
+      if (group) {
+        group.revenue_iqd += iqd;
+        group.revenue_usd_cents += usdCents;
+        group.margin_iqd += iqd;
+        group.margin_usd_cents += usdCents;
+      } else {
+        unassigned.iqd += iqd;
+        unassigned.usd_cents += usdCents;
+      }
+    }
+
     const groups = [...byGroup].map(([key, group]) => ({
       key,
       label: group.label,
@@ -200,10 +224,13 @@ export class ReportsService {
         lines_without_cost: sum(groups.map((group) => group.lines_without_cost)),
         lines_with_fallback: sum(groups.map((group) => group.lines_with_fallback)),
         cost: {
-          revenue_iqd: sum(groups.map((group) => group.cost.revenue_iqd)),
-          revenue_usd_cents: sum(groups.map((group) => group.cost.revenue_usd_cents)),
-          margin_iqd: sum(groups.map((group) => group.cost.margin_iqd)),
-          margin_usd_cents: sum(groups.map((group) => group.cost.margin_usd_cents)),
+          revenue_iqd: sum(groups.map((group) => group.cost.revenue_iqd)) + unassigned.iqd,
+          revenue_usd_cents: sum(groups.map((group) => group.cost.revenue_usd_cents)) + unassigned.usd_cents,
+          margin_iqd: sum(groups.map((group) => group.cost.margin_iqd)) + unassigned.iqd,
+          margin_usd_cents: sum(groups.map((group) => group.cost.margin_usd_cents)) + unassigned.usd_cents,
+          /** Rounding less order discounts that no row holds (grouped by material); 0 otherwise. */
+          order_adjustment_iqd: unassigned.iqd,
+          order_adjustment_usd_cents: unassigned.usd_cents,
         },
       },
     };

@@ -346,6 +346,61 @@ export class ReportsRepository {
     return rows;
   }
 
+  /**
+   * What an order adds or takes away beyond its lines: the round-up to 250 dinars (D-065) less
+   * the order's discount. Both belong to the order, not to a line, so the margins above cannot
+   * see them — the Accounts page counts them, and without them the two disagreed (D-072).
+   *
+   * Grouped by the report's own key where the order decides it (month, day, company, employee).
+   * A material cannot be given a share of an order-wide figure, so grouped by material this
+   * answers one ungrouped row, which the report adds to its totals only; filtered to one
+   * material it answers nothing, because the rows are that material's lines alone.
+   */
+  async orderAdjustments(filters: ReportFilters) {
+    if (filters.item_id) return [];
+    const groupBy = filters.group_by ?? 'month';
+    const values: unknown[] = [filters.from, filters.to];
+    const conditions = [
+      "o.status = 'active'",
+      'o.deleted_at IS NULL',
+      'o.order_date >= $1::date',
+      'o.order_date <= $2::date',
+    ];
+    if (filters.done_by) {
+      values.push(filters.done_by);
+      conditions.push(`o.acting_user_id = $${values.length}::uuid`);
+    }
+
+    const key =
+      groupBy === 'item'
+        ? { key: 'NULL::text', group: '' }
+        : groupBy === 'customer'
+          ? { key: 'o.customer_id::text', group: 'GROUP BY o.customer_id' }
+          : groupBy === 'employee'
+            ? { key: 'o.acting_user_id::text', group: 'GROUP BY o.acting_user_id' }
+            : groupBy === 'day'
+              ? { key: "to_char(o.order_date, 'YYYY-MM-DD')", group: 'GROUP BY o.order_date' }
+              : {
+                  key: "to_char(date_trunc('month', o.order_date), 'YYYY-MM-DD')",
+                  group: "GROUP BY date_trunc('month', o.order_date)",
+                };
+
+    const { rows } = await this.database.query<{
+      group_key: string | null;
+      adjustment_iqd: string;
+      adjustment_usd_cents: string;
+    }>(
+      `SELECT ${key.key} AS group_key,
+              coalesce(sum(o.rounding_iqd - o.discount_iqd), 0)::text AS adjustment_iqd,
+              coalesce(sum(o.rounding_usd_cents - o.discount_usd_cents), 0)::text AS adjustment_usd_cents
+         FROM orders o
+        WHERE ${conditions.join(' AND ')}
+        ${key.group}`,
+      values,
+    );
+    return rows;
+  }
+
   // ───────────────────────────────── stock (FR-1006) ─────────────────────────────────
 
   /** `limit` null values every material (LIMIT NULL is no limit), which the paged report does. */

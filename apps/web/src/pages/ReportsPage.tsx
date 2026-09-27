@@ -722,6 +722,16 @@ function ReportTab({
         {reportKey === 'profit' && Number(totals.lines_without_cost ?? 0) > 0 ? (
           <p className="mz-caption">{t('reports:no_cost_price', { count: Number(totals.lines_without_cost) })}</p>
         ) : null}
+        {/* Grouped by material, the rounding less order discounts has no row of its own (D-072). */}
+        {reportKey === 'profit' && Number(readPath(totals, 'order_adjustment_iqd') ?? 0) !== 0 ? (
+          <p className="mz-caption">
+            {t('reports:order_adjustment_in_totals')}{' '}
+            <DualAmount
+              amount_iqd={Number(readPath(totals, 'order_adjustment_iqd'))}
+              amount_usd_cents={Number(readPath(totals, 'order_adjustment_usd_cents') ?? 0)}
+            />
+          </p>
+        ) : null}
 
         {chronological && headline ? (
           <div className="mz-card">

@@ -77,5 +77,6 @@
   "chart_in_dinars": "Over the period, in dinars",
   "expense_title": "Expense",
   "amount": "Amount",
-  "note": "Note"
+  "note": "Note",
+  "order_adjustment_in_totals": "The totals include the orders' rounding less their discounts, which belong to a whole order and not to one material:"
 }

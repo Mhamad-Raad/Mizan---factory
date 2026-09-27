@@ -1230,3 +1230,14 @@ languages, and the stock queries were timed on 520,000 buys and 1.56 million tak
   - The expense sheet explains a missing rate.
   - The currency sheet shows its error.
   - The companies list offers the balance filter only to those who can see the net balance.
+
+## D-072 · 2026-09-27 · client review · The Profit report counts rounding and order discounts
+
+- **Found:** the Accounts page takes an order's round-up to 250 dinars as profit and its discount
+  off it (D-065), while the Profit report summed only the lines, so the two answered different
+  figures for the same days — an order discounted 1,000 and rounded up 125 was 875 apart.
+- **Chosen:** the Profit report adds each order's rounding less its discount to what was sold
+  and to the margin, like the Accounts page. Grouped by month, day, company or employee, each
+  group takes its own orders' share. Grouped by material, no row can hold an order-wide figure,
+  so the totals carry it and say so beside them; filtered to one material, the report is that
+  material's lines alone and carries none. Relied on: 1.10 (defaults), D-065.

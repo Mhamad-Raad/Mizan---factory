@@ -409,6 +409,40 @@ describe('the reports (FR-1001 to FR-1013)', () => {
     it('is refused outright to a user without the profit flag', async () => {
       await as(ctx.http, sara).get(`/api/v1/reports/profit?${range()}`).expect(403);
     });
+
+    it('counts the round-up and the order discount, and agrees with the Accounts page (D-072)', async () => {
+      await seedActivity();
+      // 12.5 kg × 850 = 10,625, less a 1,000 discount = 9,625, rounded up to 9,750: +125.
+      const order = await as(ctx.http, rebaz)
+        .post('/api/v1/orders')
+        .send({
+          customer_id: kawa,
+          order_date: today(),
+          payment_type: 'borrowed',
+          discount: { amount: 1_000, currency: 'IQD' },
+          lines: [{ item_id: copper, qty_kg: '12.500' }],
+        })
+        .expect(201);
+      const adjustment = order.body.rounding_iqd - order.body.discount_iqd;
+      expect(adjustment).not.toBe(0);
+
+      const accounts = (await as(ctx.http, admin).get(`/api/v1/accounts/summary?${range()}`).expect(200)).body;
+      for (const groupBy of ['month', 'day', 'customer', 'employee', 'item']) {
+        const report = await as(ctx.http, admin)
+          .get(`/api/v1/reports/profit?${range()}&group_by=${groupBy}`)
+          .expect(200);
+        expect(report.body.totals.cost.margin_iqd, groupBy).toBe(accounts.profit.amount_iqd);
+        expect(report.body.totals.cost.revenue_iqd, groupBy).toBe(accounts.sold.amount_iqd);
+        // Grouped by material no row can hold an order-wide figure: the totals carry it, named.
+        expect(report.body.totals.cost.order_adjustment_iqd, groupBy).toBe(groupBy === 'item' ? adjustment : 0);
+      }
+
+      // Filtered to one material, the report is that material's lines alone.
+      const copperOnly = await as(ctx.http, admin)
+        .get(`/api/v1/reports/profit?${range()}&group_by=item&item_id=${copper}`)
+        .expect(200);
+      expect(copperOnly.body.totals.cost.order_adjustment_iqd).toBe(0);
+    });
   });
 
   // ───────────────────────────────── stock (FR-1006) ─────────────────────────────────
