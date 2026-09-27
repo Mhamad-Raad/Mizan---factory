@@ -1,7 +1,7 @@
 import { amountIn } from '@mizan/money';
 import type { Currency } from '@mizan/money';
 import { balanceOf } from './balance.js';
-import { liveEntries, reversalOf } from './reversal.js';
+import { AlreadyReversedError, liveEntries, reversalOf } from './reversal.js';
 import type { LedgerStore } from './store.js';
 import { NOTE_REQUIRED_TYPES } from './types.js';
 import type { BalanceChange, LedgerEntry, NewLedgerEntry } from './types.js';
@@ -45,8 +45,9 @@ export class LedgerWriter {
     }
 
     const currency = await this.settlementCurrency(entry.owner_id);
-    const existing = await this.store.entriesFor(entry.owner_id);
-    const before = balanceOf(existing, currency);
+    const before = this.store.balanceIn
+      ? await this.store.balanceIn(entry.owner_id, currency)
+      : balanceOf(await this.store.entriesFor(entry.owner_id), currency);
     const written = await this.store.append(entry);
 
     return {
@@ -61,6 +62,12 @@ export class LedgerWriter {
     entryId: string,
     options: { created_by: string; note: string; entry_date?: string },
   ): Promise<WriteResult> {
+    if (this.store.findEntry) {
+      const found = await this.store.findEntry(ownerId, entryId);
+      if (!found) throw new LedgerWriteError(`ledger entry ${entryId} does not belong to ${ownerId}`);
+      if (found.reversed) throw new AlreadyReversedError(entryId);
+      return this.write(reversalOf(found.entry, [], options));
+    }
     const existing = await this.store.entriesFor(ownerId);
     const target = existing.find((entry) => entry.id === entryId);
     if (!target) throw new LedgerWriteError(`ledger entry ${entryId} does not belong to ${ownerId}`);

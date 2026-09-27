@@ -1,3 +1,4 @@
+import type { Currency } from '@mizan/money';
 import type { LedgerEntry, LedgerStore, NewLedgerEntry } from '@mizan/ledger';
 import type { Db } from '../database/pool.js';
 
@@ -104,6 +105,29 @@ export class AccountLedgerStore implements LedgerStore {
       [ownerId],
     );
     return rows.map((row) => this.toEntry(row));
+  }
+
+  /** The balance in one currency, summed here rather than over rows read into the API. */
+  async balanceIn(ownerId: string, currency: Currency): Promise<number> {
+    const column = currency === 'IQD' ? 'amount_iqd' : 'amount_usd_cents';
+    const { rows } = await this.tx.query<{ balance: string }>(
+      `SELECT coalesce(sum(${column}), 0)::text AS balance FROM ${this.shape.table} WHERE ${this.shape.ownerColumn} = $1`,
+      [ownerId],
+    );
+    return Number(rows[0]?.balance ?? 0);
+  }
+
+  /** One row, and whether a reversal of it exists (the unique index on `reverses_entry_id`). */
+  async findEntry(ownerId: string, entryId: string): Promise<{ entry: LedgerEntry; reversed: boolean } | null> {
+    const { rows } = await this.tx.query<LedgerRow & { reversed: boolean }>(
+      `SELECT ${this.columns()},
+              EXISTS (SELECT 1 FROM ${this.shape.table} r WHERE r.reverses_entry_id = ${this.shape.table}.id) AS reversed
+         FROM ${this.shape.table}
+        WHERE ${this.shape.ownerColumn} = $1 AND id = $2`,
+      [ownerId, entryId],
+    );
+    const row = rows[0];
+    return row ? { entry: this.toEntry(row), reversed: row.reversed } : null;
   }
 
   /**
