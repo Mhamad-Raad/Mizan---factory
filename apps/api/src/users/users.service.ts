@@ -412,8 +412,9 @@ export class UsersService {
 
   async revokeSession(context: RequestContext, id: string, sessionId: string): Promise<void> {
     await this.requireUser(id);
-    const revoked = await this.sessions.revokeOfUser(id, sessionId, 'revoked_by_admin');
-    if (!revoked) throw ApiError.notFound();
+    const outcome = await this.sessions.revokeOfUser(id, sessionId, 'revoked_by_admin');
+    if (outcome === 'missing') throw ApiError.notFound();
+    if (outcome === 'already') return;
     await this.audit.record(context, {
       action: 'logout',
       entity_type: 'session',

@@ -69,5 +69,6 @@
   "field.phone_invalid": "Type a phone number — digits, like 0750 123 4567",
   "DUPLICATE": "This already exists — refresh and check before saving again",
   "BUSY_RETRY": "Someone else was saving at the same moment — nothing was saved, try again",
-  "damage_booked": "This record has already taken stock or charged a company — void it and enter it again to change the quantity, who did it or the date"
+  "damage_booked": "This record has already taken stock or charged a company — void it and enter it again to change the quantity, who did it or the date",
+  "pricing_unit_bought": "This material has been bought by that unit — its unit can no longer change. Add a new material instead"
 }

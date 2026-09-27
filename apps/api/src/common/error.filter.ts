@@ -52,7 +52,8 @@ export class ErrorFilter implements ExceptionFilter {
     // The money kernel refuses numbers it cannot use — beyond the safe range, or two amounts
     // that imply no rate — with a RangeError: the request's numbers, not a fault of ours.
     if (exception instanceof RangeError) {
-      this.logger.warn(`[${requestId}] refused numbers: ${exception.message}`);
+      // Logged as an error all the same: a RangeError from our own code must still be noticed.
+      this.logger.error(`[${requestId}] refused numbers: ${exception.message}`, exception.stack);
       response.status(422).json({
         error: { code: 'VALIDATION_FAILED', message_key: messageKeyFor('VALIDATION_FAILED'), params: {}, fields: [], request_id: requestId },
       });
@@ -112,7 +113,9 @@ function databaseErrorCode(exception: unknown): ErrorCode | null {
   if (typeof code !== 'string' || !/^[0-9A-Z]{5}$/.test(code)) return null;
   if (code === '23505') return 'DUPLICATE';
   if (code === '40P01' || code === '40001') return 'BUSY_RETRY';
-  // Foreign key, check and not-null rules; invalid text, dates and numbers out of range.
-  if (code === '23503' || code === '23514' || code === '23502' || code.startsWith('22')) return 'VALIDATION_FAILED';
+  // A check rule, and text or a date the database could not read: the request's values. A
+  // missing column, a broken reference or an overflow in SQL we wrote are faults of ours and
+  // stay 500s, so they are seen (review).
+  if (code === '23514' || code === '22P02' || code === '22007' || code === '22008') return 'VALIDATION_FAILED';
   return null;
 }
