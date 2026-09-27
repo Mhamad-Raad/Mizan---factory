@@ -5,7 +5,9 @@
  * Run it against an empty database that has only its first admin (`pnpm db:migrate && pnpm
  * db:seed`), with the API up:
  *
- *   node scripts/seed-demo.mjs
+ *   DEMO_ADMIN_NEW_PASSWORD='…' node scripts/seed-demo.mjs
+ *
+ * (the new admin password is needed only on a fresh database, whose admin must change it first).
  *
  * It stops at the first refused request and says which, rather than leaving half a story.
  * What it makes:
@@ -20,6 +22,11 @@ const BASE = process.env.DEMO_BASE_URL ?? 'http://localhost:3000/api/v1';
 const ADMIN = process.env.DEMO_ADMIN ?? 'admin';
 const ADMIN_PASSWORD = process.env.DEMO_ADMIN_PASSWORD ?? 'ChangeMe!2026';
 const EMPLOYEE_PASSWORD = process.env.DEMO_EMPLOYEE_PASSWORD ?? 'Mizan-demo-2026';
+/**
+ * A fresh database's first admin must change the password before anything else (FR-101). The
+ * new one is never invented here — an admin password nobody chose is a password nobody knows.
+ */
+const ADMIN_NEW_PASSWORD = process.env.DEMO_ADMIN_NEW_PASSWORD;
 
 function jar() {
   const cookies = new Map();
@@ -69,7 +76,15 @@ const monthOf = (isoDate) => isoDate.slice(0, 7);
 
 const admin = jar();
 console.log(`Mizan — demo data against ${BASE}`);
-await post(admin, '/auth/login', { username_or_phone: ADMIN, password: ADMIN_PASSWORD });
+const signedIn = await post(admin, '/auth/login', { username_or_phone: ADMIN, password: ADMIN_PASSWORD });
+if (signedIn.user?.must_change_password) {
+  if (!ADMIN_NEW_PASSWORD) {
+    console.error('✗ the admin must change the first password: set DEMO_ADMIN_NEW_PASSWORD and run again');
+    process.exit(1);
+  }
+  await post(admin, '/auth/change-password', { current: ADMIN_PASSWORD, new: ADMIN_NEW_PASSWORD });
+  console.log('· the admin password was changed to DEMO_ADMIN_NEW_PASSWORD');
+}
 const existing = await call(admin, '/customers?page_size=5');
 // The walk-in customer is always there; anything more means this is not an empty database.
 if (existing.total > 1) {
