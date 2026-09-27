@@ -1122,3 +1122,74 @@ without the flags. This supersedes the per-address and backup bullets of D-066.
   their own home, with no page title left over from the last one.
 - **The demo seed** changes a fresh admin's password to `DEMO_ADMIN_NEW_PASSWORD`, and stops
   with that instruction when it is not set — it never invents an admin password.
+
+## D-069 · 2026-09-27 · client review · Only dinar accounts are rounded to 250
+
+- **Found:** the round-250 rule of D-065 rounded the dinar total and converted the difference,
+  so a company settled in dollars owed odd cents — a $10.00 order became $10.11.
+- **Chosen (the recommended option; the client did not pick one):** an order's total rounds up
+  to the next 250 IQD only when its company settles in dinars, the walk-in included. A company
+  settled in dollars is billed in dollars and its order is not rounded. The order form's preview
+  follows the same rule. Relied on: 1.10 (defaults), D-065.
+
+## D-070 · 2026-09-27 · full review · What the review of the whole system changed
+
+Five read-only review passes (money and stock, API, web, database, packages and tests); every
+finding below was traced in code and each fix has a test that fails without it.
+
+- **Money:**
+  - An order edit keeps the payments already made against it: a cash settlement covers only
+    what is still owed.
+  - The walk-in customer cannot be put on credit by an edit or a payment-type change.
+  - A buy's stock is costed as its share of what the buy cost, in both currencies — never a
+    rounded unit price times the quantity.
+  - What is left of each buy is trimmed to the stock on hand, oldest first (`item_lots`,
+    migration 0030), so selling past every buy or a stock correction no longer leaves phantom
+    stock in the buys or in the Stock report. Stock with no buy behind it is valued at the
+    month's price.
+  - A broken-goods record that took stock or charged a company is re-booked only by voiding
+    it; editing its texts keeps its cost.
+  - The Accounts sales and materials tabs count as cost only the lines that have one.
+  - The Broken goods report no longer counts the company's charge as a credit.
+- **Leaks:**
+  - The company's Orders tab hides what is owed without the balances flag.
+  - The companies list ignores the balance filter and sort for anyone who cannot see the net
+    balance.
+  - The dashboard's unpaid count travels under `balance`, like the Orders list (D-068).
+  - Only an admin may name somebody else as the one who took a payment.
+- **Errors:**
+  - Impossible dates, unknown History filters and malformed cursors are 422s.
+  - Database refusals answer as what they are: a duplicate is `DUPLICATE`, two saves
+    deadlocking is `BUSY_RETRY`, and a broken rule is `VALIDATION_FAILED` — never "something
+    went wrong".
+  - The money kernel's refusals are 422s.
+  - Materials are locked sorted and after the account, and a buy being voided or edited locks
+    its materials first.
+  - A return's credit and its status commit together.
+  - A stale preset save and a revocation of somebody else's session are refused.
+  - An emptied company field is cleared.
+- **History:** the cursor keeps microseconds, so rows one transaction wrote together are
+  never skipped between pages.
+- **Scale:**
+  - A ledger write sums the balance in the database instead of reading the account's whole
+    ledger, and a reversal reads one row.
+  - Reversing a document reads only that document's rows.
+  - `lot_allocations` has a covering index.
+- **Web:**
+  - Saved forms stop autosaving, and the dollar field can be typed.
+  - Money is parsed without floating point.
+  - Every write shows its error, including no connection.
+  - The summary screens refresh after writes, and no rate is invented when none is set.
+  - The statement uses the Baghdad day, and the payment preview uses the company's rate.
+  - A list never strands the user past its last page, and searches are debounced.
+  - The receipt is in both currencies.
+  - One helper each for the periods, the rate, the errors and the refresh.
+- **Tooling:** `pnpm typecheck` now type-checks the web app, the UI package and the API as
+  well.
+- **Left as they are, deliberately:**
+  - The buying-side write routes (company payments, adjustments and credits, purchases with a
+    company) stay in the API although no screen calls them. Removing a tested API surface is
+    the client's decision.
+  - The "All" chip of the Orders list, and the Stock and Payables reports, still add up the
+    whole table per request. They are correct, and slower as years pass. Maintained totals
+    would fix them, and are a separate piece of work.
