@@ -47,3 +47,19 @@ export function signInError(t: TFunction, caught: unknown): SignInError {
         : null,
   };
 }
+
+/**
+ * A refused password change, for the forced change and the Me page alike. A wrong current
+ * password and a lockout read as they do at sign-in — that field counts toward the same five
+ * attempts (security review, finding 2); a new password the rules refuse says which rule.
+ */
+export function passwordChangeError(t: TFunction, caught: unknown): string {
+  const wrongCurrent = caught instanceof ApiError && caught.fields[0]?.path === 'current';
+  if (!(caught instanceof ApiError) || caught.code === 'RATE_LIMITED' || wrongCurrent) {
+    const problem = signInError(t, caught);
+    return problem.warning ? `${problem.message} — ${problem.warning}` : problem.message;
+  }
+  const field = caught.fields[0];
+  if (field) return t(field.message_key, { min: 8, ...(field.params ?? {}) });
+  return t(caught.messageKey, { defaultValue: t('errors:INTERNAL') });
+}
