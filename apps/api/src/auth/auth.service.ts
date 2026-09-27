@@ -225,7 +225,12 @@ export class AuthService {
         return { kind: 'locked', minutes };
       },
       async (correct, state, tx) => {
-        if (!user || !correct) {
+        // The password was checked outside this transaction. An admin reset, a deactivation or a
+        // deletion since then must win: read the row again, locked, and accept the password only
+        // if it is still the one that was checked. A reset that commits after this waits for
+        // the session below and then revokes it with the rest.
+        const current = user && correct ? await this.users.findByIdForUpdate(user.id, tx) : null;
+        if (!user || !correct || !current || current.password_hash !== user.password_hash) {
           // A wrong username and a wrong password are answered identically, down to the count.
           const attemptsLeft = MAX_FAILURES - (state.recent + 1);
           const locking = attemptsLeft <= 0;
@@ -250,7 +255,7 @@ export class AuthService {
 
         // A deactivated user is told plainly — that is not credential disclosure, and the
         // alternative is an employee standing at a tablet with no idea why (FR-101).
-        if (!user.is_active) {
+        if (!current.is_active) {
           await this.recordFailure(key, identifier, user.id, ctx, 'deactivated', true, tx);
           return { kind: 'deactivated' };
         }

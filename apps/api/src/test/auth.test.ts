@@ -219,6 +219,36 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
     expect(seen.every((count) => count === 0)).toBe(true);
   });
 
+  it('refuses an old password when an admin reset lands while it is being checked', async () => {
+    const user = await seedUser({ username: 'sara', role: 'admin' });
+    const passwords = ctx.app.get(PasswordService);
+    const verify = passwords.verify.bind(passwords);
+    const verifySpy = vi.spyOn(passwords, 'verify').mockImplementation(async (hash, password) => {
+      const result = await verify(hash, password);
+      // The reset commits after the old password was checked, before the sign-in is recorded.
+      const replaced = await passwords.hash('a-brand-new-password');
+      await withDatabase((client) =>
+        client.query('UPDATE users SET password_hash = $1 WHERE username = $2', [replaced, 'sara']),
+      );
+      return result;
+    });
+    try {
+      await request(ctx.http)
+        .post('/api/v1/auth/login')
+        .send({ username_or_phone: 'sara', password: user.password })
+        .expect(401);
+    } finally {
+      verifySpy.mockRestore();
+    }
+    const sessions = await withDatabase((client) =>
+      client.query(
+        'SELECT count(*)::int AS n FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.username = $1',
+        ['sara'],
+      ),
+    );
+    expect(sessions.rows[0].n).toBe(0);
+  });
+
   it('refuses a deactivated account with its own message', async () => {
     const user = await seedUser({ username: 'ahmed', isActive: false });
     const response = await request(ctx.http)

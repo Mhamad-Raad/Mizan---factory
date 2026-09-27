@@ -34,6 +34,18 @@ export class UsersRepository {
     return rows[0] ?? null;
   }
 
+  /**
+   * The same row, locked until the transaction ends — so a password reset or a deactivation
+   * either finishes before the caller reads it, or waits until the caller's work has committed.
+   */
+  async findByIdForUpdate(id: string, tx: Db): Promise<UserRow | null> {
+    const { rows } = await tx.query<UserRow>(
+      `SELECT ${COLUMNS} FROM users WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
+
   /** Sign-in accepts the username or the phone number as an alias of it (FR-101). */
   async findByUsernameOrPhone(identifier: string): Promise<UserRow | null> {
     const username = identifier.trim().toLowerCase();
