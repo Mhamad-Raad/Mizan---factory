@@ -1,19 +1,16 @@
 /**
- * The Mizan mark (spec 3.2.2): a balance beam with two pans drawn as one continuous stroke —
- * the pan at one end holds a stack of three bars (materials), the other a coin. Monochrome:
- * it takes its colour from `currentColor`, so the same file serves the plum mark on light, the
- * light plum on dark and the brass variant on the login panel, with no second asset.
- *
- * "Mizan" is Arabic and Kurdish for scale, or balance. The mark is the product's whole idea:
- * goods on one side, money on the other, and the beam level.
+ * The Jiyan mark: a box — the warehouse's stock — with a sprout rising from its lid. "Jiyan"
+ * is Kurdish for life: goods that come in, move and keep the business growing. Drawn as open
+ * strokes that take `currentColor`, so the same file serves the mark on light, on dark and on
+ * the sign-in panel, with no second asset; it reads at the favicon's 16 px as a box and a leaf.
  */
 export interface MarkProps {
   size?: number;
-  /** The wordmark beside the beam, in the current language. */
+  /** The wordmark beside the mark, in the current language. */
   title?: string;
 }
 
-export function MizanMark({ size = 32, title }: MarkProps) {
+export function BrandMark({ size = 32, title }: MarkProps) {
   return (
     <svg
       width={size}
@@ -29,17 +26,13 @@ export function MizanMark({ size = 32, title }: MarkProps) {
       aria-hidden={title ? undefined : true}
       focusable="false"
     >
-      {/* the column and the beam */}
-      <path d="M24 9v30M14 39h20M10 15h28" />
-      {/* the pivot */}
-      <circle cx="24" cy="15" r="2.6" fill="currentColor" stroke="none" />
-      {/* the pans, hung from each end of the beam */}
-      <path d="M10 15l-5 9a5 5 0 0 0 10 0z" />
-      <path d="M38 15l-5 9a5 5 0 0 0 10 0z" />
-      {/* materials in one pan: three bars */}
-      <path d="M7 21.5h6M8 19h4" strokeWidth={1.6} />
-      {/* money in the other: a coin */}
-      <circle cx="38" cy="20.5" r="2.2" strokeWidth={1.6} />
+      {/* the box: its lid, and the two faces below it */}
+      <path d="M24 20 37 26.5 24 33 11 26.5Z" />
+      <path d="M11 26.5V36L24 42.5 37 36V26.5M24 33V42.5" />
+      {/* the sprout: a stem from the lid, and two leaves */}
+      <path d="M24 20V11" />
+      <path d="M24 14.5C24 9.5 27.5 6 33 6 33 11 29.5 14.5 24 14.5Z" fill="currentColor" stroke="none" />
+      <path d="M24 17C24 13.2 21.2 10.5 17 10.5 17 14.3 19.8 17 24 17Z" fill="currentColor" stroke="none" />
     </svg>
   );
 }

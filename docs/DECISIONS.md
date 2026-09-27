@@ -1230,3 +1230,20 @@ languages, and the stock queries were timed on 520,000 buys and 1.56 million tak
   - The expense sheet explains a missing rate.
   - The currency sheet shows its error.
   - The companies list offers the balance filter only to those who can see the net balance.
+
+## D-072 · 2026-09-27 · client request · The product is called Jiyan Management
+
+- **Asked:** rename Mizan to "Jiyan management", with a new icon and favicon.
+- **Chosen:**
+  - **Name:** the name the user sees is "Jiyan" (ژیان in Kurdish and Arabic, the same
+    written name), with "Management" as the line beneath it where "One factory" was. The
+    browser tab and the installed app are "Jiyan Management".
+  - **Mark (`BrandMark`):** a box — the warehouse's stock — with a sprout rising from its lid
+    ("jiyan" is Kurdish for life). The favicon and home-screen icons draw it in white on the
+    theme's teal. The icons are maskable, and an Apple touch icon was added. The offline
+    shell cache was renamed, so an installed app drops the old icons.
+  - **Exports:** files download as `jiyan-…`.
+- **Not renamed:** the internal names — the `@mizan/*` packages, the database and its roles,
+  the `mizan.prefs.v1` storage key, the repository. They are never shown, and renaming the
+  storage key would sign everyone out of their saved preferences, and the database would need
+  a migration of its own.

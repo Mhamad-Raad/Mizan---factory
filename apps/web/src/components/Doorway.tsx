@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, MizanMark } from '@mizan/ui';
+import { Card, BrandMark } from '@mizan/ui';
 import { AppearanceMenus } from './Appearance.js';
 
 interface DoorwayProps {
@@ -31,7 +31,7 @@ export function Doorway({ title, subtitle, children }: DoorwayProps) {
         <Card className="mz-doorway__card">
           <header className="mz-doorway__head">
             <span className="mz-doorway__mark">
-              <MizanMark size={28} title={t('common:app_name')} />
+              <BrandMark size={28} title={t('common:app_name')} />
             </span>
             <h1 className="mz-doorway__title">{title ?? t('common:app_name')}</h1>
             {subtitle ? <p className="mz-doorway__subtitle">{subtitle}</p> : null}

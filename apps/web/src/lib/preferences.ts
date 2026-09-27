@@ -11,7 +11,7 @@ export const RECENT_USERS_KEY = 'mizan.recentUsers.v1';
 
 export type Theme = 'light' | 'dark' | 'auto';
 export type FontScale = 0.875 | 1 | 1.125 | 1.25;
-/** The colour the app wears (D-061): teal is Mizan's own, the rest are the same ramp turned. */
+/** The colour the app wears (D-061): teal is Jiyan's own, the rest are the same ramp turned. */
 export type Palette =
   | 'teal'
   | 'ocean'

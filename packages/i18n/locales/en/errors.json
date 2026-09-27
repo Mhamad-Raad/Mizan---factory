@@ -59,7 +59,7 @@
   "paid_back_materials_needs_permission": "Recording that a company paid back in materials needs the “Record a supplier credit” permission — ask your admin",
   "credit_needs_permission": "Recording a supplier credit needs the “Record a supplier credit” permission — ask your admin",
   "PASSWORD_CHANGE_REQUIRED": "Choose your own password before you continue",
-  "request_origin_refused": "This request came from another website, so it was refused — open Mizan directly and try again",
+  "request_origin_refused": "This request came from another website, so it was refused — open Jiyan directly and try again",
   "csrf_refused": "Your sign-in changed in another tab — reload the page and try again",
   "malformed_id": "This link does not point to any record — check it, or open the record from its list",
   "field.number_too_small": "Must be {{min}} or more",

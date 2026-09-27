@@ -51,4 +51,4 @@ app.use(
 app.enableCors({ origin: appOrigin(env.APP_BASE_URL), credentials: true });
 
 await app.listen(env.PORT);
-logger.log(`Mizan API listening on ${env.PORT} (${env.NODE_ENV})`);
+logger.log(`Jiyan API listening on ${env.PORT} (${env.NODE_ENV})`);

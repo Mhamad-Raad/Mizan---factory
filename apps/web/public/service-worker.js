@@ -10,7 +10,7 @@
  * Removable without touching anything else: delete this file, the manifest and the two lines in
  * `index.html` that register it (FR-1313's own acceptance criterion).
  */
-const SHELL = 'mizan-shell-v1';
+const SHELL = 'jiyan-shell-v1';
 
 self.addEventListener('install', (event) => {
   // The shell is filled as the browser fetches it, not from a hard-coded list: the built file

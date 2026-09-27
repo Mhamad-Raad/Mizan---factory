@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BottomSheet, Icon, IconButton, Menu, MizanMark } from '@mizan/ui';
+import { BottomSheet, Icon, IconButton, Menu, BrandMark } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import { useApp } from '../lib/store.js';
 import { AppearanceMenus } from './Appearance.js';
@@ -192,7 +192,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* ── the sidebar, on a screen with room for one ─────────────────────────── */}
         <div className="mz-sidebar__brand">
           <span className="mz-sidebar__mark" aria-hidden="true">
-            <MizanMark size={22} />
+            <BrandMark size={22} />
           </span>
           <span className="mz-sidebar__brand-name">
             <span>{t('common:app_name')}</span>

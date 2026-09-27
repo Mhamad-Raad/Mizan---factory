@@ -286,7 +286,7 @@ export function ReportsPage() {
         );
       }
       downloadXlsx(
-        `mizan-reports-${range.from}-${range.to}`,
+        `jiyan-reports-${range.from}-${range.to}`,
         sheets.map((exported) => exported.sheet),
         { rtl: lang !== 'en' },
       );
@@ -615,7 +615,7 @@ function ReportTab({
   const download = () =>
     exporter.run(async () => {
       const { sheet, truncated } = await reportSheet(reportKey, shape, groupBy, range, t, formatter, period);
-      downloadXlsx(`mizan-${reportKey}-${range.from}-${range.to}`, [sheet], { rtl: lang !== 'en' });
+      downloadXlsx(`jiyan-${reportKey}-${range.from}-${range.to}`, [sheet], { rtl: lang !== 'en' });
       return truncated;
     });
 
@@ -904,7 +904,7 @@ function ExpensesTab({ range, period }: { range: { from: string; to: string }; p
   const download = () =>
     exporter.run(async () => {
       const { sheet, truncated } = await expensesSheet(range, t, formatter, period);
-      downloadXlsx(`mizan-expenses-${range.from}-${range.to}`, [sheet], { rtl: lang !== 'en' });
+      downloadXlsx(`jiyan-expenses-${range.from}-${range.to}`, [sheet], { rtl: lang !== 'en' });
       return truncated;
     });
 
