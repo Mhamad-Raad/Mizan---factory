@@ -79,6 +79,7 @@ export function LedgerList({
   landedVersion = 0,
 }: LedgerListProps) {
   const { t } = useTranslation();
+  const formatter = useFormatter();
   const wide = useIsWide();
   const [expanded, setExpanded] = useState<string | null>(null);
   const landedId = useLandedFirstRow(items[0]?.entry_id ?? null, landedVersion);
