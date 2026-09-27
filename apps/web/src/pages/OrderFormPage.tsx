@@ -15,7 +15,7 @@ import {
   TextField,
   Toggle,
 } from '@mizan/ui';
-import { computeLineTotals, convert, documentTotals } from '@mizan/money';
+import { computeLineTotals, convert, documentTotals, roundOrderTotals } from '@mizan/money';
 import type { Currency, Measure, Rate, RateSource } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
@@ -305,9 +305,13 @@ function OrderForm({
       perLine,
       discount_iqd: discountIqd,
       discount_usd_cents: discountUsd,
-      ...documentTotals(
-        complete.map((entry) => entry.gross),
-        { discount_iqd: discountIqd, discount_usd_cents: discountUsd },
+      // The same rounding the server applies, so the total shown is the total saved (D-065).
+      ...roundOrderTotals(
+        documentTotals(
+          complete.map((entry) => entry.gross),
+          { discount_iqd: discountIqd, discount_usd_cents: discountUsd },
+        ),
+        documentRate,
       ),
     };
   }, [form, documentRate, rateSource]);
@@ -392,7 +396,7 @@ function OrderForm({
           price_from_month:
             item.sale && item.sale.source === 'fallback' ? item.sale.from_month : null,
           stock_hint: item.stock.priced_complete
-            ? `${formatter.number(item.stock.priced_quantity, item.stock.priced_measure === 'kg' ? 3 : 0)} ${t(
+            ? `${formatter.quantity(item.stock.priced_quantity)} ${t(
                 `common:${item.stock.priced_measure}_symbol`,
               )}`
             : null,
@@ -588,7 +592,7 @@ function OrderForm({
             </span>
           </div>
 
-          <LotHint itemId={line.item_id} pricedMeasure={line.priced_measure} />
+          <LotHint itemId={line.item_id} />
 
           <QuantityInput
             priced_measure={line.priced_measure}
@@ -739,6 +743,11 @@ function OrderForm({
       <TotalsFooter
         total_iqd={totals.total_iqd}
         total_usd_cents={totals.total_usd_cents}
+        note={
+          totals.rounding_iqd > 0
+            ? t('orders:rounded_up', { amount: formatter.money(totals.rounding_iqd, 'IQD') })
+            : undefined
+        }
         primary={settlementCurrency}
         lineCount={form.lines.length}
         saving={save.isPending}
@@ -844,6 +853,9 @@ export interface OrderDetail {
   discount_usd_cents: number;
   total_iqd: number;
   total_usd_cents: number;
+  /** What was added to reach a round 250 dinars (D-065). */
+  rounding_iqd?: number;
+  rounding_usd_cents?: number;
   status: 'unpaid' | 'partially_paid' | 'paid' | 'void';
   doc_status: 'active' | 'void';
   void_reason: string | null;
@@ -877,7 +889,7 @@ export interface OrderDetail {
  * 200 at IQD 1,965", oldest first — the order a sale takes them in. Whoever may not see bought
  * prices sees only how much is left of each buy.
  */
-function LotHint({ itemId, pricedMeasure }: { itemId: string; pricedMeasure: Measure }) {
+function LotHint({ itemId }: { itemId: string }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const maySeeCost = usePermission('fields.see_bought_price');
@@ -889,10 +901,9 @@ function LotHint({ itemId, pricedMeasure }: { itemId: string; pricedMeasure: Mea
   const live = (lots.data?.items ?? []).filter((lot) => Number(lot.remaining) > 0);
   if (live.length === 0) return null;
 
-  const decimals = pricedMeasure === 'kg' ? 3 : 0;
   const parts = live.map((lot) => {
     // Pieces are whole: the API's "125.000" reads "125" (a string keeps its own decimals).
-    const left = pricedMeasure === 'kg' ? formatter.number(lot.remaining, decimals) : formatter.number(Number(lot.remaining));
+    const left = formatter.quantity(lot.remaining);
     if (!maySeeCost || lot.unit_cost_iqd === undefined || lot.unit_cost_usd_cents === undefined) return left;
     const unit = lot.entered_currency === 'IQD' ? lot.unit_cost_iqd : lot.unit_cost_usd_cents;
     return t('materials:lot_at', { quantity: left, price: formatter.money(unit, lot.entered_currency) });

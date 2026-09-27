@@ -160,7 +160,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             label={t('common:account_menu')}
             icon="user"
             items={[
-              { label: t('glossary:settings'), onSelect: () => navigate('/settings') },
+              { label: t('settings:me_title'), onSelect: () => navigate('/me') },
               ...(isSharedDevice
                 ? [{ label: t('auth:lock_now'), onSelect: () => void lock() }]
                 : []),
@@ -256,7 +256,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               icon="more"
               align="start"
               items={[
-                { label: t('glossary:settings'), onSelect: () => navigate('/settings') },
+                { label: t('settings:me_title'), onSelect: () => navigate('/me') },
                 ...(isSharedDevice
                   ? [{ label: t('auth:lock_now'), onSelect: () => void lock() }]
                   : []),

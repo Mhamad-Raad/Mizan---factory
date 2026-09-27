@@ -46,7 +46,7 @@ docker compose logs -f api | head -40                      # expect "listening o
 
 Deploys go outside 07:00–19:00 Asia/Baghdad unless it is a hot fix (section 2.14).
 
-The API checks for pending migrations as the application role (`0027_app_reads_migrations`
+The API checks for pending migrations as the application role (`0028_app_reads_migrations`
 grants it `SELECT` on `mizan_migrations`, nothing else). If it logs "the application role may
 not read mizan_migrations", the migrate job has not run yet: run it, then start the API.
 

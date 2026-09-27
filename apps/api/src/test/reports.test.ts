@@ -414,7 +414,7 @@ describe('the reports (FR-1001 to FR-1013)', () => {
   // ───────────────────────────────── stock (FR-1006) ─────────────────────────────────
 
   describe('the stock report (FR-1006)', () => {
-    it('equals the stock ledger and values it at the month bought price', async () => {
+    it('equals the stock ledger and values it at what each buy cost (D-062)', async () => {
       await seedActivity();
       const report = await as(ctx.http, admin).get(`/api/v1/reports/stock?${range()}`).expect(200);
 
@@ -427,9 +427,10 @@ describe('the reports (FR-1001 to FR-1013)', () => {
         return rows[0]?.kg as string;
       });
       expect(copperRow.stock_kg).toBe(independent);
-      // 6,000 in, 150 sold, 500 bought, 4 damaged = 6,346 kg × 700 د.ع.
+      // 6,000 in, 150 sold, 500 bought, 4 damaged = 6,346 kg. Its value is what is left of each
+      // buy at that buy's price: 5,846 kg of the 700 buy + 500 kg of the 690 buy.
       expect(copperRow.stock_kg).toBe('6346.000');
-      expect(copperRow.cost.value_iqd).toBe(4_442_200);
+      expect(copperRow.cost.value_iqd).toBe(5_846 * 700 + 500 * 690);
       expect(copperRow.price_fallback).toBe(false);
     });
 

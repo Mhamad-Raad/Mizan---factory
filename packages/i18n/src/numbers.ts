@@ -35,6 +35,16 @@ export function formatMinorUnits(minor: number, decimals: number, numerals: Nume
 }
 
 /** A plain number (quantities, counts). `decimals` is the exact scale to render. */
+/**
+ * A quantity as people read it: kilograms are kept to the gram (three decimals), but "170.000 kg"
+ * reads "170 kg" and "20.500 kg" reads "20.5 kg" — the zeros after the point say nothing.
+ */
+export function formatQuantity(value: number | string, numerals: Numerals): string {
+  const text = typeof value === 'number' ? value.toFixed(3) : String(value);
+  const trimmed = text.includes('.') ? text.replace(/0+$/, '').replace(/\.$/, '') : text;
+  return formatNumber(trimmed === '' || trimmed === '-' ? '0' : trimmed, numerals);
+}
+
 export function formatNumber(value: number | string, numerals: Numerals, decimals = 0): string {
   const text = typeof value === 'number' ? value.toFixed(decimals) : value;
   const negative = text.trimStart().startsWith('-');

@@ -180,7 +180,7 @@ export function DamagesPage() {
 
   const quantities = totals
     ? [
-        Number(totals.qty_kg) > 0 ? `${formatter.number(totals.qty_kg, 3)} ${t('common:kg_symbol')}` : null,
+        Number(totals.qty_kg) > 0 ? `${formatter.quantity(totals.qty_kg)} ${t('common:kg_symbol')}` : null,
         totals.qty_count > 0 ? `${formatter.number(totals.qty_count)} ${t('common:count_symbol')}` : null,
       ]
         .filter(Boolean)
@@ -444,7 +444,7 @@ export function quantityOf(
   t: (key: string) => string,
 ): string {
   const parts: string[] = [];
-  if (damage.qty_kg !== null) parts.push(`${formatter.number(damage.qty_kg, 3)} ${t('common:kg_symbol')}`);
+  if (damage.qty_kg !== null) parts.push(`${formatter.quantity(damage.qty_kg)} ${t('common:kg_symbol')}`);
   if (damage.qty_count !== null) parts.push(`${formatter.number(damage.qty_count)} ${t('common:count_symbol')}`);
   return damage.priced_measure === 'kg' ? parts.join(' · ') : parts.reverse().join(' · ');
 }

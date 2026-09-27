@@ -15,6 +15,8 @@ const listSchema = z.object({
   entity_type: z.string().max(40).optional(),
   entity_id: z.string().max(64).optional(),
   action: z.string().max(40).optional(),
+  /** `false` hides signing in and out and screen locks (client review). */
+  sessions: z.enum(['true', 'false']).optional(),
   cursor: z.string().max(64).optional(),
   limit: limitField,
 });
@@ -32,7 +34,12 @@ export class HistoryController {
     const scoped = can(context, 'history.view_all') ? query.done_by : context.userId;
     // The page groups an edit storm into one entry (2.4.5); a record's own History tab does
     // not, because there the whole story is the point.
-    const page = await this.history.list({ ...query, done_by: scoped, group_edits: true });
+    const page = await this.history.list({
+      ...query,
+      sessions: query.sessions !== 'false',
+      done_by: scoped,
+      group_edits: true,
+    });
     return { ...page, items: stripHistory(context, page.items) };
   }
 
@@ -42,7 +49,11 @@ export class HistoryController {
     // Every user may always read their own audit trail, even without `history.view`
     // (spec 1.5.2 rule 3) — it is "My activity" in Settings.
     const context = contextOf(request);
-    const page = await this.history.list({ ...query, done_by: context.userId });
+    const page = await this.history.list({
+      ...query,
+      sessions: query.sessions !== 'false',
+      done_by: context.userId,
+    });
     // Their own actions, but not the figures their flags withhold elsewhere.
     return { ...page, items: stripHistory(context, page.items) };
   }

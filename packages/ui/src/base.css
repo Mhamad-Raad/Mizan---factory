@@ -1902,7 +1902,10 @@ html[data-mirroring='true'] body {
     inset-block-start: 0;
     inset-inline: auto;
     color: var(--color-sidebar-text);
-    overflow-y: auto;
+
+    /* Not a scroller itself: the links scroll inside `.mz-sidebar__nav`, and a scrolling
+       sidebar clipped the account menu that opens out of its foot (client review). */
+    overflow: visible;
   }
 
   /* A nav row: 36 px, rounded, icon then label, the current page marked twice over. */
@@ -3796,4 +3799,431 @@ html[data-mirroring='true'] body {
 .mz-kpi--button[aria-pressed='true'] {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+/* ── broken goods: the record form on a desktop (client review) ─────────────────────── */
+
+/* A picker that reads as a field: the choice (or its placeholder) in a bordered box the height
+   of an input, an icon at the start and a chevron at the reading end — not a big button. */
+.mz-picker-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding-block: var(--space-3);
+  padding-inline: var(--space-3);
+  min-block-size: var(--tap-target);
+  inline-size: 100%;
+  color: var(--color-text);
+  font: inherit;
+  text-align: start;
+}
+
+.mz-picker-field:hover {
+  border-color: var(--color-primary);
+}
+
+.mz-picker-field:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.mz-picker-field__value {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Stock now → after the save, beside the date on a desktop. */
+.mz-damage-stock {
+  display: flex;
+  align-items: center;
+  align-self: end;
+  gap: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  min-block-size: var(--tap-target);
+}
+
+.mz-damage-stock__cell {
+  display: grid;
+  gap: 2px;
+}
+
+/* Who broke it: two options side by side from a tablet up, each with what it means. */
+.mz-damage-who {
+  display: grid;
+  gap: var(--space-2);
+}
+
+@media (width >= 48rem) {
+  .mz-damage-who {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+}
+
+.mz-damage-who__option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  color: var(--color-text);
+  font: inherit;
+  text-align: start;
+}
+
+.mz-damage-who__option:hover {
+  border-color: var(--color-border-strong);
+}
+
+.mz-damage-who__option:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.mz-damage-who__option--on {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.mz-damage-who__icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  color: var(--color-text-muted);
+}
+
+.mz-damage-who__option--on .mz-damage-who__icon {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.mz-damage-who__body {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.mz-damage-who__title {
+  font-weight: 600;
+}
+
+/* What the save means in money, said before it is made. */
+.mz-damage-effect {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  border-block-start: 1px solid var(--color-border);
+  padding-block-start: var(--space-3);
+}
+
+/* The recorded facts of a saved record, read-only, in a compact grid. */
+.mz-damage-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.mz-damage-facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* On a desktop the stock sentence leads the footer row and the actions sit at its end. */
+.mz-damage-form__summary:empty {
+  display: none;
+}
+
+/* Cancel: at the end of the form on a desktop, before Save; on a phone the app bar's Back does
+   it, so the thumb-zone bar stays one button tall. */
+.mz-damage-form__cancel {
+  display: none;
+}
+
+@media (width >= 64rem) {
+  .mz-damage-form .mz-sticky-footer .mz-damage-form__summary {
+    order: -1;
+    margin-inline-end: auto;
+    color: var(--color-text-muted);
+  }
+
+  .mz-damage-form__cancel {
+    display: contents;
+  }
+}
+
+/* ── Reports: one page, a tab per report (client review) ─────────────────────────── */
+
+/* The page's own line and "Download everything", side by side and wrapping on a phone. */
+.mz-reports__head,
+.mz-reports__bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.mz-reports__bar {
+  align-items: flex-end;
+}
+
+.mz-reports__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mz-reports__actions .mz-select {
+  inline-size: auto;
+}
+
+/* A table to read, not to open: its rows are not links, so they do not pretend to be. */
+.mz-table--static tbody tr {
+  cursor: default;
+}
+
+/* ── History: a day's work, read as a diary (client review) ────────────────────────── */
+
+.mz-activity {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* The day heading, with how many things happened in it. */
+.mz-activity__day {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.mz-activity__list {
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  background: var(--color-surface);
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+}
+
+/* One thing that happened: who, what, to which record, when — and what changed. */
+.mz-activity__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  border-block-end: 1px solid var(--color-border);
+  padding-block: var(--space-3);
+  padding-inline: var(--space-4);
+}
+
+.mz-activity__item:last-child {
+  border-block-end: 0;
+}
+
+.mz-activity__item:nth-child(odd) {
+  background: var(--color-table-stripe);
+}
+
+.mz-activity__item[data-open='true'] {
+  background: var(--color-table-hover);
+}
+
+/* The person, as initials in the palette's soft tint. */
+.mz-activity__avatar {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  color: var(--color-on-primary-soft);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.mz-activity__body {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.mz-activity__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+}
+
+.mz-activity__record {
+  font-weight: 600;
+}
+
+.mz-activity__change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.mz-activity__arrow {
+  display: inline-flex;
+  color: var(--color-text-muted);
+}
+
+.mz-activity__note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+.mz-activity__detail {
+  display: grid;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+  border-block-start: 1px dashed var(--color-border);
+  padding-block-start: var(--space-2);
+}
+
+.mz-activity__earlier {
+  display: grid;
+  gap: var(--space-1);
+  border-inline-start: 2px solid var(--color-border);
+  padding-inline-start: var(--space-3);
+}
+
+/* The time and "Details" at the end of the row. */
+.mz-activity__side {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+/* ── the account menu at the foot of the sidebar opens upward (client review) ─────── */
+
+/* Its button sits at the bottom of the screen, so a menu opening downward landed below the
+   window's edge where nothing could be clicked. Here it opens above the button instead. */
+
+/* Folded to its icons, the row is one avatar wide: the menu opens at its own width, over the page. */
+[data-sidebar='collapsed'] .mz-sidebar__user .mz-menu__list {
+  inset-inline-end: auto;
+  min-inline-size: 11rem;
+}
+
+/* The menu is anchored to the whole profile row rather than its small button, so it opens
+   above the name at the row's width and never runs past the sidebar's edge, which clips it. */
+.mz-sidebar__user {
+  position: relative;
+}
+
+.mz-sidebar__user .mz-menu {
+  position: static;
+}
+
+.mz-sidebar__user .mz-menu__list {
+  z-index: 60;
+  inset-block: auto calc(100% + var(--space-1));
+  inset-inline: 0;
+  inline-size: auto;
+  min-inline-size: 0;
+}
+
+/* A money entry's kind and a new record's facts, in the History row. */
+.mz-activity__kind {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.mz-activity__fact {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* The whole profile row opens the account menu, not only its three dots (client review): the
+   dots' button stretches an invisible layer over the row, so it stays one real button — one
+   tab stop, one name for a screen reader — with a target the size of the row. */
+.mz-sidebar__user .mz-menu > .mz-icon-button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+}
+
+.mz-sidebar__user:hover {
+  border-radius: var(--radius-md);
+  background: var(--color-sidebar-hover);
+  cursor: pointer;
+}
+
+/* ── Me: my own page (client review) ──────────────────────────────────────────────── */
+
+.mz-me__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.mz-me__avatar {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  inline-size: 4rem;
+  block-size: 4rem;
+  color: var(--color-on-primary-soft);
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+/* Details and password side by side on a desktop, one under the other on a phone. */
+.mz-me__grid {
+  display: grid;
+  align-items: start;
+  gap: var(--space-4);
+}
+
+@media (width >= 48rem) {
+  .mz-me__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* "Rounded up by 125 د.ع" under the order form's total (D-065). */
+.mz-totals__note {
+  margin: 0;
+  text-align: end;
 }

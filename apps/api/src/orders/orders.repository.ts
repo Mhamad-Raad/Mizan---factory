@@ -28,6 +28,8 @@ function orderColumns(alias = 'orders'): string {
     'discount_usd_cents::text AS discount_usd_cents',
     'total_iqd::text AS total_iqd',
     'total_usd_cents::text AS total_usd_cents',
+    'rounding_iqd::text AS rounding_iqd',
+    'rounding_usd_cents::text AS rounding_usd_cents',
     'created_at',
     'created_by',
     'updated_at',
@@ -152,6 +154,16 @@ export interface NewOrderLine {
   note: string | null;
 }
 
+/** The list's figures over the whole filter, not the page (client review). */
+export interface OrderTotals {
+  orders: number;
+  total_iqd: number;
+  total_usd_cents: number;
+  /** Orders that still owe something, in their company's own currency. */
+  owing: number;
+  balance: { owed_iqd: number; owed_usd_cents: number };
+}
+
 @Injectable()
 export class OrdersRepository {
   constructor(private readonly database: Database) {}
@@ -181,7 +193,7 @@ export class OrdersRepository {
     return rows[0] ?? null;
   }
 
-  async list(filters: OrderFilters): Promise<{ rows: OrderListRow[]; total: number }> {
+  async list(filters: OrderFilters): Promise<{ rows: OrderListRow[]; total: number; totals: OrderTotals }> {
     const conditions = ['o.deleted_at IS NULL'];
     const values: unknown[] = [];
 
@@ -277,7 +289,22 @@ export class OrdersRepository {
     const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
-    const [list, count] = await Promise.all([
+    // The figures over the whole filter, for the cards above the list (client review): what the
+    // orders came to and what is still owed on them. What is owed is read from the maintained
+    // per-order sum of migration 0015 — one join, not a subquery per order — in both currencies,
+    // and it counts only orders that still owe something in their company's own currency.
+    const forTotals = countFrom(
+      `FROM orders o\n${customer}\nLEFT JOIN order_remaining r ON r.order_id = o.id`,
+      where,
+      [
+        { alias: 'bal.', sql: REMAINING_LATERAL },
+        { alias: 'settle.', sql: RECEIVED_LATERAL },
+      ],
+    );
+    const owes = `o.status = 'active' AND (CASE WHEN c.settlement_currency = 'IQD' THEN r.remaining_iqd
+                                                ELSE r.remaining_usd_cents END) > 0`;
+
+    const [list, count, totals] = await Promise.all([
       this.database.query<OrderListRow>(
         `SELECT ${orderColumns('o')}, ${LIST_COLUMNS}
          ${from}
@@ -287,9 +314,38 @@ export class OrdersRepository {
         values,
       ),
       this.database.query<{ total: string }>(`SELECT count(*)::text AS total ${forCount} ${where}`, countValues),
+      this.database.query<{
+        orders: string;
+        total_iqd: string;
+        total_usd_cents: string;
+        owing: string;
+        owed_iqd: string;
+        owed_usd_cents: string;
+      }>(
+        `SELECT count(*) FILTER (WHERE o.status = 'active')::text AS orders,
+                coalesce(sum(o.total_iqd) FILTER (WHERE o.status = 'active'), 0)::text AS total_iqd,
+                coalesce(sum(o.total_usd_cents) FILTER (WHERE o.status = 'active'), 0)::text AS total_usd_cents,
+                count(*) FILTER (WHERE ${owes})::text AS owing,
+                coalesce(sum(r.remaining_iqd) FILTER (WHERE ${owes}), 0)::text AS owed_iqd,
+                coalesce(sum(r.remaining_usd_cents) FILTER (WHERE ${owes}), 0)::text AS owed_usd_cents
+           ${forTotals} ${where}`,
+        countValues,
+      ),
     ]);
 
-    return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0) };
+    const t = totals.rows[0];
+    return {
+      rows: list.rows,
+      total: Number(count.rows[0]?.total ?? 0),
+      totals: {
+        orders: Number(t?.orders ?? 0),
+        total_iqd: Number(t?.total_iqd ?? 0),
+        total_usd_cents: Number(t?.total_usd_cents ?? 0),
+        owing: Number(t?.owing ?? 0),
+        // Under `balance`, so the flag that hides what customers owe hides this too (2.6.2).
+        balance: { owed_iqd: Number(t?.owed_iqd ?? 0), owed_usd_cents: Number(t?.owed_usd_cents ?? 0) },
+      },
+    };
   }
 
   async linesOf(orderId: string, tx?: Db): Promise<OrderLineRow[]> {
@@ -425,6 +481,8 @@ export class OrdersRepository {
       discount_usd_cents: number;
       total_iqd: number;
       total_usd_cents: number;
+      rounding_iqd: number;
+      rounding_usd_cents: number;
       acting_user_id: string;
       status: 'active' | 'void';
       void_reason: string | null;

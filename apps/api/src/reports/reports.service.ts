@@ -240,18 +240,23 @@ export class ReportsService {
         moved_out_kg: row.out_kg,
         /** The month price the value was taken at, flagged when it is not this month's. */
         price_month: row.price_month,
-        price_fallback: Boolean(row.price_month && row.price_month !== month),
+        price_fallback: row.lots_value_iqd === null && Boolean(row.price_month && row.price_month !== month),
         cost: {
-          // Stock × the bought price of the period's month, both currencies from the stored
-          // pair — never one converted from the other (2.11).
+          // What the stock on hand cost us, from what is left of each buy at its own price
+          // (D-062); a material never bought falls back to stock × the month's bought price.
+          // Both currencies from stored pairs — never one converted from the other (2.11).
           value_iqd:
-            boughtIqd === null
-              ? null
-              : Math.round(new Decimal(boughtIqd).times(quantity).toNumber()),
+            row.lots_value_iqd !== null
+              ? Number(row.lots_value_iqd)
+              : boughtIqd === null
+                ? null
+                : Math.round(new Decimal(boughtIqd).times(quantity).toNumber()),
           value_usd_cents:
-            boughtUsd === null
-              ? null
-              : Math.round(new Decimal(boughtUsd).times(quantity).toNumber()),
+            row.lots_value_usd_cents !== null
+              ? Number(row.lots_value_usd_cents)
+              : boughtUsd === null
+                ? null
+                : Math.round(new Decimal(boughtUsd).times(quantity).toNumber()),
           bought_iqd: boughtIqd,
           bought_usd_cents: boughtUsd,
         },

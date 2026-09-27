@@ -23,6 +23,7 @@
     "@mizan/text": "workspace:*",
     "@mizan/ui": "workspace:*",
     "@tanstack/react-query": "^5.103.1",
+    "fflate": "0.8.2",
     "i18next": "^26.4.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

@@ -376,6 +376,8 @@ export class ReportsRepository {
       bought_iqd: string | null;
       bought_usd_cents: string | null;
       price_month: string | null;
+      lots_value_iqd: string | null;
+      lots_value_usd_cents: string | null;
     }>(
       // The page of materials is chosen first and everything else hangs off those rows: the
        // report sends two hundred groups (D-032), and computing five thousand materials' stock,
@@ -398,7 +400,9 @@ export class ReportsRepository {
               coalesce(moved.out_kg, 0)::text AS out_kg,
               price.bought_iqd::text AS bought_iqd,
               price.bought_usd_cents::text AS bought_usd_cents,
-              to_char(price.month, 'YYYY-MM-DD') AS price_month
+              to_char(price.month, 'YYYY-MM-DD') AS price_month,
+              lots.value_iqd::text AS lots_value_iqd,
+              lots.value_usd_cents::text AS lots_value_usd_cents
          FROM page
          JOIN items i ON i.id = page.id
          LEFT JOIN item_stock st ON st.item_id = i.id
@@ -441,6 +445,19 @@ export class ReportsRepository {
             ORDER BY p.month DESC
             LIMIT 1
          ) price ON true
+         -- What the stock on hand cost us (D-062): what is left of every buy, at that buy's
+         -- own price — the same figure the material page splits by price. The month price
+         -- above stands in only for a material with no buys (stock from before D-062).
+         LEFT JOIN LATERAL (
+           SELECT round(sum(((CASE WHEN l.priced_measure = 'count' THEN l.qty_count::numeric ELSE l.qty_kg END)
+                             - coalesce(a.taken, 0)) * l.unit_price_iqd)) AS value_iqd,
+                  round(sum(((CASE WHEN l.priced_measure = 'count' THEN l.qty_count::numeric ELSE l.qty_kg END)
+                             - coalesce(a.taken, 0)) * l.unit_price_usd_cents)) AS value_usd_cents
+             FROM purchase_lines l
+             JOIN purchases p ON p.id = l.purchase_id
+             LEFT JOIN LATERAL (SELECT sum(qty) AS taken FROM lot_allocations WHERE purchase_line_id = l.id) a ON true
+            WHERE l.item_id = i.id AND l.deleted_at IS NULL AND p.status = 'active' AND p.deleted_at IS NULL
+         ) lots ON true
         ORDER BY i.name ASC`,
       values,
     );

@@ -963,7 +963,47 @@ desktop, cards on a phone. The list API gained `compensation=owed|paid` and the 
 Today tile that counted returns (which the D-062 flow never creates) now counts broken goods a
 company still owes for.
 
-## D-064 · 2026-09-26 · security review · What the security fixes decided
+## D-064 · 2026-09-27 · client review · One Reports page, with Excel
+
+The client: "reports page … basically tabs … show case data and be able to create excel sheets …
+information about everything in this system and can filter with dates".
+
+- **One page, one period, a tab per report:** Sales, Profit, Bought, Stock, Companies owe us,
+  Broken goods, Expenses, Employee activity, Daily cash-up — each offered only to those whose
+  flags the API would accept. The period (presets or two dates) and the tab live in the address;
+  `/reports/<name>` from before still opens that tab. Payables left with the buying side (D-062).
+- **Each tab:** its totals as tiles (the whole period, never the page), a chart of the headline
+  figure when grouped by day or month (a period of two months or less opens by day), the table on
+  a desktop and cards on a phone, paged; names lead to the company, the material, or the
+  employee's History.
+- **Excel:** "Download Excel" writes the tab — every group, fetched a page of 100 at a time — and
+  "Download everything" writes one workbook with a sheet per report. The files are real .xlsx
+  (a small writer over `fflate`, tested and opened with an independent reader): numbers are
+  numbers with formats (whole dinars, dollars with cents, kilograms to the gram), dinars and
+  dollars in their own columns, a frozen header with filters, a bold totals row, and a Kurdish or
+  Arabic workbook opens right to left.
+- **Found on the way:** the Stock report valued stock at the month's price list and showed
+  materials sold by the piece as "0 kg". Stock is now valued at what is left of each buy at its
+  own price — the figure the material page splits by price — and a piece material reads in
+  pieces.
+
+## D-065 · 2026-09-27 · client review · An order's total rounds up to the next 250 dinars
+
+- **Asked:** "630 should turn to 750" — the order total in IQD rounds up to a multiple of 250,
+  the dollar total follows, only the total (never a line's price), and it says it was rounded.
+- **Chosen:** after the discount, the total rounds **up** to the next 250 IQD
+  (`roundOrderTotals`, `@mizan/money`). The added dinars are converted at the order's own rate
+  and added to the USD total, so both currencies still describe the same amount (2.3.4). The
+  order keeps what was added (`rounding_iqd`, `rounding_usd_cents`, migration 0027), so the
+  lines still sum to the total before rounding and the difference is explained rather than
+  hidden: the form's totals, the order page ("Rounded up by IQD 10 to a round 250") and the
+  receipt ("Rounding +10") all show it.
+- **Where it applies:** new orders, and an order when it is edited. Orders already saved keep
+  the total they were saved with (rule 1: history is never recalculated).
+- **Money:** the customer owes the rounded total; on the Accounts page the rounding counts as
+  profit, next to the margins and against the discount.
+
+## D-066 · 2026-09-26 · security review · What the security fixes decided
 
 A security review listed twenty-one findings; the fixes are on `fix/security-review`, one commit
 each. Where a fix had to choose, this is the choice.
@@ -1019,11 +1059,11 @@ each. Where a fix had to choose, this is the choice.
 - **Numbers refused by a schema** now say so as numbers (`errors:field.number_too_small` with
   `min`), and every field error carries its `min`/`max`. Relied on: 2.9.2.
 
-## D-065 · 2026-09-27 · security review follow-up · What the second pass decided
+## D-067 · 2026-09-27 · security review follow-up · What the second pass decided
 
 A review of `fix/security-review` found the per-address ceiling could lock out the factory, the
 password check held a pooled connection, and History still read ledger amounts to readers
-without the flags. This supersedes the per-address and backup bullets of D-064.
+without the flags. This supersedes the per-address and backup bullets of D-066.
 
 - **The per-address ceiling counts only wrong passwords.** 100 an hour per address across
   sign-in, unlock and change-password (`SIGN_IN_FAILURES_PER_HOUR`); reaching it refuses the

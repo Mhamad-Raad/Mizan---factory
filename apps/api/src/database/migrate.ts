@@ -79,7 +79,7 @@ export async function applyMigrations(connectionString: string, directory = MIGR
 
 /**
  * The migrations on disk not yet applied — checked at API start-up, as the **application** role
- * (0027 grants it SELECT on the list and nothing else), so the API never needs the migrate
+ * (0028 grants it SELECT on the list and nothing else), so the API never needs the migrate
  * role's credentials.
  *
  * A database that has never been migrated has no list at all: everything is pending. A list the
@@ -100,7 +100,7 @@ export async function pendingMigrations(connectionString: string, directory = MI
     if (code === '42501') {
       throw new Error(
         'the application role may not read mizan_migrations — run the migrations as the migrate role ' +
-          '(0027_app_reads_migrations.sql grants the read), then start the API again',
+          '(0028_app_reads_migrations.sql grants the read), then start the API again',
         { cause: error },
       );
     }

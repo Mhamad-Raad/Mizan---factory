@@ -219,7 +219,7 @@ export function MaterialDetailPage() {
   const movementQty = (movement: Movement) => {
     const parts: string[] = [];
     if (movement.qty_kg !== null) {
-      parts.push(`${formatter.number(movement.qty_kg, 3)} ${t('common:kg_symbol')}`);
+      parts.push(`${formatter.quantity(movement.qty_kg)} ${t('common:kg_symbol')}`);
     }
     if (movement.qty_count !== null) parts.push(formatter.number(movement.qty_count));
     return parts.length > 0 ? parts.join(' · ') : '—';
@@ -251,7 +251,7 @@ export function MaterialDetailPage() {
 
                 <p className="mz-title" data-tabular style={{ marginBlockStart: 'var(--space-3)' }}>
                   {item.data.stock.priced_complete
-                    ? `${formatter.number(item.data.stock.priced_quantity, item.data.stock.priced_measure === 'kg' ? 3 : 0)} ${t(
+                    ? `${formatter.quantity(item.data.stock.priced_quantity)} ${t(
                         `common:${item.data.stock.priced_measure}_symbol`,
                       )}`
                     : '—'}
@@ -263,7 +263,7 @@ export function MaterialDetailPage() {
                       ? formatter.number(item.data.stock.stock_count)
                       : '—'
                     : item.data.stock.kg_complete
-                      ? formatter.number(item.data.stock.stock_kg, 3)
+                      ? formatter.quantity(item.data.stock.stock_kg)
                       : '—'}
                 </span>
                 <span className="mz-caption" style={{ display: 'block' }}>
@@ -698,7 +698,6 @@ function StockByPrice({
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const decimals = pricedMeasure === 'kg' ? 3 : 0;
   const unit = pricedMeasure === 'kg' ? ` ${t('common:kg_symbol')}` : '';
   const live = lots.filter((lot) => Number(lot.remaining) > 0);
   const usedUp = lots.length - live.length;
@@ -730,8 +729,8 @@ function StockByPrice({
                   <span className="mz-list__title" data-tabular>
                     {t('materials:left_of', {
                       // Pieces are whole: the API's "125.000" reads "125".
-                      left: `${decimals ? formatter.number(lot.remaining, decimals) : formatter.number(Number(lot.remaining))}${unit}`,
-                      total: `${decimals ? formatter.number(lot.quantity, decimals) : formatter.number(Number(lot.quantity))}${unit}`,
+                      left: `${formatter.quantity(lot.remaining)}${unit}`,
+                      total: `${formatter.quantity(lot.quantity)}${unit}`,
                     })}
                   </span>
                   <span className="mz-caption">

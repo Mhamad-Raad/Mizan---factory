@@ -102,6 +102,8 @@ export class OrdersController {
 
   @Get('orders')
   @RequirePermission('orders.view')
+  // The totals' "still owed" is what customers owe: the balances flag keeps it (2.6.2).
+  @SensitiveFields({ cost: 'fields.see_bought_price', balance: 'fields.see_customer_balances' })
   async list(@Req() request: RequestWithContext, @Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
     return this.orders.list(contextOf(request), {
       ...query,
