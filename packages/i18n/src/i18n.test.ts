@@ -183,6 +183,15 @@ describe('plural rules (spec 2.10.3)', () => {
   });
 });
 
+describe('rates (review)', () => {
+  it('trims only the zeros after a decimal point', () => {
+    const formatter = createFormatter({ locale: 'en', numerals: 'latn' });
+    expect(formatter.rate('1300')).toContain('1,300');
+    expect(formatter.rate('1310.0000')).toContain('1,310');
+    expect(formatter.rate('1310.5000')).toContain('1,310.5');
+  });
+});
+
 describe('the formatting service covers every locale', () => {
   it.each(LOCALES)('formats money, dates and rates in %s without throwing', (locale: Locale) => {
     const formatter = createFormatter({ locale, numerals: 'arab' });

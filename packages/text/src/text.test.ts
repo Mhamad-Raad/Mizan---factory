@@ -113,6 +113,9 @@ describe('normalizePhone (spec 2.10.7)', () => {
     ['0750-123-4567', '07501234567'],
     ['٠٧٥٠١٢٣٤٥٦٧', '07501234567'],
     ['۰۷۵۰۱۲۳۴۵۶۷', '07501234567'],
+    // The spellings of the country code the docstring promised (review).
+    ['0964 750 123 4567', '07501234567'],
+    ['+964 (0)750 123 4567', '07501234567'],
   ])('normalises %s to %s', (input, expected) => {
     expect(normalizePhone(input)).toBe(expected);
   });

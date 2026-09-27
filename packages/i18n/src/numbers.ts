@@ -79,7 +79,8 @@ export function formatMoney(
 
 /** Rates read "1 $ = 1,310 د.ع" and are never shown as a bare number (glossary row 54). */
 export function formatRate(rate: string, locale: Locale, numerals: Numerals): string {
-  const trimmed = rate.replace(/\.?0+$/, '');
+  // Only the zeros after a decimal point say nothing: "1310.0000" is 1310, and "1300" stays 1300.
+  const trimmed = rate.includes('.') ? rate.replace(/\.?0+$/, '') : rate;
   return `${shapeDigits('1', numerals)}${THIN_SPACE}${CURRENCY_SYMBOLS[locale].USD} = ${formatNumber(
     trimmed,
     numerals,

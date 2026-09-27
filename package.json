@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "pnpm -r --filter './packages/**' build && pnpm --filter @mizan/api build && pnpm --filter @mizan/web build",
-    "typecheck": "tsc -b --pretty",
+    "typecheck": "tsc -b --pretty && tsc -b --pretty packages/ui apps/api apps/web",
     "lint": "eslint . && pnpm lint:css",
     "lint:css": "stylelint \"apps/web/src/**/*.css\" \"packages/ui/src/**/*.css\" --allow-empty-input",
     "format": "prettier --write .",

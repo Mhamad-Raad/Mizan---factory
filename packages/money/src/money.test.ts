@@ -80,6 +80,12 @@ describe('conversion (spec 2.3.4) — the figures the specification itself quote
     expect(impliedRate(1_305_000, 100_000)).toBe('1305.0000');
   });
 
+  it('refuses two amounts that imply no usable rate (review)', () => {
+    // $100.00 against 0 dinars, or a ratio too small for four decimals, is no rate at all.
+    expect(() => impliedRate(0, 10_000)).toThrow(RangeError);
+    expect(() => impliedRate(1, 10_000_000)).toThrow(RangeError);
+  });
+
   it('refuses a rate of zero or less', () => {
     expect(() => convert(1000, 'IQD', '0')).toThrow(RangeError);
   });
