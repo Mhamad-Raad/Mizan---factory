@@ -1235,9 +1235,10 @@ languages, and the stock queries were timed on 520,000 buys and 1.56 million tak
 
 - **Asked:** rename Mizan to "Jiyan management", with a new icon and favicon.
 - **Chosen:**
-  - **Name:** the name the user sees is "Jiyan" (ژیان in Kurdish and Arabic, the same
-    written name), with "Management" as the line beneath it where "One factory" was. The
-    browser tab and the installed app are "Jiyan Management".
+  - **Name:** "Jiyan", with "Management" as the line beneath it where "One factory" was —
+    written in English in all three languages, at the client's request (the check allows
+    exactly these two keys to be the same everywhere). The browser tab and the installed app
+    are "Jiyan Management".
   - **Mark (`BrandMark`):** a box — the warehouse's stock — with a sprout rising from its lid
     ("jiyan" is Kurdish for life). The favicon and home-screen icons draw it in white on the
     theme's teal. The icons are maskable, and an Apple touch icon was added. The offline
