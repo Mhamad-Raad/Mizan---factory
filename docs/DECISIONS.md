@@ -1248,3 +1248,10 @@ languages, and the stock queries were timed on 520,000 buys and 1.56 million tak
   the `mizan.prefs.v1` storage key, the repository. They are never shown, and renaming the
   storage key would sign everyone out of their saved preferences, and the database would need
   a migration of its own.
+- **Update, 2026-09-28 — the client's own logo:**
+  - **Favicon:** now drawn after Jiyan's logo (the red `#931329` with a white Ĵ and the
+    swoosh beneath it). Drawn as paths, not type, so it reads the same at 16 px in every
+    browser.
+  - **Home-screen icons:** the logo itself. The maskable icon is the Ĵ inside the safe zone,
+    so a round crop never cuts the wordmark.
+  - **Unchanged for now:** the in-app mark (the box and sprout) and the app's teal theme.

@@ -1,10 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-  <rect width="48" height="48" rx="11" fill="#00816c"/>
-  <g transform="translate(4.8 4.4) scale(0.8)" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M24 20 37 26.5 24 33 11 26.5Z"/>
-    <path d="M11 26.5V36L24 42.5 37 36V26.5M24 33V42.5"/>
-    <path d="M24 20V11"/>
-    <path d="M24 14.5C24 9.5 27.5 6 33 6 33 11 29.5 14.5 24 14.5Z" fill="#fff" stroke="none"/>
-    <path d="M24 17C24 13.2 21.2 10.5 17 10.5 17 14.3 19.8 17 24 17Z" fill="#fff" stroke="none"/>
+  <rect width="48" height="48" rx="11" fill="#931329"/>
+  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+    <!-- the circumflex of the Ĵ -->
+    <path d="M21.5 7.5 25 4.5 28.5 7.5" stroke-width="2.4"/>
+    <!-- the J: a stem and its hook -->
+    <path d="M25 12.5V28.5C25 34.5 21 37.5 15 36.5" stroke-width="5.6"/>
+    <!-- the swoosh of the logo, sweeping beneath the letter -->
+    <path d="M8.5 38.5C17 45 31 45 40.5 35.5" stroke-width="1.9"/>
   </g>
 </svg>
