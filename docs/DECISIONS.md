@@ -1193,3 +1193,40 @@ finding below was traced in code and each fix has a test that fails without it.
   - The "All" chip of the Orders list, and the Stock and Payables reports, still add up the
     whole table per request. They are correct, and slower as years pass. Maintained totals
     would fix them, and are a separate piece of work.
+
+## D-071 · 2026-09-27 · follow-up review · What the second look at D-070 changed
+
+Two reviewers read only the D-068…D-070 diff; the screens were checked at 360 px in all three
+languages, and the stock queries were timed on 520,000 buys and 1.56 million takes.
+
+- **Booking of broken goods:** the company, order or purchase a record names is part of its
+  booking. A charged damage can no longer be moved to another company, leaving the charge
+  behind.
+- **Locks:** one order everywhere — the account, then the materials sorted, then their stock.
+  - An order edit and an order void lock their materials before any stock moves.
+  - A damage void locks the company and the material first.
+- **Units:** a material that has been bought keeps its pricing unit, even for an admin. Its
+  buys are counted in that unit, so pieces cannot become kilos under them.
+- **Cost of takes:** a buy's takes are costed from cumulative shares, so together they cost
+  exactly the buy: three pieces of a 1,000 dinar buy cost 333 + 334 + 333. The dollar side
+  of a margin is still its dinar margin at the sale's rate (the margin rule).
+- **Speed:**
+  - `item_lots` sums each buy's takes once (migration 0031).
+  - The Stock report values its buys in one grouped pass: 5,000 materials in 35 ms, where the
+    per-material lateral took 4.5 s.
+- **Phones** stored in the 0964 spelling are brought to 07… (migration 0031).
+- **Errors:** only a check rule and unreadable text or dates are the request's fault (422).
+  A missing column, a broken reference or an overflow stay 500s, so they are seen. A money
+  RangeError is still a 422, but is logged as an error.
+- **Sessions:** revoking a session that has already ended is not an error.
+- **Orders:**
+  - An edited order returns its stock and credit warnings, and the order page shows them.
+  - The order carries its company's own rate, so the payment preview uses it without the
+    permission to open the company.
+- **Web:**
+  - A refused price reaches the banner.
+  - A failed reprint cannot print later.
+  - Import refreshes every screen.
+  - The expense sheet explains a missing rate.
+  - The currency sheet shows its error.
+  - The companies list offers the balance filter only to those who can see the net balance.
