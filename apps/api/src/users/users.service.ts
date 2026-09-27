@@ -363,13 +363,16 @@ export class UsersService {
     await this.database.transaction(async (tx) => {
       await this.users.replacePermissions(id, after, context.userId, tx);
       if (input.preset_key !== undefined) {
-        await this.users.update(
+        const updated = await this.users.update(
           id,
           user.version,
           { preset_key: preset?.key ?? null, preset_version: preset?.version ?? null },
           context.userId,
           tx,
         );
+        // Somebody changed the employee meanwhile: nothing is saved, rather than new permissions
+        // under the old preset and a History row claiming a preset change that did not happen.
+        if (!updated) throw new ApiError('VERSION_CONFLICT', { current_version: user.version });
       }
       if (diff.granted.length > 0 || diff.revoked.length > 0 || input.preset_key !== undefined) {
         await this.audit.record(
@@ -409,7 +412,8 @@ export class UsersService {
 
   async revokeSession(context: RequestContext, id: string, sessionId: string): Promise<void> {
     await this.requireUser(id);
-    await this.sessions.revoke(sessionId, 'revoked_by_admin');
+    const revoked = await this.sessions.revokeOfUser(id, sessionId, 'revoked_by_admin');
+    if (!revoked) throw ApiError.notFound();
     await this.audit.record(context, {
       action: 'logout',
       entity_type: 'session',

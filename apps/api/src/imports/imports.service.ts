@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { normalizeForSearch } from '@mizan/text';
 import { ApiError } from '../common/errors.js';
 import type { RequestContext } from '../common/request-context.js';
@@ -77,6 +77,8 @@ export interface ImportResult extends ImportPreview {
  */
 @Injectable()
 export class ImportsService {
+  private readonly logger = new Logger('Import');
+
   constructor(
     private readonly database: Database,
     private readonly items: ItemsService,
@@ -244,6 +246,8 @@ export class ImportsService {
       } catch (caught) {
         // The row's own reason, in the reader's language, beside the line of the spreadsheet.
         const error = caught instanceof ApiError ? caught : null;
+        // Anything else is ours to look into: the row reads "internal", the log says why.
+        if (!error) this.logger.error(`import ${kind} row ${at}: ${(caught as Error)?.message}`, (caught as Error)?.stack);
         failed.push({
           row: at,
           // A field error is the useful one — "row 812: this customer has no name" — so it is

@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
+import { isoDate, minorAmount, rateString } from '../common/schemas.js';
 import { AdminOnly, RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
@@ -7,16 +8,15 @@ import { stripHistory } from '../history/history-fields.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { CustomersService } from './customers.service.js';
-import { limitField, pageFields, pageSchema } from '../common/paging.js';
+import { cursorField, limitField, pageFields, pageSchema } from '../common/paging.js';
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const money = z.object({
-  amount: z.number().int(),
+  amount: minorAmount,
   currency: z.enum(['IQD', 'USD']),
-  other_amount: z.number().int().nullish(),
+  other_amount: minorAmount.nullish(),
 });
 const method = z.enum(['cash', 'transfer', 'other']);
-const rate = z.string().regex(/^\d+(\.\d{1,4})?$/);
+const rate = rateString;
 const rateSchema = z.object({
   rate_iqd_per_usd: z.union([rate, z.number().positive()]),
   note: z.string().max(2000).nullish(),
@@ -47,7 +47,7 @@ const statusSchema = z.object({ version: z.number().int().positive(), note: z.st
 const currencySchema = z.object({
   currency: z.enum(['IQD', 'USD']),
   note: z.string().min(1).max(2000),
-  rebase_rate: z.string().regex(/^\d+(\.\d{1,4})?$/).nullish(),
+  rebase_rate: rateString.nullish(),
   version: z.number().int().positive().optional(),
 });
 
@@ -95,7 +95,7 @@ const historySchema = z.object({
       'delete',
     ])
     .optional(),
-  cursor: z.string().max(200).optional(),
+  cursor: cursorField,
   limit: limitField,
 });
 
@@ -168,14 +168,9 @@ export class CustomersController {
     @Param('id') id: string,
     @Body(zodBody(updateSchema)) body: z.infer<typeof updateSchema>,
   ) {
-    return this.customers.update(contextOf(request), id, {
-      ...body,
-      contact_name: body.contact_name ?? undefined,
-      phone: body.phone ?? undefined,
-      address: body.address ?? undefined,
-      notes: body.notes ?? undefined,
-      credit_limit: body.credit_limit ?? undefined,
-    });
+    // `null` clears a field and a missing key leaves it: the edit sheet sends null for a field
+    // the user emptied, which must not read as "unchanged" (review).
+    return this.customers.update(contextOf(request), id, body);
   }
 
   @Post('customers/:id/deactivate')

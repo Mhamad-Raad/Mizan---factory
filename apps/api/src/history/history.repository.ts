@@ -5,6 +5,8 @@ import { limitOf } from '../common/paging.js';
 export interface AuditRow {
   id: string;
   occurred_at: Date;
+  /** `occurred_at` to the microsecond, as the cursor needs it; a JavaScript Date keeps only milliseconds. */
+  cursor_at: string;
   actor_user_id: string | null;
   actor_display_name: string | null;
   action: string;
@@ -42,7 +44,7 @@ export interface HistoryFilters {
   /** Collapse an edit storm into one entry per record (spec 2.4.5, last row). */
   group_edits?: boolean;
   /**
-   * Keyset cursor, `<occurred_at ISO>|<id>`. Cursor pagination keeps infinite scroll stable
+   * Keyset cursor, `<occurred_at in microseconds since 1970>|<id>`. Cursor pagination keeps infinite scroll stable
    * while new rows arrive (spec 2.9.1) and, unlike OFFSET, does not get slower page by page.
    */
   cursor?: string;
@@ -103,7 +105,8 @@ export class HistoryRepository {
     }
     if (filters.action) {
       values.push(filters.action);
-      conditions.push(`a.action = $${values.length}::audit_action`);
+      // As text: an action that does not exist finds nothing, rather than failing the enum cast.
+      conditions.push(`a.action::text = $${values.length}`);
     }
     if (filters.sessions === false) {
       conditions.push(
@@ -115,7 +118,11 @@ export class HistoryRepository {
       values.push(occurredAt, id);
       // Row-value comparison matches the composite index exactly, so this is a range start
       // rather than a filter.
-      conditions.push(`(a.occurred_at, a.id) < ($${values.length - 1}::timestamptz, $${values.length}::bigint)`);
+      // Microseconds, not the milliseconds of a Date: every row of one transaction shares its
+      // `now()`, so a cut to milliseconds would skip the rest of them (review, History cursor).
+      conditions.push(
+        `(a.occurred_at, a.id) < ('epoch'::timestamptz + $${values.length - 1}::bigint * interval '1 microsecond', $${values.length}::bigint)`,
+      );
     }
 
     const limit = limitOf(filters.limit);
@@ -123,7 +130,8 @@ export class HistoryRepository {
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const { rows } = await this.database.query<AuditRow>(
-      `SELECT a.id::text AS id, a.occurred_at, a.actor_user_id, u.display_name AS actor_display_name,
+      `SELECT a.id::text AS id, a.occurred_at,
+              (extract(epoch FROM a.occurred_at) * 1000000)::bigint::text AS cursor_at, a.actor_user_id, u.display_name AS actor_display_name,
               a.action::text AS action, a.entity_type, a.entity_id, a.entity_label,
               a.changes, a.note, a.related, a.request_id::text AS request_id,
               a.auth_method::text AS auth_method
@@ -137,7 +145,7 @@ export class HistoryRepository {
 
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
-    const next = rows.length > limit && last ? `${last.occurred_at.toISOString()}|${last.id}` : null;
+    const next = rows.length > limit && last ? `${last.cursor_at}|${last.id}` : null;
     return { items: filters.group_edits ? groupEdits(page) : page.map(single), next_cursor: next };
   }
 }

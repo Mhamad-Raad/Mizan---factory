@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Patch, Post, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
+import { rateString } from '../common/schemas.js';
 import { AdminOnly, RequirePermission, SessionOnly } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
@@ -26,7 +27,7 @@ const patchSchema = z
   .strict();
 
 const rateSchema = z.object({
-  rate_iqd_per_usd: z.union([z.string().regex(/^\d+(\.\d{1,4})?$/), z.number().positive()]),
+  rate_iqd_per_usd: z.union([rateString, z.number().positive()]),
   note: z.string().max(2000).nullish(),
 });
 

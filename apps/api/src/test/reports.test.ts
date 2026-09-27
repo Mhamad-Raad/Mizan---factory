@@ -693,9 +693,9 @@ describe('the reports (FR-1001 to FR-1013)', () => {
         return { iqd: Number(rows[0]?.iqd ?? 0), usd_cents: Number(rows[0]?.usd_cents ?? 0) };
       });
 
-      expect(tile.balance).toEqual({ amount_iqd: owed.iqd, amount_usd_cents: owed.usd_cents });
+      expect(tile.balance).toMatchObject({ amount_iqd: owed.iqd, amount_usd_cents: owed.usd_cents });
       // Kawa's part-paid order, Zagros's and the dollar customer's; the cash one is settled.
-      expect(tile.count).toBe(3);
+      expect(tile.balance.count).toBe(3);
       // The two sides are the same money seen twice, so neither is the other's sum.
       expect(tile.balance.amount_iqd).not.toBe(owed.iqd + owed.usd_cents);
       expect(tile.balance.amount_usd_cents).toBeGreaterThan(0);
@@ -765,8 +765,8 @@ describe('the reports (FR-1001 to FR-1013)', () => {
 
       const dashboard = await as(ctx.http, session).get('/api/v1/dashboard').expect(200);
       const tile = dashboard.body.tiles.find((row: { key: string }) => row.key === 'unpaid_orders');
-      // The count survives, the money does not (1.5.4).
-      expect(tile.count).toBeGreaterThan(0);
+      // Neither how many orders owe nor how much, without the balances flag (D-068).
+      expect(tile.count).toBeUndefined();
       expect(tile.balance).toBeUndefined();
     });
 

@@ -173,6 +173,20 @@ export class SessionService {
     );
   }
 
+  /**
+   * Ends one session of one user, and says whether there was such a session still open: an
+   * admin revoking from an employee's page must not end somebody else's session, nor record a
+   * revocation that ended nothing (review).
+   */
+  async revokeOfUser(userId: string, sessionId: string, reason: string, tx?: Db): Promise<boolean> {
+    const { rowCount } = await (tx ?? this.database).query(
+      `UPDATE sessions SET revoked_at = now(), revoke_reason = $3
+        WHERE id = $2 AND user_id = $1 AND revoked_at IS NULL`,
+      [userId, sessionId, reason],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
   /** Used when a password is reset or an account is deactivated (FR-202, FR-203). */
   async revokeAllForUser(userId: string, reason: string, tx?: Db): Promise<number> {
     const db = tx ?? this.database;

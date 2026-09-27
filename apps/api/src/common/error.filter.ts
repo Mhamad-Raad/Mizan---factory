@@ -39,6 +39,26 @@ export class ErrorFilter implements ExceptionFilter {
       return;
     }
 
+    const database = databaseErrorCode(exception);
+    if (database) {
+      // Not a fault of ours to hide, but worth a line in the log with the request id.
+      this.logger.warn(`[${requestId}] database refused: ${(exception as Error).message}`);
+      response.status(ERROR_CODES[database]).json({
+        error: { code: database, message_key: messageKeyFor(database), params: {}, fields: [], request_id: requestId },
+      });
+      return;
+    }
+
+    // The money kernel refuses numbers it cannot use — beyond the safe range, or two amounts
+    // that imply no rate — with a RangeError: the request's numbers, not a fault of ours.
+    if (exception instanceof RangeError) {
+      this.logger.warn(`[${requestId}] refused numbers: ${exception.message}`);
+      response.status(422).json({
+        error: { code: 'VALIDATION_FAILED', message_key: messageKeyFor('VALIDATION_FAILED'), params: {}, fields: [], request_id: requestId },
+      });
+      return;
+    }
+
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       /*
@@ -56,7 +76,12 @@ export class ErrorFilter implements ExceptionFilter {
               ? 'UNAUTHENTICATED'
               : status === 413
                 ? 'REQUEST_TOO_LARGE'
-                : 'INTERNAL';
+                : status === 429
+                  ? 'RATE_LIMITED'
+                  : // A body that is not JSON, or a parameter Nest could not read: the request's fault.
+                    status === 400
+                    ? 'VALIDATION_FAILED'
+                    : 'INTERNAL';
       response.status(status).json({
         error: { code, message_key: messageKeyFor(code), params: {}, fields: [], request_id: requestId },
       });
@@ -75,4 +100,19 @@ export class ErrorFilter implements ExceptionFilter {
       },
     });
   }
+}
+
+/**
+ * A PostgreSQL error the request caused rather than a fault of ours (review): a unique rule, a
+ * rule the checks before it did not foresee, a value the database could not read, or two saves
+ * that waited on each other. Each answers as what it is instead of "something went wrong".
+ */
+function databaseErrorCode(exception: unknown): ErrorCode | null {
+  const code = (exception as { code?: unknown } | null)?.code;
+  if (typeof code !== 'string' || !/^[0-9A-Z]{5}$/.test(code)) return null;
+  if (code === '23505') return 'DUPLICATE';
+  if (code === '40P01' || code === '40001') return 'BUSY_RETRY';
+  // Foreign key, check and not-null rules; invalid text, dates and numbers out of range.
+  if (code === '23503' || code === '23514' || code === '23502' || code.startsWith('22')) return 'VALIDATION_FAILED';
+  return null;
 }

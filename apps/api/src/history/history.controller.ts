@@ -1,23 +1,24 @@
 import { Controller, Get, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
+import { isoDate } from '../common/schemas.js';
 import { RequirePermission, SessionOnly } from '../common/decorators.js';
 import { contextOf, can } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { zodBody } from '../common/zod.pipe.js';
 import { HistoryRepository } from './history.repository.js';
 import { stripHistory } from './history-fields.js';
-import { limitField } from '../common/paging.js';
+import { cursorField, limitField } from '../common/paging.js';
 
 const listSchema = z.object({
   done_by: z.string().uuid().optional(),
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
   entity_type: z.string().max(40).optional(),
   entity_id: z.string().max(64).optional(),
   action: z.string().max(40).optional(),
   /** `false` hides signing in and out and screen locks (client review). */
   sessions: z.enum(['true', 'false']).optional(),
-  cursor: z.string().max(64).optional(),
+  cursor: cursorField,
   limit: limitField,
 });
 

@@ -26,6 +26,10 @@ export const ERROR_CODES = {
   RATE_LIMITED: 429,
   /** A request body larger than the API will read — a CSV import of more than 10,000 rows. */
   REQUEST_TOO_LARGE: 413,
+  /** A unique rule of the database refused a second copy — two people saving the same name at once. */
+  DUPLICATE: 409,
+  /** Two saves waited on each other and the database stopped one: nothing was written, send it again. */
+  BUSY_RETRY: 409,
   INTERNAL: 500,
 } as const;
 

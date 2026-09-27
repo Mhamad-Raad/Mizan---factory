@@ -4,6 +4,7 @@ import type { Currency, MoneyPair, Rate } from '@mizan/money';
 import { balanceAsOf, balanceOf } from '@mizan/ledger';
 import type { LedgerEntry, LedgerGroup } from '@mizan/ledger';
 import { AuditService, diffOf } from '../audit/audit.service.js';
+import { resolveActingUser } from '../common/acting-user.js';
 import { ApiError } from '../common/errors.js';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
@@ -158,8 +159,14 @@ export class CustomersService {
     context: RequestContext,
     filters: CustomerFilters,
   ): Promise<{ items: CustomerDto[]; total: number }> {
-    const { rows, total } = await this.customers.list(filters);
     const sight = this.sightOf(context);
+    // The filter and the sort read the net balance (D-054), which needs both sides' flags. For
+    // anyone else they are ignored: a list filtered to "owes us" and ranked by it would tell
+    // them the very figure the response hides (review).
+    const seesNet = sight.selling && sight.buying;
+    const { rows, total } = await this.customers.list(
+      seesNet ? filters : { ...filters, balance: undefined, sort: filters.sort === 'balance' ? 'name' : filters.sort },
+    );
     // The list values balances at the global rate; a customer's own rate is applied on the
     // detail, where a single per-row lookup is not thousands of them.
     const globalRate = await this.rates.current();
@@ -696,7 +703,7 @@ export class CustomersService {
     return this.database.transaction(async (tx) => {
       const customer = await this.lockFor(tx, id);
       const order = input.order_id ? await this.orderFor(tx, input.order_id, customer.id) : null;
-      const performedBy = input.performed_by ?? context.userId;
+      const performedBy = await resolveActingUser(tx, context, input.performed_by, 'performed_by');
       const results: WriteResultDto[] = [];
 
       if (input.split && input.split.length > 0) {
@@ -901,7 +908,7 @@ export class CustomersService {
         note: input.note,
         order_id: input.order_id ?? null,
         damage_id: input.damage_id ?? null,
-        performed_by_user_id: input.performed_by ?? context.userId,
+        performed_by_user_id: await resolveActingUser(tx, context, input.performed_by, 'performed_by'),
         method: kind === 'refund' ? (input.method ?? 'cash') : null,
         // A refund is money leaving the till, so it gets a voucher like a payment (FR-614).
         voucher: kind === 'refund',

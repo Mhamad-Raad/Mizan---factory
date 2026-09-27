@@ -66,5 +66,8 @@
   "field.number_too_big": "Must be {{max}} or less",
   "field.number_above": "Must be more than {{min}}",
   "idempotency_key_invalid": "This request could not be sent safely — reload the page and try again",
-  "field.phone_invalid": "Type a phone number — digits, like 0750 123 4567"
+  "field.phone_invalid": "Type a phone number — digits, like 0750 123 4567",
+  "DUPLICATE": "This already exists — refresh and check before saving again",
+  "BUSY_RETRY": "Someone else was saving at the same moment — nothing was saved, try again",
+  "damage_booked": "This record has already taken stock or charged a company — void it and enter it again to change the quantity, who did it or the date"
 }

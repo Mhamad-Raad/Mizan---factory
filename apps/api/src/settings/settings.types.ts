@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isoDate } from '../common/schemas.js';
 
 /**
  * The system settings of specification 2.2.3. A key becomes editable in the iteration that
@@ -14,10 +15,7 @@ export const SETTING_SCHEMAS = {
   default_customer_currency: z.enum(['IQD', 'USD']),
   settle_tolerance_iqd: z.number().int().min(0),
   settle_tolerance_usd_cents: z.number().int().min(0),
-  go_live_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable(),
+  go_live_date: isoDate.nullable(),
 } as const;
 
 export type SettingKey = keyof typeof SETTING_SCHEMAS;
