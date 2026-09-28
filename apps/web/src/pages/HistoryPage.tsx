@@ -4,9 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Chip, DateField, Icon } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
+import { todayInBaghdad } from '@mizan/i18n';
 import { apiRequest } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
-import { QueryStates } from '../components/states.js';
+import { QueryStates, RowsSkeleton } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
 import { useCursorPaging } from '../lib/paging.js';
 import { AuditDiff, AuditValue } from '../components/AuditDiff.js';
@@ -15,7 +16,7 @@ import { FilterChip } from '../components/FilterChip.js';
 import { useApp, useFormatter } from '../lib/store.js';
 import { readNote, recordName } from '../lib/record-names.js';
 import { initialsOf } from '../lib/initials.js';
-import { lastDays, thisWeek, yesterdayOf } from '../lib/periods.js';
+import { presetPeriod, yesterdayOf } from '../lib/periods.js';
 
 interface AuditRow {
   id: string;
@@ -51,14 +52,10 @@ export function rangeFor(
   today: string,
   custom: { from: string; to: string },
 ): { from?: string; to?: string } {
-  if (preset === 'all') return {};
   if (preset === 'custom') return { from: custom.from || undefined, to: custom.to || undefined };
-  if (preset === 'today') return { from: today, to: today };
-  if (preset === 'yesterday') {
-    const day = yesterdayOf(today);
-    return { from: day, to: day };
-  }
-  return preset === 'week' ? thisWeek(today) : lastDays(today, 30);
+  // "This month" is the calendar month here as on every other screen, so the same words never
+  // mean two different ranges (review).
+  return presetPeriod(preset, today);
 }
 
 const ENTITY_TYPES = [
@@ -252,7 +249,7 @@ export function HistoryPage() {
   const employees = (directory.data ?? []).filter((entry) => entry.is_active);
 
   // Day headings, in the Baghdad day each entry happened on.
-  const dayOf = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Baghdad' });
+  const dayOf = (iso: string) => todayInBaghdad(new Date(iso));
   const today = formatter.today();
   const yesterday = yesterdayOf(today);
   const days: { day: string; entries: AuditEntry[] }[] = [];
@@ -335,7 +332,12 @@ export function HistoryPage() {
       ) : null}
 
       {/* The four states through the one component, so the offline wording cannot go missing. */}
-      <QueryStates query={history} isEmpty={entries.length === 0} emptyTitle={t('history:empty')} skeletonLines={8}>
+      <QueryStates
+        query={history}
+        isEmpty={entries.length === 0}
+        emptyTitle={t('history:empty')}
+        skeleton={<RowsSkeleton rows={8} />}
+      >
         <div className="mz-refreshable mz-stack" data-busy={refreshing ? 'true' : undefined} aria-busy={refreshing}>
           {days.map(({ day, entries: dayEntries }) => (
             <section key={day} className="mz-activity" aria-label={dayTitle(day)}>

@@ -12,7 +12,7 @@ export interface RequestContext {
   /** The effective set, with implied keys already expanded (spec 2.6.1). */
   permissions: ReadonlySet<string>;
   sessionId: string;
-  authMethod: 'password' | 'ticket_pin';
+  authMethod: 'password';
   ip: string | null;
   userAgent: string | null;
 }
@@ -23,7 +23,7 @@ export type RequestWithContext = Request & {
   /** The session the AuthGuard resolved, so controllers do not read the cookie twice. */
   session?: import('../auth/session.service.js').SessionWithUser;
   /** Set only when this request reserved the idempotency key it carries. */
-  idempotencyKeyOwned?: { key: string; userId: string };
+  idempotencyKeyOwned?: { key: string; userId: string; since: string };
 };
 
 export function contextOf(request: RequestWithContext): RequestContext {

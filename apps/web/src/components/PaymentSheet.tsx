@@ -7,6 +7,7 @@ import { MoneyInput, parseMinor } from './MoneyInput.js';
 import type { MoneyValue } from './MoneyInput.js';
 import { DualAmount } from './DualAmount.js';
 import { useFormatter } from '../lib/store.js';
+import { bothOf } from '../lib/money.js';
 
 export interface PaymentBody {
   amount: number;
@@ -38,6 +39,11 @@ export interface PaymentSheetProps {
   /** Set when the API asked for a confirmation ("record the excess as customer credit"). */
   needsExcessConfirmation?: boolean;
   onSave: (body: PaymentBody) => void;
+  /**
+   * Called on every change to the sheet's inputs, so the caller can forget the last refusal —
+   * above all "record the excess as credit?", which must not carry over to a different amount.
+   */
+  onEdit?: () => void;
   title?: string;
   /** Money out is worded differently from money in; the company side passes its own labels. */
   amountLabel?: string;
@@ -70,6 +76,7 @@ export function PaymentSheet({
   error,
   needsExcessConfirmation,
   onSave,
+  onEdit,
   title,
   amountLabel,
   remainingLabel,
@@ -81,20 +88,37 @@ export function PaymentSheet({
   const { t } = useTranslation();
   const formatter = useFormatter();
 
-  const [amount, setAmount] = useState<MoneyValue>({
+  const [amount, setAmountState] = useState<MoneyValue>({
     amount: remaining,
     currency: settlement_currency,
     other_amount: null,
   });
-  const [date, setDate] = useState(formatter.today());
-  const [settleInFull, setSettleInFull] = useState(false);
-  const [method, setMethod] = useState<'cash' | 'transfer' | 'other'>('cash');
-  const [note, setNote] = useState('');
-  const [splitting, setSplitting] = useState(false);
-  const [splitIqd, setSplitIqd] = useState('');
-  const [splitUsd, setSplitUsd] = useState('');
+  const [date, setDateState] = useState(formatter.today());
+  const [settleInFull, setSettleInFullState] = useState(false);
+  const [method, setMethodState] = useState<'cash' | 'transfer' | 'other'>('cash');
+  const [note, setNoteState] = useState('');
+  const [splitting, setSplittingState] = useState(false);
+  const [splitIqd, setSplitIqdState] = useState('');
+  const [splitUsd, setSplitUsdState] = useState('');
   const [showMore, setShowMore] = useState(false);
-  const [purchaseId, setPurchaseId] = useState('');
+  const [purchaseId, setPurchaseIdState] = useState('');
+
+  // Every input goes through `edited`, so a changed payment is a new question to the server.
+  const edited =
+    <T,>(set: (value: T) => void) =>
+    (value: T) => {
+      onEdit?.();
+      set(value);
+    };
+  const setAmount = edited(setAmountState);
+  const setDate = edited(setDateState);
+  const setSettleInFull = edited(setSettleInFullState);
+  const setMethod = edited(setMethodState);
+  const setNote = edited(setNoteState);
+  const setSplitting = edited(setSplittingState);
+  const setSplitIqd = edited(setSplitIqdState);
+  const setSplitUsd = edited(setSplitUsdState);
+  const setPurchaseId = edited(setPurchaseIdState);
 
   const splitParts = () => {
     const parts: { amount: number; currency: Currency }[] = [];
@@ -287,12 +311,5 @@ function SettlementAmount({ amount, currency, rate }: { amount: number; currency
       </span>
     );
   }
-  return (
-    <DualAmount
-      amount_iqd={currency === 'IQD' ? amount : convert(amount, 'USD', rate)}
-      amount_usd_cents={currency === 'USD' ? amount : convert(amount, 'IQD', rate)}
-      primary={currency}
-      kind="derived"
-    />
-  );
+  return <DualAmount {...bothOf(amount, currency, rate)} primary={currency} kind="derived" />;
 }

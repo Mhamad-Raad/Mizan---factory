@@ -66,10 +66,6 @@ export class CustomersRepository {
     return rows[0] ?? null;
   }
 
-  /** The same read as `findById`; kept for the callers that name it (D-056). */
-  async findByIdUnscoped(id: string, tx?: Db): Promise<CustomerRow | null> {
-    return this.findById(id, tx);
-  }
 
   async lock(id: string, tx: Db): Promise<CustomerRow | null> {
     const { rows } = await tx.query<CustomerRow>(
@@ -128,54 +124,47 @@ export class CustomersRepository {
           ` AND c.phone_normalized LIKE $${phoneParam}))`,
       );
     }
-    // The filters and the sort read the net figure (D-054): "owes us" means after what we owe them.
-    const net = '(bal.balance - pay.payable)';
+    // The filters and the sort read the net figure (D-054): "owes us" means after what we owe
+    // them. Both sides come from the maintained per-account sums of migration 0033, in the
+    // account's settlement currency, so a filter or a sort by balance is one join over the
+    // accounts instead of two ledger sums per account (D-075).
+    const totals = 'LEFT JOIN account_totals t ON t.account_id = c.id';
+    const receivable = `coalesce(CASE WHEN c.settlement_currency = 'IQD' THEN t.receivable_iqd ELSE t.receivable_usd_cents END, 0)`;
+    const payable = `coalesce(CASE WHEN c.settlement_currency = 'IQD' THEN t.payable_iqd ELSE t.payable_usd_cents END, 0)`;
+    const net = `(${receivable} - ${payable})`;
     if (filters.balance === 'owes') conditions.push(`${net} > 0`);
     if (filters.balance === 'credit') conditions.push(`${net} < 0`);
     if (filters.balance === 'settled') conditions.push(`${net} = 0`);
 
-    // The balance is a sum over the customer's own rows, which `customer_ledger_running_idx`
-    // serves as one index scan per customer rather than an aggregate of the whole ledger.
-    const balance = `
-      LEFT JOIN LATERAL (
-        SELECT coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0)
-                 AS balance
-          FROM customer_ledger l
-         WHERE l.customer_id = c.id
-      ) bal ON true`;
-    // What we owe them, from the buying side's ledger, served by `company_ledger_balance_idx`.
-    const payable = `
-      LEFT JOIN LATERAL (
-        SELECT coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0)
-                 AS payable
-          FROM company_ledger l
-         WHERE l.company_id = c.id
-      ) pay ON true`;
-    const from = `FROM customers c\n${balance}${payable}`;
     const where = `WHERE ${conditions.join(' AND ')}`;
-    // Counting thirty thousand customers does not need each one's balance summed — only a
-    // filter on the balance does (`countFrom`, the system-wide review).
-    const forCount = countFrom('FROM customers c', where, [
-      { alias: 'bal.', sql: balance },
-      { alias: 'pay.', sql: payable },
-    ]);
+    // Counting thirty thousand customers does not need anybody's balance — only a filter on the
+    // balance does (`countFrom`, the system-wide review).
+    const narrow = countFrom('FROM customers c', where, [{ alias: 't.', sql: totals }]);
+    const order = filters.sort === 'balance' ? `${net} DESC, c.name ASC, c.id ASC` : 'c.name ASC, c.id ASC';
 
     const countValues = [...values];
     const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
-    const order = filters.sort === 'balance' ? `${net} DESC, c.name ASC` : 'c.name ASC';
-
+    // Page first, then fill (D-075): the twenty-five accounts are chosen by name (or by what they
+    // owe), and only they are read in full.
+    const pageFrom = filters.sort === 'balance' ? `FROM customers c\n${totals}` : narrow;
     const [list, count] = await Promise.all([
       this.database.query<CustomerListRow>(
-        `SELECT ${customerColumns('c')}, bal.balance::text AS balance,
-                pay.payable::text AS payable, ${net}::text AS net
-         ${from} ${where}
-         ORDER BY ${order}
-         LIMIT $${values.length - 1} OFFSET $${values.length}`,
+        `WITH page AS (
+           SELECT c.id ${pageFrom} ${where}
+            ORDER BY ${order}
+            LIMIT $${values.length - 1} OFFSET $${values.length}
+         )
+         SELECT ${customerColumns('c')}, ${receivable}::text AS balance,
+                ${payable}::text AS payable, ${net}::text AS net
+           FROM page
+           JOIN customers c ON c.id = page.id
+           ${totals}
+          ORDER BY ${order}`,
         values,
       ),
-      this.database.query<{ total: string }>(`SELECT count(*)::text AS total ${forCount} ${where}`, countValues),
+      this.database.query<{ total: string }>(`SELECT count(*)::text AS total ${narrow} ${where}`, countValues),
     ]);
 
     return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0) };

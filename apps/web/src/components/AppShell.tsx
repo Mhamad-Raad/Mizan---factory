@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BottomSheet, Icon, IconButton, Menu, MizanMark } from '@mizan/ui';
+import { BottomSheet, Icon, IconButton, Menu, BrandMark } from '@mizan/ui';
+import type { MenuItem } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import { useApp } from '../lib/store.js';
 import { AppearanceMenus } from './Appearance.js';
-import { apiRequest } from '../lib/api.js';
+import { ApiError, apiRequest } from '../lib/api.js';
 import { useQueryClient } from '@tanstack/react-query';
 import { signOutEverywhereHere } from '../lib/signOut.js';
+import { useIdleLock } from '../lib/idle.js';
+import { splitTitle } from '../lib/page-title.js';
 
 type NavGroup = 'home' | 'trade' | 'records' | 'insight' | 'admin';
 
@@ -91,10 +94,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isOnline = useApp((state) => state.isOnline);
   const setLocked = useApp((state) => state.setLocked);
   const clearSession = useApp((state) => state.clearSession);
-  /** The lock screen is for a device other people pick up; a desk does not need it. */
+  /** The padlock in the bar is for a device other people pick up; a desk has it in the menu. */
   const isSharedDevice = useApp((state) => state.preferences.sharedDevice);
   const [moreOpen, setMoreOpen] = useState(false);
   const title = useApp((state) => state.pageTitle);
+  const titleParts = splitTitle(title, useApp((state) => state.pageTitleNumber));
   const collapsed = useApp((state) => state.preferences.sidebarCollapsed);
   const setPreference = useApp((state) => state.setPreference);
 
@@ -123,11 +127,49 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     else navigate(`/${segments[0] ?? ''}`);
   };
 
-  const lock = async () => {
-    await apiRequest('/auth/lock', { method: 'POST' });
+  /**
+   * Lock the screen: the server first, so every other tab of this session is refused too, and
+   * then this one — whatever the server answered. A lock that could not reach the server (a
+   * dropped connection) still hides the screen here; unlocking asks for the password either way.
+   */
+  const lock = useCallback(async () => {
+    try {
+      await apiRequest('/auth/lock', { method: 'POST' });
+    } catch {
+      /* locked here regardless — see above */
+    }
     setLocked(true);
-    navigate('/lock');
-  };
+    // The lock screen keeps where the user was, so unlocking takes them back there (bug 12).
+    navigate('/lock', { replace: true, state: { from: location.pathname + location.search } });
+  }, [setLocked, navigate, location.pathname, location.search]);
+
+  // Idle auto-lock (FR-106, spec 2.8), at the timeout the server gives this device.
+  const idleLockMinutes = useApp((state) => state.idleLockMinutes);
+  const lockWhenIdle = useCallback(() => void lock(), [lock]);
+  // The server locks a session that sends nothing, and typing a long form sends nothing: while
+  // somebody works, `me` is asked at most once a minute (the idle clock throttles it). A locked
+  // or ended session in its answer is left to `me` itself to act on.
+  const keepAlive = useCallback(() => {
+    apiRequest<{ is_locked?: boolean }>('/auth/me').then(
+      (answer) => {
+        if (answer.is_locked) void queryClient.invalidateQueries({ queryKey: ['me'] });
+      },
+      (error: unknown) => {
+        // Offline says nothing about the session; a refusal (401, 423) does.
+        if (error instanceof ApiError) void queryClient.invalidateQueries({ queryKey: ['me'] });
+      },
+    );
+  }, [queryClient]);
+  useIdleLock(idleLockMinutes, lockWhenIdle, keepAlive);
+
+  // One account menu, in the sidebar on a desktop and in the bar on a phone. "Lock the screen"
+  // is on every device — a desk is walked away from too; the padlock in the bar stays the
+  // shared tablet's.
+  const accountItems: MenuItem[] = [
+    { label: t('common:my_account'), icon: 'user', onSelect: () => navigate('/me') },
+    { label: t('auth:lock_now'), icon: 'lock', onSelect: () => void lock() },
+    { label: t('auth:sign_out'), icon: 'logout', onSelect: () => void signOut() },
+  ];
 
   return (
     <div className="mz-app mz-app--shell" data-sidebar={collapsed ? 'collapsed' : 'open'}>
@@ -141,8 +183,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* No mark here: the brand is in the sidebar, and on a phone the page's own name is
             what the bar is for. */}
         <h1 className="mz-header__title">
-          {/* A name may be Latin inside an RTL header, so it carries its own direction (2.10.6). */}
-          <bdi>{title}</bdi>
+          {/* A name may be Latin inside an RTL header, so it carries its own direction (2.10.6),
+              and a record number is kept whole beside the words, which alone are shortened. */}
+          <bdi className="mz-header__label">{titleParts.label}</bdi>
+          {titleParts.number ? (
+            <bdi className="mz-header__number" dir="ltr" data-tabular>
+              {titleParts.number}
+            </bdi>
+          ) : null}
         </h1>
 
         {/*
@@ -153,19 +201,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
          * shows the same three choices as pictures, and keeps the numerals and the
          * shared-device flag, which are decided once.
          */}
-        <AppearanceMenus />
         {/* The sidebar carries the account on a desktop; on a phone this is where it lives. */}
         <span className="mz-header__account">
           <Menu
             label={t('common:account_menu')}
             icon="user"
-            items={[
-              { label: t('settings:me_title'), onSelect: () => navigate('/me') },
-              ...(isSharedDevice
-                ? [{ label: t('auth:lock_now'), onSelect: () => void lock() }]
-                : []),
-              { label: t('auth:sign_out'), onSelect: () => void signOut() },
-            ]}
+            items={accountItems}
           />
         </span>
         {/*
@@ -177,6 +218,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {isSharedDevice ? (
           <IconButton icon="lock" label={t('auth:lock_now')} onClick={() => void lock()} />
         ) : null}
+        {/* The light/dark switch is the bar's last control (client review). */}
+        <AppearanceMenus />
       </header>
 
       {!isOnline ? (
@@ -192,7 +235,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* ── the sidebar, on a screen with room for one ─────────────────────────── */}
         <div className="mz-sidebar__brand">
           <span className="mz-sidebar__mark" aria-hidden="true">
-            <MizanMark size={22} />
+            <BrandMark size={22} />
           </span>
           <span className="mz-sidebar__brand-name">
             <span>{t('common:app_name')}</span>
@@ -255,13 +298,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               label={t('common:account_menu')}
               icon="more"
               align="start"
-              items={[
-                { label: t('settings:me_title'), onSelect: () => navigate('/me') },
-                ...(isSharedDevice
-                  ? [{ label: t('auth:lock_now'), onSelect: () => void lock() }]
-                  : []),
-                { label: t('auth:sign_out'), onSelect: () => void signOut() },
-              ]}
+              items={accountItems}
             />
           </div>
         </div>
@@ -274,7 +311,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className="mz-tabbar__item mz-tabbar__item--tab"
           >
             <Icon name={destination.icon} />
-            {t(destination.labelKey)}
+            <span className="mz-tabbar__tab-label">{t(destination.labelKey)}</span>
           </NavLink>
         ))}
         {more.length > 0 ? (
@@ -284,7 +321,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setMoreOpen(true)}
           >
             <Icon name="more" />
-            {t('common:more')}
+            <span className="mz-tabbar__tab-label">{t('common:more')}</span>
           </button>
         ) : null}
       </nav>

@@ -402,19 +402,53 @@ export interface BottomSheetProps {
  * text, because to a machine they were still text somebody was expected to read (NFR-10).
  */
 export function BottomSheet({ title, open, onClose, closeLabel, children }: BottomSheetProps) {
+  const sheet = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  }, [onClose]);
+
+  /*
+   * A dialog behaves like one (NFR-10): focus moves into it when it opens, Escape closes it, and
+   * focus goes back to whatever opened it when it closes — before this a keyboard user was left
+   * on the inert page behind the sheet, with no key that closed it.
+   *
+   * Into the first field where there is a mouse or a keyboard; into the sheet itself on a touch
+   * screen, where focusing a field would throw the software keyboard over the sheet unasked. One
+   * effect, so the order is explicit: the opener is noted before the page goes inert (which can
+   * take its focus away), and given focus back only after the page is live again.
+   */
   useEffect(() => {
     if (!open) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const app = document.querySelector('.mz-app');
-    if (!(app instanceof HTMLElement)) return;
-    app.setAttribute('inert', '');
-    return () => app.removeAttribute('inert');
+    if (app instanceof HTMLElement) app.setAttribute('inert', '');
+
+    const node = sheet.current;
+    const fine = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches;
+    const field = fine
+      ? node?.querySelector<HTMLElement>('input:not([disabled]), select:not([disabled]), textarea:not([disabled])')
+      : null;
+    (field ?? node)?.focus();
+
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      close.current();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      if (app instanceof HTMLElement) app.removeAttribute('inert');
+      if (opener?.isConnected) opener.focus();
+    };
   }, [open]);
 
   if (!open) return null;
   return createPortal(
     <>
       <div className="mz-backdrop" onClick={onClose} role="presentation" />
-      <div className="mz-sheet" role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={sheet} className="mz-sheet" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
         <div className="mz-row mz-row--between" style={{ marginBlockEnd: 'var(--space-3)' }}>
           <h2 className="mz-heading">{title}</h2>
           <IconButton icon="close" label={closeLabel} onClick={onClose} />
@@ -433,6 +467,8 @@ export interface MenuItem {
   current?: boolean;
   /** For a language row: the item's own language, so it is read in the right voice. */
   lang?: string;
+  /** An icon before the label, for a menu of actions rather than of choices (the account menu). */
+  icon?: IconName;
   onSelect: () => void;
 }
 
@@ -460,13 +496,17 @@ export function Menu({
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const activeCount = items.filter((item) => item.current).length;
 
   useEffect(() => {
     if (!open) return;
     const dismiss = (event: MouseEvent | KeyboardEvent): void => {
       if (event instanceof KeyboardEvent) {
-        if (event.key === 'Escape') setOpen(false);
+        if (event.key === 'Escape') {
+          setOpen(false);
+          trigger.current?.focus();
+        }
         return;
       }
       if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
@@ -483,6 +523,7 @@ export function Menu({
     <div className="mz-menu" ref={root}>
       {variant === 'button' ? (
         <button
+          ref={trigger}
           type="button"
           className="mz-button mz-button--secondary mz-menu__trigger"
           aria-label={label}
@@ -497,6 +538,7 @@ export function Menu({
         </button>
       ) : (
         <button
+          ref={trigger}
           type="button"
           className="mz-icon-button"
           aria-label={label}
@@ -519,11 +561,21 @@ export function Menu({
               className="mz-menu__item"
               aria-current={item.current ? 'true' : undefined}
               onClick={() => {
+                // Focus back on the trigger *before* the item goes: a sheet the item opens notes
+                // the focused element as its opener, and the unmounted item left it on <body>,
+                // so closing the sheet dropped a keyboard user at the top of the page (review).
+                trigger.current?.focus();
                 setOpen(false);
                 item.onSelect();
               }}
             >
-              {item.current ? <Icon name="check" size={16} /> : <span className="mz-menu__gap" />}
+              {item.icon ? (
+                <Icon name={item.icon} size={16} />
+              ) : item.current ? (
+                <Icon name="check" size={16} />
+              ) : (
+                <span className="mz-menu__gap" />
+              )}
               {item.label}
             </button>
           ))}
@@ -562,7 +614,7 @@ export interface NumberFieldProps extends Omit<InputHTMLAttributes<HTMLInputElem
   decimals?: number;
   /**
    * Thousands separators while typing — `1,250,000` on screen, `1250000` to the form. On by
-   * default; off for a figure that is not a quantity, such as a year or a PIN-like code.
+   * default; off for a figure that is not a quantity, such as a year or a reference number.
    */
   grouped?: boolean;
 }
@@ -688,119 +740,3 @@ export function StickyFooter({ children }: SheetFooterProps) {
   return <div className="mz-sticky-footer">{children}</div>;
 }
 
-export interface FabProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  label: string;
-  icon?: IconName;
-}
-
-/** The one primary action of a list page, in the thumb zone (spec 3.3). */
-export function Fab({ label, icon = 'plus', ...rest }: FabProps) {
-  return (
-    <button type="button" className="mz-fab" {...rest}>
-      <Icon name={icon} />
-      {label}
-    </button>
-  );
-}
-
-export interface PinPadProps {
-  /** The digits typed so far; the parent owns them, as with every field here. */
-  value: string;
-  onChange: (value: string) => void;
-  onComplete?: (value: string) => void;
-  /** How many digits this device demands — 6 on a shared tablet (FR-106). */
-  length?: number;
-  label: string;
-  hint?: string;
-  error?: string;
-  backspaceLabel: string;
-  disabled?: boolean;
-}
-
-/**
- * The PIN pad of the lock screen (FR-106, wireframe 3.3).
- *
- * A keypad rather than a text field, because the lock screen is used one-handed on a tablet
- * standing on a bench, often with gloves: the targets are large, the digits are tabular, and
- * nothing here depends on a software keyboard appearing. The dots show how many digits have
- * been typed and never what they are.
- *
- * The grid is laid out in *logical* order, so it reads 1-2-3 from the start edge in both
- * directions — a numeric keypad is not mirrored in RTL (spec 2.10.6 point 5: numbers stay
- * left-to-right), which is why the digits carry `dir="ltr"` while the labels do not.
- */
-export function PinPad({
-  value,
-  onChange,
-  onComplete,
-  length = 6,
-  label,
-  hint,
-  error,
-  backspaceLabel,
-  disabled,
-}: PinPadProps) {
-  const press = (digit: string): void => {
-    if (disabled || value.length >= length) return;
-    const next = `${value}${digit}`;
-    onChange(next);
-    if (next.length === length) onComplete?.(next);
-  };
-
-  return (
-    <div className="mz-stack" style={{ gap: 'var(--space-3)' }}>
-      <div className="mz-pinpad__status">
-        <p className="mz-caption" id="mz-pinpad-label">
-          {label}
-        </p>
-        <div className="mz-pinpad__dots" role="img" aria-label={`${value.length} / ${length}`} dir="ltr">
-          {Array.from({ length }, (_, index) => (
-            <span
-              key={index}
-              className={index < value.length ? 'mz-pinpad__dot mz-pinpad__dot--on' : 'mz-pinpad__dot'}
-            />
-          ))}
-        </div>
-        {hint ? <p className="mz-caption">{hint}</p> : null}
-        {error ? (
-          <p className="mz-field__error" role="alert">
-            {error}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="mz-pinpad" role="group" aria-labelledby="mz-pinpad-label" dir="ltr">
-        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
-          <button
-            key={digit}
-            type="button"
-            className="mz-pinpad__key"
-            onClick={() => press(digit)}
-            disabled={disabled}
-            data-tabular
-          >
-            {digit}
-          </button>
-        ))}
-        <button
-          type="button"
-          className="mz-pinpad__key mz-pinpad__key--quiet"
-          onClick={() => onChange(value.slice(0, -1))}
-          disabled={disabled || value.length === 0}
-          aria-label={backspaceLabel}
-        >
-          <Icon name="back" />
-        </button>
-        <button
-          type="button"
-          className="mz-pinpad__key"
-          onClick={() => press('0')}
-          disabled={disabled}
-          data-tabular
-        >
-          0
-        </button>
-      </div>
-    </div>
-  );
-}

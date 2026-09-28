@@ -69,34 +69,46 @@ const year = `${today.slice(0, 4)}-01-01`;
 const TARGETS = [
   ['GET /orders (today)', `/orders?from=${today}&to=${today}&page_size=25`, 300],
   ['GET /orders (this month)', `/orders?from=${month}&to=${today}&page_size=25`, 300],
+  // The dashboard's latest orders: the rows and the count, not the figures over every order (D-075).
+  ['GET /orders (dashboard, totals=false)', '/orders?page_size=8&totals=false', 300],
+  ['GET /orders (owing, this month)', `/orders?status=owing&from=${month}&to=${today}&page_size=25`, 300],
+  // Name, notes and number, each through its own index (D-075).
+  ['GET /orders (search)', '/orders?q=kawa&page_size=25', 300],
   ['GET /customers', '/customers?page_size=25', 300],
+  ['GET /customers (by balance)', '/customers?sort=balance&page_size=25', 300],
   // The API calls them items; the interface calls them materials, per the glossary (1.6).
   ['GET /items (materials)', '/items?page_size=25', 300],
   ['GET /companies', '/companies?page_size=25', 300],
   ['GET /purchases (this month)', `/purchases?from=${month}&to=${today}&page_size=25`, 300],
   ['GET /damages (this month)', `/damages?from=${month}&to=${today}&page_size=25`, 300],
   ['GET /history (first page)', '/history?limit=50', 300],
+  ['GET /history (voids)', '/history?action=void&limit=50', 300],
   ['GET /dashboard', '/dashboard', 300],
   ['GET /reports/sales (month)', `/reports/sales?from=${month}&to=${today}`, 300],
   // Stated rather than assumed, like the year's margin: grouping a year by material reads
   // every line of that year, and no index shortens a sum of everything (REVIEW-I6).
   ['GET /reports/sales (year, by material)', `/reports/sales?from=${year}&to=${today}&group_by=item`, 1500],
   ['GET /reports/purchases (year)', `/reports/purchases?from=${year}&to=${today}`, 300],
-  // Two hundred materials, each with its stock, its movements in the period, its first
-  // purchase, its last sale and its month price: eight hundred index scans, and the last-sale
-  // lookup alone touches every line of that material. 500 ms is the agreed figure (REVIEW-I6).
+  // Every material, each with its stock, its movements in the period, its first purchase, its
+  // last sale, its month price and — only when it has stock — its open buys (D-075): 280 ms for
+  // 5,000 materials at ten years. 500 ms is the agreed figure (REVIEW-I6).
   ['GET /reports/stock', `/reports/stock?from=${month}&to=${today}`, 500],
-  // One index-only pass over the customer ledger to group it by customer. At the 10,000
-  // customers of NFR-13 that is comfortably inside 300 ms; the fixture this was measured on
-  // holds 30,000, and 500 ms is the agreed figure there (REVIEW-I6).
-  ['GET /reports/receivables', `/reports/receivables?from=${month}&to=${today}`, 500],
+  // The maintained per-account totals less what came after the range, and one index range per
+  // account for the period (D-075): 45–70 ms at ten years.
+  ['GET /reports/receivables', `/reports/receivables?from=${month}&to=${today}`, 300],
   ['GET /reports/payables', `/reports/payables?from=${month}&to=${today}`, 300],
+  ['GET /reports/payables (year)', `/reports/payables?from=${year}&to=${today}`, 300],
   ['GET /reports/damage (year)', `/reports/damage?from=${year}&to=${today}`, 300],
   ['GET /reports/employee-activity (month)', `/reports/employee-activity?from=${month}&to=${today}`, 300],
+  ['GET /reports/employee-activity (year)', `/reports/employee-activity?from=${year}&to=${today}`, 300],
   ['GET /reports/cash-up (today)', `/reports/cash-up?from=${today}&to=${today}`, 300],
   // Stated rather than assumed: this one reads the lines (D-029).
   ['GET /reports/profit (month)', `/reports/profit?from=${month}&to=${today}`, 300],
   ['GET /reports/profit (year)', `/reports/profit?from=${year}&to=${today}`, 1500],
+  // The file export: every group in one answer (D-075). Stated, like the year's margin: it is
+  // the whole period's report, thousands of rows, once.
+  ['GET /reports/receivables (year, export)', `/reports/receivables?from=${year}&to=${today}&all=true`, 3000],
+  ['GET /reports/stock (export)', `/reports/stock?from=${month}&to=${today}&all=true`, 3000],
 ];
 
 const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];

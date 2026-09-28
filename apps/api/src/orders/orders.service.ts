@@ -16,7 +16,6 @@ import {
 } from '@mizan/money';
 import type { Currency, Measure, MoneyPair, Rate, RateSource, RoundedTotals } from '@mizan/money';
 import { orderStatus } from '@mizan/ledger';
-import type { LedgerEntry } from '@mizan/ledger';
 import { AuditService } from '../audit/audit.service.js';
 import { resolveActingUser } from '../common/acting-user.js';
 import { ApiError } from '../common/errors.js';
@@ -108,9 +107,10 @@ export class OrdersService {
   async list(
     context: RequestContext,
     filters: OrderFilters,
-  ): Promise<{ items: OrderDto[]; total: number; totals: OrderTotals }> {
+  ): Promise<{ items: OrderDto[]; total: number; totals?: OrderTotals }> {
     const { rows, total, totals } = await this.orders.list(filters);
-    return { items: rows.map((row) => toOrderDto(row, [])), total, totals };
+    const items = rows.map((row) => toOrderDto(row, []));
+    return totals ? { items, total, totals } : { items, total };
   }
 
   async get(context: RequestContext, id: string): Promise<OrderDto> {
@@ -291,10 +291,15 @@ export class OrdersService {
     await this.assertMayEdit(context, existing);
     assertWalkInPaysCash(existing.customer_is_system, input.payment_type, 'payment_type');
 
-    const { rate, rateSource } = await this.rateFor(input.rate_iqd_per_usd, existing.customer_id);
+    // An edit keeps the rate the order was made at unless a new one is typed: a rate that moved
+    // since must not re-price every line of an order whose note is being fixed (D-054, review).
+    const { rate, rateSource } = input.rate_iqd_per_usd
+      ? await this.rateFor(input.rate_iqd_per_usd, existing.customer_id)
+      : { rate: formatRate(existing.rate_iqd_per_usd), rateSource: existing.rate_source };
     const actingUserId = await this.actingUser(
       context,
-      input.acting_user_id ?? existing.acting_user_id,
+      input.acting_user_id,
+      existing.acting_user_id,
     );
 
     const edited = await this.database.transaction(async (tx) => {
@@ -315,7 +320,7 @@ export class OrdersService {
         ]);
       }
 
-      const customerRow = await this.customers.findByIdUnscoped(order.customer_id, tx);
+      const customerRow = await this.customers.findById(order.customer_id, tx);
       if (!customerRow) throw ApiError.notFound();
       const locked = await this.ledger.lockOwner(tx, order.customer_id);
       if (!locked) throw ApiError.notFound();
@@ -344,7 +349,7 @@ export class OrdersService {
 
       // The old lines give their stock back to the buys it came from before the new lines take.
       await this.lots.release(tx, { type: 'order_line', ids: oldLines.map((line) => line.id), createdBy: context.userId });
-      const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource);
+      const lines = await this.prepareLines(tx, input.lines, input.order_date, rate, rateSource, new Set(oldLines.map((line) => line.item_id)));
       const discount = this.discountPair(input.discount, rate, rateSource, lines);
       const totals = orderTotals(lines, discount, rate, customerRow.settlement_currency);
 
@@ -574,8 +579,8 @@ export class OrdersService {
       let ledgerEntryId: string | null = null;
 
       if (input.to === 'cash') {
-        const entries = await this.ledger.entriesFor(tx, order.customer_id);
-        const remaining = remainingOf(entries, id, locked.settlement_currency);
+        // The maintained per-order sum, not the account's whole ledger (review: scale).
+        const remaining = await this.orders.remainingOf(id, locked.settlement_currency, tx);
         if (remaining <= 0) {
           throw ApiError.validation([
             { path: 'to', code: 'NOTHING_OWED', message_key: 'errors:nothing_owed', params: {} },
@@ -610,7 +615,8 @@ export class OrdersService {
         );
         ledgerEntryId = result.entry.id;
       } else {
-        const entries = await this.ledger.entriesFor(tx, order.customer_id);
+        // Only this order's rows: a reversal copies the refs of the row it reverses (review: scale).
+        const entries = await this.ledger.entriesOfDocument(tx, order.customer_id, id);
         const settlement = entries.find(
           (entry) =>
             entry.entry_type === 'cash_settlement' &&
@@ -731,7 +737,7 @@ export class OrdersService {
   async receipt(context: RequestContext, id: string) {
     const order = await this.requireOrder(context, id);
     const lines = await this.orders.linesOf(id);
-    const customer = await this.customers.findByIdUnscoped(order.customer_id);
+    const customer = await this.customers.findById(order.customer_id);
     const balance = customer ? await this.customers.balanceOf(order.customer_id) : 0;
 
     return {
@@ -781,8 +787,8 @@ export class OrdersService {
   }
 
   /** Only an admin may record an order as done by somebody else (spec 2.7). */
-  private actingUser(context: RequestContext, requested?: string | null): Promise<string> {
-    return resolveActingUser(this.database, context, requested, 'acting_user_id');
+  private actingUser(context: RequestContext, requested?: string | null, current?: string | null): Promise<string> {
+    return resolveActingUser(this.database, context, requested, 'acting_user_id', current);
   }
 
   /**
@@ -806,6 +812,9 @@ export class OrdersService {
     orderDate: string,
     rate: Rate,
     rateSource: RateSource,
+    /** On an edit, the materials the document already had: deactivating one since must not lock
+     * the document against every correction (review). A new line of it is still refused. */
+    keptItemIds: ReadonlySet<string> = new Set(),
   ): Promise<PreparedLine[]> {
     const month = firstOfMonth(orderDate);
     const prepared: PreparedLine[] = [];
@@ -825,7 +834,7 @@ export class OrdersService {
           },
         ]);
       }
-      if (!item.is_active) {
+      if (!item.is_active && !keptItemIds.has(item.id)) {
         throw ApiError.validation([
           {
             path: `lines.${index}.item_id`,
@@ -1236,15 +1245,6 @@ function pricedQuantityOf(
   line: Pick<NewOrderLine, 'priced_measure' | 'qty_count' | 'qty_kg'>,
 ): string {
   return line.priced_measure === 'count' ? String(line.qty_count ?? 0) : String(line.qty_kg ?? '0');
-}
-
-function remainingOf(entries: readonly LedgerEntry[], orderId: string, currency: Currency): number {
-  return entries
-    .filter((entry) => entry.refs.order_id === orderId)
-    .reduce(
-      (total, entry) => total + (currency === 'IQD' ? entry.amount_iqd : entry.amount_usd_cents),
-      0,
-    );
 }
 
 function lineSummary(line: PreparedLine) {

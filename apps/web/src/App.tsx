@@ -1,14 +1,16 @@
 import { Suspense, lazy, useEffect } from 'react';
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactElement } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, ErrorState, Skeleton } from '@mizan/ui';
 import { AppShell } from './components/AppShell.js';
 import { RouteBoundary } from './components/RouteBoundary.js';
+import { NoAccess } from './components/Can.js';
 import { loadTwice } from './lib/chunk.js';
 import { ApiError, apiRequest } from './lib/api.js';
 import { useApp } from './lib/store.js';
+import { usePageTitle } from './lib/page-title.js';
 import type { SessionUser } from './lib/store.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { LockPage } from './pages/LockPage.js';
@@ -19,7 +21,7 @@ import { ChangePasswordPage } from './pages/ChangePasswordPage.js';
  * JavaScript ≤ 250 kB gzipped **with route-level code splitting**").
  *
  * Before this the login page downloaded the whole application — the nine reports, the damage
- * forms, the permission grid, the PIN pad — and Lighthouse on the reference profile of NFR-03
+ * forms, the permission grid — and Lighthouse on the reference profile of NFR-03
  * (400 kbps, 400 ms round trip, 4× CPU) measured a **7.6 second** first contentful paint
  * against a budget of five seconds to interactive, with 100 KiB of the bundle unused on that
  * screen. An employee signing in on the factory floor pays for screens they may not even have
@@ -83,8 +85,10 @@ function landingFor(user: SessionUser | null, permissions: string[]): string {
   if (may('dashboard.view')) return '/dashboard';
   if (may('orders.view')) return '/orders';
   if (may('materials.view')) return '/materials';
+  // Customers only for `customers.view`: the page and its API read with that key, so a user
+  // holding only `companies.view` landed on "no access", and its "go to my start page" sent
+  // them back to it (review).
   if (may('customers.view')) return '/customers';
-  if (may('companies.view')) return '/customers';
   if (may('damages.view')) return '/damages';
   if (may('accounts.view')) return '/accounts';
   if (user?.role === 'admin') return '/users';
@@ -107,10 +111,11 @@ interface MeResponse {
   user: SessionUser;
   permissions: string[];
   is_locked: boolean;
+  /** This device's idle auto-lock (FR-106); absent from an older API, which means no timer. */
+  idle_lock_minutes?: number | null;
 }
 
 export function App() {
-  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const user = useApp((state) => state.user);
@@ -121,6 +126,7 @@ export function App() {
   const setSession = useApp((state) => state.setSession);
   const clearSession = useApp((state) => state.clearSession);
   const setOnline = useApp((state) => state.setOnline);
+  const queryClient = useQueryClient();
 
   /** The offline indicator of FR-1305; reads fall back to what was already loaded. */
   useEffect(() => {
@@ -149,9 +155,19 @@ export function App() {
         user: me.data.user,
         permissions: me.data.permissions,
         isLocked: me.data.is_locked,
+        idleLockMinutes: me.data.idle_lock_minutes ?? null,
       });
-    if (me.error instanceof ApiError && me.error.status === 401) clearSession();
-  }, [me.data, me.error, setSession, clearSession]);
+    if (me.error instanceof ApiError && me.error.status === 401) {
+      // The session is over — expired, revoked, or signed out in another tab. Whoever picks the
+      // tablet up next must not see the last person's cached figures, so the cache goes. Their
+      // drafts stay: they are stored under their own id and offered to nobody else, and the
+      // sign-in that follows clears everybody else's (2.10.2) — an expiry mid-order must not cost
+      // the order. Only when somebody *was* signed in: clearing the cache drops `me` too, and its
+      // re-ask must not start the same round again.
+      if (useApp.getState().user) queryClient.clear();
+      clearSession();
+    }
+  }, [me.data, me.error, setSession, clearSession, queryClient]);
 
   useEffect(() => {
     // The lock screen keeps where the user was, so unlocking takes them back there (bug 12).
@@ -159,6 +175,16 @@ export function App() {
       navigate('/lock', { replace: true, state: { from: location.pathname + location.search } });
     }
   }, [isLocked, location.pathname, location.search, navigate]);
+
+  /**
+   * Every route asks for the permission its screen reads with (FR-104). The navigation already
+   * hides what a user may not open, but a link, a bookmark or a typed address still arrived at
+   * the screen, which then showed "check your connection" for every refused request. The API is
+   * the control; this only says the true thing sooner.
+   */
+  const isAdmin = user?.role === 'admin';
+  const may = (key: string) => isAdmin || sessionPermissions.has(key);
+  const gate = (allowed: boolean, element: ReactElement) => (allowed ? element : <NoAccess />);
 
   if (me.isPending) {
     return (
@@ -224,66 +250,75 @@ export function App() {
         <Suspense key={routeKey(location.pathname)} fallback={<Skeleton lines={6} />}>
           <Routes>
             <Route path="/login" element={<Navigate to="/" replace />} />
-            <Route path="/orders" element={<OrdersPage />} />
-            <Route path="/orders/new" element={<OrderFormPage mode="create" />} />
-            <Route path="/orders/:id" element={<OrderDetailPage />} />
-            <Route path="/orders/:id/edit" element={<OrderFormPage mode="edit" />} />
-            <Route path="/materials" element={<MaterialsPage />} />
-            <Route path="/materials/new" element={<NewMaterialPage />} />
-            <Route path="/materials/:id" element={<MaterialDetailPage />} />
-            <Route path="/customers" element={<CustomersPage />} />
-            <Route path="/customers/new" element={<NewCustomerPage />} />
-            <Route path="/customers/:id" element={<CustomerDetailPage />} />
+            <Route path="/orders" element={gate(may('orders.view'), <OrdersPage />)} />
+            <Route path="/orders/new" element={gate(may('orders.create'), <OrderFormPage mode="create" />)} />
+            <Route path="/orders/:id" element={gate(may('orders.view'), <OrderDetailPage />)} />
+            <Route path="/orders/:id/edit" element={gate(may('orders.edit'), <OrderFormPage mode="edit" />)} />
+            <Route path="/materials" element={gate(may('materials.view'), <MaterialsPage />)} />
+            <Route path="/materials/new" element={gate(may('materials.create'), <NewMaterialPage />)} />
+            <Route path="/materials/:id" element={gate(may('materials.view'), <MaterialDetailPage />)} />
+            <Route path="/customers" element={gate(may('customers.view'), <CustomersPage />)} />
+            <Route
+              path="/customers/new"
+              element={gate(may('customers.create') || may('companies.create'), <NewCustomerPage />)}
+            />
+            <Route path="/customers/:id" element={gate(may('customers.view'), <CustomerDetailPage />)} />
             {/* Companies are businesses on the Customers page now (D-054); old links still land. */}
             <Route path="/companies" element={<Navigate to="/customers" replace />} />
             <Route path="/companies/new" element={<Navigate to="/customers/new" replace />} />
             <Route path="/companies/:id" element={<CompanyRedirect />} />
             {/* The accountant page took the Purchases page's place (D-062); buying is done in
                 Materials now, so the old purchase form's links land there. A buy's own page stays. */}
-            <Route path="/accounts" element={<AccountsPage />} />
+            <Route path="/accounts" element={gate(may('accounts.view'), <AccountsPage />)} />
             <Route path="/purchases" element={<Navigate to="/accounts" replace />} />
             <Route path="/purchases/new" element={<Navigate to="/materials" replace />} />
-            <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
+            <Route path="/purchases/:id" element={gate(may('purchases.view'), <PurchaseDetailPage />)} />
             <Route path="/purchases/:id/edit" element={<Navigate to="/materials" replace />} />
-            <Route path="/damages" element={<DamagesPage />} />
-            <Route path="/damages/new" element={<DamageFormPage mode="create" />} />
-            <Route path="/damages/:id" element={<DamageDetailPage />} />
-            <Route path="/damages/:id/edit" element={<DamageFormPage mode="edit" />} />
-            <Route path="/users" element={<UsersPage />} />
-            <Route path="/users/new" element={<NewUserPage />} />
-            <Route path="/users/:id" element={<UserDetailPage />} />
-            <Route path="/history" element={<HistoryPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/damages" element={gate(may('damages.view'), <DamagesPage />)} />
+            <Route path="/damages/new" element={gate(may('damages.create'), <DamageFormPage mode="create" />)} />
+            <Route path="/damages/:id" element={gate(may('damages.view'), <DamageDetailPage />)} />
+            <Route path="/damages/:id/edit" element={gate(may('damages.edit'), <DamageFormPage mode="edit" />)} />
+            <Route path="/users" element={gate(isAdmin, <UsersPage />)} />
+            <Route path="/users/new" element={gate(isAdmin, <NewUserPage />)} />
+            <Route path="/users/:id" element={gate(isAdmin, <UserDetailPage />)} />
+            <Route path="/history" element={gate(may('history.view'), <HistoryPage />)} />
+            <Route path="/reports" element={gate(may('reports.view'), <ReportsPage />)} />
             {/* One Reports page with a tab per report; an old link to one report opens its tab. */}
             <Route path="/reports/:name" element={<ReportRedirect />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/dashboard" element={gate(may('dashboard.view'), <DashboardPage />)} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/me" element={<MePage />} />
             {/* A test fixture with a URL, deliberately not in the navigation (spec 3.7.1). */}
             <Route path="/font-check" element={<FontCheckPage />} />
             {/* Go-live import (FR-1312, Proposed — not requested); the API is admin-only. */}
-            <Route path="/import" element={<ImportPage />} />
+            <Route path="/import" element={gate(isAdmin, <ImportPage />)} />
             {/* The home route sends each user to the first page they may open (spec 2.10.1). */}
             <Route
               path="/"
               element={<Navigate to={landingFor(user, [...sessionPermissions])} replace />}
             />
-            <Route
-              path="*"
-              element={
-                <main className="mz-main">
-                  <ErrorState
-                    title={t('common:not_found_title')}
-                    body={t('common:not_found_body')}
-                    action={<Button onClick={() => navigate('/')}>{t('common:back')}</Button>}
-                  />
-                </main>
-              }
-            />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </RouteBoundary>
     </AppShell>
+  );
+}
+
+/** An address that is no screen; it names itself, or the last page's title stays (review). */
+function NotFound() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  usePageTitle(t('common:not_found_title'));
+  return (
+    // A <div>: the shell's own <main> is already around this.
+    <div>
+      <ErrorState
+        title={t('common:not_found_title')}
+        body={t('common:not_found_body')}
+        action={<Button onClick={() => navigate('/')}>{t('common:back')}</Button>}
+      />
+    </div>
   );
 }
 

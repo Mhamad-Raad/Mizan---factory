@@ -29,6 +29,7 @@ import { App } from './App.js';
 import { ApiError } from './lib/api.js';
 import { initI18n } from './lib/i18n.js';
 import { applyPreferences, readPreferences } from './lib/preferences.js';
+import { useApp } from './lib/store.js';
 
 const preferences = readPreferences();
 // The pre-paint script in index.html has already set these; applying them again keeps the
@@ -41,10 +42,24 @@ await initI18n(preferences.lang);
  * choose a new password (security review, finding 6). When that answer arrives — an admin set a
  * temporary password while this tab was open — `me` is read again, and it carries the flag that
  * sends the app to the change-password screen instead of leaving an error on the current page.
+ *
+ * Likewise a locked session (423 SESSION_LOCKED): the server locked it — the idle timer of
+ * another tab, or the menu's "Lock the screen" there — and every request of this tab is refused
+ * until it is unlocked, so the tab shows the lock screen rather than a row of errors.
  */
 function onRefusal(error: unknown): void {
-  if (error instanceof ApiError && error.code === 'PASSWORD_CHANGE_REQUIRED') {
+  if (!(error instanceof ApiError)) return;
+  if (error.code === 'PASSWORD_CHANGE_REQUIRED') {
     void queryClient.invalidateQueries({ queryKey: ['me'] });
+  }
+  // A write refused because its key already saved something else: that earlier attempt reached
+  // the server while its reply was lost, so the page is read again to show what was saved.
+  if (error.code === 'IDEMPOTENCY_MISMATCH') {
+    void queryClient.invalidateQueries();
+  }
+  if (error.status === 423 || error.code === 'SESSION_LOCKED') {
+    const state = useApp.getState();
+    if (state.user && !state.isLocked) state.setLocked(true);
   }
 }
 

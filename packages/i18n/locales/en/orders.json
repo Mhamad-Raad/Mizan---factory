@@ -59,5 +59,6 @@
   "tile_to_collect": "Still to collect",
   "rounded_up": "Rounded up by {{amount}} to a round {{step}}",
   "rounding": "Rounding",
-  "save_order_one": "Save order ({{count}} line)"
+  "save_order_one": "Save order ({{count}} line)",
+  "empty_search": "No match for '{{query}}'"
 }

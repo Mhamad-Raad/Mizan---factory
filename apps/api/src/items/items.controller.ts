@@ -81,6 +81,15 @@ export const movementSchema = z.object({
   note: z.string().min(1).max(2000),
 });
 
+/**
+ * The buys of a material: by default the ones with stock left; `used_up=true` pages through the
+ * rest (D-075).
+ */
+const lotsSchema = z.object({
+  used_up: z.enum(['true', 'false']).optional(),
+  ...pageFields,
+});
+
 const pageSchema = z.object({
   ...pageFields,
 });
@@ -99,7 +108,14 @@ const historySchema = z.object({
  * at each shape (FR-305, spec 2.6.2).
  */
 @Controller()
-@SensitiveFields({ bought: 'fields.see_bought_price', unit_cost_iqd: 'fields.see_bought_price', unit_cost_usd_cents: 'fields.see_bought_price' })
+@SensitiveFields({
+  bought: 'fields.see_bought_price',
+  unit_cost_iqd: 'fields.see_bought_price',
+  unit_cost_usd_cents: 'fields.see_bought_price',
+  // What a whole buy cost, which a quantity beside it turns straight back into a unit cost (review).
+  line_total_iqd: 'fields.see_bought_price',
+  line_total_usd_cents: 'fields.see_bought_price',
+})
 export class ItemsController {
   constructor(private readonly items: ItemsService) {}
 
@@ -207,8 +223,8 @@ export class ItemsController {
    */
   @Get('items/:id/lots')
   @RequirePermission('materials.view')
-  async lots(@Param('id') id: string) {
-    return this.items.lots(id);
+  async lots(@Param('id') id: string, @Query(zodBody(lotsSchema)) query: z.infer<typeof lotsSchema>) {
+    return this.items.lots(id, { ...query, used_up: query.used_up === 'true' });
   }
 
   @Get('items/:id/prices')

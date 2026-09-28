@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, Icon, Menu } from '@mizan/ui';
+import { Card, Icon, IconButton, Menu } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import { LANGUAGE_NAMES, LOCALES, directionOf } from '@mizan/i18n';
 import { FONT_SCALES, PALETTES, THEMES, TYPEFACES, resolveTheme } from '../lib/preferences.js';
@@ -374,14 +374,19 @@ export function useAppearanceMenus() {
 }
 
 /**
- * The bar's three appearance menus — language, theme, text size — as one piece, so the app bar
- * and the doorway screens (sign-in, lock, change password) offer them identically.
+ * The bar's appearance controls — language, text size, and the light/dark switch last — as
+ * one piece, so the app bar and the doorway screens (sign-in, lock, change password) offer them
+ * identically.
  */
 export function AppearanceMenus() {
   const { t } = useTranslation();
   const lang = useApp((state) => state.preferences.lang);
   const setPreference = useApp((state) => state.setPreference);
-  const { themeIcon, themeItems, textItems } = useAppearanceMenus();
+  const { themeIcon, textItems } = useAppearanceMenus();
+  const theme = useApp((state) => state.preferences.theme);
+  // One tap between light and dark (client review): no menu. What is on screen now decides the
+  // other one; following the device stays a choice in Settings.
+  const nextTheme = resolveTheme(theme) === 'dark' ? 'light' : 'dark';
 
   return (
     <>
@@ -395,8 +400,12 @@ export function AppearanceMenus() {
           onSelect: () => setPreference('lang', locale),
         }))}
       />
-      <Menu label={t('common:theme_menu')} icon={themeIcon} items={themeItems} />
       <Menu label={t('common:text_size_menu')} icon="text" items={textItems} />
+      <IconButton
+        icon={themeIcon}
+        label={t(nextTheme === 'dark' ? 'common:switch_to_dark' : 'common:switch_to_light')}
+        onClick={() => setPreference('theme', nextTheme)}
+      />
     </>
   );
 }

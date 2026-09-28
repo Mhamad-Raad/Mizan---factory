@@ -19,6 +19,12 @@ COPY packages packages
 COPY apps/web apps/web
 RUN pnpm --filter @mizan/web build && pnpm --filter @mizan/web check:budget
 
+# The CSP hashes of the inline scripts, from the exact page that will be served.
+COPY ops/docker/Caddyfile ops/docker/csp-hashes.mjs /repo/ops/docker/
+RUN HASHES="$(node /repo/ops/docker/csp-hashes.mjs /repo/apps/web/dist/index.html)" \
+ && sed "s|__CSP_SCRIPT_HASHES__|$HASHES|" /repo/ops/docker/Caddyfile > /repo/Caddyfile \
+ && ! grep -q __CSP_SCRIPT_HASHES__ /repo/Caddyfile
+
 FROM caddy:2-alpine AS runtime
 COPY --from=build /repo/apps/web/dist /srv
-COPY ops/docker/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /repo/Caddyfile /etc/caddy/Caddyfile

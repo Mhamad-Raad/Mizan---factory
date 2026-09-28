@@ -4,9 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
-import { ORDER_ROUNDING_IQD, convert } from '@mizan/money';
+import { ORDER_ROUNDING_IQD } from '@mizan/money';
 import type { Currency, Rate } from '@mizan/money';
-import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { ApiError, apiRequest } from '../lib/api.js';
+import { useIdempotencyKey } from '../lib/idempotency.js';
+import { bothOf } from '../lib/money.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
@@ -149,11 +151,18 @@ export function OrderDetailPage() {
     await invalidateMoneyViews(queryClient);
   };
 
+  // Each opening of a sheet holds one key across its retries (FR-1305), scoped to this order, so
+  // the next order's payment never carries a key this one already used.
+  const paymentKey = useIdempotencyKey(`payment:${id}:${paying}`);
+  const typeKey = useIdempotencyKey(`type:${id}:${changingType}`);
+  const voidKey = useIdempotencyKey(`void:${id}:${voiding}`);
+
   const payment = useMutation({
     mutationFn: (body: unknown) =>
-      apiRequest(`/orders/${id}/payments`, { method: 'POST', body, idempotencyKey: newIdempotencyKey() }),
+      apiRequest(`/orders/${id}/payments`, { method: 'POST', body, idempotencyKey: paymentKey.key }),
     onSuccess: async () => {
-      setPaying(false);
+      paymentKey.renew();
+      closeSheets();
       setToast(t('customers:payment_recorded'));
       await invalidate();
     },
@@ -161,9 +170,10 @@ export function OrderDetailPage() {
 
   const changeType = useMutation({
     mutationFn: (body: unknown) =>
-      apiRequest(`/orders/${id}/payment-type`, { method: 'POST', body, idempotencyKey: newIdempotencyKey() }),
+      apiRequest(`/orders/${id}/payment-type`, { method: 'POST', body, idempotencyKey: typeKey.key }),
     onSuccess: async () => {
-      setChangingType(false);
+      typeKey.renew();
+      closeSheets();
       setToast(t('orders:payment_type_changed'));
       await invalidate();
     },
@@ -174,14 +184,28 @@ export function OrderDetailPage() {
       apiRequest(`/orders/${id}/void`, {
         method: 'POST',
         body: { reason, version: order.data?.version },
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: voidKey.key,
       }),
     onSuccess: async () => {
-      setVoiding(false);
+      voidKey.renew();
+      closeSheets();
       setToast(t('orders:voided'));
       await invalidate();
     },
   });
+
+  /**
+   * A sheet that closes forgets its last answer: reopened, it must not show the old refusal —
+   * nor carry "record the excess as credit" over to a payment of a different amount.
+   */
+  function closeSheets() {
+    setPaying(false);
+    setChangingType(false);
+    setVoiding(false);
+    payment.reset();
+    changeType.reset();
+    voidOrder.reset();
+  }
 
   const data = order.data;
   // The moment a payment brings this order to zero (signature moment 2, spec 3.6.2).
@@ -189,7 +213,8 @@ export function OrderDetailPage() {
   const excessNeeded =
     payment.error instanceof ApiError && payment.error.fieldError('amount')?.code === 'EXCEEDS_REMAINING';
 
-  usePageTitle(data ? t('orders:number', { number: formatter.identifier(data.number) }) : t('orders:title'));
+  const titleNumber = data ? formatter.identifier(data.number) : null;
+  usePageTitle(titleNumber ? t('orders:number', { number: titleNumber }) : t('orders:title'), { number: titleNumber });
 
   return (
     <>
@@ -219,8 +244,8 @@ export function OrderDetailPage() {
                 >
                   <div className="mz-stack" style={{ gap: '2px' }}>
                     <h2 className="mz-title">{t('orders:number', { number: formatter.identifier(data.number) })}</h2>
-                    <Link to={`/customers/${data.customer_id}`} className="mz-caption">
-                      {customerName({ name: data.customer_name, is_system: data.customer_is_system }, t)}
+                    <Link to={`/customers/${data.customer_id}`} className="mz-caption mz-tap-link">
+                      <bdi>{customerName({ name: data.customer_name, is_system: data.customer_is_system }, t)}</bdi>
                     </Link>
                     <span className="mz-caption" style={{ display: 'block' }}>
                       {formatter.date(data.order_date)}
@@ -317,7 +342,7 @@ export function OrderDetailPage() {
 
                 <div className="mz-actions__group">
                   {data.doc_status === 'active' ? (
-                    <Can permission="orders.view">
+                    <Can permission="orders.edit">
                       <Link to={`/orders/${id}/edit`} className="mz-button mz-button--secondary">
                         <Icon name="edit" />
                         {t('common:edit')}
@@ -328,13 +353,15 @@ export function OrderDetailPage() {
                     {t('common:print')}
                   </Button>
                   {data.doc_status === 'void' ? (
-                    <Link
-                      to={`/orders/new?customer=${data.customer_id}`}
-                      className="mz-button mz-button--secondary"
-                    >
-                      <Icon name="plus" />
-                      {t('orders:duplicate')}
-                    </Link>
+                    <Can permission="orders.create">
+                      <Link
+                        to={`/orders/new?customer=${data.customer_id}`}
+                        className="mz-button mz-button--secondary"
+                      >
+                        <Icon name="plus" />
+                        {t('orders:duplicate')}
+                      </Link>
+                    </Can>
                   ) : null}
                   {/* What came back damaged from this order (FR-802, FR-806). */}
                   <Can permission="damages.view">
@@ -545,7 +572,8 @@ export function OrderDetailPage() {
             saving={payment.isPending}
             needsExcessConfirmation={excessNeeded}
             error={excessNeeded ? undefined : (errorMessage(t, payment.error) ?? undefined)}
-            onClose={() => setPaying(false)}
+            onClose={closeSheets}
+            onEdit={payment.reset}
             onSave={(body) => payment.mutate(body)}
           />
         ) : null}
@@ -557,7 +585,8 @@ export function OrderDetailPage() {
             settlementCurrency={data.settlement_currency}
             saving={changeType.isPending}
             error={errorMessage(t, changeType.error) ?? undefined}
-            onClose={() => setChangingType(false)}
+            onClose={closeSheets}
+            onEdit={changeType.reset}
             onSave={(body) => changeType.mutate(body)}
           />
         ) : null}
@@ -569,7 +598,8 @@ export function OrderDetailPage() {
             remaining={data.remaining}
             settlementCurrency={data.settlement_currency}
             error={errorMessage(t, voidOrder.error) ?? undefined}
-            onClose={() => setVoiding(false)}
+            onClose={closeSheets}
+            onEdit={voidOrder.reset}
             onSave={(reason) => voidOrder.mutate(reason)}
           />
         ) : null}
@@ -748,16 +778,6 @@ export function OrderDetailPage() {
 }
 
 /**
- * A figure the API holds in one currency — what is still owed, in the settlement currency —
- * with its counterpart converted at the order's own rate, for a `DualAmount` marked derived.
- */
-function bothOf(amount: number, currency: Currency, rate: Rate): { amount_iqd: number; amount_usd_cents: number } {
-  return currency === 'IQD'
-    ? { amount_iqd: amount, amount_usd_cents: convert(amount, 'IQD', rate) }
-    : { amount_iqd: convert(amount, 'USD', rate), amount_usd_cents: amount };
-}
-
-/**
  * A note somebody typed, on a line of its own under the row's facts. It is isolated because it
  * may be in any script: an English note inside a Kurdish caption otherwise reorders the words
  * around it (2.10.6).
@@ -800,6 +820,7 @@ function ChangePaymentTypeSheet({
   error,
   onClose,
   onSave,
+  onEdit,
 }: {
   currentType: 'cash' | 'borrowed';
   remaining: number;
@@ -808,6 +829,8 @@ function ChangePaymentTypeSheet({
   error?: string;
   onClose: () => void;
   onSave: (body: unknown) => void;
+  /** Any change to the inputs: the caller forgets the last refusal. */
+  onEdit?: () => void;
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
@@ -815,6 +838,12 @@ function ChangePaymentTypeSheet({
   const [received, setReceived] = useState<Currency>('IQD');
   const [date, setDate] = useState(formatter.today());
   const [note, setNote] = useState('');
+  const edit =
+    <T,>(set: (value: T) => void) =>
+    (value: T) => {
+      onEdit?.();
+      set(value);
+    };
 
   return (
     <BottomSheet title={t('orders:change_payment_type')} open onClose={onClose} closeLabel={t('common:close')}>
@@ -830,7 +859,7 @@ function ChangePaymentTypeSheet({
             <SegmentedControl
               label={t('orders:paid_in')}
               value={received}
-              onChange={setReceived}
+              onChange={edit(setReceived)}
               options={[
                 { value: 'IQD', label: t('glossary:iqd') },
                 { value: 'USD', label: t('glossary:usd') },
@@ -840,7 +869,7 @@ function ChangePaymentTypeSheet({
               label={t('glossary:date_paid')}
               value={date}
               max={formatter.today()}
-              onChange={(event) => setDate(event.target.value)}
+              onChange={(event) => edit(setDate)(event.target.value)}
             />
           </>
         ) : null}
@@ -850,7 +879,7 @@ function ChangePaymentTypeSheet({
           value={note}
           error={error}
           hint={t('materials:note_required')}
-          onChange={(event) => setNote(event.target.value)}
+          onChange={(event) => edit(setNote)(event.target.value)}
         />
 
         <Button
@@ -882,6 +911,7 @@ function VoidSheet({
   error,
   onClose,
   onSave,
+  onEdit,
 }: {
   saving: boolean;
   lineCount: number;
@@ -890,6 +920,8 @@ function VoidSheet({
   error?: string;
   onClose: () => void;
   onSave: (reason: string) => void;
+  /** Any change to the reason: the caller forgets the last refusal. */
+  onEdit?: () => void;
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
@@ -909,7 +941,10 @@ function VoidSheet({
           value={reason}
           error={error}
           hint={t('materials:note_required')}
-          onChange={(event) => setReason(event.target.value)}
+          onChange={(event) => {
+            onEdit?.();
+            setReason(event.target.value);
+          }}
         />
         <Button variant="danger" block loading={saving} disabled={reason.trim() === ''} onClick={() => onSave(reason.trim())}>
           {t('orders:void_order')}

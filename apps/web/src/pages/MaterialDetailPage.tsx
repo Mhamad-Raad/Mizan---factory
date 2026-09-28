@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BottomSheet,
   Button,
@@ -14,7 +14,10 @@ import {
   TextField,
   Toast,
 } from '@mizan/ui';
-import { apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { apiRequest } from '../lib/api.js';
+import { useIdempotencyKey } from '../lib/idempotency.js';
+import { toMoneyBody } from '../lib/money.js';
+import { parseCount, quantityText } from '../lib/quantity.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
@@ -27,7 +30,7 @@ import { useCursorPaging, useKeepPageInRange, usePaging } from '../lib/paging.js
 import { useFormatter, usePermission } from '../lib/store.js';
 import { useIsWide } from '../lib/wide.js';
 import { errorMessage } from '../lib/errors.js';
-import { invalidateMoneyViews } from '../lib/invalidate.js';
+import { invalidateHistory, invalidateMoneyViews } from '../lib/invalidate.js';
 import { useGlobalRate } from '../lib/rates.js';
 import type { ItemRow } from './MaterialsPage.js';
 
@@ -51,6 +54,16 @@ interface Movement {
   performed_by: string | null;
   is_live: boolean;
 }
+
+/** `/items/:id/lots` (D-075): the buys with stock left, the used-up count, and the latest buy. */
+interface LotsResponse {
+  items: Lot[];
+  used_up_count: number;
+  latest: Lot | null;
+}
+
+/** How many used-up buys one "show more" brings. */
+const USED_UP_PAGE = 100;
 
 /**
  * One buy of this material (D-062): how much came in, how much of it is left, and what each unit
@@ -97,6 +110,8 @@ export function MaterialDetailPage() {
     null,
   );
   const [adding, setAdding] = useState(false);
+  /** Deactivating asks first, like every other action that takes something out of use. */
+  const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
   const [showUsedUp, setShowUsedUp] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -105,9 +120,21 @@ export function MaterialDetailPage() {
     queryFn: () => apiRequest<ItemDetail>(`/items/${id}`),
   });
 
+  // The buys with stock left, how many are used up, and the latest buy (D-075). The used-up
+  // ones arrive only when asked for, a page at a time: at ten years a material had 520 buys.
   const lots = useQuery({
     queryKey: ['items', id, 'lots'],
-    queryFn: () => apiRequest<{ items: Lot[] }>(`/items/${id}/lots`),
+    queryFn: () => apiRequest<LotsResponse>(`/items/${id}/lots`),
+  });
+  const usedUpLots = useInfiniteQuery({
+    queryKey: ['items', id, 'lots', 'used_up'],
+    queryFn: ({ pageParam }) =>
+      apiRequest<{ items: Lot[]; has_more: boolean }>(
+        `/items/${id}/lots?used_up=true&page=${pageParam}&page_size=${USED_UP_PAGE}`,
+      ),
+    initialPageParam: 1,
+    getNextPageParam: (last, pages) => (last.has_more ? pages.length + 1 : undefined),
+    enabled: showUsedUp,
   });
 
   const { rate: currentRate } = useGlobalRate();
@@ -153,17 +180,26 @@ export function MaterialDetailPage() {
   });
   const historyNext = history.data?.next_cursor ?? null;
 
+  // Each opening of a sheet holds one key across its retries (FR-1305), scoped to this material,
+  // the month and the direction, so no other write ever carries a key one of these used.
+  const pricesKey = useIdempotencyKey(`prices:${id}:${priceSheet?.month ?? ''}`);
+  const addStockKey = useIdempotencyKey(`add-stock:${id}:${adding}`);
+  const activeKey = useIdempotencyKey(`active:${id}:${item.data?.is_active ?? ''}:${confirmingDeactivate}`);
+
   const savePrices = useMutation({
     mutationFn: (input: { month: string; body: unknown; version: number | null }) =>
       apiRequest(`/items/${id}/prices/${input.month.slice(0, 7)}`, {
         method: 'PUT',
         body: input.body,
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: pricesKey.key,
       }),
     onSuccess: async () => {
-      setPriceSheet(null);
+      pricesKey.renew();
+      closePrices();
       setToast(t('materials:prices_saved'));
       await queryClient.invalidateQueries({ queryKey: ['items'] });
+      // A month's price values the stock and the margin, which Today, Reports and Accounts sum.
+      await invalidateMoneyViews(queryClient);
     },
   });
 
@@ -178,7 +214,7 @@ export function MaterialDetailPage() {
     }) =>
       apiRequest('/purchases', {
         method: 'POST',
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: addStockKey.key,
         body: {
           company_id: null,
           purchase_date: input.purchase_date,
@@ -194,7 +230,8 @@ export function MaterialDetailPage() {
         },
       }),
     onSuccess: async () => {
-      setAdding(false);
+      addStockKey.renew();
+      closeAddStock();
       setToast(t('materials:stock_added'));
       await queryClient.invalidateQueries({ queryKey: ['items'] });
       await queryClient.invalidateQueries({ queryKey: ['purchases'] });
@@ -207,25 +244,36 @@ export function MaterialDetailPage() {
       apiRequest(`/items/${id}/${active ? 'reactivate' : 'deactivate'}`, {
         method: 'POST',
         body: { version: item.data?.version },
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: activeKey.key,
       }),
     onSuccess: async () => {
+      activeKey.renew();
+      setConfirmingDeactivate(false);
       await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await invalidateHistory(queryClient);
     },
   });
+
+  // A sheet that closes forgets its last refusal, so it does not greet the next attempt with it.
+  function closePrices() {
+    setPriceSheet(null);
+    savePrices.reset();
+  }
+  function closeAddStock() {
+    setAdding(false);
+    addStock.reset();
+  }
+  function closeDeactivate() {
+    setConfirmingDeactivate(false);
+    setActive.reset();
+  }
 
   const setActiveError = errorMessage(t, setActive.error);
   const thisMonth = `${formatter.today().slice(0, 7)}-01`;
 
-  // A movement can carry kg, a count, or both — kept exactly as the phone card showed them.
-  const movementQty = (movement: Movement) => {
-    const parts: string[] = [];
-    if (movement.qty_kg !== null) {
-      parts.push(`${formatter.quantity(movement.qty_kg)} ${t('common:kg_symbol')}`);
-    }
-    if (movement.qty_count !== null) parts.push(formatter.number(movement.qty_count));
-    return parts.length > 0 ? parts.join(' · ') : '—';
-  };
+  // A movement can carry kg, a count, or both — the material's own measure first.
+  const movementQty = (movement: Movement) =>
+    quantityText({ ...movement, priced_measure: item.data?.stock.priced_measure }, formatter, t);
 
   usePageTitle(item.data?.name ?? t('materials:title'));
 
@@ -279,10 +327,27 @@ export function MaterialDetailPage() {
 
               <StockByPrice
                 lots={lots.data?.items ?? []}
-                loading={lots.isPending}
+                usedUp={usedUpLots.data?.pages.flatMap((page) => page.items) ?? []}
+                usedUpCount={lots.data?.used_up_count ?? 0}
+                loading={lots.isPending || (showUsedUp && usedUpLots.isPending)}
                 pricedMeasure={item.data.stock.priced_measure}
                 showUsedUp={showUsedUp}
                 onToggleUsedUp={() => setShowUsedUp(!showUsedUp)}
+                usedUpError={
+                  usedUpLots.isError
+                    ? {
+                        message: errorMessage(t, usedUpLots.error) ?? t('errors:INTERNAL'),
+                        // A later page that failed is asked for again; a first one, from the top.
+                        retry: () =>
+                          void (usedUpLots.isFetchNextPageError ? usedUpLots.fetchNextPage() : usedUpLots.refetch()),
+                      }
+                    : null
+                }
+                moreUsedUp={
+                  !usedUpLots.isError && showUsedUp && usedUpLots.hasNextPage
+                    ? { loading: usedUpLots.isFetchingNextPage, load: () => void usedUpLots.fetchNextPage() }
+                    : null
+                }
                 action={
                   mayBuy && item.data.is_active ? (
                     <Button icon="plus" onClick={() => setAdding(true)}>
@@ -379,15 +444,20 @@ export function MaterialDetailPage() {
                   ) : null}
 
                   <Can permission="materials.edit">
-                    {setActiveError ? (
+                    {setActiveError && !confirmingDeactivate ? (
                       <div className="mz-warning" role="alert">
                         {setActiveError}
                       </div>
                     ) : null}
                     <Button
                       variant={item.data.is_active ? 'danger' : 'secondary'}
-                      loading={setActive.isPending}
-                      onClick={() => setActive.mutate(!item.data?.is_active)}
+                      loading={setActive.isPending && !confirmingDeactivate}
+                      onClick={() => {
+                        setActive.reset();
+                        // Reactivating puts nothing at risk and happens at once; deactivating asks.
+                        if (item.data?.is_active) setConfirmingDeactivate(true);
+                        else setActive.mutate(true);
+                      }}
                     >
                       {item.data.is_active ? t('materials:deactivate') : t('materials:reactivate')}
                     </Button>
@@ -628,7 +698,7 @@ export function MaterialDetailPage() {
             initial={priceSheet.existing}
             saving={savePrices.isPending}
             error={errorMessage(t, savePrices.error) ?? undefined}
-            onClose={() => setPriceSheet(null)}
+            onClose={closePrices}
             onSave={(input) =>
               savePrices.mutate({
                 month: priceSheet.month,
@@ -648,12 +718,34 @@ export function MaterialDetailPage() {
           <AddStockSheet
             pricedMeasure={item.data.stock.priced_measure}
             rate={currentRate}
-            latest={(lots.data?.items ?? []).at(-1) ?? null}
+            latest={lots.data?.latest ?? null}
             saving={addStock.isPending}
             error={errorMessage(t, addStock.error) ?? undefined}
-            onClose={() => setAdding(false)}
+            onClose={closeAddStock}
+            onEdit={addStock.reset}
             onSave={(input) => addStock.mutate(input)}
           />
+        ) : null}
+
+        {confirmingDeactivate && item.data ? (
+          <BottomSheet title={t('materials:deactivate')} open onClose={closeDeactivate} closeLabel={t('common:close')}>
+            <div className="mz-stack">
+              <p>
+                <strong>
+                  <bdi>{item.data.name}</bdi>
+                </strong>
+              </p>
+              <p className="mz-muted">{t('common:deactivate_material_body')}</p>
+              {setActiveError ? (
+                <div className="mz-warning" role="alert">
+                  {setActiveError}
+                </div>
+              ) : null}
+              <Button variant="danger" block loading={setActive.isPending} onClick={() => setActive.mutate(false)}>
+                {t('materials:deactivate')}
+              </Button>
+            </div>
+          </BottomSheet>
         ) : null}
 
         {toast ? (
@@ -664,42 +756,46 @@ export function MaterialDetailPage() {
   );
 }
 
-function toMoneyBody(value: {
-  amount: number | null;
-  currency: 'IQD' | 'USD';
-  other_amount?: number | null;
-}) {
-  return value.amount === null
-    ? null
-    : { amount: value.amount, currency: value.currency, other_amount: value.other_amount ?? null };
-}
-
 /**
  * The stock split by what we paid (D-062): every buy of the material, oldest first — the order a
  * sale takes them in — with how much of it is left and what each one cost. Used-up buys fold
- * away behind a toggle; each row opens the buy it describes.
+ * away behind a toggle, as their own group.
  */
 function StockByPrice({
   lots,
+  usedUp,
+  usedUpCount,
   loading,
   pricedMeasure,
   showUsedUp,
   onToggleUsedUp,
+  moreUsedUp,
+  usedUpError,
   action,
 }: {
+  /** The buys with stock left, oldest first. */
   lots: readonly Lot[];
+  /** The used-up buys fetched so far (newest first, a page at a time). */
+  usedUp: readonly Lot[];
+  usedUpCount: number;
   loading: boolean;
   pricedMeasure: 'count' | 'kg';
   showUsedUp: boolean;
   onToggleUsedUp: () => void;
+  /** Another page of used-up buys, when there is one. */
+  moreUsedUp: { loading: boolean; load: () => void } | null;
+  /** The used-up buys could not be read: what to say, and how to ask again. */
+  usedUpError: { message: string; retry: () => void } | null;
   action: ReactNode;
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
+  const mayOpenBuys = usePermission('purchases.view');
   const unit = pricedMeasure === 'kg' ? ` ${t('common:kg_symbol')}` : '';
-  const live = lots.filter((lot) => Number(lot.remaining) > 0);
-  const usedUp = lots.length - live.length;
-  const shown = showUsedUp ? lots : live;
+  const row = (lot: Lot) => (
+    <LotRow key={lot.purchase_line_id} lot={lot} unit={unit} link={mayOpenBuys} />
+  );
+  const nothing = lots.length === 0 && (!showUsedUp || (usedUp.length === 0 && !usedUpError));
 
   return (
     <Card>
@@ -711,56 +807,114 @@ function StockByPrice({
         {action}
       </div>
 
-      {loading ? null : shown.length === 0 ? (
+      {loading ? null : nothing ? (
         <p className="mz-muted" style={{ marginBlockStart: 'var(--space-3)' }}>
           {t('materials:no_stock_bought')}
         </p>
       ) : (
-        <ul className="mz-list" style={{ marginBlockStart: 'var(--space-2)' }}>
-          {shown.map((lot) => (
-            <li key={lot.purchase_line_id}>
-              <Link
-                to={`/purchases/${lot.purchase_id}`}
-                className="mz-list__item mz-list__item--interactive mz-list__item--detail"
-              >
-                <span className="mz-list__body">
-                  <span className="mz-list__title" data-tabular>
-                    {t('materials:left_of', {
-                      // Pieces are whole: the API's "125.000" reads "125".
-                      left: `${formatter.quantity(lot.remaining)}${unit}`,
-                      total: `${formatter.quantity(lot.quantity)}${unit}`,
-                    })}
-                  </span>
-                  <span className="mz-caption">
-                    {t('materials:bought_on_date', { date: formatter.date(lot.bought_on) })}
-                    {' · '}
-                    {t('purchases:number', { number: formatter.identifier(lot.purchase_number) })}
-                  </span>
-                </span>
-                {lot.unit_cost_iqd !== undefined && lot.unit_cost_usd_cents !== undefined ? (
-                  <span className="mz-list__end">
-                    <DualAmount
-                      amount_iqd={lot.unit_cost_iqd}
-                      amount_usd_cents={lot.unit_cost_usd_cents}
-                      primary={lot.entered_currency}
-                    />
-                    <span className="mz-caption" style={{ display: 'block' }}>
-                      {t('materials:each')}
-                    </span>
-                  </span>
-                ) : null}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <>
+          {lots.length > 0 ? (
+            <ul className="mz-list" style={{ marginBlockStart: 'var(--space-2)' }}>
+              {lots.map(row)}
+            </ul>
+          ) : null}
+          {/*
+           * The used-up buys are their own group, newest first — the order their pages arrive in —
+           * so "show more" adds rows directly above itself. Sorted into the open buys, oldest
+           * first, the next page landed at the top of the card, far from the thumb (review).
+           */}
+          {showUsedUp && usedUp.length > 0 ? (
+            <>
+              <h4 className="mz-caption" style={{ marginBlockStart: 'var(--space-3)' }}>
+                {t('materials:used_up_heading')}
+              </h4>
+              <ul className="mz-list" style={{ marginBlockStart: 'var(--space-2)' }}>
+                {usedUp.map(row)}
+              </ul>
+            </>
+          ) : null}
+        </>
       )}
 
-      {usedUp > 0 ? (
+      {/* A page of used-up buys that did not arrive says so, rather than implying there are none. */}
+      {showUsedUp && usedUpError ? (
+        <div
+          className="mz-warning mz-row mz-row--between"
+          role="alert"
+          style={{ gap: 'var(--space-2)', flexWrap: 'wrap', marginBlockStart: 'var(--space-2)' }}
+        >
+          <span>{usedUpError.message}</span>
+          <Button variant="secondary" onClick={usedUpError.retry}>
+            {t('common:retry')}
+          </Button>
+        </div>
+      ) : null}
+      {moreUsedUp ? (
+        <Button variant="ghost" loading={moreUsedUp.loading} onClick={moreUsedUp.load}>
+          {t('customers:show_more')}
+        </Button>
+      ) : null}
+      {usedUpCount > 0 ? (
         <Button variant="ghost" onClick={onToggleUsedUp}>
-          {showUsedUp ? t('materials:hide_used_up') : t('materials:show_used_up', { count: formatter.number(usedUp) })}
+          {showUsedUp
+            ? t('materials:hide_used_up')
+            : t('materials:show_used_up', { count: formatter.number(usedUpCount) })}
         </Button>
       ) : null}
     </Card>
+  );
+}
+
+/**
+ * One buy: how much of it is left and what each one cost. It opens the buy it describes — for
+ * somebody who may open buys; the sales preset may not, and the row led to "no access" (review).
+ */
+function LotRow({ lot, unit, link }: { lot: Lot; unit: string; link: boolean }) {
+  const { t } = useTranslation();
+  const formatter = useFormatter();
+  const content = (
+    <>
+      <span className="mz-list__body">
+        <span className="mz-list__title" data-tabular>
+          {t('materials:left_of', {
+            // Pieces are whole: the API's "125.000" reads "125".
+            left: `${formatter.quantity(lot.remaining)}${unit}`,
+            total: `${formatter.quantity(lot.quantity)}${unit}`,
+          })}
+        </span>
+        <span className="mz-caption">
+          {t('materials:bought_on_date', { date: formatter.date(lot.bought_on) })}
+          {' · '}
+          {t('purchases:number', { number: formatter.identifier(lot.purchase_number) })}
+        </span>
+      </span>
+      {lot.unit_cost_iqd !== undefined && lot.unit_cost_usd_cents !== undefined ? (
+        <span className="mz-list__end">
+          <DualAmount
+            amount_iqd={lot.unit_cost_iqd}
+            amount_usd_cents={lot.unit_cost_usd_cents}
+            primary={lot.entered_currency}
+          />
+          <span className="mz-caption" style={{ display: 'block' }}>
+            {t('materials:each')}
+          </span>
+        </span>
+      ) : null}
+    </>
+  );
+  return (
+    <li>
+      {link ? (
+        <Link
+          to={`/purchases/${lot.purchase_id}`}
+          className="mz-list__item mz-list__item--interactive mz-list__item--detail"
+        >
+          {content}
+        </Link>
+      ) : (
+        <div className="mz-list__item mz-list__item--detail">{content}</div>
+      )}
+    </li>
   );
 }
 
@@ -777,6 +931,7 @@ function AddStockSheet({
   error,
   onClose,
   onSave,
+  onEdit,
 }: {
   pricedMeasure: 'count' | 'kg';
   rate: string | null;
@@ -791,12 +946,20 @@ function AddStockSheet({
     qty_kg: string | null;
     unit_price: { amount: number; currency: 'IQD' | 'USD'; other_amount: number | null };
   }) => void;
+  /** Any change to the inputs: the caller forgets the last refusal. */
+  onEdit?: () => void;
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const [date, setDate] = useState(formatter.today());
   const [quantity, setQuantity] = useState('');
   const [note, setNote] = useState('');
+  const edit =
+    <T,>(set: (value: T) => void) =>
+    (value: T) => {
+      onEdit?.();
+      set(value);
+    };
   const [cost, setCost] = useState<MoneyValue>(() => {
     if (latest && latest.unit_cost_iqd !== undefined && latest.unit_cost_usd_cents !== undefined) {
       return {
@@ -808,7 +971,12 @@ function AddStockSheet({
     return { amount: null, currency: 'IQD', other_amount: null };
   });
 
-  const valid = quantity.trim() !== '' && Number(quantity) > 0 && cost.amount !== null && cost.amount >= 0;
+  // Pieces are whole: "2.5" is refused under the field, never rounded to 3.
+  const count = parseCount(quantity);
+  const countInvalid = pricedMeasure === 'count' && count.kind === 'invalid';
+  const quantityValid =
+    pricedMeasure === 'count' ? count.kind === 'count' && count.value > 0 : quantity.trim() !== '' && Number(quantity) > 0;
+  const valid = quantityValid && cost.amount !== null && cost.amount >= 0;
 
   return (
     <BottomSheet title={t('materials:add_stock')} open onClose={onClose} closeLabel={t('common:close')}>
@@ -820,13 +988,14 @@ function AddStockSheet({
             unit={pricedMeasure === 'kg' ? t('common:kg_symbol') : t('common:count_symbol')}
             decimals={pricedMeasure === 'kg' ? 3 : 0}
             value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
+            error={countInvalid ? t('common:count_whole') : undefined}
+            onChange={(event) => edit(setQuantity)(event.target.value)}
           />
           <DateField
             label={t('materials:bought_on')}
             value={date}
             max={formatter.today()}
-            onChange={(event) => setDate(event.target.value)}
+            onChange={(event) => edit(setDate)(event.target.value)}
           />
         </div>
         <MoneyInput
@@ -834,7 +1003,7 @@ function AddStockSheet({
           value={cost}
           rate={rate}
           sourceLabel={t('glossary:system_rate')}
-          onChange={setCost}
+          onChange={edit(setCost)}
         />
         <TextField
           label={t('materials:buy_note')}
@@ -842,7 +1011,7 @@ function AddStockSheet({
           value={note}
           error={error}
           maxLength={500}
-          onChange={(event) => setNote(event.target.value)}
+          onChange={(event) => edit(setNote)(event.target.value)}
         />
         <Button
           block
@@ -853,7 +1022,7 @@ function AddStockSheet({
             onSave({
               purchase_date: date,
               note: note.trim() === '' ? null : note.trim(),
-              qty_count: pricedMeasure === 'count' ? Math.round(Number(quantity)) : null,
+              qty_count: count.kind === 'count' && pricedMeasure === 'count' ? count.value : null,
               qty_kg: pricedMeasure === 'kg' ? quantity.trim() : null,
               unit_price: { amount: cost.amount, currency: cost.currency, other_amount: cost.other_amount ?? null },
             })

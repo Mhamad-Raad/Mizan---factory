@@ -22,7 +22,9 @@ const SCAN_DIRS = [join(ROOT, 'apps/web/src'), join(ROOT, 'packages/ui/src')];
  * user-visible strings too — and an untranslatable one reaches the screen as a bare code. */
 const API_DIR = join(ROOT, 'apps/api/src');
 /** Keys that legitimately read the same in every language. */
-const SAME_IN_EVERY_LANGUAGE = new Set(['common:app_name']);
+// The product's name, "Jiyan Management", is written in English in every language (D-072):
+// the name and the word beneath it in the sidebar, on the sign-in page and on the invoice.
+const SAME_IN_EVERY_LANGUAGE = new Set(['common:app_name', 'common:app_tagline', 'settings:palette_jiyan']);
 
 const problems: string[] = [];
 

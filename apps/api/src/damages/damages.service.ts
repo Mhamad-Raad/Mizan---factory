@@ -255,9 +255,12 @@ export class DamagesService {
         value.est_value_source = 'lots';
       }
 
+      // Owed only when there is a figure to owe: a material never bought and with no month price
+      // has no value, and an "owed" record with no charge behind it could never be paid back (review).
+      const charged = owedByCompany && value.est_value_iqd !== null && value.est_value_usd_cents !== null;
       const record = await this.damages.create(
         {
-          compensation: owedByCompany ? 'owed' : 'none',
+          compensation: charged ? 'owed' : 'none',
           item_id: item.id,
           qty_count: quantity.qty_count,
           qty_kg: quantity.qty_kg,
@@ -286,7 +289,7 @@ export class DamagesService {
       if (lotPlan) {
         await this.lots.record(tx, lotPlan, { type: 'damage', id: record.id, itemId: item.id, createdBy: context.userId });
       }
-      if (owedByCompany && links.company_id && value.est_value_iqd !== null && value.est_value_usd_cents !== null) {
+      if (charged && links.company_id && value.est_value_iqd !== null && value.est_value_usd_cents !== null) {
         await this.chargeCompany(context, tx, links.company_id, record.id, record.number, input.damage_date, {
           iqd: value.est_value_iqd,
           usd_cents: value.est_value_usd_cents,
@@ -444,7 +447,8 @@ export class DamagesService {
           damage_date: damageDate,
           acting_user_id: await this.actingUser(
             context,
-            input.acting_user_id ?? record.acting_user_id,
+            input.acting_user_id,
+            record.acting_user_id,
           ),
           reason: input.reason === undefined ? record.reason : input.reason?.trim() || null,
           attribution,
@@ -551,7 +555,7 @@ export class DamagesService {
       await this.lots.release(tx, { type: 'damage', ids: [id], createdBy: context.userId });
       if (record.compensation === 'owed' && record.company_id) {
         if (account) {
-          const entries = await this.customerLedger.entriesFor(tx, record.company_id);
+          const entries = await this.customerLedger.entriesOfDamage(tx, record.company_id, id);
           const reversed = new Set(entries.map((entry) => entry.reverses_entry_id).filter(Boolean));
           for (const entry of entries) {
             if (entry.entry_type === 'damage' && entry.refs.damage_id === id && !reversed.has(entry.id)) {
@@ -616,6 +620,13 @@ export class DamagesService {
 
     const withCredit = Boolean(input.credit);
     if (withCredit) {
+      // A damage the company owes us for is settled by "Paid back", not by a return credit on
+      // top: both would compensate the same goods (review).
+      if (existing.compensation !== 'none') {
+        throw ApiError.validation([
+          { path: 'credit', code: 'COMPENSATED_OTHERWISE', message_key: 'errors:damage_owed_not_returnable', params: {} },
+        ]);
+      }
       if (existing.attribution !== 'company' || !existing.company_id) {
         throw ApiError.validation([
           {
@@ -750,6 +761,14 @@ export class DamagesService {
     await this.database.transaction(async (tx) => {
       const record = await this.damages.lock(id, tx);
       if (!record) throw ApiError.notFound();
+      // Checked again under the lock: a double tap, or a void at the same moment, must not put
+      // the goods back twice or onto a voided record (review).
+      if (record.status === 'void') throw new ApiError('DOCUMENT_VOID', { damage_id: id });
+      if (record.stock_effect === 'returned_in') {
+        throw ApiError.validation([
+          { path: 'stock_effect', code: 'ALREADY_RETURNED', message_key: 'errors:already_returned_to_stock', params: {} },
+        ]);
+      }
 
       await this.stock.append(tx, {
         item_id: record.item_id,
@@ -914,8 +933,8 @@ export class DamagesService {
   }
 
   /** Only an admin may record a damage as found by somebody else (spec 2.7). */
-  private actingUser(context: RequestContext, requested?: string | null): Promise<string> {
-    return resolveActingUser(this.database, context, requested, 'acting_user_id');
+  private actingUser(context: RequestContext, requested?: string | null, current?: string | null): Promise<string> {
+    return resolveActingUser(this.database, context, requested, 'acting_user_id', current);
   }
 
   /** One `damage_out` movement for the record's quantities, negated (2.5.1, FR-804). */
@@ -995,7 +1014,8 @@ export class DamagesService {
     await this.database.transaction(async (tx) => {
       const record = await this.damages.lock(id, tx);
       if (!record) throw ApiError.notFound();
-      if (record.compensation !== 'owed' || !record.company_id) {
+      // Already credited as a return to the company: paying back as well would count it twice.
+      if (record.compensation !== 'owed' || !record.company_id || record.return_status === 'returned_credited') {
         throw ApiError.validation([
           { path: 'compensation', code: 'NOT_OWED', message_key: 'errors:damage_not_owed', params: {} },
         ]);
@@ -1004,7 +1024,7 @@ export class DamagesService {
       if (!account) throw ApiError.notFound();
 
       // The live charge this record put on the account is what is paid back, to the dinar.
-      const entries = await this.customerLedger.entriesFor(tx, record.company_id);
+      const entries = await this.customerLedger.entriesOfDamage(tx, record.company_id, id);
       const reversed = new Set(entries.map((entry) => entry.reverses_entry_id).filter(Boolean));
       const charge = entries.find(
         (entry) => entry.entry_type === 'damage' && entry.refs.damage_id === id && !reversed.has(entry.id),

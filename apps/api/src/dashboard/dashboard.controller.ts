@@ -252,22 +252,38 @@ export class DashboardController {
       // that is the side the debt is agreed in; what is *summed* is each currency on its own,
       // because dinars and cents are not addable — the worst defect of the I1 review, and it
       // had come back here as one mixed number labelled dinars on the tile.
-      this.database.query<{ count: string; iqd: string; usd_cents: string }>(
-        // From the maintained sum of migration 0015 rather than from a pass over the whole
-        // ledger: 1.0 s → 20 ms at the design point of NFR-13, and the figure is still a sum
-        // over the ledger — `check-integrity.mjs` proves it on every restore drill (2.2.6).
-        `SELECT count(*)::text AS count,
-                coalesce(sum(r.remaining_iqd), 0)::text AS iqd,
-                coalesce(sum(r.remaining_usd_cents), 0)::text AS usd_cents
-           FROM order_remaining r
-           JOIN orders o ON o.id = r.order_id
-           JOIN customers c ON c.id = o.customer_id
-          WHERE o.status = 'active' AND o.deleted_at IS NULL
-            AND ($1::uuid IS NULL OR o.acting_user_id = $1::uuid)
-            AND (CASE WHEN c.settlement_currency = 'IQD' THEN r.remaining_iqd
-                      ELSE r.remaining_usd_cents END) > 0`,
-        [scoped],
-      ),
+      scoped === null
+        ? // Everybody's: the maintained per-account sums of migration 0035, each account's
+          // orders counted in its own settlement currency — one row per account, where
+          // joining every owing order to its remaining figure took 430 ms at ten years (D-075).
+          this.database.query<{ count: string; iqd: string; usd_cents: string }>(
+            `SELECT coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN a.iqd_orders ELSE a.usd_orders END), 0)::text
+                      AS count,
+                    coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN a.iqd_remaining_iqd
+                                      ELSE a.usd_remaining_iqd END), 0)::text AS iqd,
+                    coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN a.iqd_remaining_usd_cents
+                                      ELSE a.usd_remaining_usd_cents END), 0)::text AS usd_cents
+               FROM account_owing a
+               JOIN customers c ON c.id = a.account_id`,
+          )
+        : this.database.query<{ count: string; iqd: string; usd_cents: string }>(
+            // One employee's: from the maintained sum of migration 0015 rather than from a pass
+            // over the whole ledger: 1.0 s → 20 ms at the design point of NFR-13, and the figure is
+            // still a sum over the ledger — `check-integrity.mjs` proves it on every drill (2.2.6).
+            `SELECT count(*)::text AS count,
+                    coalesce(sum(r.remaining_iqd), 0)::text AS iqd,
+                    coalesce(sum(r.remaining_usd_cents), 0)::text AS usd_cents
+               FROM order_remaining r
+               JOIN orders o ON o.id = r.order_id
+               JOIN customers c ON c.id = o.customer_id
+              WHERE o.status = 'active' AND o.deleted_at IS NULL
+                AND o.acting_user_id = $1::uuid
+                -- Owes something in some currency: what order_remaining_owing_idx holds (D-075).
+                AND (r.remaining_iqd > 0 OR r.remaining_usd_cents > 0)
+                AND (CASE WHEN c.settlement_currency = 'IQD' THEN r.remaining_iqd
+                          ELSE r.remaining_usd_cents END) > 0`,
+            [scoped],
+          ),
     ]);
 
     const row = sold.rows[0];
@@ -317,10 +333,18 @@ export class DashboardController {
       usd_cents: string;
       companies: string;
     }>(
-      `SELECT coalesce(sum(l.amount_iqd), 0)::text AS iqd,
-              coalesce(sum(l.amount_usd_cents), 0)::text AS usd_cents,
-              count(DISTINCT l.company_id)::text AS companies
-         FROM company_ledger l`,
+      // Only the companies we owe — a positive balance in their own currency — and only theirs:
+      // netting every account, credits included, and counting every company that ever had a
+      // row answered a different question from the tile's (review). Read from the maintained
+      // per-account sums of migration 0033 — one row per account, where summing the buying
+      // ledger of every account cost 845 ms at ten years (D-075).
+      `SELECT coalesce(sum(t.payable_iqd), 0)::text AS iqd,
+              coalesce(sum(t.payable_usd_cents), 0)::text AS usd_cents,
+              count(*)::text AS companies
+         FROM account_totals t
+         JOIN customers c ON c.id = t.account_id
+        WHERE NOT c.is_system AND t.payable_entries > 0
+          AND (CASE WHEN c.settlement_currency = 'IQD' THEN t.payable_iqd ELSE t.payable_usd_cents END) > 0`,
     );
     return [
       {

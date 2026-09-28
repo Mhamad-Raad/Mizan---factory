@@ -14,7 +14,7 @@ import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
 import { ColumnChart } from '../components/charts/ColumnChart.js';
 import { useKeepPageInRange, usePaging } from '../lib/paging.js';
-import { lastDays, lastMonth, thisMonth, thisWeek, thisYear } from '../lib/periods.js';
+import { presetPeriod, thisMonth } from '../lib/periods.js';
 import { useIsWide } from '../lib/wide.js';
 import { downloadXlsx } from '../lib/xlsx.js';
 import type { Cell, Sheet, SheetColumn } from '../lib/xlsx.js';
@@ -192,13 +192,8 @@ const ORDER: ReportKey[] = [
 
 /** The period of a preset, from today's Baghdad day. */
 export function periodOf(preset: Preset, today: string, custom: { from: string; to: string }): { from: string; to: string } {
-  const month = thisMonth(today);
-  if (preset === 'custom') return { from: custom.from || month.from, to: custom.to || today };
-  if (preset === 'today') return { from: today, to: today };
-  if (preset === 'month') return month;
-  if (preset === 'year') return thisYear(today);
-  if (preset === 'last_month') return lastMonth(today);
-  return preset === 'week' ? thisWeek(today) : lastDays(today, 90);
+  if (preset === 'custom') return { from: custom.from || thisMonth(today).from, to: custom.to || today };
+  return presetPeriod(preset === 'quarter' ? 'last_90_days' : preset, today);
 }
 
 /** A figure lives on the row or inside its `cost` / `balance` group (D-022). */
@@ -286,7 +281,7 @@ export function ReportsPage() {
         );
       }
       downloadXlsx(
-        `mizan-reports-${range.from}-${range.to}`,
+        `jiyan-reports-${range.from}-${range.to}`,
         sheets.map((exported) => exported.sheet),
         { rtl: lang !== 'en' },
       );
@@ -316,7 +311,7 @@ export function ReportsPage() {
             <option value="week">{t('common:this_week')}</option>
             <option value="month">{t('common:this_month')}</option>
             <option value="last_month">{t('reports:last_month')}</option>
-            <option value="quarter">{t('reports:last_quarter')}</option>
+            <option value="quarter">{t('reports:last_quarter', { days: formatter.number(90) })}</option>
             <option value="year">{t('reports:this_year')}</option>
             <option value="custom">{t('common:custom_range')}</option>
           </select>
@@ -377,8 +372,9 @@ function labelOf(group: ReportGroup, groupBy: string, formatter: Formatter, t: T
 }
 
 /**
- * How far a file export reads: 100 pages of the API's 100 rows. A period with more than that is
- * not silently cut short — the export says the file holds only the first rows (see `useExport`).
+ * How far a file export reads: the API's one-pass export (`all=true`) carries up to 10,000 groups.
+ * A period with more than that is not silently cut short — the export says the file holds only
+ * the first rows (see `useExport`). The expenses list still pages: 100 pages of 100 rows.
  */
 const EXPORT_PAGES = 100;
 const EXPORT_ROWS = EXPORT_PAGES * 100;
@@ -394,20 +390,13 @@ async function fetchAll(
   groupBy: string,
   range: { from: string; to: string },
 ): Promise<{ data: ReportResponse; truncated: boolean }> {
-  // Every group, a page at a time (the API sends at most 100), for the file — the screen shows one page.
-  const pages: ReportGroup[] = [];
-  let first: ReportResponse | null = null;
-  let truncated = false;
-  for (let page = 1; page <= EXPORT_PAGES; page += 1) {
-    const search = new URLSearchParams({ from: range.from, to: range.to, page: String(page), page_size: '100' });
-    if (groupBy) search.set('group_by', groupBy);
-    const response = await apiRequest<ReportResponse>(`/reports/${key}?${search.toString()}`);
-    first ??= response;
-    pages.push(...response.groups);
-    if (!response.has_more) break;
-    if (page === EXPORT_PAGES) truncated = true;
-  }
-  return { data: { ...(first as ReportResponse), groups: pages }, truncated };
+  // Every group in one answer (D-075): the report is computed once for the file. It used to be
+  // asked page after page, and the server recomputed the whole report for each page — 22.9 s
+  // for a year of Receivables at ten years of data.
+  const search = new URLSearchParams({ from: range.from, to: range.to, all: 'true' });
+  if (groupBy) search.set('group_by', groupBy);
+  const data = await apiRequest<ReportResponse>(`/reports/${key}?${search.toString()}`);
+  return { data, truncated: data.has_more };
 }
 
 /** One report as a sheet: its groups, a column per figure (dinars and dollars apart), totals. */
@@ -615,7 +604,7 @@ function ReportTab({
   const download = () =>
     exporter.run(async () => {
       const { sheet, truncated } = await reportSheet(reportKey, shape, groupBy, range, t, formatter, period);
-      downloadXlsx(`mizan-${reportKey}-${range.from}-${range.to}`, [sheet], { rtl: lang !== 'en' });
+      downloadXlsx(`jiyan-${reportKey}-${range.from}-${range.to}`, [sheet], { rtl: lang !== 'en' });
       return truncated;
     });
 
@@ -722,7 +711,7 @@ function ReportTab({
         {reportKey === 'profit' && Number(totals.lines_without_cost ?? 0) > 0 ? (
           <p className="mz-caption">{t('reports:no_cost_price', { count: Number(totals.lines_without_cost) })}</p>
         ) : null}
-        {/* Grouped by material, the rounding less order discounts has no row of its own (D-072). */}
+        {/* Grouped by material, the rounding less order discounts has no row of its own (D-077). */}
         {reportKey === 'profit' && Number(readPath(totals, 'order_adjustment_iqd') ?? 0) !== 0 ? (
           <p className="mz-caption">
             {t('reports:order_adjustment_in_totals')}{' '}
@@ -914,7 +903,7 @@ function ExpensesTab({ range, period }: { range: { from: string; to: string }; p
   const download = () =>
     exporter.run(async () => {
       const { sheet, truncated } = await expensesSheet(range, t, formatter, period);
-      downloadXlsx(`mizan-expenses-${range.from}-${range.to}`, [sheet], { rtl: lang !== 'en' });
+      downloadXlsx(`jiyan-expenses-${range.from}-${range.to}`, [sheet], { rtl: lang !== 'en' });
       return truncated;
     });
 

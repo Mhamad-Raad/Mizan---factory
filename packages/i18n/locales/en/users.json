@@ -27,5 +27,6 @@
   "saved": "Saved",
   "what_changed": "What changed",
   "no_details": "No details",
-  "record": "Record"
+  "record": "Record",
+  "empty_search": "No match for '{{query}}'"
 }

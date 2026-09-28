@@ -3,7 +3,9 @@ import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, Chip, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
-import { apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { apiRequest } from '../lib/api.js';
+import { useIdempotencyKey } from '../lib/idempotency.js';
+import { quantityText } from '../lib/quantity.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { usePageTitle } from '../lib/page-title.js';
@@ -62,27 +64,42 @@ export function PurchaseDetailPage() {
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['purchases'] });
     await queryClient.invalidateQueries({ queryKey: ['items'] });
+    // A company's buy is on its account: voiding it moves what we owe them.
+    await queryClient.invalidateQueries({ queryKey: ['customers'] });
     await invalidateMoneyViews(queryClient);
   };
+
+  // One key per opening of the void sheet, held across its retries (FR-1305).
+  const voidKey = useIdempotencyKey(`void:${id}:${voiding}`);
 
   const voidPurchase = useMutation({
     mutationFn: () =>
       apiRequest(`/purchases/${id}/void`, {
         method: 'POST',
         body: { reason: reason.trim(), version: purchase.data?.version },
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: voidKey.key,
       }),
     onSuccess: async () => {
-      setVoiding(false);
+      voidKey.renew();
+      closeVoid();
       setToast(t('purchases:voided'));
       await invalidate();
     },
   });
 
+  /** A closed sheet forgets its last refusal, so it does not greet the next attempt with it. */
+  function closeVoid() {
+    setVoiding(false);
+    voidPurchase.reset();
+  }
+
   const settlement = data?.settlement_currency ?? 'IQD';
   const active = data?.doc_status === 'active';
 
-  usePageTitle(data ? t('purchases:number', { number: formatter.identifier(data.number) }) : t('purchases:title'));
+  const titleNumber = data ? formatter.identifier(data.number) : null;
+  usePageTitle(titleNumber ? t('purchases:number', { number: titleNumber }) : t('purchases:title'), {
+    number: titleNumber,
+  });
 
   return (
     <>
@@ -202,7 +219,7 @@ export function PurchaseDetailPage() {
                           </Link>
                         </span>
                         <span className="mz-caption" style={{ display: 'block' }} data-tabular>
-                          {quantityOf(line, formatter, t)}
+                          {quantityText(line, formatter, t)}
                           {line.cost ? (
                             <>
                               {' × '}
@@ -286,7 +303,7 @@ export function PurchaseDetailPage() {
           <BottomSheet
             title={t('purchases:void_purchase')}
             open
-            onClose={() => setVoiding(false)}
+            onClose={closeVoid}
             closeLabel={t('common:close')}
           >
             <div className="mz-stack">
@@ -299,7 +316,10 @@ export function PurchaseDetailPage() {
               <TextField
                 label={t('glossary:reason')}
                 value={reason}
-                onChange={(event) => setReason(event.target.value)}
+                onChange={(event) => {
+                  voidPurchase.reset();
+                  setReason(event.target.value);
+                }}
                 maxLength={2000}
               />
               {voidPurchase.error ? (
@@ -323,16 +343,4 @@ export function PurchaseDetailPage() {
       </div>
     </>
   );
-}
-
-/** The priced measure first, the other one after it when it was recorded too. */
-function quantityOf(
-  line: PurchaseDetail['lines'][number],
-  formatter: ReturnType<typeof useFormatter>,
-  t: (key: string) => string,
-): string {
-  const kg = line.qty_kg !== null ? `${formatter.quantity(line.qty_kg)} ${t('common:kg_symbol')}` : null;
-  const count = line.qty_count !== null ? `${formatter.number(line.qty_count)} ${t('common:count_symbol')}` : null;
-  const [first, second] = line.priced_measure === 'kg' ? [kg, count] : [count, kg];
-  return [first, second].filter(Boolean).join(' · ');
 }

@@ -100,7 +100,11 @@ const historySchema = z.object({
  * response for a caller without `fields.see_company_balances` (FR-704, spec 2.6.2).
  */
 @Controller()
-@SensitiveFields({ balance: 'fields.see_company_balances' })
+@SensitiveFields({
+  balance: 'fields.see_company_balances',
+  balance_before: 'fields.see_company_balances',
+  balance_after: 'fields.see_company_balances',
+})
 export class CompaniesController {
   constructor(private readonly companies: CompaniesService) {}
 

@@ -20,7 +20,8 @@ export function recordName(entityType: string, label: string, t: Translate, numb
  * rewritten — are read in the reader's language instead of the English they were stored in.
  */
 export function readNote(note: string, t: Translate, number: FormatNumber): string {
-  const broken = note.match(/^Broken #(\d+)( paid back)?$/);
+  // "Damage #N" is what the rows written before the rename say; they are never rewritten.
+  const broken = note.match(/^(?:Broken|Damage) #(\d+)( paid back)?$/);
   if (!broken) return note;
   const name = `${t('history:entity.damage')} #${number(Number(broken[1]))}`;
   return broken[2] ? t('damages:paid_back_note', { name }) : name;

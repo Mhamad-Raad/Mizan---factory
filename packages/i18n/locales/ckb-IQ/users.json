@@ -27,5 +27,6 @@
   "saved": "پاشەکەوتکرا",
   "what_changed": "چی گۆڕا",
   "no_details": "وردەکاری نییە",
-  "record": "تۆمار"
+  "record": "تۆمار",
+  "empty_search": "هیچ ئەنجامێک بۆ «{{query}}» نییە"
 }

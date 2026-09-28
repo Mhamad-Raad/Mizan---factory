@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, PasswordField, TextField } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { signInError } from '../lib/signInError.js';
@@ -9,6 +10,7 @@ import type { SignInError } from '../lib/signInError.js';
 import { useApp } from '../lib/store.js';
 import type { SessionUser } from '../lib/store.js';
 import { rememberUser } from '../lib/preferences.js';
+import { forgetPreviousUser } from '../lib/signOut.js';
 import { Doorway } from '../components/Doorway.js';
 
 interface LoginResponse {
@@ -25,6 +27,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const setSession = useApp((state) => state.setSession);
   const preferences = useApp((state) => state.preferences);
+  const queryClient = useQueryClient();
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -45,6 +48,9 @@ export function LoginPage() {
           device_label: preferences.deviceLabel ?? null,
         },
       });
+      // Whatever the last person left on this device — cached answers, drafts — goes before the
+      // new session's first screen, however their session ended (2.10.2).
+      forgetPreviousUser(queryClient, response.user.id);
       setSession({ user: response.user, permissions: response.permissions });
       rememberUser({
         username: response.user.username,
@@ -61,7 +67,7 @@ export function LoginPage() {
   };
 
   return (
-    <Doorway subtitle={t('auth:sign_in_subtitle')}>
+    <Doorway subtitle={t('auth:sign_in_subtitle')} tabTitle={t('auth:sign_in')}>
       <form className="mz-stack" onSubmit={submit} noValidate>
         <TextField
           label={t('auth:username_or_phone')}

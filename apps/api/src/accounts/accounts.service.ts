@@ -168,7 +168,16 @@ export class AccountsService {
         costed_iqd: string;
         costed_usd: string;
       }>(
-        `SELECT o.id, o.number::text AS number, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
+        // Page first, then fill (D-075): each order's lines are summed for the page's rows only,
+        // never for the rows the OFFSET skips.
+        `WITH page AS (
+           SELECT o.id, o.order_date, o.number
+             FROM orders o ${search ? 'JOIN customers c ON c.id = o.customer_id' : ''}
+            WHERE ${where}
+            ORDER BY o.order_date DESC, o.number DESC
+            LIMIT $${values.length + 1} OFFSET $${values.length + 2}
+         )
+         SELECT o.id, o.number::text AS number, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
                 c.id AS customer_id, c.name AS customer_name, c.is_system AS customer_is_system,
                 c.settlement_currency::text AS settlement_currency,
                 o.total_iqd::text AS total_iqd, o.total_usd_cents::text AS total_usd_cents,
@@ -176,7 +185,8 @@ export class AccountsService {
                 o.rounding_iqd::text AS rounding_iqd, o.rounding_usd_cents::text AS rounding_usd_cents,
                 m.margin_iqd::text AS margin_iqd, m.margin_usd::text AS margin_usd, m.uncosted::text AS uncosted,
                 m.costed_iqd::text AS costed_iqd, m.costed_usd::text AS costed_usd
-           FROM orders o
+           FROM page
+           JOIN orders o ON o.id = page.id
            JOIN customers c ON c.id = o.customer_id
            CROSS JOIN LATERAL (
              SELECT coalesce(sum(margin_iqd), 0) AS margin_iqd, coalesce(sum(margin_usd_cents), 0) AS margin_usd,
@@ -186,13 +196,11 @@ export class AccountsService {
                     count(*) FILTER (WHERE margin_iqd IS NULL) AS uncosted
                FROM order_lines WHERE order_id = o.id AND deleted_at IS NULL
            ) m
-          WHERE ${where}
-          ORDER BY o.order_date DESC, o.number DESC
-          LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+          ORDER BY page.order_date DESC, page.number DESC`,
         [...values, paging.page_size, paging.offset],
       ),
       this.database.query<{ total: string }>(
-        `SELECT count(*)::text AS total FROM orders o JOIN customers c ON c.id = o.customer_id WHERE ${where}`,
+        `SELECT count(*)::text AS total FROM orders o ${search ? 'JOIN customers c ON c.id = o.customer_id' : ''} WHERE ${where}`,
         values,
       ),
     ]);
@@ -238,22 +246,35 @@ export class AccountsService {
     const paging = pagingOf(filters);
     const base = `
       WITH sold AS (
+        -- The period's orders by their date index, and each one's lines from the covering index
+        -- of migration 0034 — never every line ever sold (D-075).
         SELECT l.item_id,
                sum(CASE WHEN l.priced_measure = 'count' THEN l.qty_count::numeric ELSE l.qty_kg END) AS qty,
                sum(l.line_total_iqd) AS revenue_iqd, sum(l.line_total_usd_cents) AS revenue_usd,
                sum(l.margin_iqd) AS margin_iqd, sum(l.margin_usd_cents) AS margin_usd,
                sum(l.line_total_iqd) FILTER (WHERE l.margin_iqd IS NOT NULL) AS costed_iqd,
                sum(l.line_total_usd_cents) FILTER (WHERE l.margin_iqd IS NOT NULL) AS costed_usd
-          FROM order_lines l JOIN orders o ON o.id = l.order_id
-         WHERE l.deleted_at IS NULL AND o.status = 'active' AND o.deleted_at IS NULL
+          FROM orders o
+          CROSS JOIN LATERAL (
+            SELECT ol.item_id, ol.priced_measure, ol.qty_count, ol.qty_kg, ol.line_total_iqd,
+                   ol.line_total_usd_cents, ol.margin_iqd, ol.margin_usd_cents
+              FROM order_lines ol
+             WHERE ol.order_id = o.id AND ol.deleted_at IS NULL
+          ) l
+         WHERE o.status = 'active' AND o.deleted_at IS NULL
            AND o.order_date BETWEEN $1::date AND $2::date
          GROUP BY l.item_id
       ), bought AS (
         SELECT l.item_id,
                sum(CASE WHEN l.priced_measure = 'count' THEN l.qty_count::numeric ELSE l.qty_kg END) AS qty,
                sum(l.line_total_iqd) AS spent_iqd, sum(l.line_total_usd_cents) AS spent_usd
-          FROM purchase_lines l JOIN purchases p ON p.id = l.purchase_id
-         WHERE l.deleted_at IS NULL AND p.status = 'active' AND p.deleted_at IS NULL
+          FROM purchases p
+          CROSS JOIN LATERAL (
+            SELECT pl.item_id, pl.priced_measure, pl.qty_count, pl.qty_kg, pl.line_total_iqd, pl.line_total_usd_cents
+              FROM purchase_lines pl
+             WHERE pl.purchase_id = p.id AND pl.deleted_at IS NULL
+          ) l
+         WHERE p.status = 'active' AND p.deleted_at IS NULL
            AND p.purchase_date BETWEEN $1::date AND $2::date
          GROUP BY l.item_id
       )
@@ -264,14 +285,16 @@ export class AccountsService {
              coalesce(sold.costed_iqd, 0)::text AS costed_iqd, coalesce(sold.costed_usd, 0)::text AS costed_usd,
              coalesce(bought.qty, 0)::text AS bought_qty,
              coalesce(bought.spent_iqd, 0)::text AS spent_iqd, coalesce(bought.spent_usd, 0)::text AS spent_usd,
-             (CASE WHEN i.pricing_unit = 'per_piece' THEN st.stock_count::numeric ELSE st.stock_kg END)::text AS stock
+             (CASE WHEN i.pricing_unit = 'per_piece' THEN st.stock_count::numeric ELSE st.stock_kg END)::text AS stock,
+             -- How many materials match, from the same pass: the page used to run the whole
+             -- query a second time to count it (D-075).
+             (count(*) OVER ())::text AS total
         FROM items i
         LEFT JOIN sold ON sold.item_id = i.id
         LEFT JOIN bought ON bought.item_id = i.id
         LEFT JOIN item_stock st ON st.item_id = i.id
        WHERE i.deleted_at IS NULL AND (sold.item_id IS NOT NULL OR bought.item_id IS NOT NULL) ${search}`;
-    const [list, count] = await Promise.all([
-      this.database.query<{
+    const list = await this.database.query<{
         id: string;
         name: string;
         pricing_unit: 'per_piece' | 'per_kg';
@@ -286,13 +309,20 @@ export class AccountsService {
         spent_iqd: string;
         spent_usd: string;
         stock: string | null;
+        total: string;
       }>(
         `${base} ORDER BY coalesce(sold.margin_iqd, 0) DESC, i.name
          LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
         [...values, paging.page_size, paging.offset],
-      ),
-      this.database.query<{ total: string }>(`SELECT count(*)::text AS total FROM (${base}) x`, values),
-    ]);
+      );
+    // Past the last page there is no row to carry the count: ask for it on its own.
+    const total =
+      list.rows.length > 0 || paging.offset === 0
+        ? Number(list.rows[0]?.total ?? 0)
+        : Number(
+            (await this.database.query<{ total: string }>(`SELECT count(*)::text AS total FROM (${base}) x`, values))
+              .rows[0]?.total ?? 0,
+          );
     return {
       items: list.rows.map((row) => {
         const revenue = pair(row.revenue_iqd, row.revenue_usd);
@@ -310,7 +340,7 @@ export class AccountsService {
           stock: new Decimal(row.stock ?? '0').toFixed(3),
         };
       }),
-      total: Number(count.rows[0]?.total ?? 0),
+      total,
     };
   }
 }

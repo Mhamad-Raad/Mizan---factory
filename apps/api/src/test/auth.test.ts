@@ -347,21 +347,24 @@ describe('authentication (FR-101, FR-106, FR-108, spec 2.8)', () => {
       expect((await auditRows({ action: 'password_change' })).length).toBe(1);
     });
 
-    it('does not check the current password while the account is locked out', async () => {
+    it('does not let guesses at the sign-in page lock the device already signed in (review)', async () => {
       const user = await seedUser({ username: 'sara', role: 'admin' });
       const session = await signIn(ctx.http, user);
+      // Somebody anywhere types five wrong passwords for her name…
       for (let i = 0; i < 5; i += 1) {
         await request(ctx.http)
           .post('/api/v1/auth/login')
           .send({ username_or_phone: 'sara', password: 'wrong-but-long-enough' });
       }
-
-      const refused = await as(ctx.http, session)
+      // …which closes the sign-in page, but not the tablet she is holding.
+      await request(ctx.http)
+        .post('/api/v1/auth/login')
+        .send({ username_or_phone: 'sara', password: user.password })
+        .expect(429);
+      await as(ctx.http, session)
         .post('/api/v1/auth/change-password')
         .send({ current: user.password, new: 'a-brand-new-password' })
-        .expect(429);
-      expect(refused.body.error.code).toBe('RATE_LIMITED');
-      expect(refused.body.error.params.minutes).toBe(15);
+        .expect(204);
     });
 
     it('counts a wrong current password toward the same lockout', async () => {

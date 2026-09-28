@@ -56,3 +56,50 @@ export function lastTwelveMonths(today: string): Period {
   date.setUTCFullYear(date.getUTCFullYear() - 1);
   return { from: date.toISOString().slice(0, 10), to: today };
 }
+
+/**
+ * Every named period a screen offers, resolved in one place. The screens name their own choices
+ * (Orders' "Today" chip is today *and* yesterday, FR-611; History's month is the last thirty
+ * days) and map them onto these, so the arithmetic behind each name exists once.
+ */
+export type PeriodPreset =
+  | 'all'
+  | 'today'
+  | 'yesterday'
+  | 'since_yesterday'
+  | 'week'
+  | 'month'
+  | 'last_month'
+  | 'year'
+  | 'last_30_days'
+  | 'last_90_days';
+
+export function presetPeriod(preset: 'all', today: string): Partial<Period>;
+export function presetPeriod(preset: Exclude<PeriodPreset, 'all'>, today: string): Period;
+export function presetPeriod(preset: PeriodPreset, today: string): Partial<Period>;
+export function presetPeriod(preset: PeriodPreset, today: string): Partial<Period> {
+  switch (preset) {
+    case 'all':
+      return {};
+    case 'today':
+      return { from: today, to: today };
+    case 'yesterday': {
+      const day = yesterdayOf(today);
+      return { from: day, to: day };
+    }
+    case 'since_yesterday':
+      return { from: yesterdayOf(today), to: today };
+    case 'week':
+      return thisWeek(today);
+    case 'month':
+      return thisMonth(today);
+    case 'last_month':
+      return lastMonth(today);
+    case 'year':
+      return thisYear(today);
+    case 'last_30_days':
+      return lastDays(today, 30);
+    case 'last_90_days':
+      return lastDays(today, 90);
+  }
+}

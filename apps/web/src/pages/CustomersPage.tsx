@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Chip, Icon, TextField } from '@mizan/ui';
+import { Icon, TextField } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
@@ -13,7 +13,8 @@ import { Pager } from '../components/Pager.js';
 import { useKeepPageInRange, usePaging } from '../lib/paging.js';
 import { useDebouncedValue } from '../lib/debounce.js';
 import { FilterChip } from '../components/FilterChip.js';
-import { customerName } from '../lib/customers.js';
+import { DIRECTION_LABELS, customerName, directionOf } from '../lib/customers.js';
+import { InactiveChip } from '../components/chips.js';
 import { usePermission } from '../lib/store.js';
 
 export interface BalanceValue {
@@ -209,16 +210,6 @@ function PartyCaption({ row }: { row: CustomerRow }) {
   );
 }
 
-/** A deactivated account says so wherever it is listed. */
-export function InactiveChip({ row }: { row: Pick<CustomerRow, 'is_active'> }) {
-  const { t } = useTranslation();
-  if (row.is_active) return null;
-  return (
-    <span className="mz-rowcard__chips">
-      <Chip icon="close">{t('common:deactivated')}</Chip>
-    </span>
-  );
-}
 
 /** What the company owes us, labelled by which way it points. */
 export function PartyBalance({ row }: { row: CustomerRow }) {
@@ -241,16 +232,3 @@ export function PartyBalance({ row }: { row: CustomerRow }) {
   );
 }
 
-/** The label for each way a balance can point. */
-export const DIRECTION_LABELS: Record<'owes' | 'settled' | 'credit', string> = {
-  owes: 'companies:they_owe_us',
-  settled: 'companies:settled',
-  credit: 'customers:in_credit',
-};
-
-/** Which way what a company owes us points: owing, settled, or in credit (paid ahead). */
-export function directionOf(balance: BalanceValue): 'owes' | 'settled' | 'credit' {
-  const amount = balance.currency === 'IQD' ? balance.amount_iqd : balance.amount_usd_cents;
-  if (amount === 0) return 'settled';
-  return amount > 0 ? 'owes' : 'credit';
-}

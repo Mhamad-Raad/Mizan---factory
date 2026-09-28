@@ -105,7 +105,7 @@ export function LockPage() {
       });
 
       // The previous employee's cached answers and drafts go with their session (2.10.2).
-      forgetPreviousUser(queryClient);
+      forgetPreviousUser(queryClient, response.user.id);
       // Their own language, as they left it on this device, before the first screen paints.
       setPreference('lang', entry.lang);
       setSession({ user: response.user, permissions: response.permissions, isLocked: false });
@@ -141,7 +141,7 @@ export function LockPage() {
   };
 
   return (
-    <Doorway>
+    <Doorway tabTitle={t('auth:locked_title')}>
       <div className="mz-stack">
         <div className="mz-row">
           <Avatar name={who.displayName} />

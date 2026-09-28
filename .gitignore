@@ -1,7 +1,8 @@
-# Secrets — .env.example is committed, .env is not
+# Secrets — the two templates are committed, a filled-in .env never is
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # Dependencies and build output
 node_modules/

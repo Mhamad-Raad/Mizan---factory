@@ -21,7 +21,7 @@
   "employee_activity_hint": "What each employee did in the period",
   "cash_up": "Daily cash-up",
   "cash_up_hint": "What each employee should hand over, per currency",
-  "last_quarter": "Last 90 days",
+  "last_quarter": "Last {{days}} days",
   "group_by": "Group by",
   "group.month": "Month",
   "group.day": "Day",

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadTwice } from './chunk.js';
+import { ChunkLoadError, loadTwice } from './chunk.js';
 
 describe('a screen that has to arrive over the connection of NFR-03', () => {
   it('asks a second time, because React.lazy never will', async () => {
@@ -26,5 +26,12 @@ describe('a screen that has to arrive over the connection of NFR-03', () => {
 
     await expect(loadTwice(load, 0)).resolves.toBe('the screen');
     expect(load).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('telling a missing screen from a broken one (review)', () => {
+  it('marks a file that never arrived, so the boundary can say "check your connection" to it alone', async () => {
+    const load = vi.fn<() => Promise<string>>().mockRejectedValue(new TypeError('Failed to fetch'));
+    await expect(loadTwice(load, 0)).rejects.toBeInstanceOf(ChunkLoadError);
   });
 });

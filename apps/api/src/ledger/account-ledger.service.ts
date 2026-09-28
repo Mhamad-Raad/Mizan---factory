@@ -144,6 +144,16 @@ export abstract class AccountLedgerService {
     return results;
   }
 
+  /** The rows of one damage record on one account, never the account's whole ledger (review). */
+  async entriesOfDamage(tx: Db, ownerId: string, damageId: string): Promise<LedgerEntry[]> {
+    return this.storeFor(tx).entriesOfDamage(ownerId, damageId);
+  }
+
+  /** One row of one account — for a reversal, never the account's whole ledger (review). */
+  async entryOf(tx: Db, ownerId: string, entryId: string): Promise<LedgerEntry | null> {
+    return (await this.storeFor(tx).findEntry(ownerId, entryId))?.entry ?? null;
+  }
+
   async entriesFor(tx: Db, ownerId: string): Promise<LedgerEntry[]> {
     return this.storeFor(tx).entriesFor(ownerId);
   }

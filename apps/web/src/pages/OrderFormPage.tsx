@@ -25,12 +25,13 @@ import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { PickerSheet } from '../components/PickerSheet.js';
 import { QuantityInput } from '../components/QuantityInput.js';
-import { QueryStates } from '../components/states.js';
+import { FieldsSkeleton, QueryStates } from '../components/states.js';
 import { TotalsFooter } from '../components/TotalsFooter.js';
 import { PriceFromMonth } from '../components/chips.js';
 import type { Lot } from './MaterialDetailPage.js';
 import { clearDraft, createDraftKeeper, readDraft } from '../lib/drafts.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
+import { usableRate } from '../lib/money.js';
 import { customerName } from '../lib/customers.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import { errorMessage } from '../lib/errors.js';
@@ -103,7 +104,16 @@ export function OrderFormPage({ mode }: { mode: 'create' | 'edit' }) {
   if (mode === 'edit') {
     return (
       <>
-        <QueryStates query={existing} skeletonLines={10}>
+        <QueryStates
+          query={existing}
+          skeleton={
+            // The order's card and a line card, the size they arrive at (layout shift 0.11).
+            <div className="mz-stack">
+              <FieldsSkeleton fields={4} />
+              <FieldsSkeleton fields={3} />
+            </div>
+          }
+        >
           {existing.data ? (
             <OrderForm
               mode="edit"
@@ -231,11 +241,16 @@ function OrderForm({
   // The rate for this order (2.3.3): the one typed here for this deal, else the customer's own
   // rate, else today's global rate — the same precedence the server applies. With none of them
   // there is no rate to preview with, and nothing is converted rather than a rate invented.
-  const usingOverride = form.rate_override.trim() !== '';
+  //
+  // A typed rate is used only once it is one: "0" or "." half-way through typing reached the
+  // conversion kernel, which throws on a rate that is not above zero, and the whole form was
+  // replaced by the error screen. Until then the field says so and the preview keeps the
+  // automatic rate.
+  const typedRate = usableRate(form.rate_override);
+  const rateTypedBadly = form.rate_override.trim() !== '' && typedRate === null;
+  const usingOverride = typedRate !== null;
   const customerRate = customer.data?.rate;
-  const documentRate: Rate | null = usingOverride
-    ? form.rate_override.trim()
-    : (customerRate?.rate_iqd_per_usd ?? globalRate);
+  const documentRate: Rate | null = typedRate ?? customerRate?.rate_iqd_per_usd ?? globalRate;
   const rateSource: RateSource = usingOverride
     ? 'manual'
     : customerRate?.is_customer_rate
@@ -306,7 +321,10 @@ function OrderForm({
     });
     const complete = perLine.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
     const discountIqd = complete.reduce((sum, entry) => sum + entry.discount_iqd, 0);
-    const discountUsd = complete.reduce((sum, entry) => sum + entry.discount_usd_cents, 0);
+    // The discount travels as one dinar figure, and the server converts that sum once at the
+    // order's rate (`discountPair`). Summing each line's own conversion drifted a cent or two
+    // from it, so the total shown was not the total saved.
+    const discountUsd = documentRate === null ? 0 : convert(discountIqd, 'IQD', documentRate);
     const summed = documentTotals(
       complete.map((entry) => entry.gross),
       { discount_iqd: discountIqd, discount_usd_cents: discountUsd },
@@ -332,7 +350,7 @@ function OrderForm({
         payment_type: paymentType,
         received_currency: paymentType === 'cash' ? form.received_currency : null,
         notes: form.notes.trim() === '' ? null : form.notes.trim(),
-        rate_iqd_per_usd: form.rate_override.trim() === '' ? null : form.rate_override.trim(),
+        rate_iqd_per_usd: typedRate,
         acting_user_id: form.acting_user_id === '' ? null : form.acting_user_id,
         // The discount goes as a flat IQD amount, whether it was typed as an amount or worked
         // out from a percentage; the server converts the other currency at the order's rate.
@@ -526,6 +544,7 @@ function OrderForm({
                     })
               }
               decimals={4}
+              error={rateTypedBadly ? t('common:rate_invalid') : undefined}
               value={form.rate_override}
               onChange={(event) =>
                 setForm((current) => ({ ...current, rate_override: event.target.value }))
@@ -753,7 +772,7 @@ function OrderForm({
         primary={settlementCurrency}
         lineCount={form.lines.length}
         saving={save.isPending}
-        disabled={!form.customer_id || form.lines.length === 0}
+        disabled={!form.customer_id || form.lines.length === 0 || rateTypedBadly}
         onSave={() => save.mutate()}
         saveLabel={mode === 'edit' ? t('common:save') : undefined}
       />

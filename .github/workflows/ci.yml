@@ -110,7 +110,11 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-      # The inline pre-paint script is allowed by hash, so the hash in deployment must match.
-      - name: CSP hash of the pre-paint script is current
+      # The inline scripts are allowed by hash; the web image computes the hashes from the page
+      # it serves. Here: every inline script of the built page is found and hashed.
+      - name: CSP hashes of the inline scripts
         run: |
-          echo "pre-paint script hash: $(sh ops/docker/csp-hash.sh)"
+          test -f apps/web/dist/index.html || pnpm --filter @mizan/web build
+          HASHES="$(node ops/docker/csp-hashes.mjs apps/web/dist/index.html)"
+          echo "inline script hashes: $HASHES"
+          test "$(echo "$HASHES" | wc -w)" -ge 2

@@ -112,7 +112,8 @@ function databaseErrorCode(exception: unknown): ErrorCode | null {
   const code = (exception as { code?: unknown } | null)?.code;
   if (typeof code !== 'string' || !/^[0-9A-Z]{5}$/.test(code)) return null;
   if (code === '23505') return 'DUPLICATE';
-  if (code === '40P01' || code === '40001') return 'BUSY_RETRY';
+  // Two saves waited on each other, or one took longer than the minute a statement may run.
+  if (code === '40P01' || code === '40001' || code === '57014') return 'BUSY_RETRY';
   // A check rule, and text or a date the database could not read: the request's values. A
   // missing column, a broken reference or an overflow in SQL we wrote are faults of ours and
   // stay 500s, so they are seen (review).

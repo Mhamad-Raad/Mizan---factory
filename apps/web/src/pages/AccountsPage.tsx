@@ -6,7 +6,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { BottomSheet, Button, DateField, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
-import { apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { apiRequest } from '../lib/api.js';
+import { useIdempotencyKey } from '../lib/idempotency.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { useGlobalRate } from '../lib/rates.js';
@@ -19,11 +20,11 @@ import { KpiHead } from '../components/KpiHead.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { Pager } from '../components/Pager.js';
-import { QueryStates } from '../components/states.js';
+import { QueryStates, SkeletonBlock } from '../components/states.js';
 import { customerName } from '../lib/customers.js';
 import { useKeepPageInRange, usePaging } from '../lib/paging.js';
 import { useDebouncedValue } from '../lib/debounce.js';
-import { lastMonth, thisMonth, thisYear } from '../lib/periods.js';
+import { presetPeriod } from '../lib/periods.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import { useIsWide } from '../lib/wide.js';
 import type { PurchaseRow } from '../lib/purchases.js';
@@ -94,9 +95,7 @@ const TABS: readonly Tab[] = ['sales', 'bought', 'materials', 'expenses'];
 
 /** The first and last day of a preset, from today's Baghdad date (2.10.4). */
 function presetRange(preset: Exclude<Preset, 'custom'>, today: string): { from: string; to: string } {
-  if (preset === 'this_year') return thisYear(today);
-  if (preset === 'this_month') return thisMonth(today);
-  return lastMonth(today);
+  return presetPeriod(preset === 'this_year' ? 'year' : preset === 'this_month' ? 'month' : 'last_month', today);
 }
 
 /**
@@ -184,7 +183,7 @@ export function AccountsPage() {
         />
       </div>
 
-      <QueryStates query={summary} skeletonLines={4}>
+      <QueryStates query={summary} skeleton={<SummarySkeleton />}>
         {data ? (
           <>
             <div className="mz-accounts__net" data-sign={Math.sign(data.net.amount_iqd)}>
@@ -249,6 +248,31 @@ export function AccountsPage() {
       {tab === 'materials' ? <MaterialsTab from={from} to={to} /> : null}
       {tab === 'expenses' ? <ExpensesTab from={from} to={to} /> : null}
     </div>
+  );
+}
+
+/**
+ * The summary while it loads, in the shape it arrives in — the net card and the seven tiles —
+ * so the tabs below do not jump down a screen's height when it does (layout shift 0.37).
+ */
+function SummarySkeleton() {
+  return (
+    <>
+      <div className="mz-accounts__net" aria-hidden="true">
+        <SkeletonBlock height="0.875rem" width="30%" />
+        <SkeletonBlock height="2.5rem" width="70%" />
+        <SkeletonBlock height="0.75rem" width="50%" />
+      </div>
+      <div className="mz-kpis mz-accounts__tiles" aria-hidden="true">
+        {Array.from({ length: 7 }, (_, index) => (
+          <div key={index} className="mz-kpi mz-accounts__tile">
+            <SkeletonBlock height="1.25rem" width="60%" />
+            <SkeletonBlock height="1.625rem" width="80%" />
+            <SkeletonBlock height="0.75rem" width="45%" />
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -755,6 +779,8 @@ function AddExpenseSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
   // Also when the rate could not be read (offline): the hint says why Save is waiting.
   const noRate = !rateQuery.isPending && rate === null;
 
+  // One key for this expense, held across its retries (FR-1305); the sheet closes on success.
+  const saveKey = useIdempotencyKey();
   const save = useMutation({
     mutationFn: () =>
       apiRequest('/expenses', {
@@ -765,7 +791,7 @@ function AddExpenseSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
           amount: { amount: money.amount, currency: money.currency, other_amount: money.other_amount ?? null },
           note: note.trim() || null,
         },
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: saveKey.key,
       }),
     onSuccess: onSaved,
   });
@@ -825,12 +851,14 @@ function VoidExpenseSheet({
 }) {
   const { t } = useTranslation();
   const [reason, setReason] = useState('');
+  // One key for this void, held across its retries (FR-1305); the sheet closes on success.
+  const voidKey = useIdempotencyKey();
   const voidIt = useMutation({
     mutationFn: () =>
       apiRequest(`/expenses/${expense.id}/void`, {
         method: 'POST',
         body: { reason: reason.trim(), version: expense.version },
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: voidKey.key,
       }),
     onSuccess: onVoided,
   });

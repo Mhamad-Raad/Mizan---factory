@@ -143,10 +143,29 @@ html[dir='ltr'] input[type='tel'] {
   text-align: start;
 
   /* The bar's controls sit at the reading end; the title takes what is left of the line. */
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/*
+ * The words of the title are what gives way at 360 px, from their own end: `plaintext` gives a
+ * Latin name in an Arabic header its own direction, so it loses its tail rather than its start.
+ */
+.mz-header__label {
+  flex: 0 1 auto;
   min-inline-size: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  unicode-bidi: plaintext;
+}
+
+/* The record number is never cut: "#1006" is the one part of the title nobody can guess. */
+.mz-header__number {
+  flex: none;
 }
 
 /*
@@ -266,6 +285,21 @@ html[dir='ltr'] input[type='tel'] {
 .mz-tabbar__item[aria-current='page'] {
   color: var(--color-primary);
   font-weight: 600;
+}
+
+/*
+ * A tab's label is one line at every text size: at 1.25× the Arabic "طلبات البيع" wrapped and
+ * pushed the bar's height up. It shortens with an ellipsis instead; the icon carries the rest.
+ */
+.mz-tabbar__item--tab {
+  min-inline-size: 0;
+}
+
+.mz-tabbar__tab-label {
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mz-stack {
@@ -927,6 +961,17 @@ a.mz-button {
   block-size: 1rem;
 }
 
+/* A list row while it loads: the height of a finished one, so nothing moves when it arrives. */
+.mz-skeleton-row {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-2);
+  border-block-end: 1px solid var(--color-border);
+  min-block-size: 3.5rem;
+  padding-block: var(--space-3);
+}
+
 @keyframes mz-shimmer {
   0%,
   100% {
@@ -970,6 +1015,11 @@ a.mz-button {
   overflow-y: auto;
   inset-block-end: 0;
   inset-inline: 0;
+}
+
+/* Focus is put on the sheet itself on a touch screen; the sheet is not a control to ring. */
+.mz-sheet:focus {
+  outline: none;
 }
 
 @keyframes mz-rise {
@@ -1054,10 +1104,10 @@ a.mz-button {
 /*
  * ...and *not* inside a left-to-right island of a right-to-left page.
  *
- * A numeric input and the PIN pad are `dir="ltr"` on purpose — numbers read the same way in
- * every language (2.10.6 point 5) — but a descendant selector cannot see that, so the pad's
- * backspace arrow pointed away from the digits it deletes in Kurdish. Same specificity, later
- * in the file, so this wins exactly where it should.
+ * A numeric input is `dir="ltr"` on purpose — numbers read the same way in every language
+ * (2.10.6 point 5) — but a descendant selector cannot see that, so an arrow inside one pointed
+ * the wrong way in Kurdish. Same specificity, later in the file, so this wins exactly where it
+ * should.
  */
 [dir='ltr'] [data-mirror='true'] {
   transform: none;
@@ -1111,26 +1161,6 @@ a.mz-button {
   border-block-start: 1px solid var(--color-border);
   background: var(--color-surface);
   box-shadow: var(--shadow-sheet);
-}
-
-.mz-fab {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  justify-content: center;
-  min-block-size: var(--tap-target);
-  padding-block: var(--space-3);
-  padding-inline: var(--space-4);
-  border: 0;
-  border-radius: var(--radius-lg);
-  background: var(--color-primary);
-  color: var(--color-on-primary);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.mz-fab:hover {
-  background: var(--color-primary-hover);
 }
 
 /* ── the pieces the selling screens are built from ──────────────────────────────── */
@@ -1193,6 +1223,15 @@ a.mz-button {
   background: var(--color-surface-2);
   border-radius: var(--radius-sm);
   padding-inline: var(--space-3);
+}
+
+/*
+ * Each figure of a dual amount — number and currency symbol — is one unit that never breaks: at
+ * 1.25× text the symbol wrapped onto a line of its own, away from its number. The two figures
+ * may still sit on two lines.
+ */
+.mz-dual > bdi {
+  white-space: nowrap;
 }
 
 /*
@@ -1580,77 +1619,6 @@ a.mz-button {
   outline-offset: 2px;
 }
 
-/* ── the PIN pad of the lock screen (FR-106, spec 3.3) ───────────────────────────── */
-
-/*
- * Three columns of large keys in the thumb zone. The pad itself is `dir="ltr"` because a
- * numeric keypad is not a sentence — 1 to 9 read the same way in every language (2.10.6
- * point 5) — while everything around it follows the document's direction.
- */
-.mz-pinpad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-2);
-  max-inline-size: 22rem;
-  margin-inline: auto;
-  inline-size: 100%;
-}
-
-.mz-pinpad__key {
-  min-block-size: calc(var(--tap-target) + 0.75rem);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-size: 1.375rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.mz-pinpad__key:active {
-  background: var(--color-surface-2);
-}
-
-.mz-pinpad__key:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.mz-pinpad__key--quiet {
-  background: none;
-  border-color: transparent;
-}
-
-.mz-pinpad__status {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-  text-align: center;
-}
-
-.mz-pinpad__dots {
-  display: flex;
-  gap: var(--space-2);
-  min-block-size: var(--space-4);
-  align-items: center;
-}
-
-.mz-pinpad__dot {
-  inline-size: 0.75rem;
-  block-size: 0.75rem;
-  border-radius: 50%;
-  border: 1px solid var(--color-border-strong);
-}
-
-.mz-pinpad__dot--on {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-}
-
 /*
  * A folded section, for the rare thing that must be reachable and not in the way.
  *
@@ -1796,22 +1764,6 @@ a.mz-button {
   }
 }
 
-.mz-pinpad--flip {
-  animation: mz-pinpad-flip var(--duration-page) var(--ease-out) both;
-  transform-origin: center;
-}
-
-@keyframes mz-pinpad-flip {
-  from {
-    opacity: 0;
-    transform: perspective(600px) rotateY(calc(var(--dir) * -12deg));
-  }
-
-  to {
-    opacity: 1;
-    transform: perspective(600px) rotateY(0);
-  }
-}
 
 /* 5 · language mirror — the layout cross-fades while it changes direction. */
 html[data-mirroring='true'] body {
@@ -1854,7 +1806,10 @@ html[data-mirroring='true'] body {
 @media (width >= 64rem) {
   .mz-app--shell {
     display: grid;
-    grid-template: 'nav header' auto 'nav offline' auto 'nav main' 1fr / 17rem 1fr;
+
+    /* `minmax(0, 1fr)`: a wide table scrolls inside its own card; with a bare `1fr` the column
+       grew to the table's width and pushed the whole page past the window (Reports, 52 px). */
+    grid-template: 'nav header' auto 'nav offline' auto 'nav main' 1fr / 17rem minmax(0, 1fr);
   }
 
   .mz-header {
@@ -1888,20 +1843,27 @@ html[data-mirroring='true'] body {
     margin-inline: 0;
   }
 
+  /*
+   * Pinned to the window, not stuck in the page: a sticky sidebar rode the page's elastic
+   * overscroll and stretched with it (client review). The grid keeps its `nav` column as the
+   * space the sidebar covers, so the content still starts beside it.
+   */
   .mz-tabbar {
     grid-area: nav;
     flex-direction: column;
-    position: sticky;
+    position: fixed;
     justify-content: flex-start;
     gap: 0;
     border-block-start: 0;
     border-inline-end: 1px solid var(--color-border);
     background: var(--color-sidebar);
     padding: 0;
-    block-size: 100dvh;
-    inset-block-start: 0;
-    inset-inline: auto;
+    inline-size: 17rem;
+    inset-block: 0;
+    inset-inline: 0 auto;
     color: var(--color-sidebar-text);
+    overscroll-behavior: contain;
+    transition: inline-size var(--duration-micro) var(--ease-out);
 
     /* Not a scroller itself: the links scroll inside `.mz-sidebar__nav`, and a scrolling
        sidebar clipped the account menu that opens out of its foot (client review). */
@@ -2115,6 +2077,9 @@ html[data-mirroring='true'] body {
     padding-inline: var(--space-3);
     padding-block: var(--space-3);
     overflow-y: auto;
+
+    /* Scrolling the links ends at the list's end, never carrying on into the page behind. */
+    overscroll-behavior: contain;
   }
 }
 
@@ -2132,7 +2097,11 @@ html[data-mirroring='true'] body {
   }
 
   .mz-app--shell[data-sidebar='collapsed'] {
-    grid-template-columns: 4.75rem 1fr;
+    grid-template-columns: 4.75rem minmax(0, 1fr);
+  }
+
+  [data-sidebar='collapsed'] .mz-tabbar {
+    inline-size: 4.75rem;
   }
 
   /* Folded: no labels, no group headings, and every row a centred icon. */
@@ -3404,7 +3373,9 @@ html[data-mirroring='true'] body {
   text-decoration: none;
 }
 
-.mz-kpi:hover {
+/* Only a tile that leads somewhere answers the pointer; one whose page the reader may not open
+   is plain text. */
+.mz-kpi:is(a, button):hover {
   border-color: var(--color-border-strong);
 }
 
@@ -3693,6 +3664,19 @@ html[data-mirroring='true'] body {
 
 .mz-quiet-link:hover {
   text-decoration-color: currentcolor;
+}
+
+/*
+ * An inline link is small to look at and large to hit (rule 8): padding brings it to the tap
+ * target and the same negative margin gives the space back, so nothing around it moves. Before
+ * this a customer's name under an order, a phone number or a name in a report was a 20 px
+ * target on a phone.
+ */
+.mz-quiet-link,
+.mz-tap-link {
+  display: inline-block;
+  padding-block: calc((var(--tap-target) - 1.25rem) / 2);
+  margin-block: calc((var(--tap-target) - 1.25rem) / -2);
 }
 
 /* ── materials: the stock-by-price hint under an order line (D-062) ── */
@@ -4172,14 +4156,26 @@ html[data-mirroring='true'] body {
   gap: var(--space-1);
 }
 
-/* The whole profile row opens the account menu, not only its three dots (client review): the
-   dots' button stretches an invisible layer over the row, so it stays one real button — one
-   tab stop, one name for a screen reader — with a target the size of the row. */
-.mz-sidebar__user .mz-menu > .mz-icon-button::after {
-  content: '';
+/* The profile row is the account menu's button (client review): no three dots — the menu's
+   button lies over the whole row, invisible, so it stays one real button (one tab stop, one
+   name for a screen reader, a focus ring round the row) with a target the size of the row. */
+.mz-sidebar__user .mz-menu > .mz-icon-button {
   position: absolute;
-  inset: 0;
+  z-index: 1;
   border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+  inline-size: auto;
+  block-size: auto;
+  inset: 0;
+}
+
+.mz-sidebar__user .mz-menu > .mz-icon-button:hover {
+  background: transparent;
+}
+
+.mz-sidebar__user .mz-menu > .mz-icon-button svg {
+  display: none;
 }
 
 .mz-sidebar__user:hover {

@@ -1231,7 +1231,272 @@ languages, and the stock queries were timed on 520,000 buys and 1.56 million tak
   - The currency sheet shows its error.
   - The companies list offers the balance filter only to those who can see the net balance.
 
-## D-072 · 2026-09-27 · client review · The Profit report counts rounding and order discounts
+## D-072 · 2026-09-27 · client request · The product is called Jiyan Management
+
+- **Asked:** rename Mizan to "Jiyan management", with a new icon and favicon.
+- **Chosen:**
+  - **Name:** "Jiyan", with "Management" as the line beneath it where "One factory" was —
+    written in English in all three languages, at the client's request (the check allows
+    exactly these two keys to be the same everywhere). The browser tab and the installed app
+    are "Jiyan Management".
+  - **Mark (`BrandMark`):** a box — the warehouse's stock — with a sprout rising from its lid
+    ("jiyan" is Kurdish for life). The favicon and home-screen icons draw it in white on the
+    theme's teal. The icons are maskable, and an Apple touch icon was added. The offline
+    shell cache was renamed, so an installed app drops the old icons.
+  - **Exports:** files download as `jiyan-…`.
+- **Not renamed:** the internal names — the `@mizan/*` packages, the database and its roles,
+  the `mizan.prefs.v1` storage key, the repository. They are never shown, and renaming the
+  storage key would sign everyone out of their saved preferences, and the database would need
+  a migration of its own.
+- **Update, 2026-09-28 — the client's own logo:**
+  - **Favicon:** now drawn after Jiyan's logo (the red `#931329` with a white Ĵ and the
+    swoosh beneath it). Drawn as paths, not type, so it reads the same at 16 px in every
+    browser.
+  - **Home-screen icons:** the logo itself. The maskable icon is the Ĵ inside the safe zone,
+    so a round crop never cuts the wordmark.
+  - **In-app mark:** the sidebar and sign-in mark (`BrandMark`) is the same Ĵ with its swoosh.
+  - **New theme:** a "Jiyan" palette, the logo's wine red `#931329` in light and a softer
+    wine-rose in dark, first in the picker. All 44 of its contrast pairs meet AA. At the client's word it is
+    the **default**: a new device opens in it, and teal and the rest stay a choice.
+
+## D-073 · 2026-09-28 · backup review · A backup chain that actually runs and can be replayed
+
+A review of `ops/backup` found the nightly ran about one night in five, the WAL was never
+archived at all, and what the runbook called a fifteen-minute recovery point could not be
+replayed onto anything. Everything below was run end to end on a throwaway stack
+(`ops/runbook/restore-drills.md`, 2026-09-28).
+
+- **The night is due from 03:00 until it succeeds** (`cron.sh`): once per Baghdad day, the day
+  it last succeeded kept on the `backup-staging` volume (`state/last-nightly`), so a restart
+  neither repeats nor skips it. A failure is retried after 15, 30, 60 minutes, then every two
+  hours. The decisions are plain functions in `lib.sh` (`nightly_due`, `retry_delay`,
+  `base_due`), tested with any clock. The monthly copy is the first good night of the month,
+  remembered in state, not "the 1st".
+- **WAL archiving never worked**: the `wal-archive` volume is created owned by root and
+  PostgreSQL archives as `postgres`, so every `archive_command` failed and `pg_wal` would have
+  grown until the disk filled. The `db` service now hands the volume to `postgres` on every
+  start. `archive_timeout` is 600 s: ten minutes to close a segment plus five to send it is the
+  fifteen of NFR-08.
+- **Point-in-time recovery is real.** A weekly physical base backup (`basebackup.sh`:
+  `pg_basebackup`, tar, gzip, its own WAL streamed in so it is consistent alone), encrypted and
+  tagged per file like the dumps, to `base/<stamp>_<first WAL segment>/`, taken in the nightly
+  run once 7 days have passed since the last good one. Each WAL segment is gzipped, encrypted
+  and tagged on its own before it leaves (`wal-sync.sh`; never in clear), and what has left is
+  remembered locally. The local archive is pruned to the newest base backup's first segment,
+  and only of what has left. `restore-pitr.sh` and `restore-wal.sh` (the `restore_command`)
+  verify every tag before decrypting; a bad WAL tag stops the recovery with FATAL instead of
+  ending it early. The nightly `pg_dump` stays as the simple path.
+- **The backup container has its own role**, `mizan_backup`: `LOGIN REPLICATION`, member of
+  `pg_read_all_data`, writes nothing. The schema owner's password is no longer in that
+  container. Created with `BACKUP_DB_PASSWORD` by `ops/docker/db-init/10-backup-role.sh` (with
+  its `pg_hba` replication line) at the volume's first initialisation — an init script, not a
+  migration, because a role with REPLICATION needs a superuser and `mizan_migrate` stops being
+  one after the first migrate. The runbook gives the same steps for an existing volume.
+- **Off-site retention is the bucket's** (versioning, Object Lock 30 days, lifecycle rules per
+  prefix: daily 31 d, monthly 400 d, base and WAL 22 d), and the host's key is put-only: the
+  scripts never list, read or delete. Pruning from the host is kept behind
+  `BACKUP_PRUNE_OFFSITE=1` (default 0) for stores without lifecycle rules; it keeps 3 base
+  backups and the WAL from the oldest of them on.
+- **The cleartext never outlives a failure**: `backup.sh`, `basebackup.sh` and `wal-sync.sh`
+  remove their unencrypted dump, tars or compressed segment on every exit, signals included,
+  and a run clears what a killed one left behind.
+- **An empty `BACKUP_HEARTBEAT_URL`** is still allowed but is a boxed WARNING at every start and
+  a WARNING every night. The heartbeat now vouches for the dump, the base backup when due, and
+  the WAL.
+
+Relied on: 2.13, 2.14, NFR-08, D-066, D-067.
+
+## D-074 · 2026-09-28 · fourth review · Security, correctness and the screens, for years unattended
+
+Four read-only reviews ran in parallel: security, scale, the screens in three languages at three
+widths, and correctness over years of use. Every finding below was traced in code; each fix has
+a test that fails without it (`test/review-wave-four.test.ts`, web `lib/*.test.ts`).
+
+- **Security:**
+  - Sessions lock after the device's idle minutes, on the server as well as the screen
+    (FR-106). `/auth/me` returns `idle_lock_minutes`.
+  - A lockout set from the sign-in page no longer shuts the tablet already signed in. In-session
+    password checks count per session, and against the account too.
+  - A locked account records "locked out" once per lockout, and knocking on it counts toward the
+    address's ceiling. A name that is nobody's is stored masked.
+  - A new sign-in on a browser ends the session it replaces and records `switch_user`.
+  - Balance before/after and buy line totals are stripped for readers without the flags. A
+    deactivation error no longer carries the balance.
+  - The ledger's reverse undoes only money rows (payment, credit, refund, adjustment, opening).
+    A non-admin may reverse only their own payment of today.
+  - Definer functions pin `search_path`, and the app role cannot create temporary tables
+    (migration 0032).
+  - The CSP hashes are computed from the built page at image build time (D-073 covers the
+    backups).
+- **Correctness:**
+  - An edit keeps the order's or buy's rate unless a new one is typed.
+  - An edit keeps its employee without asking for admin, and keeps a material deactivated since.
+  - "Return to stock" is checked again under the lock.
+  - A damage is "owed" only when a charge was written, and cannot also be credited as a return.
+  - Kilograms are summed as decimals.
+  - A split payment obeys "no more than owed".
+  - Only the tolerance's own refusal reads as "out of tolerance".
+  - Month arithmetic clamps to the month's end.
+  - Field stripping no longer turns dates into `{}`, which crashed History for every non-admin.
+  - The Profit report counts the orders' discounts and rounding, so it equals the Accounts
+    profit — landed on main as D-077, whose version was kept at the merge.
+  - The dashboard's "we owe companies" tile counts only companies we owe.
+- **Years of running:**
+  - An hourly job prunes expired idempotency keys and dead sessions.
+  - A reservation left by a request that never finished is taken over after two minutes.
+  - Write paths read one row, one document or one damage, never an account's whole ledger.
+- **Screens:**
+  - Stable idempotency keys per write.
+  - A no-access state for 403, with routes gated by permission, and not-found for 404.
+  - Sheets close on Escape and manage focus.
+  - Record numbers stay whole in the title.
+  - One digit system in every catalogue, and currency symbols never wrap.
+  - Honest empty-search messages.
+  - Skeletons sized like the content.
+  - 44 px tap targets.
+  - A confirmation before deactivating a material.
+  - Drafts kept per user, and the previous user's cache cleared on a new sign-in.
+  - "This month" means the calendar month on every screen, History included.
+- **Left for the client:**
+  - The buying-side write routes stay.
+  - Lazy-loading the language catalogues was declined: an offline tablet must never show keys.
+
+## D-075 · 2026-09-28 · performance review · Ten years of data, every screen under 300 ms
+
+The scale reviewer timed every endpoint against the ten-year volume database (1.8 million orders
+and rows in each ledger, 2.6 million buys, 7.8 million lot allocations, 3.65 million audit rows,
+5,000 materials, 10,501 accounts). Thirteen findings; each fix below was proved on that database
+with `EXPLAIN (ANALYZE, BUFFERS)` before and after, and each keeps the response and its numbers
+as they were unless it says otherwise.
+
+- **Three more maintained sums** (2.2.6, like `order_remaining` and `item_stock_totals`): written
+  only by `SECURITY DEFINER` triggers with a pinned `search_path`, read-only to `mizan_app`,
+  backfilled in their migration and checked against their rows by `check-integrity.mjs`.
+  - `lot_balances` (0033): what each buy has given out, and whether the buy is live (not
+    replaced by an edit, purchase active). `item_lots` now reads only the open buys; a used-up
+    buy adds 0 to every figure the view makes, so its rows are identical — proved on both
+    databases: every row of the new view equals the old row, every old row left out had 0
+    remaining, and every material's remaining and value are the same.
+  - `account_totals` (0033): both ledgers per account, per currency column. The balance is the
+    column of the account's currency *today*, so a change of settlement currency needs nothing
+    from the table. `party_balances` reads it; so do both account lists, the dashboard's
+    supplier tile and top debtors, Receivables and Payables.
+  - `account_owing` (0035): per account, the active orders still owed in dinars and in dollars,
+    and of those the ones owed in full. The dashboard's unpaid tile, the Orders list's figures
+    for "All" and each status, the account's Orders tab and Receivables' unpaid count read it.
+    Kept by triggers on `order_remaining` and on an order's status, account or total.
+- **Queries:**
+  - **Page first, then fill:** the Orders, Purchases, Accounts › Sales, customers and companies
+    lists choose the page's ids, then read the page's laterals.
+  - The Orders status comes from `order_remaining`. Count and totals are one pass, or the
+    maintained sum when nothing but the account narrows the list. `totals=false` leaves the
+    figures out; the dashboard's latest orders use it.
+  - **Search** in Orders and Purchases is a union of three index reads: the account's name, the
+    notes (new trigram indexes) and the number.
+  - **The Stock report** gives the stock on hand to the newest open buys. This is the same
+    arithmetic as trimming the oldest. A material with nothing on hand reads no buys.
+  - **Receivables and Payables:**
+    - The balance on a day is the maintained total less what was dated after that day, and the
+      period comes from one index range per account.
+    - Payables is paged in the database.
+  - **Employee activity** is one grouped pass per table.
+  - **History** compares the action as the enum, and an unknown action finds nothing without
+    asking.
+  - **Accounts › Materials** counts in the same pass.
+- **Changed on purpose:**
+  - **Payables** lists only accounts with a buying-side row, as Receivables already did. An
+    account with none owes and is owed nothing; it was 10,000 zero rows at ten years. It
+    is also sorted by the balance as a number: the old query ordered by the text column, so
+    "9" came before "10".
+  - **`GET /items/:id/lots`** sends the buys with stock left, `used_up_count` and `latest` (what
+    "add stock" opens with and what a sale past every buy is costed at). `used_up=true` pages
+    through the rest, newest first. At ten years the old answer was 191 kB for every order-form
+    line; the material page fetches the used-up buys when its toggle is opened.
+  - **Report exports** ask once with `all=true`: up to 10,000 groups, the same permission, pin
+    and field stripping, and `has_more` when a period had more.
+- **Indexes (0034):**
+  - **Added:**
+    - (date, number) for Orders and Purchases.
+    - Partial indexes of the voided documents.
+    - The owing orders.
+    - Covering indexes of an order's and a buy's lines.
+    - `company_ledger (company_id, entry_date) INCLUDE (…)`.
+    - `audit_log (action, occurred_at, id)`.
+  - **Dropped,** each with its evidence in the migration:
+    - The date-only and status indexes.
+    - `orders_creator_idx` and `purchases_creator_idx` (0 scans).
+    - `order_lines_order_idx`, a duplicate.
+    - `order_remaining_owed_idx` (2 scans).
+    - `item_stock_totals_levels_idx` (0 scans, 43 MB for 5,000 rows). The table is now
+      fillfactor 70, so its counter updates can be heap-only.
+- **Measured** through the API (median of three, warm):
+
+  | Endpoint | Before | After |
+  |---|---|---|
+  | Stock report (page 1 / page 50 / export) | 17.8 s / 16.6 s / 18.2 s | 217 / 221 / 228 ms |
+  | Orders, owing, all dates | 8.6 s | 8 ms |
+  | Orders, unpaid / paid, all dates | 9.7 s / 8.8 s | 8 / 119 ms |
+  | Orders "All", page 1 / last page | 509 ms / 3.7 s | 115 / 128 ms |
+  | Orders, search by name / number / notes | 713 / 789 / 779 ms | 3–4 ms |
+  | Dashboard | 634 ms | 11 ms |
+  | Dashboard's latest orders (`totals=false`) | 553 ms | 96 ms |
+  | Customers page 1 / page 400 / by balance | 284 / 335 / 276 ms | 8 / 63 / 7 ms |
+  | Companies page 1 / by balance | 132 / 139 ms | 8 / 10 ms |
+  | Purchases page 10,000 / search | 1.8 s / 159 ms | 94 / 3 ms |
+  | Payables month / year | 2.6 / 2.7 s | 10 / 36 ms |
+  | Receivables month / year page 100 | 255 / 253 ms | 26 / 53 ms |
+  | Receivables export of a year | 19.4 s (57 pages) | 78 ms (one request) |
+  | Employee activity, year | 2.5 s | 167 ms |
+  | History, filtered by action | 663–766 ms | 2–3 ms |
+  | Accounts › Materials month / year | 371 / 562 ms | 92 / 382 ms |
+- **Still over 300 ms,** because they sum a whole period or table:
+  - Accounts › Materials for a year (382 ms): a year of lines and of buys, hashed.
+  - Orders filtered by payment type over all dates (410 ms): what is owed is joined for every
+    owing order. In this fixture two orders in three still owe.
+  - The same holds for any narrowed filter over all dates.
+- **Migration time** on the ten-year database: 0033 and 0034 took 71 s; 0035 takes about a
+  second. `lot_balances` is 436 MB there, because the fixture leaves a tenth of every buy
+  untaken. Real first-in-first-out stock leaves only the newest buys open.
+
+Relied on: 2.2.6, 2.4.3, 2.11, NFR-03, NFR-13, D-032, D-047, D-058, [[mizan-longevity]].
+
+## D-076 · 2026-09-28 · fifth review · A second look at the fourth
+
+Three reviewers read only the fourth review's changes (D-073…D-075): the maintained totals, the
+sign-in and session changes, and the web.
+
+- **The maintained totals held.** No write path lets `lot_balances`, `account_totals` or
+  `account_owing` drift, and no new lock cycle was found. Three smaller fixes:
+  - A purchase void finds its buys by index (migration 0036); it had scanned every purchase line
+    while holding locks.
+  - Receivables and Payables keep their true totals on a page past the end.
+  - The Orders list's paid count cannot dip below zero between its two reads.
+- **Sessions:**
+  - An in-session lock key can no longer be reached by typing it at the sign-in page. It is now
+    upper case, and every typed key is lower case.
+  - A correct unlock clears the slips before it.
+  - Names that are nobody's are stored in `login_attempts` only as a keyed hash.
+  - A locked door counts once toward the address ceiling.
+  - The idle lock is recorded in History, with its time.
+  - Idempotency keys live 31 days, longer than any session or draft. A reservation carries its
+    own stamp, so a request whose key was taken over can neither complete nor release it.
+  - Statements and idle transactions stop after a minute.
+  - Accepted: a stolen signed-in tablet gets its five in-session guesses as well as the sign-in
+    page's five (ten per fifteen minutes). The price of the sign-in page no longer being able to
+    shut a tablet already in use.
+- **Web:**
+  - The idle lock counts activity in every tab and sends a keep-alive at most once a minute
+    while someone is typing.
+  - Save keys are per sheet opening, record and kind. A mismatch refreshes the page and says an
+    earlier attempt was saved.
+  - Drafts survive a session that simply expired.
+  - Only record-number titles are split, so "Rebar 12" never reads "12 Rebar" in RTL.
+  - Links and tiles a user cannot open are plain text.
+  - The error screens set their own titles.
+  - Focus returns to a menu's trigger.
+  - Used-up buys are their own group, newest first, with an error and Retry.
+
+## D-077 · 2026-09-27 · client review · The Profit report counts rounding and order discounts
 
 - **Found:** the Accounts page takes an order's round-up to 250 dinars as profit and its discount
   off it (D-065), while the Profit report summed only the lines, so the two answered different

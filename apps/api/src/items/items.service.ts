@@ -245,10 +245,35 @@ export class ItemsService {
     return this.detailOf(created);
   }
 
-  /** Every buy of the material, oldest first, and what is left of it (D-062). */
-  async lots(id: string): Promise<{ items: Lot[] }> {
+  /**
+   * The material's stock by what we paid (D-062): the buys with something left, oldest first,
+   * how many are used up, and the latest buy — the "add stock" sheet opens with its price, and a
+   * sale past every buy is costed at it. A used-up buy is asked for a page at a time
+   * (`used_up`): at ten years a material had 520 buys, 191 kB sent to every order-form line that
+   * only wanted the few still in stock (D-075).
+   */
+  async lots(
+    id: string,
+    options: { used_up?: boolean; page?: number; page_size?: number } = {},
+  ): Promise<
+    | { items: Lot[]; used_up_count: number; latest: Lot | null }
+    | { items: Lot[]; total: number; page: number; page_size: number; has_more: boolean }
+  > {
     if (!(await this.items.findById(id))) throw ApiError.notFound();
-    return { items: await this.lotStore.lotsOf(id) };
+    if (options.used_up) {
+      const paging = pagingOf(options);
+      const { items, total } = await this.lotStore.usedUp(id, paging);
+      return { items, total, page: paging.page, page_size: paging.page_size, has_more: paging.offset + items.length < total };
+    }
+    const [open, live, last] = await Promise.all([
+      this.lotStore.lotsOf(id),
+      this.lotStore.liveBuyCount(id),
+      this.lotStore.latestLot(id),
+    ]);
+    const items = open.filter((lot) => Number(lot.remaining) > 0);
+    // The latest buy with what is left of it, when it is one of the open ones.
+    const latest = last ? (open.find((lot) => lot.purchase_line_id === last.purchase_line_id) ?? last) : null;
+    return { items, used_up_count: live - items.length, latest };
   }
 
   async update(context: RequestContext, id: string, input: UpdateItemInput): Promise<ItemDto> {

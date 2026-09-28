@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { amountIn, completePair, convert, formatRate, settleInFull } from '@mizan/money';
+import { OutOfToleranceError, amountIn, completePair, convert, formatRate, settleInFull } from '@mizan/money';
 import type { Currency, MoneyPair, Rate } from '@mizan/money';
 import { balanceAsOf, balanceOf } from '@mizan/ledger';
 import type { LedgerEntry, LedgerGroup } from '@mizan/ledger';
 import { AuditService, diffOf } from '../audit/audit.service.js';
 import { resolveActingUser } from '../common/acting-user.js';
 import { ApiError } from '../common/errors.js';
+import { assertMayReverse } from '../ledger/reversible.js';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
 import { Database } from '../database/pool.js';
@@ -391,7 +392,10 @@ export class CustomersService {
             path: 'note',
             code: 'NOTE_REQUIRED',
             message_key: 'errors:note_required_balance',
-            params: { balance, currency: before.settlement_currency },
+            // The figure only for whoever may see balances: an error is not stripped (review).
+            params: can(context, 'fields.see_customer_balances')
+              ? { balance, currency: before.settlement_currency }
+              : { currency: before.settlement_currency },
           },
         ]);
       }
@@ -707,6 +711,19 @@ export class CustomersService {
       const results: WriteResultDto[] = [];
 
       if (input.split && input.split.length > 0) {
+        // Against an order, the parts together must not pay more than it owes — the same rule
+        // as a single payment, which the split skipped (review).
+        if (order) {
+          const inSettlement = input.split.reduce(
+            (total, part) =>
+              total +
+              (part.currency === customer.settlement_currency
+                ? Math.abs(part.amount)
+                : convert(Math.abs(part.amount), part.currency, rate)),
+            0,
+          );
+          assertWithinRemaining(inSettlement, order.remaining, customer.settlement_currency, input.allow_excess);
+        }
         // Proposed — not requested (FR-617): two rows, one note, so the cash-up sees both
         // currencies exactly as they were handed over.
         for (const part of input.split) {
@@ -739,7 +756,7 @@ export class CustomersService {
       if (input.settle_in_full) {
         const remaining = order
           ? order.remaining
-          : balanceOf(await this.ledger.entriesFor(tx, customer.id), customer.settlement_currency);
+          : await this.ledger.balanceOf(tx, customer);
         if (remaining <= 0) {
           throw ApiError.validation([
             {
@@ -762,7 +779,8 @@ export class CustomersService {
             rate_source: rateSource,
             tolerance,
           });
-        } catch {
+        } catch (error) {
+          if (!(error instanceof OutOfToleranceError)) throw error;
           // A difference bigger than the tolerance is not a rate: it is a discount or a
           // credit, and the form says so rather than quietly inventing one (FR-606).
           throw new ApiError('RECEIVED_AMOUNT_OUT_OF_TOLERANCE', {
@@ -809,20 +827,12 @@ export class CustomersService {
 
       const received = Math.abs(input.amount);
       if (order) {
-        const receivedInSettlement =
-          input.currency === customer.settlement_currency
-            ? received
-            : convert(received, input.currency, rate);
-        if (receivedInSettlement > order.remaining && !input.allow_excess) {
-          throw ApiError.validation([
-            {
-              path: 'amount',
-              code: 'EXCEEDS_REMAINING',
-              message_key: 'errors:payment_exceeds_remaining',
-              params: { remaining: order.remaining, currency: customer.settlement_currency },
-            },
-          ]);
-        }
+        assertWithinRemaining(
+          input.currency === customer.settlement_currency ? received : convert(received, input.currency, rate),
+          order.remaining,
+          customer.settlement_currency,
+          input.allow_excess,
+        );
       }
 
       const money = completePair({
@@ -949,15 +959,9 @@ export class CustomersService {
 
     return this.database.transaction(async (tx) => {
       const customer = await this.lockFor(tx, id);
-      const entries = await this.ledger.entriesFor(tx, id);
-      const target = entries.find((entry) => entry.id === entryId);
+      const target = await this.ledger.entryOf(tx, id, entryId);
       if (!target) throw ApiError.notFound();
-
-      const ownSameDay =
-        target.created_by === context.userId && target.entry_date === this.period.today();
-      if (!ownSameDay && context.role !== 'admin') {
-        throw ApiError.permissionDenied('admin');
-      }
+      assertMayReverse(target, context, this.period.today());
 
       const result = await this.ledger.reverse(context, tx, customer, entryId, {
         note: input.note,
@@ -1238,7 +1242,7 @@ export class CustomersService {
   }
 
   private async versionConflict(id: string): Promise<ApiError> {
-    const current = await this.customers.findByIdUnscoped(id);
+    const current = await this.customers.findById(id);
     return new ApiError('VERSION_CONFLICT', {
       entity: 'customer',
       version: current?.version ?? null,
@@ -1447,4 +1451,22 @@ function toCustomerDto(
       extra.sight.selling && extra.sight.buying ? asBalance(extra.balance - extra.payable) : null,
     version: row.version,
   };
+}
+
+/** A payment against an order may not pay more than it owes unless the excess is chosen. */
+function assertWithinRemaining(
+  receivedInSettlement: number,
+  remaining: number,
+  currency: Currency,
+  allowExcess: boolean | undefined,
+): void {
+  if (receivedInSettlement <= remaining || allowExcess) return;
+  throw ApiError.validation([
+    {
+      path: 'amount',
+      code: 'EXCEEDS_REMAINING',
+      message_key: 'errors:payment_exceeds_remaining',
+      params: { remaining, currency },
+    },
+  ]);
 }

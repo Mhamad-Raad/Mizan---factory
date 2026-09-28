@@ -3,6 +3,7 @@ import {
   lastDays,
   lastMonth,
   lastTwelveMonths,
+  presetPeriod,
   shiftDays,
   thisMonth,
   thisWeek,
@@ -44,5 +45,22 @@ describe('the date presets (spec 3.3)', () => {
   it('covers the twelve months to today for a statement', () => {
     expect(lastTwelveMonths('2026-09-21')).toEqual({ from: '2025-09-21', to: '2026-09-21' });
     expect(lastTwelveMonths('2028-02-29')).toEqual({ from: '2027-03-01', to: '2028-02-29' });
+  });
+});
+
+describe('the named periods every screen maps its choices onto', () => {
+  const today = '2026-09-21';
+
+  it('resolves each name from the Baghdad day it is given', () => {
+    expect(presetPeriod('all', today)).toEqual({});
+    expect(presetPeriod('today', today)).toEqual({ from: today, to: today });
+    expect(presetPeriod('yesterday', today)).toEqual({ from: '2026-09-20', to: '2026-09-20' });
+    expect(presetPeriod('since_yesterday', today)).toEqual({ from: '2026-09-20', to: today });
+    expect(presetPeriod('week', today)).toEqual(thisWeek(today));
+    expect(presetPeriod('month', today)).toEqual(thisMonth(today));
+    expect(presetPeriod('last_month', today)).toEqual(lastMonth(today));
+    expect(presetPeriod('year', today)).toEqual(thisYear(today));
+    expect(presetPeriod('last_30_days', today)).toEqual(lastDays(today, 30));
+    expect(presetPeriod('last_90_days', today)).toEqual(lastDays(today, 90));
   });
 });

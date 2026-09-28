@@ -20,8 +20,9 @@ COPY packages packages
 COPY apps/api apps/api
 RUN pnpm --filter @mizan/api exec tsc -b
 
-# Prune to production dependencies for the runtime image.
-RUN pnpm install --frozen-lockfile --prod --filter @mizan/api...
+# Prune to production dependencies for the runtime image. CI=true: pnpm 10 otherwise refuses
+# to replace the modules folder without a terminal to ask, and a build has none.
+RUN CI=true pnpm install --frozen-lockfile --prod --filter @mizan/api...
 
 FROM node:24-bookworm-slim AS runtime
 ENV NODE_ENV=production TZ=Asia/Baghdad

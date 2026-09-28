@@ -94,6 +94,14 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   if (!response.ok) {
     const error = (payload as { error?: Record<string, unknown> } | null)?.error;
+    // The key was already used for a different body: that earlier attempt was saved. Whoever
+    // holds the key renews it (`useIdempotencyKey`), so the next write is not refused for ever.
+    // The event's name is `IDEMPOTENCY_MISMATCH_EVENT`, written out to keep this file import-free.
+    if (error?.code === 'IDEMPOTENCY_MISMATCH' && options.idempotencyKey) {
+      window.dispatchEvent(
+        new CustomEvent('mizan:idempotency-mismatch', { detail: options.idempotencyKey }),
+      );
+    }
     throw new ApiError(
       response.status,
       (error?.code as string) ?? 'INTERNAL',

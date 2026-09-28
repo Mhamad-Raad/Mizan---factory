@@ -136,7 +136,7 @@ const { rows: stockDrift } = await client.query(
 check(stockDrift[0].n === 0, `every material's stock equals its movements (${stockDrift[0].n} disagree)`);
 
 /**
- * The two maintained figures in the system (migrations 0015 and 0017). A cached number nobody
+ * The first two maintained figures in the system (migrations 0015 and 0017). A cached number nobody
  * checks is a number that lies, so the restore drill checks both: every row must equal the
  * ledger it sums.
  */
@@ -185,6 +185,92 @@ const { rows: maintainedStock } = await client.query(
 check(
   maintainedStock[0].n === 0,
   `the maintained stock per material equals the stock ledger (${maintainedStock[0].n} disagree)`,
+);
+
+/**
+ * The two maintained sums of migration 0033 (D-075). Every account's two ledgers, per currency
+ * column, and every buy's taken figure against its allocations — with whether the buy is still
+ * live — and every buy has its row. The Stock report, the dashboard, both account lists and the
+ * Receivables and Payables reports read these, so a drift here would be a wrong figure on all of
+ * them.
+ */
+const { rows: accountDrift } = await client.query(
+  `WITH r AS (SELECT customer_id id, sum(amount_iqd) i, sum(amount_usd_cents) u, count(*) n FROM customer_ledger GROUP BY 1),
+        p AS (SELECT company_id id, sum(amount_iqd) i, sum(amount_usd_cents) u, count(*) n FROM company_ledger GROUP BY 1)
+   SELECT count(*)::int AS n
+     FROM account_totals t
+     FULL JOIN r ON r.id = t.account_id
+     FULL JOIN p ON p.id = coalesce(t.account_id, r.id)
+    WHERE (coalesce(t.receivable_iqd, 0), coalesce(t.receivable_usd_cents, 0), coalesce(t.receivable_entries, 0))
+            <> (coalesce(r.i, 0), coalesce(r.u, 0), coalesce(r.n, 0))
+       OR (coalesce(t.payable_iqd, 0), coalesce(t.payable_usd_cents, 0), coalesce(t.payable_entries, 0))
+            <> (coalesce(p.i, 0), coalesce(p.u, 0), coalesce(p.n, 0))`,
+);
+check(
+  accountDrift[0].n === 0,
+  `the maintained totals per account equal both ledgers (${accountDrift[0].n} disagree)`,
+);
+
+const { rows: lotDrift } = await client.query(
+  `SELECT count(*)::int AS n
+     FROM purchase_lines l
+     JOIN purchases p ON p.id = l.purchase_id
+     LEFT JOIN lot_balances b ON b.purchase_line_id = l.id
+     LEFT JOIN (SELECT purchase_line_id, sum(qty) AS taken FROM lot_allocations GROUP BY 1) a
+       ON a.purchase_line_id = l.id
+    WHERE b.purchase_line_id IS NULL
+       OR b.taken <> coalesce(a.taken, 0)
+       OR b.item_id <> l.item_id
+       OR b.quantity IS DISTINCT FROM (CASE WHEN l.priced_measure = 'count' THEN l.qty_count::numeric ELSE l.qty_kg END)
+       OR b.live <> (l.deleted_at IS NULL AND p.status = 'active' AND p.deleted_at IS NULL)`,
+);
+check(
+  lotDrift[0].n === 0,
+  `what is left of every buy equals its allocations, and says whether the buy is live (${lotDrift[0].n} disagree)`,
+);
+
+/**
+ * What each account still owes on its orders (migration 0035), per settlement currency, against
+ * its active orders and their maintained remaining figures. The dashboard's unpaid tile, the
+ * Orders list's figures and Receivables' unpaid count read it.
+ */
+const { rows: owingDrift } = await client.query(
+  `WITH x AS (
+     SELECT o.customer_id AS id,
+            count(*) FILTER (WHERE r.remaining_iqd > 0) AS iqd_orders,
+            coalesce(sum(r.remaining_iqd) FILTER (WHERE r.remaining_iqd > 0), 0) AS iqd_remaining_iqd,
+            coalesce(sum(r.remaining_usd_cents) FILTER (WHERE r.remaining_iqd > 0), 0) AS iqd_remaining_usd_cents,
+            coalesce(sum(o.total_iqd) FILTER (WHERE r.remaining_iqd > 0), 0) AS iqd_total_iqd,
+            coalesce(sum(o.total_usd_cents) FILTER (WHERE r.remaining_iqd > 0), 0) AS iqd_total_usd_cents,
+            count(*) FILTER (WHERE r.remaining_iqd > 0 AND r.remaining_iqd >= o.total_iqd) AS iqd_unpaid_orders,
+            coalesce(sum(r.remaining_iqd) FILTER (WHERE r.remaining_iqd > 0 AND r.remaining_iqd >= o.total_iqd), 0) AS iqd_unpaid_remaining_iqd,
+            coalesce(sum(r.remaining_usd_cents) FILTER (WHERE r.remaining_iqd > 0 AND r.remaining_iqd >= o.total_iqd), 0) AS iqd_unpaid_remaining_usd_cents,
+            coalesce(sum(o.total_iqd) FILTER (WHERE r.remaining_iqd > 0 AND r.remaining_iqd >= o.total_iqd), 0) AS iqd_unpaid_total_iqd,
+            coalesce(sum(o.total_usd_cents) FILTER (WHERE r.remaining_iqd > 0 AND r.remaining_iqd >= o.total_iqd), 0) AS iqd_unpaid_total_usd_cents,
+            count(*) FILTER (WHERE r.remaining_usd_cents > 0) AS usd_orders,
+            coalesce(sum(r.remaining_iqd) FILTER (WHERE r.remaining_usd_cents > 0), 0) AS usd_remaining_iqd,
+            coalesce(sum(r.remaining_usd_cents) FILTER (WHERE r.remaining_usd_cents > 0), 0) AS usd_remaining_usd_cents,
+            coalesce(sum(o.total_iqd) FILTER (WHERE r.remaining_usd_cents > 0), 0) AS usd_total_iqd,
+            coalesce(sum(o.total_usd_cents) FILTER (WHERE r.remaining_usd_cents > 0), 0) AS usd_total_usd_cents,
+            count(*) FILTER (WHERE r.remaining_usd_cents > 0 AND r.remaining_usd_cents >= o.total_usd_cents) AS usd_unpaid_orders,
+            coalesce(sum(r.remaining_iqd) FILTER (WHERE r.remaining_usd_cents > 0 AND r.remaining_usd_cents >= o.total_usd_cents), 0) AS usd_unpaid_remaining_iqd,
+            coalesce(sum(r.remaining_usd_cents) FILTER (WHERE r.remaining_usd_cents > 0 AND r.remaining_usd_cents >= o.total_usd_cents), 0) AS usd_unpaid_remaining_usd_cents,
+            coalesce(sum(o.total_iqd) FILTER (WHERE r.remaining_usd_cents > 0 AND r.remaining_usd_cents >= o.total_usd_cents), 0) AS usd_unpaid_total_iqd,
+            coalesce(sum(o.total_usd_cents) FILTER (WHERE r.remaining_usd_cents > 0 AND r.remaining_usd_cents >= o.total_usd_cents), 0) AS usd_unpaid_total_usd_cents
+       FROM order_remaining r
+       JOIN orders o ON o.id = r.order_id
+      WHERE o.status = 'active' AND o.deleted_at IS NULL
+      GROUP BY o.customer_id
+   )
+   SELECT count(*)::int AS n
+     FROM x
+     FULL JOIN account_owing a ON a.account_id = x.id
+    WHERE (coalesce(x.iqd_orders, 0), coalesce(x.iqd_remaining_iqd, 0), coalesce(x.iqd_remaining_usd_cents, 0), coalesce(x.iqd_total_iqd, 0), coalesce(x.iqd_total_usd_cents, 0), coalesce(x.iqd_unpaid_orders, 0), coalesce(x.iqd_unpaid_remaining_iqd, 0), coalesce(x.iqd_unpaid_remaining_usd_cents, 0), coalesce(x.iqd_unpaid_total_iqd, 0), coalesce(x.iqd_unpaid_total_usd_cents, 0), coalesce(x.usd_orders, 0), coalesce(x.usd_remaining_iqd, 0), coalesce(x.usd_remaining_usd_cents, 0), coalesce(x.usd_total_iqd, 0), coalesce(x.usd_total_usd_cents, 0), coalesce(x.usd_unpaid_orders, 0), coalesce(x.usd_unpaid_remaining_iqd, 0), coalesce(x.usd_unpaid_remaining_usd_cents, 0), coalesce(x.usd_unpaid_total_iqd, 0), coalesce(x.usd_unpaid_total_usd_cents, 0))
+       <> (coalesce(a.iqd_orders, 0), coalesce(a.iqd_remaining_iqd, 0), coalesce(a.iqd_remaining_usd_cents, 0), coalesce(a.iqd_total_iqd, 0), coalesce(a.iqd_total_usd_cents, 0), coalesce(a.iqd_unpaid_orders, 0), coalesce(a.iqd_unpaid_remaining_iqd, 0), coalesce(a.iqd_unpaid_remaining_usd_cents, 0), coalesce(a.iqd_unpaid_total_iqd, 0), coalesce(a.iqd_unpaid_total_usd_cents, 0), coalesce(a.usd_orders, 0), coalesce(a.usd_remaining_iqd, 0), coalesce(a.usd_remaining_usd_cents, 0), coalesce(a.usd_total_iqd, 0), coalesce(a.usd_total_usd_cents, 0), coalesce(a.usd_unpaid_orders, 0), coalesce(a.usd_unpaid_remaining_iqd, 0), coalesce(a.usd_unpaid_remaining_usd_cents, 0), coalesce(a.usd_unpaid_total_iqd, 0), coalesce(a.usd_unpaid_total_usd_cents, 0))`,
+);
+check(
+  owingDrift[0].n === 0,
+  `what each account owes on its orders equals its orders (${owingDrift[0].n} disagree)`,
 );
 
 // ── 4 · money is coherent, per row ───────────────────────────────────────────────────

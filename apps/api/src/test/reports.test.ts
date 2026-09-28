@@ -410,7 +410,7 @@ describe('the reports (FR-1001 to FR-1013)', () => {
       await as(ctx.http, sara).get(`/api/v1/reports/profit?${range()}`).expect(403);
     });
 
-    it('counts the round-up and the order discount, and agrees with the Accounts page (D-072)', async () => {
+    it('counts the round-up and the order discount, and agrees with the Accounts page (D-077)', async () => {
       await seedActivity();
       // 12.5 kg × 850 = 10,625, less a 1,000 discount = 9,625, rounded up to 9,750: +125.
       const order = await as(ctx.http, rebaz)

@@ -59,5 +59,6 @@
   "tile_to_collect": "ماوە بۆ وەرگرتن",
   "rounded_up": "بە {{amount}} بەرزکرایەوە بۆ {{step}}ی تەواو",
   "rounding": "نزیککردنەوە",
-  "save_order_one": "پاشەکەوتکردنی فرۆشتن ({{count}} هێڵ)"
+  "save_order_one": "پاشەکەوتکردنی فرۆشتن ({{count}} هێڵ)",
+  "empty_search": "هیچ ئەنجامێک بۆ «{{query}}» نییە"
 }

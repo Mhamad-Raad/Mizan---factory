@@ -349,7 +349,7 @@ export class ReportsRepository {
   /**
    * What an order adds or takes away beyond its lines: the round-up to 250 dinars (D-065) less
    * the order's discount. Both belong to the order, not to a line, so the margins above cannot
-   * see them — the Accounts page counts them, and without them the two disagreed (D-072).
+   * see them — the Accounts page counts them, and without them the two disagreed (D-077).
    *
    * Grouped by the report's own key where the order decides it (month, day, company, employee).
    * A material cannot be given a share of an order-wide figure, so grouped by material this
@@ -457,12 +457,16 @@ export class ReportsRepository {
               price.bought_iqd::text AS bought_iqd,
               price.bought_usd_cents::text AS bought_usd_cents,
               to_char(price.month, 'YYYY-MM-DD') AS price_month,
-              lots.value_iqd::text AS lots_value_iqd,
-              lots.value_usd_cents::text AS lots_value_usd_cents,
-              lots.remaining::text AS lots_remaining
+              CASE WHEN any_buy.bought THEN coalesce(open_lots.value_iqd, 0) END::text AS lots_value_iqd,
+              CASE WHEN any_buy.bought THEN coalesce(open_lots.value_usd_cents, 0) END::text AS lots_value_usd_cents,
+              CASE WHEN any_buy.bought THEN coalesce(open_lots.remaining, 0) END::text AS lots_remaining
          FROM page
          JOIN items i ON i.id = page.id
          LEFT JOIN item_stock st ON st.item_id = i.id
+         CROSS JOIN LATERAL (
+           SELECT greatest(coalesce(CASE WHEN i.pricing_unit = 'per_piece' THEN st.stock_count::numeric
+                                         ELSE st.stock_kg END, 0), 0) AS quantity
+         ) on_hand
          -- Both dates come from the stock ledger, newest (or oldest) movement of that kind
          -- first, so each is one index entry rather than an aggregate over a material's whole
          -- trading history: max(order_date) over 245 lines and their orders, per material of
@@ -503,20 +507,48 @@ export class ReportsRepository {
             LIMIT 1
          ) price ON true
          -- What the stock on hand cost us (D-062): what is left of every buy, as its share of
-         -- what that buy cost — the same figure the material page splits by price, from the
-         -- same view (migration 0030). The month price above stands in for stock with no buy
-         -- behind it (opening stock, a return), which the service adds on top.
-         -- One grouped pass over the page's buys, not the view once per material: 120 ms for
-         -- 5,000 materials and 520,000 buys, where the per-material lateral took 4.5 s (review).
-         LEFT JOIN (
-           SELECT l.item_id,
-                  round(sum(l.remaining * l.line_total_iqd / l.quantity)) AS value_iqd,
-                  round(sum(l.remaining * l.line_total_usd_cents / l.quantity)) AS value_usd_cents,
-                  sum(l.remaining) AS remaining
-             FROM item_lots l
-            WHERE l.item_id IN (SELECT id FROM page)
-            GROUP BY l.item_id
-         ) lots ON lots.item_id = i.id
+         -- what that buy cost — the same figure the material page splits by price. The month
+         -- price above stands in for stock with no buy behind it (opening stock, a return),
+         -- which the service adds on top.
+         --
+         -- item_lots trims the buys to the stock on hand oldest first, which is the same as
+         -- giving the stock on hand to the newest open buys first: a buy keeps
+         -- least(untaken, on hand − what the newer open buys already hold). So only a material
+         -- with stock on hand reads its buys at all, and only its open ones (lot_balances,
+         -- migration 0033): at ten years the report read all 2.6 million buys and their 7.8
+         -- million takes on every request, 18.9–23.4 s (D-075). A material that has buys but
+         -- nothing on hand, or nothing left in them, is valued at 0 from its buys, as before.
+         LEFT JOIN LATERAL (
+           SELECT round(sum(o.left_over * o.line_total_iqd / o.quantity)) AS value_iqd,
+                  round(sum(o.left_over * o.line_total_usd_cents / o.quantity)) AS value_usd_cents,
+                  sum(o.left_over) AS remaining
+             FROM (
+               SELECT greatest(0, least(u.untaken, on_hand.quantity - coalesce(sum(u.untaken) OVER (
+                        ORDER BY u.purchase_date DESC, u.purchase_number DESC, u.line_no DESC
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0))) AS left_over,
+                      u.quantity, u.line_total_iqd, u.line_total_usd_cents
+                 FROM (
+                   SELECT b.quantity, b.quantity - b.taken AS untaken,
+                          p.purchase_date, p.number AS purchase_number, l.line_no,
+                          l.line_total_iqd, l.line_total_usd_cents
+                     FROM lot_balances b
+                     JOIN purchase_lines l ON l.id = b.purchase_line_id
+                     JOIN purchases p ON p.id = l.purchase_id
+                    WHERE on_hand.quantity > 0
+                      AND b.item_id = i.id AND b.live AND b.taken < b.quantity
+                      AND l.deleted_at IS NULL AND p.status = 'active' AND p.deleted_at IS NULL
+                 ) u
+             ) o
+         ) open_lots ON true
+         -- Whether the material has any buy at all: one with nothing left is still a buy, and
+         -- makes the material "valued from its buys" (0) rather than "never bought".
+         LEFT JOIN LATERAL (
+           SELECT true AS bought
+             FROM purchase_lines l
+             JOIN purchases p ON p.id = l.purchase_id
+            WHERE l.item_id = i.id AND l.deleted_at IS NULL AND p.status = 'active' AND p.deleted_at IS NULL
+            LIMIT 1
+         ) any_buy ON true
         ORDER BY i.name ASC`,
       values,
     );
@@ -529,16 +561,19 @@ export class ReportsRepository {
    * Balances per customer as of the end of the range, what came in during it, and how many of
    * their orders are still owed — **page first, then fill** (FR-1007).
    *
-   * Two passes, deliberately. The first groups the customer ledger by customer, which the
-   * covering index of migration 0014 answers without touching the heap, and takes the page the
-   * screen will show (the cap of D-032) together with the grand totals over every customer. The
-   * second asks "how many of *these* customers' orders are still owed", once per row of the
-   * page. Counting unpaid orders for all of them meant grouping every order ever placed: 2.3
-   * seconds at the design point of NFR-13, for two hundred rows (REVIEW-I6).
+   * The balance as of the end of the range is the account's whole balance — the maintained
+   * per-account sum of migration 0033 — less whatever was dated after that day, and the period's
+   * figures come from the same short range of the ledger: one index range per account from the
+   * start of the period on, instead of grouping every row of the ledger on every page (250–414 ms
+   * a page at ten years, and an export of a year re-grouped it once per page: 22.9 s, D-075).
+   * Only accounts with a row on this ledger take part — an account with none owes nothing and
+   * received nothing (REVIEW-I6). The page and the totals over every account come back together
+   * (the window functions run before the LIMIT), and each account's unpaid orders are read from
+   * the maintained per-account sum of migration 0035.
    */
   async receivables(filters: ReportFilters, paging: Paging) {
     const values: unknown[] = [filters.from, filters.to];
-    const conditions = ['c.deleted_at IS NULL', 'c.is_system = false'];
+    const conditions = ['c.deleted_at IS NULL', 'c.is_system = false', 't.receivable_entries > 0'];
     values.push(paging.page_size, paging.offset);
 
     const { rows } = await this.database.query<{
@@ -559,29 +594,32 @@ export class ReportsRepository {
     }>(
       `WITH per_customer AS (
          SELECT c.id, c.name, c.settlement_currency,
-                -- As of the end of the range: a balance is "all time up to that day", not
-                -- "in the period", which is what makes it a balance (2.11).
-                coalesce(sum(CASE WHEN l.entry_date <= $2::date
-                                  THEN (CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd
-                                             ELSE l.amount_usd_cents END) ELSE 0 END), 0) AS balance,
-                coalesce(sum(CASE WHEN l.entry_date <= $2::date THEN l.amount_iqd ELSE 0 END), 0) AS balance_iqd,
-                coalesce(sum(CASE WHEN l.entry_date <= $2::date THEN l.amount_usd_cents ELSE 0 END), 0)
-                  AS balance_usd_cents,
-                coalesce(-sum(CASE WHEN l.entry_type IN ('payment', 'cash_settlement')
-                                    AND l.entry_date >= $1::date AND l.entry_date <= $2::date
-                                   THEN l.amount_iqd ELSE 0 END), 0) AS received_iqd,
-                coalesce(-sum(CASE WHEN l.entry_type IN ('payment', 'cash_settlement')
-                                    AND l.entry_date >= $1::date AND l.entry_date <= $2::date
-                                   THEN l.amount_usd_cents ELSE 0 END), 0) AS received_usd_cents
+                -- As of the end of the range: a balance is "all time up to that day", not "in
+                -- the period", which is what makes it a balance (2.11).
+                t.receivable_iqd - coalesce(x.after_iqd, 0) AS balance_iqd,
+                t.receivable_usd_cents - coalesce(x.after_usd_cents, 0) AS balance_usd_cents,
+                coalesce(x.received_iqd, 0) AS received_iqd,
+                coalesce(x.received_usd_cents, 0) AS received_usd_cents
            FROM customers c
-           -- An inner join on purpose: a customer with no ledger row has a zero balance and
-           -- nothing received, so they can never be among the two hundred rows this report
-           -- sends (ordered by what is owed) and they contribute nothing to its totals. At
-           -- 30,000 customers that is the difference between grouping everybody and grouping
-           -- the ones with money against their name (REVIEW-I6).
-           JOIN customer_ledger l ON l.customer_id = c.id
+           JOIN account_totals t ON t.account_id = c.id
+           LEFT JOIN LATERAL (
+             SELECT sum(l.amount_iqd) FILTER (WHERE l.entry_date > $2::date) AS after_iqd,
+                    sum(l.amount_usd_cents) FILTER (WHERE l.entry_date > $2::date) AS after_usd_cents,
+                    -sum(l.amount_iqd) FILTER (WHERE l.entry_type IN ('payment', 'cash_settlement')
+                                                AND l.entry_date >= $1::date AND l.entry_date <= $2::date)
+                      AS received_iqd,
+                    -sum(l.amount_usd_cents) FILTER (WHERE l.entry_type IN ('payment', 'cash_settlement')
+                                                      AND l.entry_date >= $1::date AND l.entry_date <= $2::date)
+                      AS received_usd_cents
+               FROM customer_ledger l
+              WHERE l.customer_id = c.id AND l.entry_date >= least($1::date, $2::date + 1)
+           ) x ON true
           WHERE ${conditions.join(' AND ')}
-          GROUP BY c.id, c.name, c.settlement_currency
+       ),
+       ranked AS (
+         SELECT per_customer.*,
+                CASE WHEN settlement_currency = 'IQD' THEN balance_iqd ELSE balance_usd_cents END AS balance
+           FROM per_customer
        ),
        page AS (
          SELECT *,
@@ -590,7 +628,7 @@ export class ReportsRepository {
                 sum(balance_usd_cents) OVER () AS total_balance_usd_cents,
                 sum(received_iqd) OVER () AS total_received_iqd,
                 sum(received_usd_cents) OVER () AS total_received_usd_cents
-           FROM per_customer
+           FROM ranked
           ORDER BY balance DESC, id
           LIMIT $${values.length - 1} OFFSET $${values.length}
        )
@@ -606,32 +644,38 @@ export class ReportsRepository {
               p.total_balance_usd_cents::text AS total_balance_usd_cents,
               p.total_received_iqd::text AS total_received_iqd,
               p.total_received_usd_cents::text AS total_received_usd_cents,
-              coalesce(unpaid.n, 0)::text AS unpaid_orders
+              coalesce(CASE WHEN p.settlement_currency = 'IQD' THEN owing.iqd_orders ELSE owing.usd_orders END, 0)::text
+                AS unpaid_orders
          FROM page p
-         -- Only for the rows that are actually sent, and from the maintained per-order sum of
-         -- migration 0015: one index scan of that customer's orders, no pass over the ledger.
-         LEFT JOIN LATERAL (
-           SELECT count(*) AS n
-             FROM orders o
-             JOIN order_remaining r ON r.order_id = o.id
-            WHERE o.customer_id = p.id AND o.status = 'active' AND o.deleted_at IS NULL
-              AND (CASE WHEN p.settlement_currency = 'IQD' THEN r.remaining_iqd
-                        ELSE r.remaining_usd_cents END) > 0
-         ) unpaid ON true
-        ORDER BY p.balance DESC`,
+         -- How many of the account's orders are still owed, in its own settlement currency: the
+         -- maintained per-account sum of migration 0035, one row per account sent (D-075).
+         LEFT JOIN account_owing owing ON owing.account_id = p.id
+        ORDER BY p.balance DESC, p.id`,
       values,
     );
     return rows;
   }
 
-  async payables(filters: ReportFilters) {
+  /**
+   * What we owe each company as of the end of the range, and the period's buying, payments,
+   * credits and adjustments — the same shape as Receivables (D-075): the balance is the
+   * maintained per-account sum less what was dated after the range, the period's figures come
+   * from one index range per account, only accounts with a row on the buying ledger take part,
+   * and the page and the totals over every account come back together. It grouped the whole
+   * buying ledger of every account on every request: 2.9–3.7 s at ten years.
+   */
+  async payables(filters: ReportFilters, paging: Paging) {
     const values: unknown[] = [filters.from, filters.to];
     // Every account but the walk-in is a company (D-055).
-    const conditions = ['co.deleted_at IS NULL', 'NOT co.is_system'];
+    const conditions = ['co.deleted_at IS NULL', 'NOT co.is_system', 't.payable_entries > 0'];
     if (filters.company_id) {
       values.push(filters.company_id);
       conditions.push(`co.id = $${values.length}::uuid`);
     }
+    values.push(paging.page_size, paging.offset);
+
+    const period = (predicate: string, column: 'amount_iqd' | 'amount_usd_cents', negate = false) =>
+      `${negate ? '-' : ''}sum(l.${column}) FILTER (WHERE ${predicate} AND l.entry_date >= $1::date AND l.entry_date <= $2::date)`;
 
     const { rows } = await this.database.query<{
       key: string;
@@ -648,36 +692,70 @@ export class ReportsRepository {
       credits_usd_cents: string;
       adjustments_iqd: string;
       adjustments_usd_cents: string;
+      group_count: string;
+      total_balance_iqd: string;
+      total_balance_usd_cents: string;
+      total_purchased_iqd: string;
+      total_purchased_usd_cents: string;
+      total_paid_iqd: string;
+      total_paid_usd_cents: string;
     }>(
-      `SELECT co.id::text AS key, co.name AS label,
-              co.settlement_currency::text AS settlement_currency,
-              coalesce(sum(CASE WHEN l.entry_date <= $2::date
-                                THEN (CASE WHEN co.settlement_currency = 'IQD' THEN l.amount_iqd
-                                           ELSE l.amount_usd_cents END) ELSE 0 END), 0)::text AS balance,
-              coalesce(sum(CASE WHEN l.entry_date <= $2::date THEN l.amount_iqd ELSE 0 END), 0)::text AS balance_iqd,
-              coalesce(sum(CASE WHEN l.entry_date <= $2::date THEN l.amount_usd_cents ELSE 0 END), 0)::text
-                AS balance_usd_cents,
-              ${this.periodSum("l.entry_type = 'purchase'", 'purchased')},
-              ${this.periodSum("l.entry_type = 'payment'", 'paid', true)},
-              ${this.periodSum("l.entry_type = 'credit'", 'credits', true)},
-              ${this.periodSum("l.entry_type = 'adjustment'", 'adjustments')}
-         FROM customers co
-         LEFT JOIN company_ledger l ON l.company_id = co.id
-        WHERE ${conditions.join(' AND ')}
-        GROUP BY co.id, co.name, co.settlement_currency
-        ORDER BY balance DESC`,
+      `WITH per_company AS (
+         SELECT co.id, co.name, co.settlement_currency,
+                t.payable_iqd - coalesce(x.after_iqd, 0) AS balance_iqd,
+                t.payable_usd_cents - coalesce(x.after_usd_cents, 0) AS balance_usd_cents,
+                coalesce(x.purchased_iqd, 0) AS purchased_iqd,
+                coalesce(x.purchased_usd_cents, 0) AS purchased_usd_cents,
+                coalesce(x.paid_iqd, 0) AS paid_iqd,
+                coalesce(x.paid_usd_cents, 0) AS paid_usd_cents,
+                coalesce(x.credits_iqd, 0) AS credits_iqd,
+                coalesce(x.credits_usd_cents, 0) AS credits_usd_cents,
+                coalesce(x.adjustments_iqd, 0) AS adjustments_iqd,
+                coalesce(x.adjustments_usd_cents, 0) AS adjustments_usd_cents
+           FROM customers co
+           JOIN account_totals t ON t.account_id = co.id
+           LEFT JOIN LATERAL (
+             SELECT sum(l.amount_iqd) FILTER (WHERE l.entry_date > $2::date) AS after_iqd,
+                    sum(l.amount_usd_cents) FILTER (WHERE l.entry_date > $2::date) AS after_usd_cents,
+                    ${period("l.entry_type = 'purchase'", 'amount_iqd')} AS purchased_iqd,
+                    ${period("l.entry_type = 'purchase'", 'amount_usd_cents')} AS purchased_usd_cents,
+                    ${period("l.entry_type = 'payment'", 'amount_iqd', true)} AS paid_iqd,
+                    ${period("l.entry_type = 'payment'", 'amount_usd_cents', true)} AS paid_usd_cents,
+                    ${period("l.entry_type = 'credit'", 'amount_iqd', true)} AS credits_iqd,
+                    ${period("l.entry_type = 'credit'", 'amount_usd_cents', true)} AS credits_usd_cents,
+                    ${period("l.entry_type = 'adjustment'", 'amount_iqd')} AS adjustments_iqd,
+                    ${period("l.entry_type = 'adjustment'", 'amount_usd_cents')} AS adjustments_usd_cents
+               FROM company_ledger l
+              WHERE l.company_id = co.id AND l.entry_date >= least($1::date, $2::date + 1)
+           ) x ON true
+          WHERE ${conditions.join(' AND ')}
+       ),
+       ranked AS (
+         SELECT per_company.*,
+                CASE WHEN settlement_currency = 'IQD' THEN balance_iqd ELSE balance_usd_cents END AS balance
+           FROM per_company
+       )
+       SELECT id::text AS key, name AS label, settlement_currency::text AS settlement_currency,
+              balance::text AS balance, balance_iqd::text AS balance_iqd,
+              balance_usd_cents::text AS balance_usd_cents,
+              purchased_iqd::text AS purchased_iqd, purchased_usd_cents::text AS purchased_usd_cents,
+              paid_iqd::text AS paid_iqd, paid_usd_cents::text AS paid_usd_cents,
+              credits_iqd::text AS credits_iqd, credits_usd_cents::text AS credits_usd_cents,
+              adjustments_iqd::text AS adjustments_iqd, adjustments_usd_cents::text AS adjustments_usd_cents,
+              (count(*) OVER ())::text AS group_count,
+              (sum(balance_iqd) OVER ())::text AS total_balance_iqd,
+              (sum(balance_usd_cents) OVER ())::text AS total_balance_usd_cents,
+              (sum(purchased_iqd) OVER ())::text AS total_purchased_iqd,
+              (sum(purchased_usd_cents) OVER ())::text AS total_purchased_usd_cents,
+              (sum(paid_iqd) OVER ())::text AS total_paid_iqd,
+              (sum(paid_usd_cents) OVER ())::text AS total_paid_usd_cents
+         FROM ranked
+        -- Qualified, so the order is the number and not the text column of the same name.
+        ORDER BY ranked.balance DESC, ranked.id
+        LIMIT $${values.length - 1} OFFSET $${values.length}`,
       values,
     );
     return rows;
-  }
-
-  /** A period sum of one entry type, negated for the rows that reduce what we owe. */
-  private periodSum(predicate: string, alias: string, negate = false): string {
-    const sign = negate ? '-' : '';
-    return `coalesce(${sign}sum(CASE WHEN ${predicate} AND l.entry_date >= $1::date AND l.entry_date <= $2::date
-                        THEN l.amount_iqd ELSE 0 END), 0)::text AS ${alias}_iqd,
-            coalesce(${sign}sum(CASE WHEN ${predicate} AND l.entry_date >= $1::date AND l.entry_date <= $2::date
-                        THEN l.amount_usd_cents ELSE 0 END), 0)::text AS ${alias}_usd_cents`;
   }
 
   // ───────────────────────────────── damage (FR-1009) ─────────────────────────────────
@@ -776,6 +854,8 @@ export class ReportsRepository {
       values.push(filters.done_by);
       conditions.push(`u.id = $${values.length}::uuid`);
     }
+    const userParam = values.length;
+    const byUser = (column: string) => (filters.done_by ? `AND ${column} = $${userParam}::uuid` : '');
 
     const { rows } = await this.database.query<{
       key: string;
@@ -795,53 +875,83 @@ export class ReportsRepository {
       voids: string;
       sign_ins: string;
     }>(
-      `SELECT u.id::text AS key, u.display_name AS label,
-              (SELECT count(*)::text FROM orders o
-                WHERE o.acting_user_id = u.id AND o.status = 'active' AND o.deleted_at IS NULL
-                  AND o.order_date >= $1::date AND o.order_date <= $2::date) AS orders,
-              (SELECT coalesce(sum(o.total_iqd), 0)::text FROM orders o
-                WHERE o.acting_user_id = u.id AND o.status = 'active' AND o.deleted_at IS NULL
-                  AND o.order_date >= $1::date AND o.order_date <= $2::date) AS orders_iqd,
-              (SELECT coalesce(sum(o.total_usd_cents), 0)::text FROM orders o
-                WHERE o.acting_user_id = u.id AND o.status = 'active' AND o.deleted_at IS NULL
-                  AND o.order_date >= $1::date AND o.order_date <= $2::date) AS orders_usd_cents,
-              (SELECT count(*)::text FROM purchases p
-                WHERE p.acting_user_id = u.id AND p.status = 'active' AND p.deleted_at IS NULL
-                  AND p.purchase_date >= $1::date AND p.purchase_date <= $2::date) AS purchases,
-              (SELECT coalesce(sum(p.total_iqd), 0)::text FROM purchases p
-                WHERE p.acting_user_id = u.id AND p.status = 'active' AND p.deleted_at IS NULL
-                  AND p.purchase_date >= $1::date AND p.purchase_date <= $2::date) AS purchases_iqd,
-              (SELECT coalesce(sum(p.total_usd_cents), 0)::text FROM purchases p
-                WHERE p.acting_user_id = u.id AND p.status = 'active' AND p.deleted_at IS NULL
-                  AND p.purchase_date >= $1::date AND p.purchase_date <= $2::date) AS purchases_usd_cents,
-              (SELECT count(*)::text FROM customer_ledger l
-                WHERE l.performed_by_user_id = u.id AND l.entry_type = 'payment'
-                  AND l.entry_date >= $1::date AND l.entry_date <= $2::date) AS payments_in,
-              (SELECT coalesce(-sum(l.amount_iqd), 0)::text FROM customer_ledger l
-                WHERE l.performed_by_user_id = u.id AND l.entry_type = 'payment'
-                  AND l.entry_date >= $1::date AND l.entry_date <= $2::date) AS payments_in_iqd,
-              (SELECT count(*)::text FROM company_ledger l
-                WHERE l.performed_by_user_id = u.id AND l.entry_type = 'payment'
-                  AND l.entry_date >= $1::date AND l.entry_date <= $2::date) AS payments_out,
-              (SELECT coalesce(-sum(l.amount_iqd), 0)::text FROM company_ledger l
-                WHERE l.performed_by_user_id = u.id AND l.entry_type = 'payment'
-                  AND l.entry_date >= $1::date AND l.entry_date <= $2::date) AS payments_out_iqd,
-              (SELECT count(*)::text FROM damages d
-                WHERE d.acting_user_id = u.id AND d.status = 'active' AND d.deleted_at IS NULL
-                  AND d.damage_date >= $1::date AND d.damage_date <= $2::date) AS damages,
-              (SELECT count(*)::text FROM company_ledger l
-                WHERE l.performed_by_user_id = u.id AND l.entry_type = 'adjustment'
-                  AND l.entry_date >= $1::date AND l.entry_date <= $2::date) AS adjustments,
-              -- Voids and sign-ins are audit facts, not document columns (2.4.4).
-              (SELECT count(*)::text FROM audit_log a
-                WHERE a.actor_user_id = u.id AND a.action = 'void'
-                  AND a.occurred_at >= ($1::date::timestamp AT TIME ZONE 'Asia/Baghdad')
-                  AND a.occurred_at < (($2::date + 1)::timestamp AT TIME ZONE 'Asia/Baghdad')) AS voids,
-              (SELECT count(*)::text FROM audit_log a
-                WHERE a.actor_user_id = u.id AND a.action = 'login'
-                  AND a.occurred_at >= ($1::date::timestamp AT TIME ZONE 'Asia/Baghdad')
-                  AND a.occurred_at < (($2::date + 1)::timestamp AT TIME ZONE 'Asia/Baghdad')) AS sign_ins
+      // One grouped pass per table, each read through its date index, instead of fourteen
+      // subqueries per employee — every one of them a range over that employee's documents:
+      // 3.9 s for a year at ten years (D-075). The pin (`done_by`) narrows every pass.
+      `WITH sold AS (
+         SELECT o.acting_user_id AS user_id, count(*) AS n,
+                sum(o.total_iqd) AS iqd, sum(o.total_usd_cents) AS usd_cents
+           FROM orders o
+          WHERE o.status = 'active' AND o.deleted_at IS NULL
+            AND o.order_date >= $1::date AND o.order_date <= $2::date ${byUser('o.acting_user_id')}
+          GROUP BY o.acting_user_id
+       ),
+       bought AS (
+         SELECT p.acting_user_id AS user_id, count(*) AS n,
+                sum(p.total_iqd) AS iqd, sum(p.total_usd_cents) AS usd_cents
+           FROM purchases p
+          WHERE p.status = 'active' AND p.deleted_at IS NULL
+            AND p.purchase_date >= $1::date AND p.purchase_date <= $2::date ${byUser('p.acting_user_id')}
+          GROUP BY p.acting_user_id
+       ),
+       money_in AS (
+         SELECT l.performed_by_user_id AS user_id, count(*) AS n, -sum(l.amount_iqd) AS iqd
+           FROM customer_ledger l
+          WHERE l.entry_type = 'payment'
+            AND l.entry_date >= $1::date AND l.entry_date <= $2::date ${byUser('l.performed_by_user_id')}
+          GROUP BY l.performed_by_user_id
+       ),
+       money_out AS (
+         SELECT l.performed_by_user_id AS user_id,
+                count(*) FILTER (WHERE l.entry_type = 'payment') AS payments,
+                -sum(l.amount_iqd) FILTER (WHERE l.entry_type = 'payment') AS payments_iqd,
+                count(*) FILTER (WHERE l.entry_type = 'adjustment') AS adjustments
+           FROM company_ledger l
+          WHERE l.entry_type IN ('payment', 'adjustment')
+            AND l.entry_date >= $1::date AND l.entry_date <= $2::date ${byUser('l.performed_by_user_id')}
+          GROUP BY l.performed_by_user_id
+       ),
+       broken AS (
+         SELECT d.acting_user_id AS user_id, count(*) AS n
+           FROM damages d
+          WHERE d.status = 'active' AND d.deleted_at IS NULL
+            AND d.damage_date >= $1::date AND d.damage_date <= $2::date ${byUser('d.acting_user_id')}
+          GROUP BY d.acting_user_id
+       ),
+       -- Voids and sign-ins are audit facts, not document columns (2.4.4), read through
+       -- audit_log_action_idx (migration 0034).
+       audited AS (
+         SELECT a.actor_user_id AS user_id,
+                count(*) FILTER (WHERE a.action = 'void') AS voids,
+                count(*) FILTER (WHERE a.action = 'login') AS sign_ins
+           FROM audit_log a
+          WHERE a.action IN ('void', 'login')
+            AND a.occurred_at >= ($1::date::timestamp AT TIME ZONE 'Asia/Baghdad')
+            AND a.occurred_at < (($2::date + 1)::timestamp AT TIME ZONE 'Asia/Baghdad') ${byUser('a.actor_user_id')}
+          GROUP BY a.actor_user_id
+       )
+       SELECT u.id::text AS key, u.display_name AS label,
+              coalesce(sold.n, 0)::text AS orders,
+              coalesce(sold.iqd, 0)::text AS orders_iqd,
+              coalesce(sold.usd_cents, 0)::text AS orders_usd_cents,
+              coalesce(bought.n, 0)::text AS purchases,
+              coalesce(bought.iqd, 0)::text AS purchases_iqd,
+              coalesce(bought.usd_cents, 0)::text AS purchases_usd_cents,
+              coalesce(money_in.n, 0)::text AS payments_in,
+              coalesce(money_in.iqd, 0)::text AS payments_in_iqd,
+              coalesce(money_out.payments, 0)::text AS payments_out,
+              coalesce(money_out.payments_iqd, 0)::text AS payments_out_iqd,
+              coalesce(broken.n, 0)::text AS damages,
+              coalesce(money_out.adjustments, 0)::text AS adjustments,
+              coalesce(audited.voids, 0)::text AS voids,
+              coalesce(audited.sign_ins, 0)::text AS sign_ins
          FROM users u
+         LEFT JOIN sold ON sold.user_id = u.id
+         LEFT JOIN bought ON bought.user_id = u.id
+         LEFT JOIN money_in ON money_in.user_id = u.id
+         LEFT JOIN money_out ON money_out.user_id = u.id
+         LEFT JOIN broken ON broken.user_id = u.id
+         LEFT JOIN audited ON audited.user_id = u.id
         WHERE ${conditions.join(' AND ')}
         ORDER BY u.display_name ASC`,
       values,

@@ -3,10 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#5E1F4B" />
-    <meta name="description" content="Mizan" />
+    <meta name="theme-color" content="#931329" />
+    <meta name="description" content="Jiyan Management — stock, orders and accounts" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <title>Mizan</title>
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <title>Jiyan Management</title>
     <script>
       /*
        * Pre-paint preferences (spec 2.10.10). This runs before any stylesheet so the first
@@ -32,11 +33,11 @@
         var scale = SCALES.indexOf(prefs.fontScale) >= 0 ? prefs.fontScale : 1;
         // The colour palette and the typeface of Settings (D-061), validated like the rest.
         var palette =
-          ['teal', 'ocean', 'sky', 'indigo', 'plum', 'rose', 'crimson', 'clay', 'amber', 'forest', 'graphite'].indexOf(
+          ['jiyan', 'teal', 'ocean', 'sky', 'indigo', 'plum', 'rose', 'crimson', 'clay', 'amber', 'forest', 'graphite'].indexOf(
             prefs.palette,
           ) >= 0
             ? prefs.palette
-            : 'teal';
+            : 'jiyan';
         var typeface =
           ['vazirmatn', 'plex', 'noto', 'kufi', 'naskh'].indexOf(prefs.typeface) >= 0 ? prefs.typeface : 'vazirmatn';
 
@@ -57,7 +58,7 @@
         root.style.setProperty('--font-scale', String(scale));
 
         var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute('content', resolved === 'dark' ? '#211A21' : '#5E1F4B');
+        if (meta) meta.setAttribute('content', resolved === 'dark' ? '#1c1214' : '#931329');
 
         /*
          * The font of the *active* language, preloaded and linked here (spec 3.7.1).

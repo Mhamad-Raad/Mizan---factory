@@ -14,7 +14,7 @@ export interface SessionRow {
   user_id: string;
   is_locked: boolean;
   is_shared_device: boolean;
-  auth_method: 'password' | 'ticket_pin';
+  auth_method: 'password';
   device_label: string | null;
   absolute_expires_at: Date;
   idle_expires_at: Date;
@@ -55,7 +55,7 @@ export class SessionService {
       userId: string;
       isSharedDevice: boolean;
       deviceLabel?: string | null;
-      authMethod?: 'password' | 'ticket_pin';
+      authMethod?: 'password';
       ip?: string | null;
       userAgent?: string | null;
     },
@@ -122,10 +122,40 @@ export class SessionService {
     if (session.absolute_expires_at.getTime() <= now) return null;
     if (session.idle_expires_at.getTime() <= now) return null;
 
+    // The idle lock of FR-106 / spec 2.8, decided here and not only by the screen: a session
+    // left alone past its device's idle minutes is locked, and the guard answers 423 until the
+    // password is typed again (review — only the manual lock existed). `last_seen_at` moves
+    // once a minute, hence the minute of tolerance.
+    if (!session.is_locked) {
+      const idleMinutes = await this.idleLockMinutes(session.is_shared_device);
+      if (now - session.last_seen_at.getTime() > idleMinutes * 60_000 + LAST_SEEN_REFRESH_MS) {
+        // Locked like the menu's lock (with its time), and recorded in History like every
+        // other change (rule 3) — in one statement, so only the request that locks it writes the row.
+        await this.database.query(
+          `WITH locked AS (
+             UPDATE sessions SET is_locked = true, locked_at = now()
+              WHERE id = $1 AND NOT is_locked
+             RETURNING id, user_id
+           )
+           INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, entity_label, changes, related, request_id, session_id)
+           SELECT user_id, 'lock', 'session', id::text, 'Screen locked', '{"reason":"idle"}'::jsonb,
+                  jsonb_build_object('user_id', user_id::text), gen_random_uuid(), id
+             FROM locked`,
+          [session.id],
+        );
+        session.is_locked = true;
+      }
+    }
+
     if (now - session.last_seen_at.getTime() > LAST_SEEN_REFRESH_MS) {
       await this.touch(session);
     }
     return session;
+  }
+
+  /** How long a session of this kind of device may sit idle before it locks (Settings). */
+  idleLockMinutes(isSharedDevice: boolean): Promise<number> {
+    return this.settings.get(isSharedDevice ? 'idle_lock_shared_minutes' : 'idle_lock_default_minutes');
   }
 
   /** `last_seen_at` moves at most once a minute; on a shared device it slides the idle window. */

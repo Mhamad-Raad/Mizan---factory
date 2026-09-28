@@ -1,5 +1,5 @@
 {
-  "app_name": "Mizan",
+  "app_name": "Jiyan",
   "save": "Save",
   "cancel": "Cancel",
   "edit": "Edit",
@@ -79,7 +79,7 @@
   "use_light": "Light theme",
   "language_menu": "Language",
   "account_menu": "Account",
-  "app_tagline": "One factory",
+  "app_tagline": "Management",
   "theme_menu": "Theme",
   "text_size_menu": "Text size",
   "entered_separately": "Entered separately",
@@ -91,5 +91,17 @@
   "pager_next": "Next page",
   "no_rate_set": "No rate is set yet, so the other currency is not worked out",
   "rate_needed_first": "Set the rate in Settings first — an amount is kept in both currencies",
-  "export_truncated": "The file holds the first {{count}} rows only — choose a shorter period for the rest"
+  "export_truncated": "The file holds the first {{count}} rows only — choose a shorter period for the rest",
+  "my_account": "My account",
+  "switch_to_dark": "Switch to the dark theme",
+  "switch_to_light": "Switch to the light theme",
+  "count_whole": "Pieces are counted whole — type a whole number",
+  "rate_invalid": "Type a rate above zero, with at most four decimals",
+  "offline_not_loaded": "You are offline, and this hasn't been loaded on this device yet. It will load when the connection is back.",
+  "screen_failed_title": "This screen couldn't be shown",
+  "screen_failed_body": "Something went wrong on this device, not with your connection. Reload, or go back and try again.",
+  "no_access_title": "You don't have access to this page",
+  "go_home": "Go to my start page",
+  "deactivate_material_body": "It is no longer offered for new orders and buys. Everything already recorded stays as it is, and it can be reactivated at any time.",
+  "earlier_attempt_saved": "An earlier attempt was already saved. The page has been refreshed; check it before saving again."
 }

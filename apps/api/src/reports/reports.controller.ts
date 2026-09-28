@@ -16,6 +16,8 @@ const baseSchema = z.object({
   done_by: z.string().uuid().optional(),
   company_id: z.string().uuid().optional(),
   item_id: z.string().uuid().optional(),
+  /** The file export: every group, up to 10,000, in one answer (D-075). */
+  all: z.enum(['true', 'false']).optional(),
   ...pageFields,
 });
 

@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NumberField } from '@mizan/ui';
 import type { Measure } from '@mizan/money';
+import { parseCount } from '../lib/quantity.js';
 
 export interface QuantityValue {
   qty_count: number | null;
@@ -22,18 +24,40 @@ export interface QuantityInputProps {
  */
 export function QuantityInput({ priced_measure, value, onChange, disabled, error }: QuantityInputProps) {
   const { t } = useTranslation();
+  /**
+   * What was typed in the count while it is not a whole number. The form holds no count then —
+   * the line is incomplete, and cannot be saved — and the field keeps the text and says why,
+   * rather than rounding 2.5 pieces to 3 behind the user's back.
+   */
+  const [badCount, setBadCount] = useState<string | null>(null);
+  /**
+   * The value this field last handed up. A value that arrives different from it was set from
+   * outside — a draft restored, a line reset — and the typed text above belongs to the old one,
+   * so it goes: otherwise "2.5" and "a whole number" stayed over the restored count (review).
+   */
+  const [emitted, setEmitted] = useState<QuantityValue>(value);
+  if (emitted.qty_count !== value.qty_count || emitted.qty_kg !== value.qty_kg) {
+    setEmitted(value);
+    if (badCount !== null) setBadCount(null);
+  }
+  const emit = (next: QuantityValue) => {
+    setEmitted(next);
+    onChange(next);
+  };
+  const countError = badCount !== null ? t('common:count_whole') : priced_measure === 'count' ? error : undefined;
 
   const count = (
     <NumberField
       key="count"
       label={t('glossary:count')}
-      value={value.qty_count === null ? '' : String(value.qty_count)}
+      value={badCount ?? (value.qty_count === null ? '' : String(value.qty_count))}
       hint={priced_measure === 'count' ? undefined : t('orders:for_information')}
-      error={priced_measure === 'count' ? error : undefined}
+      error={countError}
       disabled={disabled}
       onChange={(event) => {
-        const text = event.target.value.trim();
-        onChange({ ...value, qty_count: text === '' ? null : Math.round(Number(text)) });
+        const parsed = parseCount(event.target.value);
+        setBadCount(parsed.kind === 'invalid' ? event.target.value : null);
+        emit({ ...value, qty_count: parsed.kind === 'count' ? parsed.value : null });
       }}
     />
   );
@@ -50,7 +74,7 @@ export function QuantityInput({ priced_measure, value, onChange, disabled, error
       disabled={disabled}
       onChange={(event) => {
         const text = event.target.value.trim();
-        onChange({ ...value, qty_kg: text === '' ? null : text });
+        emit({ ...value, qty_kg: text === '' ? null : text });
       }}
     />
   );

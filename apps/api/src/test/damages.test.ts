@@ -617,6 +617,8 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
       const created = await recordDamage(warehouse, {
         attribution: 'company',
         company_id: alNoor,
+        // Goods that came in a purchase from them: a supplier return, not a damage they owe for.
+        purchase_id: purchase,
         is_returnable: true,
       }).expect(201);
 
@@ -684,6 +686,8 @@ describe('damaged items and returns (FR-801 to FR-807)', () => {
       const created = await recordDamage(warehouse, {
         attribution: 'company',
         company_id: alNoor,
+        // Goods that came in a purchase from them: a supplier return, not a damage they owe for.
+        purchase_id: purchase,
         is_returnable: true,
       }).expect(201);
 

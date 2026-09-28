@@ -11,7 +11,7 @@ export const RECENT_USERS_KEY = 'mizan.recentUsers.v1';
 
 export type Theme = 'light' | 'dark' | 'auto';
 export type FontScale = 0.875 | 1 | 1.125 | 1.25;
-/** The colour the app wears (D-061): teal is Mizan's own, the rest are the same ramp turned. */
+/** The colour the app wears (D-061): Jiyan's red by default (D-072); the rest are the same ramp turned. */
 export type Palette =
   | 'teal'
   | 'ocean'
@@ -20,6 +20,7 @@ export type Palette =
   | 'plum'
   | 'rose'
   | 'crimson'
+  | 'jiyan'
   | 'clay'
   | 'amber'
   | 'forest'
@@ -43,7 +44,8 @@ export interface Preferences {
 export const DEFAULT_PREFERENCES: Preferences = {
   lang: 'ckb-IQ',
   theme: 'auto',
-  palette: 'teal',
+  // Jiyan's own red is the colour the app opens in (D-072); teal and the rest stay a choice.
+  palette: 'jiyan',
   typeface: 'vazirmatn',
   fontScale: 1,
   numerals: 'latn',
@@ -62,7 +64,7 @@ const LOCALES: Locale[] = ['ckb-IQ', 'ar-IQ', 'en'];
 export const THEMES: readonly Theme[] = ['light', 'dark', 'auto'];
 export const FONT_SCALES: readonly FontScale[] = [0.875, 1, 1.125, 1.25];
 export const PALETTES: readonly Palette[] = [
-  'teal', 'ocean', 'sky', 'indigo', 'plum', 'rose', 'crimson', 'clay', 'amber', 'forest', 'graphite',
+  'jiyan', 'teal', 'ocean', 'sky', 'indigo', 'plum', 'rose', 'crimson', 'clay', 'amber', 'forest', 'graphite',
 ];
 export const TYPEFACES: readonly Typeface[] = ['vazirmatn', 'plex', 'noto', 'kufi', 'naskh'];
 
@@ -156,7 +158,7 @@ export function applyPreferences(preferences: Preferences): void {
   root.style.setProperty('--font-scale', String(preferences.fontScale));
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute('content', resolveTheme(preferences.theme) === 'dark' ? '#211A21' : '#5E1F4B');
+    ?.setAttribute('content', resolveTheme(preferences.theme) === 'dark' ? '#1c1214' : '#931329');
 }
 
 export interface RecentUser {

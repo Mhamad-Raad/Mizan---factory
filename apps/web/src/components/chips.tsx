@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { Chip } from '@mizan/ui';
 import type { Rate } from '@mizan/money';
+import type { CustomerRow } from '../pages/CustomersPage.js';
+import type { DamageRow } from '../pages/DamagesPage.js';
 import { useFormatter } from '../lib/store.js';
 
 export type OrderStatus = 'unpaid' | 'partially_paid' | 'paid' | 'void';
@@ -57,35 +59,36 @@ export function PriceFromMonth({ month }: { month: string }) {
 
 export type ReturnStatus = 'not_returnable' | 'pending' | 'returned' | 'returned_credited' | 'written_off';
 
-/**
- * The return-status chip of FR-803. Each state carries an icon as well as a colour, because
- * colour alone is never the signal (spec 2.10.8) — and "pending" is the one an owner scans the
- * list for, so it is the only one that reads as a warning.
- */
-export function ReturnStatusChip({ status }: { status: ReturnStatus }) {
+export type DamageAttribution = 'none' | 'customer_order' | 'us' | 'company';
+
+/** A deactivated account says so wherever it is listed. */
+export function InactiveChip({ row }: { row: Pick<CustomerRow, 'is_active'> }) {
   const { t } = useTranslation();
-  const tone =
-    status === 'returned_credited'
-      ? 'success'
-      : status === 'returned'
-        ? 'primary'
-        : status === 'pending'
-          ? 'warning'
-          : 'neutral';
-  const icon =
-    status === 'returned_credited' ? 'check' : status === 'pending' ? 'clock' : status === 'returned' ? 'check' : 'close';
+  if (row.is_active) return null;
   return (
-    <Chip tone={tone} icon={icon}>
-      {t(`damages:status.${status}`)}
-    </Chip>
+    <span className="mz-rowcard__chips">
+      <Chip icon="close">{t('common:deactivated')}</Chip>
+    </span>
   );
 }
 
-export type DamageAttribution = 'none' | 'customer_order' | 'us' | 'company';
-
-/** Where the damage came from (FR-802), shown on the list row and the detail header. */
-export function AttributionChip({ attribution }: { attribution: DamageAttribution }) {
+/**
+ * Where a company's damage stands (D-062): owed until it is paid back. Our own damage has no
+ * chip — it is a loss, and there is nothing to wait for. Icon and word, never colour alone.
+ */
+export function CompensationChip({ compensation }: { compensation: DamageRow['compensation'] }) {
   const { t } = useTranslation();
-  if (attribution === 'none') return null;
-  return <Chip tone="neutral">{t(`damages:attribution.${attribution}`)}</Chip>;
+  if (compensation === 'none') return null;
+  if (compensation === 'owed') {
+    return (
+      <Chip tone="warning" icon="clock">
+        {t('damages:compensation.owed')}
+      </Chip>
+    );
+  }
+  return (
+    <Chip tone="success" icon="check">
+      {t('damages:compensation.paid')}
+    </Chip>
+  );
 }

@@ -62,5 +62,6 @@
   "hide_used_up": "إخفاء المشتريات المنتهية",
   "lot_at": "{{quantity}} بسعر {{price}}",
   "stock_by_price_short": "في المخزون: {{lots}}",
-  "stock_left_short": "المتبقي من كل شراء: {{lots}}"
+  "stock_left_short": "المتبقي من كل شراء: {{lots}}",
+  "used_up_heading": "المشتريات المنتهية، الأحدث أولاً"
 }

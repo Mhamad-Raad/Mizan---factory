@@ -3,7 +3,6 @@ import { normalizeForSearch, normalizePhone } from '@mizan/text';
 import type { Currency } from '@mizan/money';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
-import { countFrom } from '../common/count-from.js';
 import { pagingOf } from '../common/paging.js';
 import { containing } from '../common/like.js';
 
@@ -109,47 +108,45 @@ export class CompaniesRepository {
       );
     }
 
-    const owed = `
-      LEFT JOIN LATERAL (
-        SELECT coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0)
-                 AS balance
-          FROM company_ledger l
-         WHERE l.company_id = c.id
-      ) bal ON true`;
-    const currentRate = `
-      LEFT JOIN LATERAL (
-        SELECT r.rate_iqd_per_usd, r.effective_from
-          FROM customer_rates r
-         WHERE r.customer_id = c.id AND r.effective_from <= now()
-         ORDER BY r.effective_from DESC
-         LIMIT 1
-      ) rate ON true`;
-    const from = `FROM customers c\n${owed}${currentRate}`;
+    // What we owe each account on the buying side, from the maintained per-account sums of
+    // migration 0033 in its settlement currency: sorting by it is one join over the accounts,
+    // not a ledger sum per account (D-075).
+    const totals = 'LEFT JOIN account_totals t ON t.account_id = c.id';
+    const owed = `coalesce(CASE WHEN c.settlement_currency = 'IQD' THEN t.payable_iqd ELSE t.payable_usd_cents END, 0)`;
     const where = `WHERE ${conditions.join(' AND ')}`;
-    // The count needs none of the three unless a filter mentions one (`countFrom`).
-    const forCount = countFrom('FROM customers c', where, [
-      { alias: 'bal.', sql: owed },
-      { alias: 'rate.', sql: currentRate },
-    ]);
-
     const countValues = [...values];
     const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
-    const order = filters.sort === 'balance' ? 'bal.balance DESC, c.name ASC' : 'c.name ASC';
+    const order = filters.sort === 'balance' ? `${owed} DESC, c.name ASC, c.id ASC` : 'c.name ASC, c.id ASC';
+    const pageFrom = filters.sort === 'balance' ? `FROM customers c\n${totals}` : 'FROM customers c';
 
+    // Page first, then fill (D-075): the rate and the balance are read for the page's rows only.
     const [list, count] = await Promise.all([
       this.database.query<CompanyListRow>(
-        `SELECT ${companyColumns('c')},
-                bal.balance::text AS balance,
+        `WITH page AS (
+           SELECT c.id ${pageFrom} ${where}
+            ORDER BY ${order}
+            LIMIT $${values.length - 1} OFFSET $${values.length}
+         )
+         SELECT ${companyColumns('c')},
+                ${owed}::text AS balance,
                 rate.rate_iqd_per_usd::text AS rate_iqd_per_usd,
                 rate.effective_from AS rate_since
-         ${from} ${where}
-         ORDER BY ${order}
-         LIMIT $${values.length - 1} OFFSET $${values.length}`,
+           FROM page
+           JOIN customers c ON c.id = page.id
+           ${totals}
+           LEFT JOIN LATERAL (
+             SELECT r.rate_iqd_per_usd, r.effective_from
+               FROM customer_rates r
+              WHERE r.customer_id = c.id AND r.effective_from <= now()
+              ORDER BY r.effective_from DESC
+              LIMIT 1
+           ) rate ON true
+          ORDER BY ${order}`,
         values,
       ),
-      this.database.query<{ total: string }>(`SELECT count(*)::text AS total ${forCount} ${where}`, countValues),
+      this.database.query<{ total: string }>(`SELECT count(*)::text AS total FROM customers c ${where}`, countValues),
     ]);
 
     return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0) };

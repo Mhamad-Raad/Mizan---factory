@@ -56,20 +56,23 @@ const LINE_COLUMNS = `l.id, l.order_id, l.line_no, l.item_id, l.qty_count, l.qty
                       l.margin_usd_cents::text AS margin_usd_cents, l.note`;
 
 /**
- * What is still owed on one order, read per row rather than from the `order_balances` view.
+ * What is still owed on one order, in the customer's settlement currency: the maintained
+ * per-order sum of migration 0015, one primary-key probe per row.
  *
- * The view groups the whole ledger, and a predicate on `orders.order_date` cannot be pushed
- * inside that grouping — so showing today's twenty-five orders aggregated *every* order ever
- * placed (measured: 85 ms and an external merge sort at 60,000 orders, growing linearly). As
- * a LATERAL it is one index-only scan per row of the page, whatever the table holds.
+ * It used to be a lateral sum over the order's ledger rows. That was right for a page, but the
+ * status filter derives the status of *every* candidate order, and "still owed, all dates" summed
+ * the ledger for all 1.8 million orders of the ten-year database: 9.5 s (D-075). The maintained
+ * sum is the same figure — a sum over the same rows, kept by a trigger on the append-only ledger
+ * and compared with it by `check-integrity.mjs` — so the status is now a join, and the owing
+ * orders have their own partial index (migration 0034).
  */
-const REMAINING_LATERAL = `
-  LEFT JOIN LATERAL (
-    SELECT coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN l.amount_iqd ELSE l.amount_usd_cents END), 0)
-             AS remaining
-      FROM customer_ledger l
-     WHERE l.order_id = o.id
-  ) bal ON true`;
+const REMAINING_JOIN = `LEFT JOIN order_remaining r ON r.order_id = o.id`;
+const REMAINING = `coalesce(CASE WHEN c.settlement_currency = 'IQD' THEN r.remaining_iqd ELSE r.remaining_usd_cents END, 0)`;
+/**
+ * True of every order that owes anything in either currency — a superset of "owes in its
+ * settlement currency", written out so the planner can use `order_remaining_owing_idx`.
+ */
+const MAY_OWE = `(r.remaining_iqd > 0 OR r.remaining_usd_cents > 0)`;
 
 /** The currency the customer physically handed over, from the live settlement row (FR-604). */
 const RECEIVED_LATERAL = `
@@ -86,8 +89,8 @@ const RECEIVED_LATERAL = `
 const STATUS_EXPRESSION = `
   CASE
     WHEN o.status = 'void' THEN 'void'
-    WHEN bal.remaining <= 0 THEN 'paid'
-    WHEN bal.remaining >= (CASE WHEN c.settlement_currency = 'IQD' THEN o.total_iqd ELSE o.total_usd_cents END)
+    WHEN ${REMAINING} <= 0 THEN 'paid'
+    WHEN ${REMAINING} >= (CASE WHEN c.settlement_currency = 'IQD' THEN o.total_iqd ELSE o.total_usd_cents END)
       THEN 'unpaid'
     ELSE 'partially_paid'
   END`;
@@ -95,7 +98,7 @@ const STATUS_EXPRESSION = `
 const LIST_COLUMNS = `c.name AS customer_name, c.is_system AS customer_is_system,
                       c.settlement_currency::text AS settlement_currency,
                       u.display_name AS acting_user_name, v.display_name AS voided_by_name,
-                      bal.remaining::text AS remaining, ${STATUS_EXPRESSION} AS derived_status,
+                      ${REMAINING}::text AS remaining, ${STATUS_EXPRESSION} AS derived_status,
                       settle.entered_currency::text AS received_currency,
                       (SELECT count(*)::text FROM order_lines l
                         WHERE l.order_id = o.id AND l.deleted_at IS NULL) AS line_count`;
@@ -113,6 +116,8 @@ export interface OrderFilters {
   q?: string;
   /** Void-by-undo rows are hidden unless the Void filter asks for them (2.4.5). */
   include_undone?: boolean;
+  /** `false` skips the figures over the whole filter: the dashboard's latest orders (D-075). */
+  totals?: boolean;
   page?: number;
   page_size?: number;
 }
@@ -154,6 +159,29 @@ export interface NewOrderLine {
   note: string | null;
 }
 
+/** A set of owing orders from `account_owing` (migration 0035), in both currencies. */
+export interface OwingSet {
+  orders: number;
+  remaining_iqd: number;
+  remaining_usd_cents: number;
+  total_iqd: number;
+  total_usd_cents: number;
+}
+
+function minusSet(left: OwingSet, right: OwingSet): OwingSet {
+  return {
+    orders: left.orders - right.orders,
+    remaining_iqd: left.remaining_iqd - right.remaining_iqd,
+    remaining_usd_cents: left.remaining_usd_cents - right.remaining_usd_cents,
+    total_iqd: left.total_iqd - right.total_iqd,
+    total_usd_cents: left.total_usd_cents - right.total_usd_cents,
+  };
+}
+
+function balanceOf(set: OwingSet): OrderTotals['balance'] {
+  return { owing: set.orders, owed_iqd: set.remaining_iqd, owed_usd_cents: set.remaining_usd_cents };
+}
+
 /** The list's figures over the whole filter, not the page (client review). */
 export interface OrderTotals {
   orders: number;
@@ -179,7 +207,7 @@ export class OrdersRepository {
          JOIN customers c ON c.id = o.customer_id
          LEFT JOIN users u ON u.id = o.acting_user_id
          LEFT JOIN users v ON v.id = o.voided_by
-         ${REMAINING_LATERAL}
+         ${REMAINING_JOIN}
          ${RECEIVED_LATERAL}
         WHERE o.id = $1 AND o.deleted_at IS NULL`,
       values,
@@ -195,7 +223,7 @@ export class OrdersRepository {
     return rows[0] ?? null;
   }
 
-  async list(filters: OrderFilters): Promise<{ rows: OrderListRow[]; total: number; totals: OrderTotals }> {
+  async list(filters: OrderFilters): Promise<{ rows: OrderListRow[]; total: number; totals: OrderTotals | null }> {
     const conditions = ['o.deleted_at IS NULL'];
     const values: unknown[] = [];
 
@@ -232,14 +260,28 @@ export class OrdersRepository {
       values.push(filters.payment_type);
       conditions.push(`o.payment_type = $${values.length}::payment_type`);
     }
+    // The list without its status filter, for the figures answered from the maintained sums.
+    const baseValues = [...values];
+    const baseConditions = [
+      ...conditions,
+      ...(filters.include_undone ? [] : [`(o.status <> 'void' OR o.void_reason <> 'undo')`]),
+    ];
     if (filters.status) {
-      // The status is derived, so filtering by it means deriving it for each candidate row —
-      // which is why the date chips of FR-611 matter: they bound the candidate set first.
+      // The status is derived from the maintained per-order sum. The owing statuses also say
+      // "owes something in some currency", which is what lets the partial index of the owing
+      // orders answer them instead of every order ever placed (D-075).
       if (filters.status === 'owing') {
-        conditions.push(`${STATUS_EXPRESSION} IN ('unpaid', 'partially_paid')`);
-      } else {
+        conditions.push(`o.status <> 'void' AND ${MAY_OWE} AND ${REMAINING} > 0`);
+      } else if (filters.status === 'unpaid' || filters.status === 'partially_paid') {
         values.push(filters.status);
-        conditions.push(`${STATUS_EXPRESSION} = $${values.length}`);
+        conditions.push(`${MAY_OWE} AND ${STATUS_EXPRESSION} = $${values.length}`);
+      } else if (filters.status === 'void') {
+        // The derived status is 'void' exactly when the document is: said so, it is a range of
+        // the partial index of voided orders (migration 0034).
+        conditions.push(`o.status = 'void'`);
+      } else {
+        // Paid: not void, and nothing left in the settlement currency.
+        conditions.push(`o.status <> 'void' AND ${REMAINING} <= 0`);
       }
     }
     if (!filters.include_undone) {
@@ -248,97 +290,181 @@ export class OrdersRepository {
     }
     const query = filters.q?.trim();
     if (query) {
+      // Three questions, each answered by its own index and put together as one set of ids: the
+      // customer's name (trigram index on customers, then the customer's orders), the notes
+      // (trigram index on orders.notes, migration 0034) and the number (its unique key) — an OR
+      // across two tables in one WHERE could use none of them, 750 ms at ten years (D-075).
       values.push(containing(normalizeForSearch(query)));
       const nameParam = values.length;
       values.push(containing(query));
       const textParam = values.length;
       const asNumber = Number(query.replace(/\D/g, ''));
-      values.push(Number.isFinite(asNumber) && asNumber > 0 ? asNumber : null);
+      const byNumber = Number.isSafeInteger(asNumber) && asNumber > 0;
+      if (byNumber) values.push(asNumber);
       const numberParam = values.length;
       conditions.push(
-        `(c.name_normalized LIKE $${nameParam} OR o.notes ILIKE $${textParam}` +
-          ` OR ($${numberParam}::bigint IS NOT NULL AND o.number = $${numberParam}::bigint))`,
+        `o.id IN (SELECT m.id FROM orders m
+                   WHERE m.customer_id IN (SELECT who.id FROM customers who WHERE who.name_normalized LIKE $${nameParam})
+                  UNION
+                  SELECT m.id FROM orders m WHERE m.notes ILIKE $${textParam}` +
+          (byNumber ? `\n                  UNION\n                  SELECT m.id FROM orders m WHERE m.number = $${numberParam}::bigint` : '') +
+          `)`,
       );
     }
 
     const customer = 'JOIN customers c ON c.id = o.customer_id';
-    const from = `
-      FROM orders o
-      ${customer}
-      LEFT JOIN users u ON u.id = o.acting_user_id
-      LEFT JOIN users v ON v.id = o.voided_by
-      ${REMAINING_LATERAL}
-      ${RECEIVED_LATERAL}`;
     const where = `WHERE ${conditions.join(' AND ')}`;
     /**
-     * The count is built from the narrowest `FROM` the filters need.
-     *
-     * The page's two laterals produce columns — what is still owed on the order, and the
-     * currency that was actually handed over — and the count needs neither unless a filter
-     * mentions one, which only the derived-status filter does. Counting 1.16 million orders
-     * *with* them cost **1,783 ms** on every load of the unfiltered list, for a single integer
-     * (the system-wide review). The customer join comes along whenever a condition names the
-     * customer; it cannot change the count either way, because an order's customer is a
-     * non-null reference and customers are soft-deleted.
+     * The count and the totals are built from the narrowest `FROM` the filters need (D-047):
+     * the customer only when a condition names it, what is still owed only when the status
+     * filter asks — and the totals, which always need both, in the same pass as the count.
      */
-    const forCount = countFrom('FROM orders o', where, [
+    const narrow = countFrom('FROM orders o', where, [
       { alias: 'c.', sql: customer },
-      { alias: 'bal.', sql: REMAINING_LATERAL },
-      { alias: 'settle.', sql: RECEIVED_LATERAL },
+      { alias: 'r.', sql: REMAINING_JOIN },
     ]);
 
     const countValues = [...values];
     const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
-    // The figures over the whole filter, for the cards above the list (client review): what the
-    // orders came to and what is still owed on them. What is owed is read from the maintained
-    // per-order sum of migration 0015 — one join, not a subquery per order — in both currencies,
-    // and it counts only orders that still owe something in their company's own currency.
-    const forTotals = countFrom(
-      `FROM orders o\n${customer}\nLEFT JOIN order_remaining r ON r.order_id = o.id`,
-      where,
-      [
-        { alias: 'bal.', sql: REMAINING_LATERAL },
-        { alias: 'settle.', sql: RECEIVED_LATERAL },
-      ],
-    );
-    const owes = `o.status = 'active' AND (CASE WHEN c.settlement_currency = 'IQD' THEN r.remaining_iqd
-                                                ELSE r.remaining_usd_cents END) > 0`;
-
-    const [list, count, totals] = await Promise.all([
-      this.database.query<OrderListRow>(
-        `SELECT ${orderColumns('o')}, ${LIST_COLUMNS}
-         ${from}
+    /**
+     * Page first, then fill (D-075): the ids of the page are chosen from the orders alone, in the
+     * list's order, and only those twenty-five rows are joined to their customer, their people,
+     * what they still owe and the currency that was handed over. The laterals used to run for
+     * every row the OFFSET skipped, so the last page of ten years cost 4 s.
+     */
+    const pageQuery = this.database.query<OrderListRow>(
+      `WITH page AS (
+         SELECT o.id, o.order_date, o.number
+         ${narrow}
          ${where}
          ORDER BY o.order_date DESC, o.number DESC
-         LIMIT $${values.length - 1} OFFSET $${values.length}`,
-        values,
-      ),
-      this.database.query<{ total: string }>(`SELECT count(*)::text AS total ${forCount} ${where}`, countValues),
-      this.database.query<{
-        orders: string;
-        total_iqd: string;
-        total_usd_cents: string;
-        owing: string;
-        owed_iqd: string;
-        owed_usd_cents: string;
-      }>(
-        `SELECT count(*) FILTER (WHERE o.status = 'active')::text AS orders,
-                coalesce(sum(o.total_iqd) FILTER (WHERE o.status = 'active'), 0)::text AS total_iqd,
-                coalesce(sum(o.total_usd_cents) FILTER (WHERE o.status = 'active'), 0)::text AS total_usd_cents,
-                count(*) FILTER (WHERE ${owes})::text AS owing,
-                coalesce(sum(r.remaining_iqd) FILTER (WHERE ${owes}), 0)::text AS owed_iqd,
-                coalesce(sum(r.remaining_usd_cents) FILTER (WHERE ${owes}), 0)::text AS owed_usd_cents
-           ${forTotals} ${where}`,
-        countValues,
-      ),
-    ]);
+         LIMIT $${values.length - 1} OFFSET $${values.length}
+       )
+       SELECT ${orderColumns('o')}, ${LIST_COLUMNS}
+         FROM page
+         JOIN orders o ON o.id = page.id
+         ${customer}
+         LEFT JOIN users u ON u.id = o.acting_user_id
+         LEFT JOIN users v ON v.id = o.voided_by
+         ${REMAINING_JOIN}
+         ${RECEIVED_LATERAL}
+        ORDER BY page.order_date DESC, page.number DESC`,
+      values,
+    );
 
-    const t = totals.rows[0];
+    if (filters.totals === false) {
+      // The dashboard's latest orders: the rows and the count, not the figures over every order.
+      const [list, count] = await Promise.all([
+        pageQuery,
+        this.database.query<{ total: string }>(`SELECT count(*)::text AS total ${narrow} ${where}`, countValues),
+      ]);
+      return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0), totals: null };
+    }
+
+    // The figures over the whole filter, for the cards above the list (client review): what the
+    // orders came to and what is still owed on them, in both currencies, counting only orders
+    // that still owe something in their company's own currency.
+    //
+    // Two questions with two different shapes (D-075). What the orders came to is a pass over the
+    // orders alone. What is still owed is a pass over the orders that owe — the partial index of
+    // migration 0034 — joined to those orders; joining every order to its remaining figure to
+    // find them spilled a 1.8-million-row hash to disk (560 ms). When the status filter already
+    // joins the remaining figure, one pass answers both.
+    const owes = `o.status = 'active' AND ${MAY_OWE} AND ${REMAINING} > 0`;
+    const documents = `count(*)::text AS total,
+                count(*) FILTER (WHERE o.status = 'active')::text AS orders,
+                coalesce(sum(o.total_iqd) FILTER (WHERE o.status = 'active'), 0)::text AS total_iqd,
+                coalesce(sum(o.total_usd_cents) FILTER (WHERE o.status = 'active'), 0)::text AS total_usd_cents`;
+    const owing = `count(*) FILTER (WHERE ${owes})::text AS owing,
+                coalesce(sum(r.remaining_iqd) FILTER (WHERE ${owes}), 0)::text AS owed_iqd,
+                coalesce(sum(r.remaining_usd_cents) FILTER (WHERE ${owes}), 0)::text AS owed_usd_cents`;
+    type Totals = {
+      total: string;
+      orders: string;
+      total_iqd: string;
+      total_usd_cents: string;
+      owing: string;
+      owed_iqd: string;
+      owed_usd_cents: string;
+    };
+    const joinsRemaining = narrow.includes(REMAINING_JOIN);
+    // Nothing narrows the list but, perhaps, the account and a status other than void: what is
+    // owed — and, for a status filter, the whole count and the totals — is then the maintained
+    // per-account sum of migration 0035, one row per account instead of every owing order
+    // (430–480 ms at ten years, when two orders in three were still owed).
+    const unnarrowed =
+      !filters.item_id && !filters.from && !filters.to && !filters.done_by && !filters.payment_type && !query;
+    if (unnarrowed && filters.status !== 'void') {
+      const status = filters.status;
+      const owingNow = this.owingOf(filters.customer_id);
+      // The orders themselves, without the status filter: every order for "All", the active
+      // ones for "paid" (every active order that does not owe).
+      const documentsNow =
+        status === undefined || status === 'paid'
+          ? this.database
+              .query<Totals>(`SELECT ${documents} FROM orders o WHERE ${baseConditions.join(' AND ')}`, baseValues)
+              .then((result) => result.rows[0])
+          : Promise.resolve(undefined);
+      const [list, documentRow, owed] = await Promise.all([pageQuery, documentsNow, owingNow]);
+      const set =
+        status === 'unpaid' ? owed.unpaid : status === 'partially_paid' ? minusSet(owed.owing, owed.unpaid) : owed.owing;
+      const active = {
+        orders: Number(documentRow?.orders ?? 0),
+        total_iqd: Number(documentRow?.total_iqd ?? 0),
+        total_usd_cents: Number(documentRow?.total_usd_cents ?? 0),
+      };
+      if (status === undefined) {
+        return {
+          rows: list.rows,
+          total: Number(documentRow?.total ?? 0),
+          totals: { ...active, balance: balanceOf(owed.owing) },
+        };
+      }
+      if (status === 'paid') {
+        // A difference of two reads taken a moment apart: a save landing between them could
+        // make it negative for that moment, which a count must never show (review).
+        const paid = Math.max(active.orders - owed.owing.orders, 0);
+        return {
+          rows: list.rows,
+          total: paid,
+          totals: {
+            orders: paid,
+            total_iqd: Math.max(active.total_iqd - owed.owing.total_iqd, 0),
+            total_usd_cents: Math.max(active.total_usd_cents - owed.owing.total_usd_cents, 0),
+            balance: { owing: 0, owed_iqd: 0, owed_usd_cents: 0 },
+          },
+        };
+      }
+      // Owing, unpaid, partly paid: every one of these orders is active and owes, so the list's
+      // count and its totals are the set's own.
+      return {
+        rows: list.rows,
+        total: set.orders,
+        totals: { orders: set.orders, total_iqd: set.total_iqd, total_usd_cents: set.total_usd_cents, balance: balanceOf(set) },
+      };
+    }
+    const totalsQuery: Promise<Totals | undefined> = joinsRemaining
+      ? this.database
+          .query<Totals>(`SELECT ${documents}, ${owing} ${narrow} ${where}`, countValues)
+          .then((result) => result.rows[0])
+      : Promise.all([
+          this.database.query<Totals>(`SELECT ${documents} ${narrow} ${where}`, countValues),
+          this.database.query<Totals>(
+            `SELECT ${owing}
+               FROM order_remaining r
+               JOIN orders o ON o.id = r.order_id
+               ${customer}
+               ${where} AND ${MAY_OWE}`,
+            countValues,
+          ),
+        ]).then(([documentRows, owingRows]) => ({ ...documentRows.rows[0], ...owingRows.rows[0] }) as Totals);
+    const [list, t] = await Promise.all([pageQuery, totalsQuery]);
+
     return {
       rows: list.rows,
-      total: Number(count.rows[0]?.total ?? 0),
+      total: Number(t?.total ?? 0),
       totals: {
         orders: Number(t?.orders ?? 0),
         total_iqd: Number(t?.total_iqd ?? 0),
@@ -350,6 +476,35 @@ export class OrdersRepository {
         },
       },
     };
+  }
+
+  /**
+   * The orders still owed — of one account, or of all — from the maintained per-account sums of
+   * migration 0035: how many, what is left on them and what they came to, and the same for the
+   * ones owed in full ("unpaid"); each account's orders counted in its own settlement currency,
+   * each currency summed on its own side (rule 1).
+   */
+  async owingOf(customerId?: string): Promise<{ owing: OwingSet; unpaid: OwingSet }> {
+    const pick = (column: string) =>
+      `coalesce(sum(CASE WHEN c.settlement_currency = 'IQD' THEN a.iqd_${column} ELSE a.usd_${column} END), 0)::text`;
+    const columns = ['orders', 'remaining_iqd', 'remaining_usd_cents', 'total_iqd', 'total_usd_cents'] as const;
+    const { rows } = await this.database.query<Record<string, string>>(
+      `SELECT ${columns.map((column) => `${pick(column)} AS owing_${column}`).join(', ')},
+              ${columns.map((column) => `${pick(`unpaid_${column}`)} AS unpaid_${column}`).join(', ')}
+         FROM account_owing a
+         JOIN customers c ON c.id = a.account_id
+        WHERE ($1::uuid IS NULL OR a.account_id = $1::uuid)`,
+      [customerId ?? null],
+    );
+    const row = rows[0] ?? {};
+    const setOf = (prefix: string): OwingSet => ({
+      orders: Number(row[`${prefix}_orders`] ?? 0),
+      remaining_iqd: Number(row[`${prefix}_remaining_iqd`] ?? 0),
+      remaining_usd_cents: Number(row[`${prefix}_remaining_usd_cents`] ?? 0),
+      total_iqd: Number(row[`${prefix}_total_iqd`] ?? 0),
+      total_usd_cents: Number(row[`${prefix}_total_usd_cents`] ?? 0),
+    });
+    return { owing: setOf('owing'), unpaid: setOf('unpaid') };
   }
 
   /** What the ledger says is still owed on one order, in one currency (0 before any entry). */

@@ -8,7 +8,6 @@ import {
   Button,
   Card,
   Chip,
-  ErrorState,
   Icon,
   SegmentedControl,
   Skeleton,
@@ -25,9 +24,10 @@ import type { PermissionSelection } from '../components/PermissionEditor.js';
 import { AuditDiff } from '../components/AuditDiff.js';
 import { useIsWide } from '../lib/wide.js';
 import { usePageTitle } from '../lib/page-title.js';
-import { QueryStates } from '../components/states.js';
+import { FieldsSkeleton, QueryStates, SkeletonBlock } from '../components/states.js';
 import { useApp, useFormatter } from '../lib/store.js';
 import { readNote, recordName } from '../lib/record-names.js';
+import { invalidateHistory } from '../lib/invalidate.js';
 
 interface UserDetail {
   id: string;
@@ -66,18 +66,21 @@ export function UserDetailPage() {
 
   usePageTitle(user.data?.display_name ?? t('users:title'));
 
-  if (user.isPending) {
+  // "Not found" is for a 404 alone; a dropped connection or a server error says so, with Retry.
+  if (user.isPending || user.isError || !user.data) {
     return (
-      <>
-        <Skeleton lines={8} />
-      </>
-    );
-  }
-  if (user.isError || !user.data) {
-    return (
-      <>
-        <ErrorState title={t('common:not_found_title')} body={t('common:not_found_body')} />
-      </>
+      <QueryStates
+        query={user}
+        skeleton={
+          // The tabs and the details card, the size they arrive at (layout shift 0.13).
+          <div className="mz-stack">
+            <SkeletonBlock height="var(--tap-target)" />
+            <FieldsSkeleton fields={5} title={false} />
+          </div>
+        }
+      >
+        {null}
+      </QueryStates>
     );
   }
 
@@ -185,6 +188,7 @@ function DetailsTab({ user }: { user: UserDetail }) {
       await queryClient.invalidateQueries({ queryKey: ['user', user.id] });
       await queryClient.invalidateQueries({ queryKey: ['user-permissions', user.id] });
       await queryClient.invalidateQueries({ queryKey: ['users'] });
+      await invalidateHistory(queryClient);
     },
     onError: (caught: unknown) => {
       // The last-admin rules are explained inline rather than as a bare failure (spec 3.3).
@@ -209,6 +213,7 @@ function DetailsTab({ user }: { user: UserDetail }) {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['user', user.id] });
       await queryClient.invalidateQueries({ queryKey: ['users'] });
+      await invalidateHistory(queryClient);
     },
     onError: (caught: unknown) => {
       if (caught instanceof ApiError && caught.code === 'LAST_ADMIN') {
@@ -227,7 +232,10 @@ function DetailsTab({ user }: { user: UserDetail }) {
         method: 'POST',
       }),
     onMutate: () => setError(null),
-    onSuccess: (response) => setTemporaryPassword(response.temporary_password),
+    onSuccess: async (response) => {
+      setTemporaryPassword(response.temporary_password);
+      await invalidateHistory(queryClient);
+    },
     onError: (caught: unknown) => setError(errorMessage(t, caught) ?? t('errors:INTERNAL')),
   });
 
@@ -383,6 +391,7 @@ function SessionsTab({ userId }: { userId: string }) {
       apiRequest(`/users/${userId}/sessions/${sessionId}`, { method: 'DELETE' }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['user-sessions', userId] });
+      await invalidateHistory(queryClient);
     },
   });
   const revokeError = errorMessage(t, revokeSession.error);

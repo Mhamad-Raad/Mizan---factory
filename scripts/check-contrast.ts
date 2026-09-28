@@ -94,7 +94,7 @@ const themes: [string, Record<string, string>][] = [
  * Every colour palette of Settings (D-061), in both themes: a palette block restates only the
  * tokens it turns to its hue, so it is measured over the theme it sits on.
  */
-const PALETTES = ['ocean', 'sky', 'indigo', 'plum', 'rose', 'crimson', 'clay', 'amber', 'forest', 'graphite'];
+const PALETTES = ['jiyan', 'ocean', 'sky', 'indigo', 'plum', 'rose', 'crimson', 'clay', 'amber', 'forest', 'graphite'];
 const baseThemes = [...themes];
 for (const palette of PALETTES) {
   for (const [mode, base] of baseThemes) {

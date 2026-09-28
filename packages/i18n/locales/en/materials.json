@@ -62,5 +62,6 @@
   "hide_used_up": "Hide used-up buys",
   "lot_at": "{{quantity}} at {{price}}",
   "stock_by_price_short": "In stock: {{lots}}",
-  "stock_left_short": "Left in each buy: {{lots}}"
+  "stock_left_short": "Left in each buy: {{lots}}",
+  "used_up_heading": "Used-up buys, newest first"
 }

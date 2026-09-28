@@ -6,6 +6,7 @@ import { PeriodService } from '../settings/period.service.js';
 import { ReportsRepository } from './reports.repository.js';
 import type { DamageGroupBy, GroupBy, ReportFilters } from './reports.repository.js';
 import { pageOfArray, pagingOf } from '../common/paging.js';
+import type { Paging } from '../common/paging.js';
 
 export interface ReportRequest {
   from?: string;
@@ -17,6 +18,21 @@ export interface ReportRequest {
   /** Which page of groups to send (D-058); the totals are always the whole period's. */
   page?: number;
   page_size?: number;
+  /**
+   * The file export's one-pass mode (D-075): every group up to `EXPORT_GROUPS` in one answer,
+   * with the same permission, the same pin and the same field stripping. The export used to ask
+   * page after page, and the server recomputed the whole report for each one.
+   */
+  all?: 'true' | 'false';
+}
+
+/** The most groups one `all=true` answer carries; `has_more` says when a period had more. */
+export const EXPORT_GROUPS = 10_000;
+
+/** A request's page of groups — or, for an export, the first `EXPORT_GROUPS` of them. */
+function reportPaging(request: { page?: number; page_size?: number; all?: 'true' | 'false' }): Paging {
+  if (request.all === 'true') return { page: 1, page_size: EXPORT_GROUPS, offset: 0 };
+  return pagingOf(request);
 }
 
 export interface ReportMeta {
@@ -178,7 +194,7 @@ export class ReportsService {
     }
 
     // The round-up less the order discount is money the order took or gave up with no line
-    // behind it: it moves what was sold and the margin alike, as on the Accounts page (D-072).
+    // behind it: it moves what was sold and the margin alike, as on the Accounts page (D-077).
     // A group the order decides takes its own share; a figure no group can hold (grouped by
     // material) stays out of the rows and is carried into the totals below.
     const unassigned = { iqd: 0, usd_cents: 0 };
@@ -310,7 +326,7 @@ export class ReportsService {
   async receivables(context: RequestContext, request: ReportRequest) {
     // Not pinned: accounts are nobody's in particular any more (D-056).
     const { filters, meta } = this.resolve(context, request, null);
-    const paging = pagingOf(request);
+    const paging = reportPaging(request);
     const rows = await this.reports.receivables(filters, paging);
 
     const groups = rows.map((row) => ({
@@ -329,8 +345,10 @@ export class ReportsService {
     }));
 
     // The totals are the period's, over every customer — the window functions computed them
-    // before the page was taken, so every page carries the period's totals (D-058).
-    const first = rows[0];
+    // before the page was taken, so every page carries the period's totals (D-058). A page past
+    // the end has no row to carry them; the first row is read for them instead, so it never
+    // answers "nobody owes anything" (review).
+    const first = rows[0] ?? (paging.offset > 0 ? (await this.reports.receivables(filters, firstRowOnly))[0] : undefined);
     return {
       ...meta,
       group_by: 'customer',
@@ -353,7 +371,8 @@ export class ReportsService {
 
   async payables(context: RequestContext, request: ReportRequest) {
     const { filters, meta } = this.resolve(context, request, null);
-    const rows = await this.reports.payables(filters);
+    const paging = reportPaging(request);
+    const rows = await this.reports.payables(filters, paging);
 
     const groups = rows.map((row) => ({
       key: row.key,
@@ -375,19 +394,27 @@ export class ReportsService {
       },
     }));
 
+    // The totals are over every company, computed before the page was taken (D-058, D-075); past
+    // the last page they are read from the first row, as for Receivables (review).
+    const first = rows[0] ?? (paging.offset > 0 ? (await this.reports.payables(filters, firstRowOnly))[0] : undefined);
+    const groupCount = Number(first?.group_count ?? 0);
     return {
       ...meta,
       group_by: 'company',
-      ...paged(request, groups),
+      groups,
+      group_count: groupCount,
+      has_more: groupCount > paging.offset + groups.length,
+      page: paging.page,
+      page_size: paging.page_size,
       totals: {
-        companies: groups.length,
+        companies: groupCount,
         balance: {
-          amount_iqd: sum(groups.map((group) => group.balance.amount_iqd)),
-          amount_usd_cents: sum(groups.map((group) => group.balance.amount_usd_cents)),
-          purchased_iqd: sum(groups.map((group) => group.balance.purchased_iqd)),
-          purchased_usd_cents: sum(groups.map((group) => group.balance.purchased_usd_cents)),
-          paid_iqd: sum(groups.map((group) => group.balance.paid_iqd)),
-          paid_usd_cents: sum(groups.map((group) => group.balance.paid_usd_cents)),
+          amount_iqd: Number(first?.total_balance_iqd ?? 0),
+          amount_usd_cents: Number(first?.total_balance_usd_cents ?? 0),
+          purchased_iqd: Number(first?.total_purchased_iqd ?? 0),
+          purchased_usd_cents: Number(first?.total_purchased_usd_cents ?? 0),
+          paid_iqd: Number(first?.total_paid_iqd ?? 0),
+          paid_usd_cents: Number(first?.total_paid_usd_cents ?? 0),
         },
       },
     };
@@ -597,10 +624,10 @@ function sortGroups<T extends { key: string }>(
 }
 
 function paged<T>(
-  request: { page?: number; page_size?: number },
+  request: { page?: number; page_size?: number; all?: 'true' | 'false' },
   groups: readonly T[],
 ): { groups: T[]; group_count: number; has_more: boolean; page: number; page_size: number } {
-  const paging = pagingOf(request);
+  const paging = reportPaging(request);
   const page = pageOfArray(groups, paging);
   return {
     groups: page,
@@ -617,3 +644,6 @@ function stockValue(fromLots: string | null, monthPrice: number | null, unbought
   if (monthPrice === null) return fromLots === null ? null : Number(fromLots);
   return (fromLots === null ? 0 : Number(fromLots)) + roundHalfAwayFromZero(new Decimal(monthPrice).times(unbought));
 }
+
+/** The first row alone: enough to read the totals every row of these reports carries. */
+const firstRowOnly = { page: 1, page_size: 1, offset: 0 };

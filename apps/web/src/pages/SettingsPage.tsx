@@ -2,13 +2,16 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, NumberField, TextField } from '@mizan/ui';
-import { apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { apiRequest } from '../lib/api.js';
+import { useIdempotencyKey } from '../lib/idempotency.js';
 import { errorMessage } from '../lib/errors.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
 import { AppearanceCards } from '../components/Appearance.js';
 import { Pager } from '../components/Pager.js';
+import { QueryStates } from '../components/states.js';
 import { useKeepPageInRange, usePaging } from '../lib/paging.js';
+import { invalidateMoneyViews } from '../lib/invalidate.js';
 
 /**
  * Settings (FR-1101 to FR-1107): how the app looks on this device, and the system's exchange
@@ -86,6 +89,10 @@ function GlobalRateCard() {
   });
   useKeepPageInRange(paging, rates);
 
+  // One key for this rate, held across its retries and renewed by its success (FR-1305). What
+  // was typed is its scope: a different rate after a lost reply is a different write, not one
+  // the server must refuse as a mismatch.
+  const saveKey = useIdempotencyKey(`rate:${value.trim()}:${note.trim()}`);
   const save = useMutation({
     mutationFn: () =>
       apiRequest<GlobalRate['current']>('/settings/global-rates', {
@@ -94,17 +101,20 @@ function GlobalRateCard() {
           rate_iqd_per_usd: value.trim(),
           note: note.trim() === '' ? null : note.trim(),
         },
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: saveKey.key,
       }),
     // A new attempt clears the last one's "Rate saved", so it never stands next to a refusal.
     onMutate: () => setMessage(null),
     onSuccess: async () => {
+      saveKey.renew();
       setValue('');
       setNote('');
       setMessage(t('settings:rate_saved'));
       await queryClient.invalidateQueries({ queryKey: ['global-rate'] });
-      // A company without its own rate is valued at this one.
+      // A company without its own rate is valued at this one, and so are the derived figures of
+      // Today, Reports and Accounts.
       await queryClient.invalidateQueries({ queryKey: ['customers'] });
+      await invalidateMoneyViews(queryClient);
     },
   });
   const saveError = errorMessage(t, save.error);
@@ -114,18 +124,22 @@ function GlobalRateCard() {
       <div className="mz-stack">
         <h2 className="mz-heading">{t('glossary:global_default_rate')}</h2>
 
-        {rates.data?.current ? (
-          <p data-tabular>
-            {formatter.rate(rates.data.current.rate_iqd_per_usd)}
-            <span className="mz-caption" style={{ display: 'block' }}>
-              {t('settings:rate_since', {
-                time: formatter.timestamp(new Date(rates.data.current.effective_from)),
-              })}
-            </span>
-          </p>
-        ) : (
-          <p className="mz-field__error">{t('settings:no_rate_yet')}</p>
-        )}
+        {/* "No rate has been set yet" is said only when the server said so — not while it is
+            being asked, and not when asking failed, which is a different fact (review). */}
+        <QueryStates query={rates} skeletonLines={2}>
+          {rates.data?.current ? (
+            <p data-tabular>
+              {formatter.rate(rates.data.current.rate_iqd_per_usd)}
+              <span className="mz-caption" style={{ display: 'block' }}>
+                {t('settings:rate_since', {
+                  time: formatter.timestamp(new Date(rates.data.current.effective_from)),
+                })}
+              </span>
+            </p>
+          ) : (
+            <p className="mz-field__error">{t('settings:no_rate_yet')}</p>
+          )}
+        </QueryStates>
 
         <NumberField
           label={t('settings:new_rate')}
@@ -133,12 +147,18 @@ function GlobalRateCard() {
           decimals={4}
           value={value}
           error={saveError ?? undefined}
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => {
+            save.reset();
+            setValue(event.target.value);
+          }}
         />
         <TextField
           label={t('common:note')}
           value={note}
-          onChange={(event) => setNote(event.target.value)}
+          onChange={(event) => {
+            save.reset();
+            setNote(event.target.value);
+          }}
         />
 
         <Button
