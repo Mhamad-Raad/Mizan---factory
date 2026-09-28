@@ -19,6 +19,9 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       target: 'es2022',
+      // Fonts stay files, never inlined as `data:` URLs however small: production's CSP allows
+      // fonts from 'self' only, and the typefaces' tiny subsets were blocked (deploy check).
+      assetsInlineLimit: (file: string) => (/\.(woff2?|ttf|otf)$/.test(file) ? false : undefined),
       /**
        * Splitting the long-lived dependencies away from application code keeps repeat loads
        * near-instant on the floor: a deploy that only changes a screen leaves these cached
