@@ -496,13 +496,17 @@ export function Menu({
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const activeCount = items.filter((item) => item.current).length;
 
   useEffect(() => {
     if (!open) return;
     const dismiss = (event: MouseEvent | KeyboardEvent): void => {
       if (event instanceof KeyboardEvent) {
-        if (event.key === 'Escape') setOpen(false);
+        if (event.key === 'Escape') {
+          setOpen(false);
+          trigger.current?.focus();
+        }
         return;
       }
       if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
@@ -519,6 +523,7 @@ export function Menu({
     <div className="mz-menu" ref={root}>
       {variant === 'button' ? (
         <button
+          ref={trigger}
           type="button"
           className="mz-button mz-button--secondary mz-menu__trigger"
           aria-label={label}
@@ -533,6 +538,7 @@ export function Menu({
         </button>
       ) : (
         <button
+          ref={trigger}
           type="button"
           className="mz-icon-button"
           aria-label={label}
@@ -555,6 +561,10 @@ export function Menu({
               className="mz-menu__item"
               aria-current={item.current ? 'true' : undefined}
               onClick={() => {
+                // Focus back on the trigger *before* the item goes: a sheet the item opens notes
+                // the focused element as its opener, and the unmounted item left it on <body>,
+                // so closing the sheet dropped a keyboard user at the top of the page (review).
+                trigger.current?.focus();
                 setOpen(false);
                 item.onSelect();
               }}

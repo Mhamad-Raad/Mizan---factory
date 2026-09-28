@@ -6,7 +6,7 @@ import type { MenuItem } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import { useApp } from '../lib/store.js';
 import { AppearanceMenus } from './Appearance.js';
-import { apiRequest } from '../lib/api.js';
+import { ApiError, apiRequest } from '../lib/api.js';
 import { useQueryClient } from '@tanstack/react-query';
 import { signOutEverywhereHere } from '../lib/signOut.js';
 import { useIdleLock } from '../lib/idle.js';
@@ -98,7 +98,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isSharedDevice = useApp((state) => state.preferences.sharedDevice);
   const [moreOpen, setMoreOpen] = useState(false);
   const title = useApp((state) => state.pageTitle);
-  const titleParts = splitTitle(title);
+  const titleParts = splitTitle(title, useApp((state) => state.pageTitleNumber));
   const collapsed = useApp((state) => state.preferences.sidebarCollapsed);
   const setPreference = useApp((state) => state.setPreference);
 
@@ -146,7 +146,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Idle auto-lock (FR-106, spec 2.8), at the timeout the server gives this device.
   const idleLockMinutes = useApp((state) => state.idleLockMinutes);
   const lockWhenIdle = useCallback(() => void lock(), [lock]);
-  useIdleLock(idleLockMinutes, lockWhenIdle);
+  // The server locks a session that sends nothing, and typing a long form sends nothing: while
+  // somebody works, `me` is asked at most once a minute (the idle clock throttles it). A locked
+  // or ended session in its answer is left to `me` itself to act on.
+  const keepAlive = useCallback(() => {
+    apiRequest<{ is_locked?: boolean }>('/auth/me').then(
+      (answer) => {
+        if (answer.is_locked) void queryClient.invalidateQueries({ queryKey: ['me'] });
+      },
+      (error: unknown) => {
+        // Offline says nothing about the session; a refusal (401, 423) does.
+        if (error instanceof ApiError) void queryClient.invalidateQueries({ queryKey: ['me'] });
+      },
+    );
+  }, [queryClient]);
+  useIdleLock(idleLockMinutes, lockWhenIdle, keepAlive);
 
   // One account menu, in the sidebar on a desktop and in the bar on a phone. "Lock the screen"
   // is on every device — a desk is walked away from too; the padlock in the bar stays the

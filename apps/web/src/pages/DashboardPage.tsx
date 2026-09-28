@@ -14,7 +14,7 @@ import { QueryStates } from '../components/states.js';
 import { ColumnChart } from '../components/charts/ColumnChart.js';
 import type { ChartSeries } from '../components/charts/ColumnChart.js';
 import { BarList } from '../components/charts/BarList.js';
-import { useFormatter, usePermission } from '../lib/store.js';
+import { useApp, useFormatter, usePermission } from '../lib/store.js';
 import type { OrderRow } from './OrdersPage.js';
 
 type Pair = { amount_iqd: number; amount_usd_cents: number };
@@ -51,15 +51,19 @@ interface Dashboard {
   debtors: Debtor[] | null;
 }
 
-/** Where each tile leads, so a number is never a dead end (spec 3.3). */
-const LINKS: Record<string, string> = {
-  sales_today: '/orders',
-  unpaid_orders: '/orders',
-  purchases_today: '/accounts',
-  we_owe_companies: '/customers',
-  low_stock: '/materials',
-  pending_returns: '/damages',
-  my_actions_today: '/history',
+/**
+ * Where each tile leads, so a number is never a dead end (spec 3.3) — and the key that page
+ * reads with. A tile somebody may see but whose page they may not open (the warehouse sees
+ * today's buys, not Accounts) is not a link: it led to "no access" (review).
+ */
+const LINKS: Record<string, { to: string; permission: string }> = {
+  sales_today: { to: '/orders', permission: 'orders.view' },
+  unpaid_orders: { to: '/orders', permission: 'orders.view' },
+  purchases_today: { to: '/accounts', permission: 'accounts.view' },
+  we_owe_companies: { to: '/customers', permission: 'customers.view' },
+  low_stock: { to: '/materials', permission: 'materials.view' },
+  pending_returns: { to: '/damages', permission: 'damages.view' },
+  my_actions_today: { to: '/history', permission: 'history.view' },
 };
 
 const ICONS: Record<string, IconName> = {
@@ -88,6 +92,9 @@ export function DashboardPage() {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const maySeeOrders = usePermission('orders.view');
+  const isAdmin = useApp((state) => state.user?.role === 'admin');
+  const permissions = useApp((state) => state.permissions);
+  const may = (key: string) => isAdmin || permissions.has(key);
   const [asTable, setAsTable] = useState(false);
 
   const dashboard = useQuery({
@@ -131,8 +138,9 @@ export function DashboardPage() {
             const count = tile.count ?? tile.balance?.count;
             // A tile whose every figure was withheld says nothing, so it is not shown.
             if (count === undefined && !money) return null;
-            return (
-              <Link key={tile.key} to={LINKS[tile.key] ?? '/'} className="mz-kpi">
+            const link = LINKS[tile.key];
+            const body = (
+              <>
                 <KpiHead icon={ICONS[tile.key] ?? 'clock'} label={t(`dashboard:tile.${tile.key}`)} />
                 {count !== undefined ? (
                   <span className="mz-kpi__count" data-tabular>
@@ -143,7 +151,16 @@ export function DashboardPage() {
                 {money ? (
                   <DualAmount amount_iqd={money.amount_iqd} amount_usd_cents={money.amount_usd_cents} />
                 ) : null}
+              </>
+            );
+            return link && may(link.permission) ? (
+              <Link key={tile.key} to={link.to} className="mz-kpi">
+                {body}
               </Link>
+            ) : (
+              <div key={tile.key} className="mz-kpi">
+                {body}
+              </div>
             );
           })}
         </div>

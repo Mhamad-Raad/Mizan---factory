@@ -36,7 +36,9 @@ interface AppState {
    * what to call itself.
    */
   pageTitle: string;
-  setPageTitle: (title: string) => void;
+  /** The record number inside `pageTitle`, when the page built it from a number template. */
+  pageTitleNumber: string | null;
+  setPageTitle: (title: string, number?: string | null) => void;
 
   user: SessionUser | null;
   permissions: ReadonlySet<string>;
@@ -113,16 +115,21 @@ export const useApp = create<AppState>((set, get) => ({
       permissions: new Set(permissions),
       isLocked,
       idleLockMinutes: idleLockMinutes === undefined ? state.idleLockMinutes : idleLockMinutes,
-      ...(state.user?.id === user.id ? {} : { pageTitle: '' }),
+      ...(state.user?.id === user.id ? {} : { pageTitle: '', pageTitleNumber: null }),
     }));
   },
   clearSession: () => {
     setDraftOwner(null);
-    set({ user: null, permissions: new Set<string>(), isLocked: false, pageTitle: '' });
+    set({ user: null, permissions: new Set<string>(), isLocked: false, pageTitle: '', pageTitleNumber: null });
   },
   pageTitle: '',
-  setPageTitle: (title) =>
-    set((state) => (state.pageTitle === title ? state : { pageTitle: title })),
+  pageTitleNumber: null,
+  setPageTitle: (title, number = null) =>
+    set((state) =>
+      state.pageTitle === title && state.pageTitleNumber === number
+        ? state
+        : { pageTitle: title, pageTitleNumber: number },
+    ),
   setLocked: (isLocked) => set({ isLocked }),
   setOnline: (isOnline) => set({ isOnline }),
 }));

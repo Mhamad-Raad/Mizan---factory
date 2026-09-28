@@ -3,6 +3,7 @@ import type { ErrorInfo, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, ErrorState } from '@mizan/ui';
 import { ChunkLoadError } from '../lib/chunk.js';
+import { usePageTitle } from '../lib/page-title.js';
 
 interface Props {
   /** Changes with the route: a new screen gets a fresh try, without a reload. */
@@ -63,6 +64,7 @@ class Boundary extends Component<
     // A <div>: the shell's own <main> is already around this, and a page has one main.
     return (
       <div>
+        <FailedTitle title={words.title} />
         <ErrorState
           title={words.title}
           body={words.body}
@@ -81,6 +83,12 @@ class Boundary extends Component<
       </div>
     );
   }
+}
+
+/** The failed screen's own name in the header and the tab, not the last page's (review). */
+function FailedTitle({ title }: { title: string }) {
+  usePageTitle(title);
+  return null;
 }
 
 export function RouteBoundary({ resetKey, onLeave, children }: Props) {

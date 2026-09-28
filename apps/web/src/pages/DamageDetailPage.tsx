@@ -46,6 +46,9 @@ export function DamageDetailPage() {
   const mayPaidMaterials = usePermission('companies.record_credit');
   const mayEdit = usePermission('damages.edit');
   const mayVoid = usePermission('damages.void');
+  // A company's page is the Customers page, which reads with `customers.view`; to somebody
+  // holding only `companies.view` the name is text, not a way to "no access" (review).
+  const mayOpenAccount = usePermission('customers.view');
 
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [tab, setTab] = useState<'overview' | 'history'>('overview');
@@ -73,9 +76,9 @@ export function DamageDetailPage() {
     await invalidateMoneyViews(queryClient);
   };
 
-  // Each write holds one key across its retries, renewed only by its success (FR-1305).
-  const paidBackKey = useIdempotencyKey();
-  const voidKey = useIdempotencyKey();
+  // Each opening of a sheet holds one key across its retries (FR-1305), scoped to this record.
+  const paidBackKey = useIdempotencyKey(`paid-back:${id}:${sheet ?? ''}`);
+  const voidKey = useIdempotencyKey(`void:${id}:${sheet ?? ''}`);
 
   const paidBack = useMutation({
     mutationFn: (body: { method: 'money' | 'materials'; entry_date: string; note: string | null }) =>
@@ -123,7 +126,8 @@ export function DamageDetailPage() {
       <DualAmount amount_iqd={record.cost.est_value_iqd} amount_usd_cents={record.cost.est_value_usd_cents ?? 0} />
     ) : null;
 
-  usePageTitle(record ? t('damages:number', { number: formatter.identifier(record.number) }) : t('damages:title'));
+  const titleNumber = record ? formatter.identifier(record.number) : null;
+  usePageTitle(titleNumber ? t('damages:number', { number: titleNumber }) : t('damages:title'), { number: titleNumber });
 
   return (
     <div className="mz-stack">
@@ -185,10 +189,12 @@ export function DamageDetailPage() {
                   <div className="mz-figure">
                     <span className="mz-figure__label">{t('damages:who_did_it')}</span>
                     <span className="mz-figure__value">
-                      {isCompany ? (
+                      {isCompany && mayOpenAccount ? (
                         <Link to={`/customers/${record.company_id}`} className="mz-quiet-link">
                           <bdi>{record.company_name}</bdi>
                         </Link>
+                      ) : isCompany ? (
+                        <bdi>{record.company_name}</bdi>
                       ) : (
                         t('damages:who.us')
                       )}
@@ -279,9 +285,13 @@ export function DamageDetailPage() {
                     <li key={credit.entry_id} className="mz-list__item">
                       <span className="mz-list__body">
                         <span className="mz-list__title">
-                          <Link to={`/customers/${credit.owner_id}`} className="mz-quiet-link">
+                          {mayOpenAccount ? (
+                            <Link to={`/customers/${credit.owner_id}`} className="mz-quiet-link">
+                              <bdi>{credit.owner_name}</bdi>
+                            </Link>
+                          ) : (
                             <bdi>{credit.owner_name}</bdi>
-                          </Link>
+                          )}
                         </span>
                         <span className="mz-caption">
                           {formatter.date(credit.entry_date)}

@@ -3373,7 +3373,9 @@ html[data-mirroring='true'] body {
   text-decoration: none;
 }
 
-.mz-kpi:hover {
+/* Only a tile that leads somewhere answers the pointer; one whose page the reader may not open
+   is plain text. */
+.mz-kpi:is(a, button):hover {
   border-color: var(--color-border-strong);
 }
 

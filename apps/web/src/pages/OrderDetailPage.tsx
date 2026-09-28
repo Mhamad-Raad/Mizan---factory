@@ -151,10 +151,11 @@ export function OrderDetailPage() {
     await invalidateMoneyViews(queryClient);
   };
 
-  // Each write holds one key across its retries, renewed only by its success (FR-1305).
-  const paymentKey = useIdempotencyKey();
-  const typeKey = useIdempotencyKey();
-  const voidKey = useIdempotencyKey();
+  // Each opening of a sheet holds one key across its retries (FR-1305), scoped to this order, so
+  // the next order's payment never carries a key this one already used.
+  const paymentKey = useIdempotencyKey(`payment:${id}:${paying}`);
+  const typeKey = useIdempotencyKey(`type:${id}:${changingType}`);
+  const voidKey = useIdempotencyKey(`void:${id}:${voiding}`);
 
   const payment = useMutation({
     mutationFn: (body: unknown) =>
@@ -212,7 +213,8 @@ export function OrderDetailPage() {
   const excessNeeded =
     payment.error instanceof ApiError && payment.error.fieldError('amount')?.code === 'EXCEEDS_REMAINING';
 
-  usePageTitle(data ? t('orders:number', { number: formatter.identifier(data.number) }) : t('orders:title'));
+  const titleNumber = data ? formatter.identifier(data.number) : null;
+  usePageTitle(titleNumber ? t('orders:number', { number: titleNumber }) : t('orders:title'), { number: titleNumber });
 
   return (
     <>

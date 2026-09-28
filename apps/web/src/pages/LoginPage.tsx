@@ -50,7 +50,7 @@ export function LoginPage() {
       });
       // Whatever the last person left on this device — cached answers, drafts — goes before the
       // new session's first screen, however their session ended (2.10.2).
-      forgetPreviousUser(queryClient);
+      forgetPreviousUser(queryClient, response.user.id);
       setSession({ user: response.user, permissions: response.permissions });
       rememberUser({
         username: response.user.username,

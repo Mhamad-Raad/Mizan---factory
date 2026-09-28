@@ -69,8 +69,8 @@ export function PurchaseDetailPage() {
     await invalidateMoneyViews(queryClient);
   };
 
-  // One key for the void, held across its retries and renewed only by its success (FR-1305).
-  const voidKey = useIdempotencyKey();
+  // One key per opening of the void sheet, held across its retries (FR-1305).
+  const voidKey = useIdempotencyKey(`void:${id}:${voiding}`);
 
   const voidPurchase = useMutation({
     mutationFn: () =>
@@ -96,7 +96,10 @@ export function PurchaseDetailPage() {
   const settlement = data?.settlement_currency ?? 'IQD';
   const active = data?.doc_status === 'active';
 
-  usePageTitle(data ? t('purchases:number', { number: formatter.identifier(data.number) }) : t('purchases:title'));
+  const titleNumber = data ? formatter.identifier(data.number) : null;
+  usePageTitle(titleNumber ? t('purchases:number', { number: titleNumber }) : t('purchases:title'), {
+    number: titleNumber,
+  });
 
   return (
     <>

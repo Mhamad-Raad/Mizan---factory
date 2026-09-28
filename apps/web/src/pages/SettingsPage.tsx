@@ -89,8 +89,10 @@ function GlobalRateCard() {
   });
   useKeepPageInRange(paging, rates);
 
-  // One key for this rate, held across its retries and renewed only by its success (FR-1305).
-  const saveKey = useIdempotencyKey();
+  // One key for this rate, held across its retries and renewed by its success (FR-1305). What
+  // was typed is its scope: a different rate after a lost reply is a different write, not one
+  // the server must refuse as a mismatch.
+  const saveKey = useIdempotencyKey(`rate:${value.trim()}:${note.trim()}`);
   const save = useMutation({
     mutationFn: () =>
       apiRequest<GlobalRate['current']>('/settings/global-rates', {

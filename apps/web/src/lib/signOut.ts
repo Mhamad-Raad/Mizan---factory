@@ -1,16 +1,19 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { apiRequest } from './api.js';
-import { clearAllDrafts } from './drafts.js';
+import { clearDraftsExcept } from './drafts.js';
 
 /**
  * Forget everything the previous person left on this device: every cached answer (their
- * customers, balances, prices) and every unsaved draft (2.10.2). Used on sign-out and when
- * somebody else takes over the tablet, so the next person never sees the last one's data in
- * the moment before their own arrives (security review, finding 8).
+ * customers, balances, prices) and their unsaved drafts (2.10.2). Used on sign-out and when
+ * somebody signs in or takes over the tablet, so the next person never sees the last one's data
+ * in the moment before their own arrives (security review, finding 8).
+ *
+ * `keepDraftsOf` is the user signing in: their own drafts stay (a session that expired is not a
+ * sign-out), everybody else's go. Left out, as on sign-out, every draft goes.
  */
-export function forgetPreviousUser(queryClient: QueryClient): void {
+export function forgetPreviousUser(queryClient: QueryClient, keepDraftsOf: string | null = null): void {
   queryClient.clear();
-  clearAllDrafts();
+  clearDraftsExcept(keepDraftsOf);
 }
 
 /**

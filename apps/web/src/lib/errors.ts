@@ -10,6 +10,9 @@ import { ApiError, NetworkError } from './api.js';
 export function errorMessage(t: TFunction, error: unknown): string | null {
   if (error === null || error === undefined) return null;
   if (error instanceof ApiError) {
+    // Not "the request was sent with different data", which the employee cannot act on: an
+    // earlier attempt whose reply was lost was saved, and the page has been read again.
+    if (error.code === 'IDEMPOTENCY_MISMATCH') return t('common:earlier_attempt_saved');
     const field = error.fields[0];
     if (field) return t(field.message_key, { ...field.params, defaultValue: t(error.messageKey, { ...error.params, defaultValue: t('errors:INTERNAL') }) });
     return t(error.messageKey, { ...error.params, defaultValue: t('errors:INTERNAL') });

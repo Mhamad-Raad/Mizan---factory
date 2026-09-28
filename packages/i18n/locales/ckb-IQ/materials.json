@@ -62,5 +62,6 @@
   "hide_used_up": "شاردنەوەی کڕینە تەواوبووەکان",
   "lot_at": "{{quantity}} بە {{price}}",
   "stock_by_price_short": "لە کۆگا: {{lots}}",
-  "stock_left_short": "ماوە لە هەر کڕینێک: {{lots}}"
+  "stock_left_short": "ماوە لە هەر کڕینێک: {{lots}}",
+  "used_up_heading": "کڕینە تەواوبووەکان، نوێترین سەرەتا"
 }

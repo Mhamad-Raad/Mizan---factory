@@ -52,6 +52,11 @@ function onRefusal(error: unknown): void {
   if (error.code === 'PASSWORD_CHANGE_REQUIRED') {
     void queryClient.invalidateQueries({ queryKey: ['me'] });
   }
+  // A write refused because its key already saved something else: that earlier attempt reached
+  // the server while its reply was lost, so the page is read again to show what was saved.
+  if (error.code === 'IDEMPOTENCY_MISMATCH') {
+    void queryClient.invalidateQueries();
+  }
   if (error.status === 423 || error.code === 'SESSION_LOCKED') {
     const state = useApp.getState();
     if (state.user && !state.isLocked) state.setLocked(true);

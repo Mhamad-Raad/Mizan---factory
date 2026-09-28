@@ -183,12 +183,14 @@ export function CustomerDetailPage() {
     await queryClient.invalidateQueries({ queryKey: ['orders'] });
     await invalidateMoneyViews(queryClient);
   };
-  // One key per kind of write, held across its retries and renewed by its success (FR-1305).
-  const paymentKey = useIdempotencyKey();
-  const entryKey = useIdempotencyKey();
-  const rateKey = useIdempotencyKey();
-  const currencyKey = useIdempotencyKey();
-  const updateKey = useIdempotencyKey();
+  // One key per opening of a sheet, held across its retries (FR-1305): the record, the sheet and
+  // the kind of entry are its scope, so a refund never carries the key a credit already used.
+  const opening = `${id}:${sheet ?? ''}:${entrySheet ?? ''}`;
+  const paymentKey = useIdempotencyKey(`payment:${opening}`);
+  const entryKey = useIdempotencyKey(`entry:${opening}`);
+  const rateKey = useIdempotencyKey(`rate:${opening}`);
+  const currencyKey = useIdempotencyKey(`currency:${opening}`);
+  const updateKey = useIdempotencyKey(`update:${opening}`);
   const post =
     (path: string, key: IdempotencyKey, method: 'POST' | 'PUT' | 'PATCH' = 'POST') =>
     (body: unknown) =>

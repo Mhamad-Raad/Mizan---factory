@@ -10,8 +10,7 @@ import { NoAccess } from './components/Can.js';
 import { loadTwice } from './lib/chunk.js';
 import { ApiError, apiRequest } from './lib/api.js';
 import { useApp } from './lib/store.js';
-import { clearAllDrafts } from './lib/drafts.js';
-import { forgetPreviousUser } from './lib/signOut.js';
+import { usePageTitle } from './lib/page-title.js';
 import type { SessionUser } from './lib/store.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { LockPage } from './pages/LockPage.js';
@@ -86,8 +85,10 @@ function landingFor(user: SessionUser | null, permissions: string[]): string {
   if (may('dashboard.view')) return '/dashboard';
   if (may('orders.view')) return '/orders';
   if (may('materials.view')) return '/materials';
+  // Customers only for `customers.view`: the page and its API read with that key, so a user
+  // holding only `companies.view` landed on "no access", and its "go to my start page" sent
+  // them back to it (review).
   if (may('customers.view')) return '/customers';
-  if (may('companies.view')) return '/customers';
   if (may('damages.view')) return '/damages';
   if (may('accounts.view')) return '/accounts';
   if (user?.role === 'admin') return '/users';
@@ -115,7 +116,6 @@ interface MeResponse {
 }
 
 export function App() {
-  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const user = useApp((state) => state.user);
@@ -159,11 +159,12 @@ export function App() {
       });
     if (me.error instanceof ApiError && me.error.status === 401) {
       // The session is over — expired, revoked, or signed out in another tab. Whoever picks the
-      // tablet up next must not see the last person's cached figures or be offered their drafts,
-      // so this forgets them as a sign-out would. Only when somebody *was* signed in: clearing
-      // the cache drops `me` too, and its re-ask must not start the same round again.
-      if (useApp.getState().user) forgetPreviousUser(queryClient);
-      else clearAllDrafts();
+      // tablet up next must not see the last person's cached figures, so the cache goes. Their
+      // drafts stay: they are stored under their own id and offered to nobody else, and the
+      // sign-in that follows clears everybody else's (2.10.2) — an expiry mid-order must not cost
+      // the order. Only when somebody *was* signed in: clearing the cache drops `me` too, and its
+      // re-ask must not start the same round again.
+      if (useApp.getState().user) queryClient.clear();
       clearSession();
     }
   }, [me.data, me.error, setSession, clearSession, queryClient]);
@@ -296,23 +297,28 @@ export function App() {
               path="/"
               element={<Navigate to={landingFor(user, [...sessionPermissions])} replace />}
             />
-            <Route
-              path="*"
-              element={
-                // A <div>: the shell's own <main> is already around this.
-                <div>
-                  <ErrorState
-                    title={t('common:not_found_title')}
-                    body={t('common:not_found_body')}
-                    action={<Button onClick={() => navigate('/')}>{t('common:back')}</Button>}
-                  />
-                </div>
-              }
-            />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </RouteBoundary>
     </AppShell>
+  );
+}
+
+/** An address that is no screen; it names itself, or the last page's title stays (review). */
+function NotFound() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  usePageTitle(t('common:not_found_title'));
+  return (
+    // A <div>: the shell's own <main> is already around this.
+    <div>
+      <ErrorState
+        title={t('common:not_found_title')}
+        body={t('common:not_found_body')}
+        action={<Button onClick={() => navigate('/')}>{t('common:back')}</Button>}
+      />
+    </div>
   );
 }
 

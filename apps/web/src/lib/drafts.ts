@@ -103,13 +103,23 @@ export function createDraftKeeper<T>(form: string, id = 'new'): DraftKeeper<T> {
   };
 }
 
-/** Every draft of every form, cleared on sign-out and on a user switch (spec 2.10.2). */
+/** Every draft of every form, cleared on sign-out (spec 2.10.2). */
 export function clearAllDrafts(): void {
+  clearDraftsExcept(null);
+}
+
+/**
+ * Every draft but `userId`'s, cleared when somebody signs in (spec 2.10.2: a user switch clears
+ * them). The one signing in keeps their own: a session that expired, or a 401 on a fresh load,
+ * is not a sign-out, and the order they were half-way through is still theirs.
+ */
+export function clearDraftsExcept(userId: string | null): void {
+  const own = userId === null ? null : `${PREFIX}${userId}.`;
   try {
     const keys: string[] = [];
     for (let index = 0; index < window.localStorage.length; index += 1) {
       const key = window.localStorage.key(index);
-      if (key?.startsWith(PREFIX)) keys.push(key);
+      if (key?.startsWith(PREFIX) && (own === null || !key.startsWith(own))) keys.push(key);
     }
     for (const key of keys) window.localStorage.removeItem(key);
   } catch {

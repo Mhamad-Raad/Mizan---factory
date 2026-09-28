@@ -102,5 +102,6 @@
   "screen_failed_body": "Something went wrong on this device, not with your connection. Reload, or go back and try again.",
   "no_access_title": "You don't have access to this page",
   "go_home": "Go to my start page",
-  "deactivate_material_body": "It is no longer offered for new orders and buys. Everything already recorded stays as it is, and it can be reactivated at any time."
+  "deactivate_material_body": "It is no longer offered for new orders and buys. Everything already recorded stays as it is, and it can be reactivated at any time.",
+  "earlier_attempt_saved": "An earlier attempt was already saved. The page has been refreshed; check it before saving again."
 }

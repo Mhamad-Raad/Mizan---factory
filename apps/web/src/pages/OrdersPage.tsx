@@ -103,8 +103,9 @@ export function OrdersPage() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  // One key for the undo, held across its retries and renewed only by its success (FR-1305).
-  const undoKey = useIdempotencyKey();
+  // One key per order the toast offers to undo, held across its retries (FR-1305): the next
+  // order's undo never carries a key this one already used.
+  const undoKey = useIdempotencyKey(`undo:${toast?.orderId ?? ''}`);
   const undo = useMutation({
     mutationFn: (orderId: string) =>
       apiRequest(`/orders/${orderId}/undo`, {

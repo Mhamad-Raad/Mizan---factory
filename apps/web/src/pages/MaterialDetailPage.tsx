@@ -180,10 +180,11 @@ export function MaterialDetailPage() {
   });
   const historyNext = history.data?.next_cursor ?? null;
 
-  // Each write holds one key across its retries, renewed only by its success (FR-1305).
-  const pricesKey = useIdempotencyKey();
-  const addStockKey = useIdempotencyKey();
-  const activeKey = useIdempotencyKey();
+  // Each opening of a sheet holds one key across its retries (FR-1305), scoped to this material,
+  // the month and the direction, so no other write ever carries a key one of these used.
+  const pricesKey = useIdempotencyKey(`prices:${id}:${priceSheet?.month ?? ''}`);
+  const addStockKey = useIdempotencyKey(`add-stock:${id}:${adding}`);
+  const activeKey = useIdempotencyKey(`active:${id}:${item.data?.is_active ?? ''}:${confirmingDeactivate}`);
 
   const savePrices = useMutation({
     mutationFn: (input: { month: string; body: unknown; version: number | null }) =>
@@ -332,8 +333,18 @@ export function MaterialDetailPage() {
                 pricedMeasure={item.data.stock.priced_measure}
                 showUsedUp={showUsedUp}
                 onToggleUsedUp={() => setShowUsedUp(!showUsedUp)}
+                usedUpError={
+                  usedUpLots.isError
+                    ? {
+                        message: errorMessage(t, usedUpLots.error) ?? t('errors:INTERNAL'),
+                        // A later page that failed is asked for again; a first one, from the top.
+                        retry: () =>
+                          void (usedUpLots.isFetchNextPageError ? usedUpLots.fetchNextPage() : usedUpLots.refetch()),
+                      }
+                    : null
+                }
                 moreUsedUp={
-                  showUsedUp && usedUpLots.hasNextPage
+                  !usedUpLots.isError && showUsedUp && usedUpLots.hasNextPage
                     ? { loading: usedUpLots.isFetchingNextPage, load: () => void usedUpLots.fetchNextPage() }
                     : null
                 }
@@ -748,7 +759,7 @@ export function MaterialDetailPage() {
 /**
  * The stock split by what we paid (D-062): every buy of the material, oldest first — the order a
  * sale takes them in — with how much of it is left and what each one cost. Used-up buys fold
- * away behind a toggle; each row opens the buy it describes.
+ * away behind a toggle, as their own group.
  */
 function StockByPrice({
   lots,
@@ -759,6 +770,7 @@ function StockByPrice({
   showUsedUp,
   onToggleUsedUp,
   moreUsedUp,
+  usedUpError,
   action,
 }: {
   /** The buys with stock left, oldest first. */
@@ -772,18 +784,18 @@ function StockByPrice({
   onToggleUsedUp: () => void;
   /** Another page of used-up buys, when there is one. */
   moreUsedUp: { loading: boolean; load: () => void } | null;
+  /** The used-up buys could not be read: what to say, and how to ask again. */
+  usedUpError: { message: string; retry: () => void } | null;
   action: ReactNode;
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
+  const mayOpenBuys = usePermission('purchases.view');
   const unit = pricedMeasure === 'kg' ? ` ${t('common:kg_symbol')}` : '';
-  // One list, oldest first — the order a sale takes them in — whichever request each buy came from.
-  const shown = showUsedUp
-    ? [...lots, ...usedUp].sort(
-        (left, right) =>
-          left.bought_on.localeCompare(right.bought_on) || left.purchase_number - right.purchase_number,
-      )
-    : lots;
+  const row = (lot: Lot) => (
+    <LotRow key={lot.purchase_line_id} lot={lot} unit={unit} link={mayOpenBuys} />
+  );
+  const nothing = lots.length === 0 && (!showUsedUp || (usedUp.length === 0 && !usedUpError));
 
   return (
     <Card>
@@ -795,50 +807,48 @@ function StockByPrice({
         {action}
       </div>
 
-      {loading ? null : shown.length === 0 ? (
+      {loading ? null : nothing ? (
         <p className="mz-muted" style={{ marginBlockStart: 'var(--space-3)' }}>
           {t('materials:no_stock_bought')}
         </p>
       ) : (
-        <ul className="mz-list" style={{ marginBlockStart: 'var(--space-2)' }}>
-          {shown.map((lot) => (
-            <li key={lot.purchase_line_id}>
-              <Link
-                to={`/purchases/${lot.purchase_id}`}
-                className="mz-list__item mz-list__item--interactive mz-list__item--detail"
-              >
-                <span className="mz-list__body">
-                  <span className="mz-list__title" data-tabular>
-                    {t('materials:left_of', {
-                      // Pieces are whole: the API's "125.000" reads "125".
-                      left: `${formatter.quantity(lot.remaining)}${unit}`,
-                      total: `${formatter.quantity(lot.quantity)}${unit}`,
-                    })}
-                  </span>
-                  <span className="mz-caption">
-                    {t('materials:bought_on_date', { date: formatter.date(lot.bought_on) })}
-                    {' · '}
-                    {t('purchases:number', { number: formatter.identifier(lot.purchase_number) })}
-                  </span>
-                </span>
-                {lot.unit_cost_iqd !== undefined && lot.unit_cost_usd_cents !== undefined ? (
-                  <span className="mz-list__end">
-                    <DualAmount
-                      amount_iqd={lot.unit_cost_iqd}
-                      amount_usd_cents={lot.unit_cost_usd_cents}
-                      primary={lot.entered_currency}
-                    />
-                    <span className="mz-caption" style={{ display: 'block' }}>
-                      {t('materials:each')}
-                    </span>
-                  </span>
-                ) : null}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <>
+          {lots.length > 0 ? (
+            <ul className="mz-list" style={{ marginBlockStart: 'var(--space-2)' }}>
+              {lots.map(row)}
+            </ul>
+          ) : null}
+          {/*
+           * The used-up buys are their own group, newest first — the order their pages arrive in —
+           * so "show more" adds rows directly above itself. Sorted into the open buys, oldest
+           * first, the next page landed at the top of the card, far from the thumb (review).
+           */}
+          {showUsedUp && usedUp.length > 0 ? (
+            <>
+              <h4 className="mz-caption" style={{ marginBlockStart: 'var(--space-3)' }}>
+                {t('materials:used_up_heading')}
+              </h4>
+              <ul className="mz-list" style={{ marginBlockStart: 'var(--space-2)' }}>
+                {usedUp.map(row)}
+              </ul>
+            </>
+          ) : null}
+        </>
       )}
 
+      {/* A page of used-up buys that did not arrive says so, rather than implying there are none. */}
+      {showUsedUp && usedUpError ? (
+        <div
+          className="mz-warning mz-row mz-row--between"
+          role="alert"
+          style={{ gap: 'var(--space-2)', flexWrap: 'wrap', marginBlockStart: 'var(--space-2)' }}
+        >
+          <span>{usedUpError.message}</span>
+          <Button variant="secondary" onClick={usedUpError.retry}>
+            {t('common:retry')}
+          </Button>
+        </div>
+      ) : null}
       {moreUsedUp ? (
         <Button variant="ghost" loading={moreUsedUp.loading} onClick={moreUsedUp.load}>
           {t('customers:show_more')}
@@ -852,6 +862,59 @@ function StockByPrice({
         </Button>
       ) : null}
     </Card>
+  );
+}
+
+/**
+ * One buy: how much of it is left and what each one cost. It opens the buy it describes — for
+ * somebody who may open buys; the sales preset may not, and the row led to "no access" (review).
+ */
+function LotRow({ lot, unit, link }: { lot: Lot; unit: string; link: boolean }) {
+  const { t } = useTranslation();
+  const formatter = useFormatter();
+  const content = (
+    <>
+      <span className="mz-list__body">
+        <span className="mz-list__title" data-tabular>
+          {t('materials:left_of', {
+            // Pieces are whole: the API's "125.000" reads "125".
+            left: `${formatter.quantity(lot.remaining)}${unit}`,
+            total: `${formatter.quantity(lot.quantity)}${unit}`,
+          })}
+        </span>
+        <span className="mz-caption">
+          {t('materials:bought_on_date', { date: formatter.date(lot.bought_on) })}
+          {' · '}
+          {t('purchases:number', { number: formatter.identifier(lot.purchase_number) })}
+        </span>
+      </span>
+      {lot.unit_cost_iqd !== undefined && lot.unit_cost_usd_cents !== undefined ? (
+        <span className="mz-list__end">
+          <DualAmount
+            amount_iqd={lot.unit_cost_iqd}
+            amount_usd_cents={lot.unit_cost_usd_cents}
+            primary={lot.entered_currency}
+          />
+          <span className="mz-caption" style={{ display: 'block' }}>
+            {t('materials:each')}
+          </span>
+        </span>
+      ) : null}
+    </>
+  );
+  return (
+    <li>
+      {link ? (
+        <Link
+          to={`/purchases/${lot.purchase_id}`}
+          className="mz-list__item mz-list__item--interactive mz-list__item--detail"
+        >
+          {content}
+        </Link>
+      ) : (
+        <div className="mz-list__item mz-list__item--detail">{content}</div>
+      )}
+    </li>
   );
 }
 
