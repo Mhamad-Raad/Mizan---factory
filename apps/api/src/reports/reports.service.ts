@@ -337,8 +337,10 @@ export class ReportsService {
     }));
 
     // The totals are the period's, over every customer — the window functions computed them
-    // before the page was taken, so every page carries the period's totals (D-058).
-    const first = rows[0];
+    // before the page was taken, so every page carries the period's totals (D-058). A page past
+    // the end has no row to carry them; the first row is read for them instead, so it never
+    // answers "nobody owes anything" (review).
+    const first = rows[0] ?? (paging.offset > 0 ? (await this.reports.receivables(filters, firstRowOnly))[0] : undefined);
     return {
       ...meta,
       group_by: 'customer',
@@ -384,8 +386,9 @@ export class ReportsService {
       },
     }));
 
-    // The totals are over every company, computed before the page was taken (D-058, D-075).
-    const first = rows[0];
+    // The totals are over every company, computed before the page was taken (D-058, D-075); past
+    // the last page they are read from the first row, as for Receivables (review).
+    const first = rows[0] ?? (paging.offset > 0 ? (await this.reports.payables(filters, firstRowOnly))[0] : undefined);
     const groupCount = Number(first?.group_count ?? 0);
     return {
       ...meta,
@@ -633,3 +636,6 @@ function stockValue(fromLots: string | null, monthPrice: number | null, unbought
   if (monthPrice === null) return fromLots === null ? null : Number(fromLots);
   return (fromLots === null ? 0 : Number(fromLots)) + roundHalfAwayFromZero(new Decimal(monthPrice).times(unbought));
 }
+
+/** The first row alone: enough to read the totals every row of these reports carries. */
+const firstRowOnly = { page: 1, page_size: 1, offset: 0 };

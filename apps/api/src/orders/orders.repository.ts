@@ -423,14 +423,16 @@ export class OrdersRepository {
         };
       }
       if (status === 'paid') {
-        const paid = active.orders - owed.owing.orders;
+        // A difference of two reads taken a moment apart: a save landing between them could
+        // make it negative for that moment, which a count must never show (review).
+        const paid = Math.max(active.orders - owed.owing.orders, 0);
         return {
           rows: list.rows,
           total: paid,
           totals: {
             orders: paid,
-            total_iqd: active.total_iqd - owed.owing.total_iqd,
-            total_usd_cents: active.total_usd_cents - owed.owing.total_usd_cents,
+            total_iqd: Math.max(active.total_iqd - owed.owing.total_iqd, 0),
+            total_usd_cents: Math.max(active.total_usd_cents - owed.owing.total_usd_cents, 0),
             balance: { owing: 0, owed_iqd: 0, owed_usd_cents: 0 },
           },
         };

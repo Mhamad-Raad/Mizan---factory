@@ -87,6 +87,22 @@ describe('the fifth review', () => {
     expect(lockedAt).not.toBeNull();
   });
 
+  it('keeps the true totals on a Receivables page past the end', async () => {
+    const admin = await seedUser({ username: 'admin.five', role: 'admin' });
+    const session = await signIn(ctx.http, admin);
+    await as(ctx.http, session).post('/api/v1/settings/global-rates').send({ rate_iqd_per_usd: '1310' }).expect(201);
+    const company = await as(ctx.http, session).post('/api/v1/customers').send({ name: 'Kawa Trading' }).expect(201);
+    await as(ctx.http, session)
+      .post(`/api/v1/customers/${company.body.id}/opening-balance`)
+      .send({ amount: 50_000, currency: 'IQD', entry_date: '2026-09-01', note: 'from the old books' })
+      .expect(201);
+    const first = await as(ctx.http, session).get('/api/v1/reports/receivables?from=2026-09-01&to=2026-09-28').expect(200);
+    const past = await as(ctx.http, session).get('/api/v1/reports/receivables?from=2026-09-01&to=2026-09-28&page=99').expect(200);
+    expect(past.body.groups).toHaveLength(0);
+    expect(past.body.totals).toEqual(first.body.totals);
+    expect(past.body.group_count).toBe(first.body.group_count);
+  });
+
   it("does not let a request whose key was taken over complete the new owner's reservation", async () => {
     const admin = await seedUser({ username: 'admin.five', role: 'admin' });
     const session = await signIn(ctx.http, admin);
