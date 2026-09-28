@@ -317,10 +317,14 @@ export class DashboardController {
       usd_cents: string;
       companies: string;
     }>(
+      // Only the companies we owe — a positive balance in their own currency — and only theirs:
+      // netting every account, credits included, and counting every company that ever had a
+      // row answered a different question from the tile's (review).
       `SELECT coalesce(sum(l.amount_iqd), 0)::text AS iqd,
               coalesce(sum(l.amount_usd_cents), 0)::text AS usd_cents,
               count(DISTINCT l.company_id)::text AS companies
-         FROM company_ledger l`,
+         FROM company_ledger l
+         JOIN company_balances b ON b.company_id = l.company_id AND b.balance > 0`,
     );
     return [
       {

@@ -59,13 +59,25 @@ export type SettleInFullResult =
  * A difference larger than the tolerance is not a rate: it is a discount or a credit, and the
  * caller must refuse it (`RECEIVED_AMOUNT_OUT_OF_TOLERANCE`, spec 2.9.2).
  */
+/**
+ * "Settle in full" refused because what was handed over differs from what is owed by more than
+ * the tolerance: a discount or a credit, not a rate. Its own type, so a caller can tell it
+ * apart from a number the kernel could not use at all (review).
+ */
+export class OutOfToleranceError extends RangeError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OutOfToleranceError';
+  }
+}
+
 export function settleInFull(input: SettleInFullInput): SettleInFullResult {
   const tolerance = input.tolerance ?? SETTLEMENT_TOLERANCE_DEFAULTS;
 
   if (input.received_currency === input.settlement_currency) {
     const shortfall = input.remaining - input.received_amount;
     if (!withinTolerance(shortfall, input.settlement_currency, tolerance)) {
-      throw new RangeError(
+      throw new OutOfToleranceError(
         `shortfall ${shortfall} exceeds the settlement tolerance for ${input.settlement_currency}`,
       );
     }
@@ -87,7 +99,7 @@ export function settleInFull(input: SettleInFullInput): SettleInFullResult {
   const expected = convert(input.remaining, input.settlement_currency, input.rate);
   const difference = expected - input.received_amount;
   if (!withinTolerance(difference, input.received_currency, tolerance)) {
-    throw new RangeError(
+    throw new OutOfToleranceError(
       `received ${input.received_amount} differs from ${expected} by more than the tolerance for ${input.received_currency}`,
     );
   }

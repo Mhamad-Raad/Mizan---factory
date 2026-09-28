@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { checkStockForSale, liveMovements, pricedStock, reversalOfMovement, stockOf } from '@mizan/ledger';
 import type { ItemStock, NewStockMovement, StockMovement } from '@mizan/ledger';
+import { Decimal } from '@mizan/money';
 import type { Measure } from '@mizan/money';
 import { ApiError } from '../common/errors.js';
 import type { Db } from '../database/pool.js';
@@ -215,11 +216,12 @@ export class StockService {
     }[] = [];
 
     // Several lines can name the same material; the check is on the total leaving stock.
-    const requested = new Map<string, { quantity: number; line: (typeof lines)[number] }>();
+    // Summed as decimals: 0.1 kg + 0.2 kg is 0.300, not 0.30000000000000004 (review).
+    const requested = new Map<string, { quantity: Decimal; line: (typeof lines)[number] }>();
     for (const line of lines) {
       const existing = requested.get(line.item_id);
       requested.set(line.item_id, {
-        quantity: (existing?.quantity ?? 0) + Number(line.quantity),
+        quantity: (existing?.quantity ?? new Decimal(0)).plus(line.quantity),
         line,
       });
     }
@@ -229,7 +231,7 @@ export class StockService {
       const priced = pricedStock(stock, line.priced_measure === 'count' ? 'per_piece' : 'per_kg');
       const check = checkStockForSale({
         available: priced.quantity,
-        requested: String(quantity),
+        requested: quantity.toString(),
         measure: line.priced_measure,
         allow_negative: allowNegative,
         complete: priced.complete,

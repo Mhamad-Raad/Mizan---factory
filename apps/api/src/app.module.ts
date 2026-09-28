@@ -18,6 +18,7 @@ import { IdParamPipe } from './common/id-param.pipe.js';
 import { RequestIdMiddleware } from './common/request-id.middleware.js';
 import { SensitiveFieldInterceptor } from './common/sensitive-field.interceptor.js';
 import { Database } from './database/pool.js';
+import { HousekeepingService } from './database/housekeeping.service.js';
 import { HealthController } from './health/health.controller.js';
 import { CompaniesController } from './companies/companies.controller.js';
 import { CompaniesRepository } from './companies/companies.repository.js';
@@ -85,6 +86,7 @@ import { UsersService } from './users/users.service.js';
   providers: [
     { provide: ENV, useFactory: (): Env => loadEnv() },
     Database,
+    HousekeepingService,
     AuditService,
     PasswordService,
     SessionService,

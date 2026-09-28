@@ -66,10 +66,6 @@ export class CustomersRepository {
     return rows[0] ?? null;
   }
 
-  /** The same read as `findById`; kept for the callers that name it (D-056). */
-  async findByIdUnscoped(id: string, tx?: Db): Promise<CustomerRow | null> {
-    return this.findById(id, tx);
-  }
 
   async lock(id: string, tx: Db): Promise<CustomerRow | null> {
     const { rows } = await tx.query<CustomerRow>(

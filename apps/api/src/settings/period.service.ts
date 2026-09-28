@@ -17,9 +17,7 @@ export class PeriodService {
    * that covers a period rather than an account's whole life (D-025).
    */
   monthsAgo(months: number): string {
-    const [year, month, day] = this.today().split('-').map(Number) as [number, number, number];
-    const shifted = new Date(Date.UTC(year, month - 1 - months, day));
-    return shifted.toISOString().slice(0, 10);
+    return monthsBefore(this.today(), months);
   }
 
   /** Back-dating is allowed and logged; a date in the future is not (FR-601). */
@@ -35,4 +33,16 @@ export class PeriodService {
       ]);
     }
   }
+}
+
+/**
+ * The same day some months earlier, clamped to that month's last day: 31 May less three
+ * months is 28 or 29 February, not "31 February" rolled over into 3 March (review).
+ */
+export function monthsBefore(isoDate: string, months: number): string {
+  const [year, month, day] = isoDate.split('-').map(Number) as [number, number, number];
+  const target = new Date(Date.UTC(year, month - 1 - months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString().slice(0, 10);
 }

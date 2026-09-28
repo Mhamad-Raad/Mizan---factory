@@ -13,6 +13,8 @@ const WAIT_FOR_IN_FLIGHT_MS = 5_000;
 const POLL_INTERVAL_MS = 100;
 /** `response_status = 0` marks a reservation: the work is running, no response yet. */
 const IN_FLIGHT = 0;
+/** A reservation older than this was left by a request that never finished (an API restart). */
+const STALE_IN_FLIGHT_MINUTES = 2;
 /**
  * What a key may look like: the web client sends `crypto.randomUUID()`; any client may send up to
  * 128 letters, digits, `-` and `_`. Anything else is refused before it is stored (security
@@ -96,7 +98,15 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const { rowCount } = await this.database.query(
       `INSERT INTO idempotency_keys (key, user_id, request_hash, response_status, response_body, expires_at)
        VALUES ($1, $2, $3, ${IN_FLIGHT}, 'null'::jsonb, now() + make_interval(hours => ${TTL_HOURS}))
-       ON CONFLICT (user_id, key) DO NOTHING`,
+       ON CONFLICT (user_id, key) DO UPDATE
+          SET request_hash = EXCLUDED.request_hash, response_status = ${IN_FLIGHT},
+              response_body = 'null'::jsonb, created_at = now(), expires_at = EXCLUDED.expires_at
+        -- A key is free again once it has expired, or when its request has been "in flight" for
+        -- minutes — an API restarted mid-write never completes it, and the draft that retries
+        -- with it must not be refused for ever (review).
+        WHERE idempotency_keys.expires_at < now()
+           OR (idempotency_keys.response_status = ${IN_FLIGHT}
+               AND idempotency_keys.created_at < now() - make_interval(mins => ${STALE_IN_FLIGHT_MINUTES}))`,
       [key, userId, requestHash],
     );
     return (rowCount ?? 0) > 0;

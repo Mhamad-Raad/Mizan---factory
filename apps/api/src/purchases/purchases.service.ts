@@ -348,10 +348,14 @@ export class PurchasesService {
       ]);
     }
 
-    const { rate, rateSource } = await this.rateFor(existing.company_id, input.rate_iqd_per_usd);
+    // As an order edit: the buy keeps the rate it was made at unless a new one is typed (review).
+    const { rate, rateSource } = input.rate_iqd_per_usd
+      ? await this.rateFor(existing.company_id, input.rate_iqd_per_usd)
+      : { rate: formatRate(existing.rate_iqd_per_usd), rateSource: existing.rate_source };
     const actingUserId = await this.actingUser(
       context,
-      input.acting_user_id ?? existing.acting_user_id,
+      input.acting_user_id,
+      existing.acting_user_id,
     );
 
     await this.database.transaction(async (tx) => {
@@ -388,7 +392,7 @@ export class PurchasesService {
         });
       }
 
-      const lines = await this.prepareLines(tx, input.lines, input.purchase_date, rate, rateSource);
+      const lines = await this.prepareLines(tx, input.lines, input.purchase_date, rate, rateSource, new Set(oldLines.map((line) => line.item_id)));
       const discount = this.discountPair(input.discount, rate, rateSource, lines);
       const totals = documentTotals(lines, {
         discount_iqd: discount.amount_iqd,
@@ -659,8 +663,8 @@ export class PurchasesService {
   }
 
   /** Only an admin may record a purchase as done by somebody else (spec 2.7). */
-  private actingUser(context: RequestContext, requested?: string | null): Promise<string> {
-    return resolveActingUser(this.database, context, requested, 'acting_user_id');
+  private actingUser(context: RequestContext, requested?: string | null, current?: string | null): Promise<string> {
+    return resolveActingUser(this.database, context, requested, 'acting_user_id', current);
   }
 
   /** Creator, admin, or `purchases.edit` (FR-405). */
@@ -683,6 +687,9 @@ export class PurchasesService {
     purchaseDate: string,
     rate: Rate,
     rateSource: RateSource,
+    /** On an edit, the materials the document already had: deactivating one since must not lock
+     * the document against every correction (review). A new line of it is still refused. */
+    keptItemIds: ReadonlySet<string> = new Set(),
   ): Promise<PreparedLine[]> {
     const month = firstOfMonth(purchaseDate);
     const prepared: PreparedLine[] = [];
@@ -699,7 +706,7 @@ export class PurchasesService {
           },
         ]);
       }
-      if (!item.is_active) {
+      if (!item.is_active && !keptItemIds.has(item.id)) {
         throw ApiError.validation([
           {
             path: `lines.${index}.item_id`,

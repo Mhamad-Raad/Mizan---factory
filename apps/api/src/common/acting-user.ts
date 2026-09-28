@@ -13,7 +13,10 @@ export async function resolveActingUser(
   context: RequestContext,
   requested: string | null | undefined,
   path: string,
+  /** On an edit, who the record already names: keeping them is not naming anybody (review). */
+  current?: string | null,
 ): Promise<string> {
+  if (current && (!requested || requested === current)) return current;
   if (!requested || requested === context.userId) return context.userId;
   if (context.role !== 'admin') throw ApiError.permissionDenied('admin');
   const { rowCount } = await db.query(

@@ -107,6 +107,17 @@ export class AccountLedgerStore implements LedgerStore {
     return rows.map((row) => this.toEntry(row));
   }
 
+  /** The rows that name one damage record — its charge, its paying back, their reversals. */
+  async entriesOfDamage(ownerId: string, damageId: string): Promise<LedgerEntry[]> {
+    const { rows } = await this.tx.query<LedgerRow>(
+      `SELECT ${this.columns()} FROM ${this.shape.table}
+        WHERE ${this.shape.ownerColumn} = $1 AND damage_id = $2
+        ORDER BY posting_seq ASC`,
+      [ownerId, damageId],
+    );
+    return rows.map((row) => this.toEntry(row));
+  }
+
   /** The balance in one currency, summed here rather than over rows read into the API. */
   async balanceIn(ownerId: string, currency: Currency): Promise<number> {
     const column = currency === 'IQD' ? 'amount_iqd' : 'amount_usd_cents';

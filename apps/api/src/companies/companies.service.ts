@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { completePair, convert, formatRate, settleInFull } from '@mizan/money';
+import { OutOfToleranceError, completePair, convert, formatRate, settleInFull } from '@mizan/money';
 import type { Currency, MoneyPair, Rate, RateSource } from '@mizan/money';
 import { allocateOldestFirst, balanceAsOf, balanceOf } from '@mizan/ledger';
 import type { AllocationResult, LedgerEntry, LedgerGroup } from '@mizan/ledger';
 import { AuditService } from '../audit/audit.service.js';
 import { resolveActingUser } from '../common/acting-user.js';
 import { ApiError } from '../common/errors.js';
+import { assertMayReverse } from '../ledger/reversible.js';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
 import { Database } from '../database/pool.js';
@@ -409,7 +410,7 @@ export class CompaniesService {
       if (input.settle_in_full) {
         const remaining = input.purchase_id
           ? await this.purchaseRemaining(tx, input.purchase_id)
-          : balanceOf(await this.ledger.entriesFor(tx, id), account.settlement_currency);
+          : await this.ledger.balanceOf(tx, account);
         if (remaining <= 0) {
           throw ApiError.validation([
             {
@@ -432,7 +433,9 @@ export class CompaniesService {
             rate_source: source,
             tolerance,
           });
-        } catch {
+        } catch (error) {
+          // Only the tolerance's own refusal is the user's to correct; anything else is ours.
+          if (!(error instanceof OutOfToleranceError)) throw error;
           throw new ApiError('RECEIVED_AMOUNT_OUT_OF_TOLERANCE', {
             remaining,
             settlement_currency: account.settlement_currency,
@@ -536,7 +539,7 @@ export class CompaniesService {
       const account = await this.lockFor(tx, id);
       if (input.purchase_id) await this.assertPurchaseOfCompany(tx, input.purchase_id, id);
 
-      const balance = balanceOf(await this.ledger.entriesFor(tx, id), account.settlement_currency);
+      const balance = await this.ledger.balanceOf(tx, account);
       // A new balance typed in the settlement currency becomes the delta that reaches it; a
       // delta typed in either currency is itself.
       const delta =
@@ -674,13 +677,9 @@ export class CompaniesService {
 
     return this.database.transaction(async (tx) => {
       const account = await this.lockFor(tx, id);
-      const entries = await this.ledger.entriesFor(tx, id);
-      const target = entries.find((entry) => entry.id === entryId);
+      const target = await this.ledger.entryOf(tx, id, entryId);
       if (!target) throw ApiError.notFound();
-
-      const ownSameDay =
-        target.created_by === context.userId && target.entry_date === this.period.today();
-      if (!ownSameDay && context.role !== 'admin') throw ApiError.permissionDenied('admin');
+      assertMayReverse(target, context, this.period.today());
 
       const result = await this.ledger.reverse(context, tx, account, entryId, {
         note: input.note,

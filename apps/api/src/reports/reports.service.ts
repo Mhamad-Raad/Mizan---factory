@@ -146,6 +146,9 @@ export class ReportsService {
   async profit(context: RequestContext, request: ReportRequest) {
     const { filters, meta } = this.resolve(context, request, 'done_by');
     const rows = await this.reports.margins(filters);
+    // A discount or a rounding belongs to a whole order, not to one material: shown only when
+    // the report is not narrowed to a material.
+    const adjustments = filters.item_id ? null : await this.reports.orderAdjustments(filters);
 
     const byGroup = new Map<
       string,
@@ -204,6 +207,22 @@ export class ReportsService {
           revenue_usd_cents: sum(groups.map((group) => group.cost.revenue_usd_cents)),
           margin_iqd: sum(groups.map((group) => group.cost.margin_iqd)),
           margin_usd_cents: sum(groups.map((group) => group.cost.margin_usd_cents)),
+          // The profit as the Accounts page counts it: the margins, less the orders' discounts,
+          // plus their rounding — the same figure on both screens (review).
+          ...(adjustments
+            ? {
+                discount_iqd: adjustments.discount_iqd,
+                discount_usd_cents: adjustments.discount_usd_cents,
+                rounding_iqd: adjustments.rounding_iqd,
+                rounding_usd_cents: adjustments.rounding_usd_cents,
+                net_margin_iqd:
+                  sum(groups.map((group) => group.cost.margin_iqd)) - adjustments.discount_iqd + adjustments.rounding_iqd,
+                net_margin_usd_cents:
+                  sum(groups.map((group) => group.cost.margin_usd_cents)) -
+                  adjustments.discount_usd_cents +
+                  adjustments.rounding_usd_cents,
+              }
+            : {}),
         },
       },
     };

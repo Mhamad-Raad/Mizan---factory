@@ -19,7 +19,6 @@
   "field.password_too_common": "This password is too common",
   "field.password_is_username": "The password cannot be the username",
   "field.passwords_do_not_match": "The two passwords do not match",
-  "field.pin_digits_only": "A PIN is 4 to 6 digits",
   "field.future_date": "The date cannot be in the future",
   "EDIT_WINDOW_CLOSED": "This order can no longer be edited — void it and enter it again",
   "DOCUMENT_VOID": "This record is void",
@@ -70,5 +69,7 @@
   "DUPLICATE": "This already exists — refresh and check before saving again",
   "BUSY_RETRY": "Someone else was saving at the same moment — nothing was saved, try again",
   "damage_booked": "This record has already taken stock or charged a company — void it and enter it again to change the quantity, who did it or the date",
-  "pricing_unit_bought": "This material has been bought by that unit — its unit can no longer change. Add a new material instead"
+  "pricing_unit_bought": "This material has been bought by that unit — its unit can no longer change. Add a new material instead",
+  "entry_not_reversible": "This row belongs to an order, a buy or broken goods — edit or void that record instead",
+  "damage_owed_not_returnable": "The company owes us for these goods — record it with \"Paid back\", not as a return credit"
 }

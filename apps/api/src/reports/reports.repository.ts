@@ -269,6 +269,42 @@ export class ReportsRepository {
    * own rate (migration 0014) — and the report does what 2.11 says a report does: sums stored
    * values. Lines with no cost snapshot have no margin and are counted, never summed.
    */
+  /**
+   * What whole orders added to or took from their lines in the period — the discount given and
+   * the round-250 rounding (D-065) — with the same order filters as the margins. The profit on
+   * the Accounts page is the margins less the discounts plus the rounding; the report shows the
+   * same figure beside its line margins, so the two screens agree (review).
+   */
+  async orderAdjustments(filters: ReportFilters) {
+    const values: unknown[] = [filters.from, filters.to];
+    const conditions = ["o.status = 'active'", 'o.deleted_at IS NULL', 'o.order_date >= $1::date', 'o.order_date <= $2::date'];
+    if (filters.done_by) {
+      values.push(filters.done_by);
+      conditions.push(`o.acting_user_id = $${values.length}::uuid`);
+    }
+    const { rows } = await this.database.query<{
+      discount_iqd: string;
+      discount_usd_cents: string;
+      rounding_iqd: string;
+      rounding_usd_cents: string;
+    }>(
+      `SELECT coalesce(sum(o.discount_iqd), 0)::text AS discount_iqd,
+              coalesce(sum(o.discount_usd_cents), 0)::text AS discount_usd_cents,
+              coalesce(sum(o.rounding_iqd), 0)::text AS rounding_iqd,
+              coalesce(sum(o.rounding_usd_cents), 0)::text AS rounding_usd_cents
+         FROM orders o
+        WHERE ${conditions.join(' AND ')}`,
+      values,
+    );
+    const row = rows[0];
+    return {
+      discount_iqd: Number(row?.discount_iqd ?? 0),
+      discount_usd_cents: Number(row?.discount_usd_cents ?? 0),
+      rounding_iqd: Number(row?.rounding_iqd ?? 0),
+      rounding_usd_cents: Number(row?.rounding_usd_cents ?? 0),
+    };
+  }
+
   async margins(filters: ReportFilters) {
     const groupBy = filters.group_by ?? 'month';
     const values: unknown[] = [filters.from, filters.to];
