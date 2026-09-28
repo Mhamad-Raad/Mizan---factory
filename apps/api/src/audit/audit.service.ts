@@ -3,11 +3,15 @@ import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import type { RequestContext } from '../common/request-context.js';
 
-export type AuditAction =
-  | 'create' | 'update' | 'void' | 'delete' | 'login' | 'logout' | 'login_failed' | 'lockout'
-  | 'lock' | 'unlock' | 'switch_user' | 'permission_change' | 'password_change' | 'password_reset'
-  | 'rate_change' | 'price_change' | 'ledger_entry' | 'assignment_change' | 'status_change'
-  | 'settings_change' | 'export';
+/** The values of the database's `audit_action` enum, in its order. */
+export const AUDIT_ACTIONS = [
+  'create', 'update', 'void', 'delete', 'login', 'logout', 'login_failed', 'lockout',
+  'lock', 'unlock', 'switch_user', 'permission_change', 'password_change', 'password_reset',
+  'rate_change', 'price_change', 'ledger_entry', 'assignment_change', 'status_change',
+  'settings_change', 'export',
+] as const;
+
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 export interface FieldChange {
   old: unknown;

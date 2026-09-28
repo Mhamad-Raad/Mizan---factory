@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Database } from '../database/pool.js';
 import { limitOf } from '../common/paging.js';
+import { AUDIT_ACTIONS } from '../audit/audit.service.js';
 
 export interface AuditRow {
   id: string;
@@ -104,9 +105,12 @@ export class HistoryRepository {
       conditions.push(`a.entity_type IN ('customer', 'company') AND a.entity_id = $${values.length}`);
     }
     if (filters.action) {
+      // An action that does not exist finds nothing, without asking — and one that does is
+      // compared as the enum, so `audit_log_action_idx` serves it: comparing the text of every
+      // row read the whole log newest first, 823 ms at ten years (D-075).
+      if (!(AUDIT_ACTIONS as readonly string[]).includes(filters.action)) return { items: [], next_cursor: null };
       values.push(filters.action);
-      // As text: an action that does not exist finds nothing, rather than failing the enum cast.
-      conditions.push(`a.action::text = $${values.length}`);
+      conditions.push(`a.action = $${values.length}::audit_action`);
     }
     if (filters.sessions === false) {
       conditions.push(

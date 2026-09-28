@@ -107,9 +107,10 @@ export class OrdersService {
   async list(
     context: RequestContext,
     filters: OrderFilters,
-  ): Promise<{ items: OrderDto[]; total: number; totals: OrderTotals }> {
+  ): Promise<{ items: OrderDto[]; total: number; totals?: OrderTotals }> {
     const { rows, total, totals } = await this.orders.list(filters);
-    return { items: rows.map((row) => toOrderDto(row, [])), total, totals };
+    const items = rows.map((row) => toOrderDto(row, []));
+    return totals ? { items, total, totals } : { items, total };
   }
 
   async get(context: RequestContext, id: string): Promise<OrderDto> {

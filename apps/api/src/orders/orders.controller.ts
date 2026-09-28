@@ -82,6 +82,8 @@ const listSchema = z.object({
   status: z.enum(['unpaid', 'partially_paid', 'paid', 'void', 'owing']).optional(),
   q: z.string().max(200).optional(),
   include_undone: z.enum(['true', 'false']).optional(),
+  /** `false` leaves out the figures over the whole filter (the dashboard's latest orders, D-075). */
+  totals: z.enum(['true', 'false']).optional(),
   ...pageFields,
 });
 
@@ -118,6 +120,7 @@ export class OrdersController {
     return this.orders.list(contextOf(request), {
       ...query,
       include_undone: query.include_undone === 'true',
+      totals: query.totals !== 'false',
     });
   }
 
@@ -140,6 +143,7 @@ export class OrdersController {
       ...query,
       customer_id: id,
       include_undone: query.include_undone === 'true',
+      totals: query.totals !== 'false',
     });
   }
 

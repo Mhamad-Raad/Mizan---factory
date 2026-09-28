@@ -218,39 +218,53 @@ export class PurchasesRepository {
     }
     const query = filters.q?.trim();
     if (query) {
+      // The company's name, the notes and the number, each through its own index and put
+      // together as one set of ids (D-075), as the Orders list does.
       values.push(containing(normalizeForSearch(query)));
       const nameParam = values.length;
       values.push(containing(query));
       const textParam = values.length;
       const asNumber = Number(query.replace(/\D/g, ''));
-      values.push(Number.isFinite(asNumber) && asNumber > 0 ? asNumber : null);
+      const byNumber = Number.isSafeInteger(asNumber) && asNumber > 0;
+      if (byNumber) values.push(asNumber);
       const numberParam = values.length;
       conditions.push(
-        `(co.name_normalized LIKE $${nameParam} OR p.notes ILIKE $${textParam}` +
-          ` OR ($${numberParam}::bigint IS NOT NULL AND p.number = $${numberParam}::bigint))`,
+        `p.id IN (SELECT m.id FROM purchases m
+                   WHERE m.company_id IN (SELECT who.id FROM customers who WHERE who.name_normalized LIKE $${nameParam})
+                  UNION
+                  SELECT m.id FROM purchases m WHERE m.notes ILIKE $${textParam}` +
+          (byNumber ? `\n                  UNION\n                  SELECT m.id FROM purchases m WHERE m.number = $${numberParam}::bigint` : '') +
+          `)`,
       );
     }
 
-    const from = `
-      FROM purchases p
-      LEFT JOIN customers co ON co.id = p.company_id
-      LEFT JOIN users u ON u.id = p.acting_user_id
-      LEFT JOIN users v ON v.id = p.voided_by`;
     const where = `WHERE ${conditions.join(' AND ')}`;
 
     const countValues = [...values];
     const { page_size: pageSize, offset } = pagingOf(filters);
     values.push(pageSize, offset);
 
+    // Page first, then fill (D-075): the lines' count and names are read for the page's rows
+    // only — they ran for every row the OFFSET skipped, 1.8 s for page 10,000.
     const [list, count] = await Promise.all([
       this.database.query<PurchaseListRow>(
-        `SELECT ${purchaseColumns('p')}, ${LIST_COLUMNS}
-         ${from} ${where}
-         ORDER BY p.purchase_date DESC, p.number DESC
-         LIMIT $${values.length - 1} OFFSET $${values.length}`,
+        `WITH page AS (
+           SELECT p.id, p.purchase_date, p.number
+             FROM purchases p
+             ${where}
+            ORDER BY p.purchase_date DESC, p.number DESC
+            LIMIT $${values.length - 1} OFFSET $${values.length}
+         )
+         SELECT ${purchaseColumns('p')}, ${LIST_COLUMNS}
+           FROM page
+           JOIN purchases p ON p.id = page.id
+           LEFT JOIN customers co ON co.id = p.company_id
+           LEFT JOIN users u ON u.id = p.acting_user_id
+           LEFT JOIN users v ON v.id = p.voided_by
+          ORDER BY page.purchase_date DESC, page.number DESC`,
         values,
       ),
-      this.database.query<{ total: string }>(`SELECT count(*)::text AS total ${from} ${where}`, countValues),
+      this.database.query<{ total: string }>(`SELECT count(*)::text AS total FROM purchases p ${where}`, countValues),
     ]);
 
     return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0) };

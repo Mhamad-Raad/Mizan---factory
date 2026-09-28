@@ -307,9 +307,14 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
   });
 
   describe('the cost of a sale is what the stock it sold cost us (D-062)', () => {
+    /** Every buy, oldest first: the ones with stock left and the used-up ones (D-075). */
     async function lotsOf(itemId: string) {
-      const read = await as(ctx.http, admin).get(`/api/v1/items/${itemId}/lots`).expect(200);
-      return read.body.items as { remaining: string; unit_cost_iqd: number }[];
+      const open = await as(ctx.http, admin).get(`/api/v1/items/${itemId}/lots`).expect(200);
+      const usedUp = await as(ctx.http, admin).get(`/api/v1/items/${itemId}/lots?used_up=true&page_size=100`).expect(200);
+      type Row = { remaining: string; unit_cost_iqd: number; bought_on: string; purchase_number: number };
+      return ([...open.body.items, ...usedUp.body.items] as Row[]).sort(
+        (left, right) => left.bought_on.localeCompare(right.bought_on) || left.purchase_number - right.purchase_number,
+      );
     }
 
     it('takes the oldest buy first and costs a sale across two buys exactly', async () => {
@@ -392,7 +397,8 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
         await createOrder(sales, { lines: [{ item_id: bolts, qty_count: 1 }] }).expect(201);
       }
       const after = await as(ctx.http, admin).get('/api/v1/accounts/summary').expect(200);
-      const [lot] = (await as(ctx.http, admin).get(`/api/v1/items/${bolts}/lots`).expect(200)).body.items;
+      // Every piece is sold, so the buy is used up: it is the material's latest buy (D-075).
+      const lot = (await as(ctx.http, admin).get(`/api/v1/items/${bolts}/lots`).expect(200)).body.latest;
       // 333 + 334 + 333: the buy's dinars exactly, where three rounded thirds made 999. (The
       // dollar side of a margin is its dinar margin at the sale's rate, so it is not compared.)
       expect(after.body.cost_of_sold.amount_iqd - before.body.cost_of_sold.amount_iqd).toBe(lot.line_total_iqd);
