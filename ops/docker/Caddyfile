@@ -6,9 +6,11 @@
 	encode zstd gzip
 
 	header {
-		# Section 2.13. The pre-paint script is inline by necessity, so it is allowed by hash;
-		# `mizan-preflight` replaces the placeholder at build time.
-		Content-Security-Policy "default-src 'self'; script-src 'self' '{$MIZAN_CSP_INLINE_HASH}'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+		# Section 2.13. The pre-paint script and the service worker's registration are inline by
+		# necessity, so they are allowed by hash. The web image's build replaces the placeholder
+		# with the hashes of the very page it serves (ops/docker/csp-hashes.mjs), so they can
+		# never go stale.
+		Content-Security-Policy "default-src 'self'; script-src 'self' __CSP_SCRIPT_HASHES__; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "same-origin"

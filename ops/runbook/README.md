@@ -17,8 +17,8 @@ which is what lets the session cookie stay `SameSite=Lax` with no cross-site exc
    `POSTGRES_PASSWORD`, `BACKUP_DB_PASSWORD` and `BACKUP_ENCRYPTION_KEY` must each be freshly
    generated: `openssl rand -base64 32`. Set up the bucket first ("Off-site retention") and put
    its **put-only** key in `.env`; set `BACKUP_HEARTBEAT_URL`.
-3. Set the CSP hash for the inline pre-paint script:
-   `MIZAN_CSP_INLINE_HASH=$(sh ops/docker/csp-hash.sh)`.
+3. Nothing to do for the Content-Security-Policy: the web image hashes its own inline scripts
+   at build time and writes them into its Caddyfile (`ops/docker/csp-hashes.mjs`).
 4. Build, migrate, then start: `docker compose --profile tools build`, `docker compose run --rm migrate`,
    `docker compose up -d`. The API does not hold the migrate role's credentials — only the
    one-off `migrate` job does — and it refuses to start while a migration is pending, so the

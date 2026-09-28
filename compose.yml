@@ -14,7 +14,6 @@ services:
       dockerfile: ops/docker/Dockerfile.web
     environment:
       MIZAN_DOMAIN: ${MIZAN_DOMAIN:?set the domain}
-      MIZAN_CSP_INLINE_HASH: ${MIZAN_CSP_INLINE_HASH:?run ops/docker/csp-hash.sh}
     ports: ['80:80', '443:443', '443:443/udp']
     volumes:
       - caddy-data:/data
