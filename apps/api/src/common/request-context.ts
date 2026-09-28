@@ -12,7 +12,7 @@ export interface RequestContext {
   /** The effective set, with implied keys already expanded (spec 2.6.1). */
   permissions: ReadonlySet<string>;
   sessionId: string;
-  authMethod: 'password' | 'ticket_pin';
+  authMethod: 'password';
   ip: string | null;
   userAgent: string | null;
 }

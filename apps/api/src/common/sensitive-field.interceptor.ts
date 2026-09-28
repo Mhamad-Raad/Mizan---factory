@@ -41,7 +41,10 @@ export class SensitiveFieldInterceptor implements NestInterceptor {
 
 function strip(value: unknown, fields: ReadonlySet<string>): unknown {
   if (Array.isArray(value)) return value.map((item) => strip(item, fields));
-  if (value && typeof value === 'object') {
+  // Only plain objects are rebuilt. A Date has no keys of its own, so rebuilding it made every
+  // `occurred_at` an empty `{}` for a reader with any field stripped — the order and damage
+  // History tabs then crashed for every non-admin (review).
+  if (isPlainObject(value)) {
     const out: Record<string, unknown> = {};
     for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
       if (fields.has(key)) continue;
@@ -50,4 +53,10 @@ function strip(value: unknown, fields: ReadonlySet<string>): unknown {
     return out;
   }
   return value;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false;
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  return prototype === Object.prototype || prototype === null;
 }

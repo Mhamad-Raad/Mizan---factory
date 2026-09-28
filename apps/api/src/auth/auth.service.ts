@@ -121,7 +121,9 @@ export interface MeDto {
   is_locked: boolean;
   is_shared_device: boolean;
   device_label: string | null;
-  auth_method: 'password' | 'ticket_pin';
+  auth_method: 'password';
+  /** Minutes of inactivity after which this device's session locks (FR-106). */
+  idle_lock_minutes: number;
 }
 
 @Injectable()
@@ -178,7 +180,12 @@ export class AuthService {
   ): Promise<T> {
     return this.queue.run(key, async () => {
       const before = lockedUntil(await this.failureState(key, this.database));
-      if (before) return onLocked(minutesUntil(before), this.database);
+      if (before) {
+        // Knocking on a locked door counts toward the address's ceiling like a wrong password,
+        // so it cannot be repeated without limit (review).
+        this.addresses.begin(ip)(true);
+        return onLocked(minutesUntil(before), this.database);
+      }
 
       const settle = this.addresses.begin(ip);
       let correct: boolean;
@@ -220,8 +227,11 @@ export class AuthService {
       ctx.ip,
       () => this.verifyOrDummy(user, input.password),
       async (minutes, db) => {
-        // Recorded in History, but not as a failure: trying a locked door does not move when it opens.
-        await this.recordFailure(key, identifier, user?.id ?? null, ctx, 'locked_out', false, db);
+        // Recorded in History once per lockout, and not as a failure: trying a locked door does
+        // not move when it opens, and a row per knock let anybody fill the append-only log (review).
+        if (this.firstKnockOn(key, minutes)) {
+          await this.recordFailure(key, identifier, user?.id ?? null, ctx, 'locked_out', false, db);
+        }
         return { kind: 'locked', minutes };
       },
       async (correct, state, tx) => {
@@ -325,6 +335,34 @@ export class AuthService {
     return { token, user: toUserDto(user), permissions };
   }
 
+  /**
+   * A sign-in on a browser that still carries somebody's session — the lock screen's "someone
+   * else", or the Login page after a session expired on a shared tablet — ends that session
+   * and says so in History, instead of leaving it alive for hours behind the new one (review).
+   */
+  async endReplacedSession(
+    previousToken: string | undefined,
+    next: { userId: string; requestId: string; ip: string | null; userAgent: string | null },
+  ): Promise<void> {
+    if (!previousToken) return;
+    const previous = await this.sessions.resolve(previousToken);
+    if (!previous) return;
+    await this.sessions.revoke(previous.id, 'switch_user');
+    await this.audit.recordAnonymous({
+      actor_user_id: next.userId,
+      action: 'switch_user',
+      entity_type: 'session',
+      entity_id: previous.id,
+      entity_label: 'Switch user',
+      changes: { from_user_id: previous.user_id, to_user_id: next.userId },
+      request_id: next.requestId,
+      auth_method: 'password',
+      ip: next.ip,
+      user_agent: next.userAgent,
+      related: { user_id: previous.user_id },
+    });
+  }
+
   async logout(context: RequestContext): Promise<void> {
     await this.sessions.revoke(context.sessionId, 'logout');
     await this.audit.record(context, {
@@ -345,6 +383,8 @@ export class AuthService {
         user.role === 'admin' ? [] : [...expandImplied(await this.users.permissionsOf(user.id))],
       is_locked: session.is_locked,
       is_shared_device: session.is_shared_device,
+      // The screen's own idle timer uses the server's figure, so the two lock together.
+      idle_lock_minutes: await this.sessions.idleLockMinutes(session.is_shared_device),
       device_label: session.device_label,
       auth_method: session.auth_method,
     };
@@ -477,7 +517,10 @@ export class AuthService {
     context: RequestContext,
     password: string,
   ): Promise<PasswordCheck> {
-    const key = throttleKeyFor(user.username, user);
+    // Counted per signed-in session, not per account: five wrong guesses at the sign-in page
+    // from anywhere locked the account, and with it the unlock of the tablet already in use
+    // (review). A stolen tablet still gets five guesses and then waits, as before.
+    const key = context.sessionId ? `session:${context.sessionId}` : throttleKeyFor(user.username, user);
     return this.attemptPassword<PasswordCheck>(
       key,
       context.ip,
@@ -489,10 +532,20 @@ export class AuthService {
         const lockUntil =
           state.recent + 1 >= MAX_FAILURES ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null;
         await this.users.registerFailure(user.id, lockUntil, tx);
+        // Counted twice: against this session, whose own five guesses lock its unlock, and
+        // against the account, so a stolen tablet's guesses still close the sign-in page too
+        // (security review, finding 2 of D-066).
         await this.users.recordLoginAttempt(
           { username: key, userId: user.id, ip: context.ip, succeeded: false },
           tx,
         );
+        const accountKey = throttleKeyFor(user.username, user);
+        if (accountKey !== key) {
+          await this.users.recordLoginAttempt(
+            { username: accountKey, userId: user.id, ip: context.ip, succeeded: false },
+            tx,
+          );
+        }
         await this.audit.recordAnonymous(
           {
             actor_user_id: user.id,
@@ -515,6 +568,17 @@ export class AuthService {
           : { kind: 'invalid', attemptsLeft: MAX_FAILURES - (state.recent + 1) };
       },
     );
+  }
+
+  /** Locked keys already noted in History, until when — so a lockout is recorded once. */
+  private readonly knocked = new Map<string, number>();
+
+  private firstKnockOn(key: string, minutes: number): boolean {
+    const now = Date.now();
+    for (const [noted, until] of this.knocked) if (until <= now) this.knocked.delete(noted);
+    if (this.knocked.has(key)) return false;
+    this.knocked.set(key, now + minutes * 60_000);
+    return true;
   }
 
   private failureState(key: string, db: Db): Promise<FailureState> {
@@ -546,8 +610,10 @@ export class AuthService {
         actor_user_id: userId,
         action: reason === 'lockout' ? 'lockout' : 'login_failed',
         entity_type: 'session',
-        entity_id: identifier.toLowerCase(),
-        entity_label: `Failed sign-in: ${identifier}`,
+        // A name that is nobody's is stored masked: it is sometimes a password typed into the
+        // wrong box, and this log keeps it for ever (review).
+        entity_id: userId ? identifier.toLowerCase() : maskedIdentifier(identifier),
+        entity_label: `Failed sign-in: ${userId ? identifier : maskedIdentifier(identifier)}`,
         changes: { reason },
         request_id: ctx.requestId,
         auth_method: 'password',
@@ -558,4 +624,10 @@ export class AuthService {
       tx,
     );
   }
+}
+
+/** "ab…(9)": enough to tell attempts apart in History, not enough to read what was typed. */
+function maskedIdentifier(typed: string): string {
+  const trimmed = typed.trim();
+  return `${trimmed.slice(0, 2)}…(${trimmed.length})`;
 }

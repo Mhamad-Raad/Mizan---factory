@@ -50,6 +50,10 @@ export class AuthController {
     };
 
     const result = await this.auth.login(body, ctx);
+    await this.auth.endReplacedSession((request.cookies as Record<string, string> | undefined)?.[SESSION_COOKIE], {
+      userId: result.user.id,
+      ...ctx,
+    });
 
     response.cookie(SESSION_COOKIE, result.token, this.sessions.cookieOptions());
     // The CSRF cookie is deliberately readable by the client: that is what double-submit means.

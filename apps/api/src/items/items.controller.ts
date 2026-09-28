@@ -99,7 +99,14 @@ const historySchema = z.object({
  * at each shape (FR-305, spec 2.6.2).
  */
 @Controller()
-@SensitiveFields({ bought: 'fields.see_bought_price', unit_cost_iqd: 'fields.see_bought_price', unit_cost_usd_cents: 'fields.see_bought_price' })
+@SensitiveFields({
+  bought: 'fields.see_bought_price',
+  unit_cost_iqd: 'fields.see_bought_price',
+  unit_cost_usd_cents: 'fields.see_bought_price',
+  // What a whole buy cost, which a quantity beside it turns straight back into a unit cost (review).
+  line_total_iqd: 'fields.see_bought_price',
+  line_total_usd_cents: 'fields.see_bought_price',
+})
 export class ItemsController {
   constructor(private readonly items: ItemsService) {}
 

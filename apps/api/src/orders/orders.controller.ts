@@ -96,14 +96,24 @@ const historySchema = z.object({
  * `fields.see_bought_price` (FR-602, spec 2.6.2).
  */
 @Controller()
-@SensitiveFields({ cost: 'fields.see_bought_price' })
+@SensitiveFields({
+  cost: 'fields.see_bought_price',
+  // A payment's balance before and after, and the credit-limit warning's balance (review).
+  balance_before: 'fields.see_customer_balances',
+  balance_after: 'fields.see_customer_balances',
+})
 export class OrdersController {
   constructor(private readonly orders: OrdersService) {}
 
   @Get('orders')
   @RequirePermission('orders.view')
   // The totals' "still owed" is what customers owe: the balances flag keeps it (2.6.2).
-  @SensitiveFields({ cost: 'fields.see_bought_price', balance: 'fields.see_customer_balances' })
+  @SensitiveFields({
+    cost: 'fields.see_bought_price',
+    balance: 'fields.see_customer_balances',
+    balance_before: 'fields.see_customer_balances',
+    balance_after: 'fields.see_customer_balances',
+  })
   async list(@Req() request: RequestWithContext, @Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
     return this.orders.list(contextOf(request), {
       ...query,
@@ -115,7 +125,12 @@ export class OrdersController {
   @Get('customers/:id/orders')
   @RequirePermission('orders.view')
   // The same list, so the same rule: what the company still owes stays with the balances flag.
-  @SensitiveFields({ cost: 'fields.see_bought_price', balance: 'fields.see_customer_balances' })
+  @SensitiveFields({
+    cost: 'fields.see_bought_price',
+    balance: 'fields.see_customer_balances',
+    balance_before: 'fields.see_customer_balances',
+    balance_after: 'fields.see_customer_balances',
+  })
   async ofCustomer(
     @Req() request: RequestWithContext,
     @Param('id') id: string,
@@ -221,7 +236,12 @@ export class OrdersController {
   @Get('orders/:id/history')
   @RequirePermission('orders.view')
   // A payment's History row carries the customer's balance before and after it (2.6.2).
-  @SensitiveFields({ cost: 'fields.see_bought_price', balance: 'fields.see_customer_balances' })
+  @SensitiveFields({
+    cost: 'fields.see_bought_price',
+    balance: 'fields.see_customer_balances',
+    balance_before: 'fields.see_customer_balances',
+    balance_after: 'fields.see_customer_balances',
+  })
   async history(
     @Req() request: RequestWithContext,
     @Param('id') id: string,

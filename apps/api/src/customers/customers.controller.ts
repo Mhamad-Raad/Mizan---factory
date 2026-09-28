@@ -107,7 +107,12 @@ const historySchema = z.object({
  * `fields.see_customer_balances` (FR-503).
  */
 @Controller()
-@SensitiveFields({ balance: 'fields.see_customer_balances' })
+@SensitiveFields({
+  balance: 'fields.see_customer_balances',
+  // A payment's answer carries the account's balance before and after it (review).
+  balance_before: 'fields.see_customer_balances',
+  balance_after: 'fields.see_customer_balances',
+})
 export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
 
