@@ -5,8 +5,19 @@
  *
  * Storage may throw (private mode, quota, disabled), so every path here is safe to fail:
  * a draft is a convenience, never the record.
+ *
+ * Drafts belong to the person who typed them. They are stored under the signed-in user's id, so
+ * on a shared tablet the next employee is never offered the last one's half-typed order — even
+ * when the device was not signed out cleanly (a session that expired, a browser that closed).
  */
 const PREFIX = 'mizan.draft.';
+
+/** Whose drafts are read and written; set with the session (`useApp.setSession`). */
+let owner: string | null = null;
+
+export function setDraftOwner(userId: string | null): void {
+  owner = userId;
+}
 
 export interface Draft<T> {
   form: string;
@@ -17,13 +28,16 @@ export interface Draft<T> {
   value: T;
 }
 
-function keyOf(form: string, id: string): string {
-  return `${PREFIX}${form}.${id}`;
+function keyOf(form: string, id: string): string | null {
+  // Nobody signed in: nothing is anybody's draft.
+  return owner === null ? null : `${PREFIX}${owner}.${form}.${id}`;
 }
 
 export function readDraft<T>(form: string, id = 'new'): Draft<T> | null {
+  const key = keyOf(form, id);
+  if (key === null) return null;
   try {
-    const raw = window.localStorage.getItem(keyOf(form, id));
+    const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Draft<T>;
     if (!parsed || typeof parsed !== 'object' || !parsed.idempotency_key) return null;
@@ -34,6 +48,8 @@ export function readDraft<T>(form: string, id = 'new'): Draft<T> | null {
 }
 
 export function writeDraft<T>(form: string, id: string, value: T, idempotencyKey: string): void {
+  const key = keyOf(form, id);
+  if (key === null) return;
   try {
     const draft: Draft<T> = {
       form,
@@ -42,15 +58,17 @@ export function writeDraft<T>(form: string, id: string, value: T, idempotencyKey
       saved_at: Date.now(),
       value,
     };
-    window.localStorage.setItem(keyOf(form, id), JSON.stringify(draft));
+    window.localStorage.setItem(key, JSON.stringify(draft));
   } catch {
     // Nothing to do: the form keeps working, it simply will not survive a reload.
   }
 }
 
 export function clearDraft(form: string, id = 'new'): void {
+  const key = keyOf(form, id);
+  if (key === null) return;
   try {
-    window.localStorage.removeItem(keyOf(form, id));
+    window.localStorage.removeItem(key);
   } catch {
     /* ignored on purpose */
   }

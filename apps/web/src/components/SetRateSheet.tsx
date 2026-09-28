@@ -15,6 +15,7 @@ export function SetRateSheet({
   error,
   onClose,
   onSave,
+  onEdit,
 }: {
   title: string;
   label: string;
@@ -26,6 +27,8 @@ export function SetRateSheet({
   error?: string;
   onClose: () => void;
   onSave: (body: { rate_iqd_per_usd: string; note: string | null }) => void;
+  /** Any change to the inputs: the caller forgets the last refusal. */
+  onEdit?: () => void;
 }) {
   const { t } = useTranslation();
   const [rate, setRate] = useState(current ?? '');
@@ -39,14 +42,20 @@ export function SetRateSheet({
           decimals={4}
           value={rate}
           error={error}
-          onChange={(event) => setRate(event.target.value)}
+          onChange={(event) => {
+            onEdit?.();
+            setRate(event.target.value);
+          }}
         />
         {hint ? <p className="mz-caption">{hint}</p> : null}
         <TextField
           label={t('common:note')}
           hint={t('common:optional')}
           value={note}
-          onChange={(event) => setNote(event.target.value)}
+          onChange={(event) => {
+            onEdit?.();
+            setNote(event.target.value);
+          }}
         />
         <Button
           block

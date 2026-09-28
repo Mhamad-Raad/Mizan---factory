@@ -11,6 +11,7 @@ import { usePageTitle } from '../lib/page-title.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { useFormatter, usePermission } from '../lib/store.js';
+import { invalidateHistory } from '../lib/invalidate.js';
 
 interface Duplicate {
   id: string;
@@ -79,6 +80,7 @@ export function NewCustomerPage() {
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: ['customers'] });
       await queryClient.invalidateQueries({ queryKey: ['companies'] });
+      await invalidateHistory(queryClient);
       navigate(`/customers/${created.id}`, { replace: true });
     },
   });

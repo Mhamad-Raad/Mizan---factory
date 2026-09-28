@@ -21,7 +21,7 @@
   "employee_activity_hint": "ما فعله كل موظف في الفترة",
   "cash_up": "الجرد النقدي اليومي",
   "cash_up_hint": "ما يجب أن يسلّمه كل موظف، لكل عملة",
-  "last_quarter": "آخر ٩٠ يوماً",
+  "last_quarter": "آخر {{days}} يوماً",
   "group_by": "التجميع حسب",
   "group.month": "الشهر",
   "group.day": "اليوم",
@@ -77,5 +77,8 @@
   "chart_in_dinars": "خلال الفترة، بالدينار",
   "expense_title": "المصروف",
   "amount": "المبلغ",
-  "note": "ملاحظة"
+  "note": "ملاحظة",
+  "profit_discounts": "خصومات طلبات البيع",
+  "profit_rounding": "التقريب",
+  "profit_net": "الربح بعد الخصومات والتقريب"
 }

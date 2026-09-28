@@ -33,6 +33,8 @@ export interface Sheet {
   rows: Cell[][];
   /** A last, bold row — the report's totals. */
   totals?: Cell[];
+  /** Bold rows under the totals that explain them — the Profit sheet's discounts and rounding. */
+  afterTotals?: Cell[][];
 }
 
 // Styles (cellXfs index): 0 plain, 1 bold header, 2 integer, 3 usd, 4 kg, 5 title, 6 bold integer,
@@ -92,12 +94,13 @@ function sheetXml(sheet: Sheet, rtl: boolean): string {
     );
     r += 1;
   }
-  if (sheet.totals) {
+  for (const row of sheet.totals ? [sheet.totals, ...(sheet.afterTotals ?? [])] : []) {
     rows.push(
       `<row r="${r}">${sheet.columns
-        .map((column, index) => cellXml(`${columnName(index)}${r}`, sheet.totals?.[index] ?? null, BOLD_STYLE[column.format]))
+        .map((column, index) => cellXml(`${columnName(index)}${r}`, row[index] ?? null, BOLD_STYLE[column.format]))
         .join('')}</row>`,
     );
+    r += 1;
   }
   const cols = sheet.columns
     .map((column, index) => {

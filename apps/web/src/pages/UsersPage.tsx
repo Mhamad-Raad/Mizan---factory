@@ -123,7 +123,7 @@ export function UsersPage() {
         </Link>
       </div>
 
-      <QueryStates query={users} isEmpty={rows.length === 0} emptyTitle={t('users:empty')}>
+      <QueryStates query={users} isEmpty={rows.length === 0} emptyTitle={query.trim() ? t('users:empty_search', { query: query.trim() }) : t('users:empty')}>
         <DataList
           rows={rows}
           rowKey={(user) => user.id}

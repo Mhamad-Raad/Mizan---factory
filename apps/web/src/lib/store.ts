@@ -9,6 +9,7 @@ import {
 } from './preferences.js';
 import type { Preferences } from './preferences.js';
 import { i18next } from './i18n.js';
+import { setDraftOwner } from './drafts.js';
 
 export interface SessionUser {
   id: string;
@@ -40,8 +41,20 @@ interface AppState {
   user: SessionUser | null;
   permissions: ReadonlySet<string>;
   isLocked: boolean;
+  /**
+   * Minutes without activity before this device locks itself (FR-106, spec 2.8): the server's
+   * answer for a shared or a personal device. `null` is "never" — and what an older API that
+   * does not send the figure means.
+   */
+  idleLockMinutes: number | null;
   isOnline: boolean;
-  setSession: (input: { user: SessionUser; permissions: string[]; isLocked?: boolean }) => void;
+  setSession: (input: {
+    user: SessionUser;
+    permissions: string[];
+    isLocked?: boolean;
+    /** Left out by the sign-in answers; `me` carries it, and until then the last value stands. */
+    idleLockMinutes?: number | null;
+  }) => void;
   clearSession: () => void;
   setLocked: (locked: boolean) => void;
   setOnline: (online: boolean) => void;
@@ -88,18 +101,25 @@ export const useApp = create<AppState>((set, get) => ({
   user: null,
   permissions: new Set<string>(),
   isLocked: false,
+  idleLockMinutes: null,
   isOnline: true,
 
   // A different person in the session starts without the last one's page title, which would
   // otherwise show until their first page names itself (client-review bug 11).
-  setSession: ({ user, permissions, isLocked = false }) =>
+  setSession: ({ user, permissions, isLocked = false, idleLockMinutes }) => {
+    setDraftOwner(user.id);
     set((state) => ({
       user,
       permissions: new Set(permissions),
       isLocked,
+      idleLockMinutes: idleLockMinutes === undefined ? state.idleLockMinutes : idleLockMinutes,
       ...(state.user?.id === user.id ? {} : { pageTitle: '' }),
-    })),
-  clearSession: () => set({ user: null, permissions: new Set<string>(), isLocked: false, pageTitle: '' }),
+    }));
+  },
+  clearSession: () => {
+    setDraftOwner(null);
+    set({ user: null, permissions: new Set<string>(), isLocked: false, pageTitle: '' });
+  },
   pageTitle: '',
   setPageTitle: (title) =>
     set((state) => (state.pageTitle === title ? state : { pageTitle: title })),

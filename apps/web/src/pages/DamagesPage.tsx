@@ -15,9 +15,11 @@ import type { Column } from '../components/DataList.js';
 import { Pager } from '../components/Pager.js';
 import { useKeepPageInRange, usePaging } from '../lib/paging.js';
 import { useDebouncedValue } from '../lib/debounce.js';
-import { lastMonth, thisMonth } from '../lib/periods.js';
+import { presetPeriod } from '../lib/periods.js';
 import type { DamageAttribution, ReturnStatus } from '../components/chips.js';
 import { FilterChip } from '../components/FilterChip.js';
+import { CompensationChip } from '../components/chips.js';
+import { quantityText } from '../lib/quantity.js';
 import { useFormatter } from '../lib/store.js';
 
 export interface DamageRow {
@@ -130,7 +132,7 @@ export function DamagesPage() {
   const isLinked = Boolean(linked.item_id || linked.order_id || linked.purchase_id);
 
   const today = formatter.today();
-  const range = isLinked ? {} : rangeOf(dates, today);
+  const range = isLinked ? {} : presetPeriod(dates, today);
 
   const paging = usePaging({
     storageKey: 'damages',
@@ -234,7 +236,7 @@ export function DamagesPage() {
         <span className="mz-cell__body">
           <bdi>{damage.item_name}</bdi>
           <span className="mz-caption" data-tabular>
-            {quantityOf(damage, formatter, t)}
+            {quantityText(damage, formatter, t)}
           </span>
         </span>
       ),
@@ -391,7 +393,7 @@ export function DamagesPage() {
                 </span>
                 <span className="mz-caption" data-tabular>
                   {t('damages:number', { number: formatter.identifier(damage.number) })} ·{' '}
-                  {quantityOf(damage, formatter, t)} · {formatter.date(damage.damage_date)}
+                  {quantityText(damage, formatter, t)} · {formatter.date(damage.damage_date)}
                 </span>
                 {damage.reason ? (
                   <span className="mz-caption">
@@ -418,42 +420,4 @@ export function DamagesPage() {
   );
 }
 
-/** The period chips, from today's Baghdad day. */
-function rangeOf(filter: DateFilter, today: string): { from?: string; to?: string } {
-  if (filter === 'all') return {};
-  if (filter === 'month') return thisMonth(today);
-  return lastMonth(today);
-}
 
-/** The quantity as the material measures it, with the other measure when it was recorded. */
-export function quantityOf(
-  damage: Pick<DamageRow, 'priced_measure' | 'qty_count' | 'qty_kg'>,
-  formatter: ReturnType<typeof useFormatter>,
-  t: (key: string) => string,
-): string {
-  const parts: string[] = [];
-  if (damage.qty_kg !== null) parts.push(`${formatter.quantity(damage.qty_kg)} ${t('common:kg_symbol')}`);
-  if (damage.qty_count !== null) parts.push(`${formatter.number(damage.qty_count)} ${t('common:count_symbol')}`);
-  return damage.priced_measure === 'kg' ? parts.join(' · ') : parts.reverse().join(' · ');
-}
-
-/**
- * Where a company's damage stands (D-062): owed until it is paid back. Our own damage has no
- * chip — it is a loss, and there is nothing to wait for. Icon and word, never colour alone.
- */
-export function CompensationChip({ compensation }: { compensation: DamageRow['compensation'] }) {
-  const { t } = useTranslation();
-  if (compensation === 'none') return null;
-  if (compensation === 'owed') {
-    return (
-      <Chip tone="warning" icon="clock">
-        {t('damages:compensation.owed')}
-      </Chip>
-    );
-  }
-  return (
-    <Chip tone="success" icon="check">
-      {t('damages:compensation.paid')}
-    </Chip>
-  );
-}

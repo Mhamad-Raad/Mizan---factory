@@ -58,3 +58,34 @@ describe('the Excel export', () => {
     expect([0, 25, 26, 27, 701].map(columnName)).toEqual(['A', 'Z', 'AA', 'AB', 'ZZ']);
   });
 });
+
+describe('rows under the totals (review)', () => {
+  it('writes the Profit sheet’s discounts, rounding and net profit after the totals row, in order', () => {
+    const files = unzipSync(
+      buildXlsx([
+        {
+          name: 'Profit',
+          title: 'Profit',
+          columns: [
+            { header: 'Month', format: 'text' },
+            { header: 'Margin (IQD)', format: 'integer' },
+            { header: 'Margin ($)', format: 'usd' },
+          ],
+          rows: [['September', 500_000, 381.68]],
+          totals: ['Total', 500_000, 381.68],
+          afterTotals: [
+            ['Order discounts', -20_000, -15.27],
+            ['Rounding', 750, 0.57],
+            ['Profit after discounts and rounding', 480_750, 366.98],
+          ],
+        },
+      ]),
+    );
+    const xml = strFromU8(files['xl/worksheets/sheet1.xml'] as Uint8Array);
+    const order = ['Total', 'Order discounts', 'Rounding', 'Profit after discounts and rounding'].map((label) => xml.indexOf(label));
+    expect(order.every((index) => index > 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(xml).toContain('<v>-20000</v>');
+    expect(xml).toContain('<v>480750</v>');
+  });
+});

@@ -7,6 +7,7 @@ import { Decimal, roundHalfAwayFromZero } from '@mizan/money';
 import type { Currency, Measure } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { errorMessage } from '../lib/errors.js';
+import { useIdempotencyKey } from '../lib/idempotency.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { DraftBanner } from '../components/DraftBanner.js';
 import { DualAmount } from '../components/DualAmount.js';
@@ -14,10 +15,10 @@ import { PickerSheet } from '../components/PickerSheet.js';
 import { QuantityInput } from '../components/QuantityInput.js';
 import { QueryStates } from '../components/states.js';
 import { clearDraft, createDraftKeeper, readDraft } from '../lib/drafts.js';
-import { invalidateMoneyViews } from '../lib/invalidate.js';
+import { invalidateHistory, invalidateMoneyViews } from '../lib/invalidate.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
 import type { CustomerRow } from './CustomersPage.js';
-import { quantityOf } from './DamagesPage.js';
+import { quantityText } from '../lib/quantity.js';
 import type { DamageDetail } from './DamagesPage.js';
 import type { ItemRow } from './MaterialsPage.js';
 
@@ -540,6 +541,8 @@ function DamageTextsForm({ damage }: { damage: DamageDetail }) {
   const queryClient = useQueryClient();
   const [reason, setReason] = useState(damage.reason ?? '');
   const [notes, setNotes] = useState(damage.notes ?? '');
+  // One key for this edit, held across its retries (FR-1305).
+  const saveKey = useIdempotencyKey();
 
   const save = useMutation({
     mutationFn: () =>
@@ -550,10 +553,12 @@ function DamageTextsForm({ damage }: { damage: DamageDetail }) {
           reason: reason.trim() === '' ? null : reason.trim(),
           notes: notes.trim() === '' ? null : notes.trim(),
         },
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: saveKey.key,
       }),
     onSuccess: async () => {
+      saveKey.renew();
       await queryClient.invalidateQueries({ queryKey: ['damages'] });
+      await invalidateHistory(queryClient);
       navigate(`/damages/${damage.id}`, { replace: true });
     },
   });
@@ -577,7 +582,7 @@ function DamageTextsForm({ damage }: { damage: DamageDetail }) {
             </div>
             <div>
               <dt className="mz-caption">{t('damages:quantity')}</dt>
-              <dd data-tabular>{quantityOf(damage, formatter, t)}</dd>
+              <dd data-tabular>{quantityText(damage, formatter, t)}</dd>
             </div>
             <div>
               <dt className="mz-caption">{t('damages:damage_date')}</dt>

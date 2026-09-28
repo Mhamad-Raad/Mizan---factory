@@ -4,7 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, DateField, NumberField, StickyFooter, TextField } from '@mizan/ui';
-import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { ApiError, apiRequest } from '../lib/api.js';
+import { useIdempotencyKey } from '../lib/idempotency.js';
+import { toMoneyBody } from '../lib/money.js';
+import { parseCount } from '../lib/quantity.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
@@ -14,13 +17,6 @@ import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { useGlobalRate } from '../lib/rates.js';
 
 const emptyMoney = (): MoneyValue => ({ amount: null, currency: 'IQD', other_amount: null });
-
-/** A money value for the API, or null when nothing was typed. */
-function toMoney(value: MoneyValue) {
-  return value.amount === null
-    ? null
-    : { amount: value.amount, currency: value.currency, other_amount: value.other_amount ?? null };
-}
 
 /**
  * "New material" (FR-301, FR-302, D-062): creating a material is buying it. The form names the
@@ -45,26 +41,31 @@ export function NewMaterialPage() {
   const [buyNote, setBuyNote] = useState('');
   const [sale, setSale] = useState<MoneyValue>(emptyMoney);
   const [bought, setBought] = useState<MoneyValue>(emptyMoney);
-  const [idempotencyKey] = useState(newIdempotencyKey);
+  // The material and its prices are two writes, each with its own key held across retries.
+  const createKey = useIdempotencyKey();
+  const pricesKey = useIdempotencyKey();
 
   // Null until a rate is set: the money fields then show no conversion rather than invent one.
   const { rate } = useGlobalRate();
   const thisMonth = formatter.today().slice(0, 7);
 
+  // Pieces are whole: "2.5" is refused under the field, never rounded to 3.
+  const count = parseCount(quantity);
+
   const create = useMutation({
     mutationFn: async () => {
       const created = await apiRequest<{ id: string }>('/items', {
         method: 'POST',
-        idempotencyKey,
+        idempotencyKey: createKey.key,
         // `per_piece` stays the model until the count-only migration; the choice is gone from the UI.
         body: {
           name: name.trim(),
           pricing_unit: 'per_piece',
           code: code.trim() === '' ? null : code.trim(),
           buy: {
-            qty_count: Math.round(Number(quantity)),
+            qty_count: count.kind === 'count' ? count.value : null,
             qty_kg: null,
-            unit_price: toMoney(unitCost),
+            unit_price: toMoneyBody(unitCost),
             purchase_date: boughtOn,
             note: buyNote.trim() === '' ? null : buyNote.trim(),
           },
@@ -75,8 +76,8 @@ export function NewMaterialPage() {
       if (maySetPrices && (sale.amount !== null || bought.amount !== null)) {
         await apiRequest(`/items/${id}/prices/${thisMonth}`, {
           method: 'PUT',
-          idempotencyKey: newIdempotencyKey(),
-          body: { sale: toMoney(sale), bought: toMoney(bought), note: null },
+          idempotencyKey: pricesKey.key,
+          body: { sale: toMoneyBody(sale), bought: toMoneyBody(bought), note: null },
         });
       }
 
@@ -92,7 +93,7 @@ export function NewMaterialPage() {
   const duplicate = create.error instanceof ApiError ? create.error.fieldError('name') : undefined;
   const otherError = duplicate ? null : errorMessage(t, create.error);
 
-  const quantityValid = quantity.trim() !== '' && Number(quantity) > 0;
+  const quantityValid = count.kind === 'count' && count.value > 0;
   const costValid = unitCost.amount !== null && unitCost.amount >= 0;
   const ready = mayBuy && name.trim() !== '' && quantityValid && costValid && boughtOn !== '';
 
@@ -156,6 +157,7 @@ export function NewMaterialPage() {
                   label={t('glossary:quantity')}
                   unit={t('common:count_symbol')}
                   value={quantity}
+                  error={count.kind === 'invalid' ? t('common:count_whole') : undefined}
                   onChange={(event) => setQuantity(event.target.value)}
                 />
                 <DateField

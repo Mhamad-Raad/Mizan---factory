@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NumberField } from '@mizan/ui';
 import type { Measure } from '@mizan/money';
+import { parseCount } from '../lib/quantity.js';
 
 export interface QuantityValue {
   qty_count: number | null;
@@ -22,18 +24,26 @@ export interface QuantityInputProps {
  */
 export function QuantityInput({ priced_measure, value, onChange, disabled, error }: QuantityInputProps) {
   const { t } = useTranslation();
+  /**
+   * What was typed in the count while it is not a whole number. The form holds no count then —
+   * the line is incomplete, and cannot be saved — and the field keeps the text and says why,
+   * rather than rounding 2.5 pieces to 3 behind the user's back.
+   */
+  const [badCount, setBadCount] = useState<string | null>(null);
+  const countError = badCount !== null ? t('common:count_whole') : priced_measure === 'count' ? error : undefined;
 
   const count = (
     <NumberField
       key="count"
       label={t('glossary:count')}
-      value={value.qty_count === null ? '' : String(value.qty_count)}
+      value={badCount ?? (value.qty_count === null ? '' : String(value.qty_count))}
       hint={priced_measure === 'count' ? undefined : t('orders:for_information')}
-      error={priced_measure === 'count' ? error : undefined}
+      error={countError}
       disabled={disabled}
       onChange={(event) => {
-        const text = event.target.value.trim();
-        onChange({ ...value, qty_count: text === '' ? null : Math.round(Number(text)) });
+        const parsed = parseCount(event.target.value);
+        setBadCount(parsed.kind === 'invalid' ? event.target.value : null);
+        onChange({ ...value, qty_count: parsed.kind === 'count' ? parsed.value : null });
       }}
     />
   );

@@ -94,5 +94,13 @@
   "export_truncated": "The file holds the first {{count}} rows only — choose a shorter period for the rest",
   "my_account": "My account",
   "switch_to_dark": "Switch to the dark theme",
-  "switch_to_light": "Switch to the light theme"
+  "switch_to_light": "Switch to the light theme",
+  "count_whole": "Pieces are counted whole — type a whole number",
+  "rate_invalid": "Type a rate above zero, with at most four decimals",
+  "offline_not_loaded": "You are offline, and this hasn't been loaded on this device yet. It will load when the connection is back.",
+  "screen_failed_title": "This screen couldn't be shown",
+  "screen_failed_body": "Something went wrong on this device, not with your connection. Reload, or go back and try again.",
+  "no_access_title": "You don't have access to this page",
+  "go_home": "Go to my start page",
+  "deactivate_material_body": "It is no longer offered for new orders and buys. Everything already recorded stays as it is, and it can be reactivated at any time."
 }

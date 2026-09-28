@@ -2,8 +2,12 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, DateField, Icon, TextField, Toast } from '@mizan/ui';
-import { apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
+import { apiRequest } from '../lib/api.js';
+import { useIdempotencyKey } from '../lib/idempotency.js';
+import { quantityText } from '../lib/quantity.js';
+import { readNote } from '../lib/record-names.js';
+import { CompensationChip } from '../components/chips.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { usePageTitle } from '../lib/page-title.js';
@@ -12,7 +16,6 @@ import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
 import { useCursorPaging } from '../lib/paging.js';
 import { useFormatter, usePermission } from '../lib/store.js';
-import { CompensationChip, quantityOf } from './DamagesPage.js';
 import type { DamageDetail } from './DamagesPage.js';
 
 type Sheet = 'money' | 'materials' | 'void';
@@ -70,15 +73,20 @@ export function DamageDetailPage() {
     await invalidateMoneyViews(queryClient);
   };
 
+  // Each write holds one key across its retries, renewed only by its success (FR-1305).
+  const paidBackKey = useIdempotencyKey();
+  const voidKey = useIdempotencyKey();
+
   const paidBack = useMutation({
     mutationFn: (body: { method: 'money' | 'materials'; entry_date: string; note: string | null }) =>
       apiRequest(`/damages/${id}/paid-back`, {
         method: 'POST',
         body: { ...body, version: damage.data?.version },
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: paidBackKey.key,
       }),
     onSuccess: async (_, body) => {
-      setSheet(null);
+      paidBackKey.renew();
+      closeSheet();
       setToast(body.method === 'money' ? t('damages:paid_back_money') : t('damages:paid_back_materials'));
       await invalidate();
     },
@@ -89,14 +97,22 @@ export function DamageDetailPage() {
       apiRequest(`/damages/${id}/void`, {
         method: 'POST',
         body: { reason, version: damage.data?.version },
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: voidKey.key,
       }),
     onSuccess: async () => {
-      setSheet(null);
+      voidKey.renew();
+      closeSheet();
       setToast(t('damages:voided'));
       await invalidate();
     },
   });
+
+  /** A closed sheet forgets its last refusal, so it does not greet the next attempt with it. */
+  function closeSheet() {
+    setSheet(null);
+    paidBack.reset();
+    voidRecord.reset();
+  }
 
   const record = damage.data;
   const active = record?.doc_status === 'active';
@@ -124,11 +140,11 @@ export function DamageDetailPage() {
               <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)', alignItems: 'flex-start' }}>
                 <div className="mz-stack" style={{ gap: '2px', minInlineSize: 0 }}>
                   <h2 className="mz-title">{t('damages:number', { number: formatter.identifier(record.number) })}</h2>
-                  <Link to={`/materials/${record.item_id}`} className="mz-caption">
+                  <Link to={`/materials/${record.item_id}`} className="mz-caption mz-tap-link">
                     <bdi>{record.item_name}</bdi>
                   </Link>
                   <span className="mz-caption" style={{ display: 'block' }} data-tabular>
-                    {quantityOf(record, formatter, t)} · {formatter.date(record.damage_date)}
+                    {quantityText(record, formatter, t)} · {formatter.date(record.damage_date)}
                     {record.acting_user_name ? ` · ${t('glossary:done_by')}: ${record.acting_user_name}` : ''}
                   </span>
                   {record.reason ? (
@@ -162,7 +178,7 @@ export function DamageDetailPage() {
                       ? t('damages:stock_unchanged')
                       : record.stock_effect === 'returned_in'
                         ? t('damages:returned_to_stock')
-                        : t('damages:stock_fell', { quantity: quantityOf(record, formatter, t) })}
+                        : t('damages:stock_fell', { quantity: quantityText(record, formatter, t) })}
                   </span>
                 </div>
                 <div className="mz-detail-figures">
@@ -244,14 +260,16 @@ export function DamageDetailPage() {
               </div>
             ) : null}
 
-            <div className="mz-row" style={{ gap: 'var(--space-2)' }}>
-              <Button variant={tab === 'overview' ? 'secondary' : 'ghost'} onClick={() => setTab('overview')}>
-                {t('companies:tab_overview')}
-              </Button>
-              <Button variant={tab === 'history' ? 'secondary' : 'ghost'} onClick={() => setTab('history')}>
-                {t('glossary:history')}
-              </Button>
-            </div>
+            {/* The library's tabs, as on every other detail page: one selected, announced as such. */}
+            <SegmentedControl
+              label={t('damages:title')}
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: 'overview', label: t('companies:tab_overview') },
+                { value: 'history', label: t('glossary:history') },
+              ]}
+            />
 
             {tab === 'overview' && record.credits.length > 0 ? (
               <Card>
@@ -267,7 +285,12 @@ export function DamageDetailPage() {
                         </span>
                         <span className="mz-caption">
                           {formatter.date(credit.entry_date)}
-                          {credit.note ? ` · ${credit.note}` : ''}
+                          {credit.note ? (
+                            <>
+                              {' · '}
+                              <bdi>{readNote(credit.note, t, formatter.identifier)}</bdi>
+                            </>
+                          ) : null}
                         </span>
                       </span>
                       {credit.cost ? (
@@ -294,7 +317,12 @@ export function DamageDetailPage() {
                           <span className="mz-caption">
                             {formatter.timestamp(new Date(row.occurred_at))}
                             {row.actor_display_name ? ` · ${row.actor_display_name}` : ''}
-                            {row.note ? ` · ${row.note}` : ''}
+                            {row.note ? (
+                              <>
+                                {' · '}
+                                <bdi>{readNote(row.note, t, formatter.identifier)}</bdi>
+                              </>
+                            ) : null}
                           </span>
                         </span>
                       </li>
@@ -321,7 +349,8 @@ export function DamageDetailPage() {
           method={sheet}
           saving={paidBack.isPending}
           error={errorMessage(t, paidBack.error) ?? undefined}
-          onClose={() => setSheet(null)}
+          onClose={closeSheet}
+          onEdit={paidBack.reset}
           onSave={(body) => paidBack.mutate({ method: sheet, ...body })}
         />
       ) : null}
@@ -330,7 +359,8 @@ export function DamageDetailPage() {
         <VoidSheet
           saving={voidRecord.isPending}
           error={errorMessage(t, voidRecord.error) ?? undefined}
-          onClose={() => setSheet(null)}
+          onClose={closeSheet}
+          onEdit={voidRecord.reset}
           onSave={(reason) => voidRecord.mutate(reason)}
         />
       ) : null}
@@ -347,12 +377,15 @@ function PaidBackSheet({
   error,
   onClose,
   onSave,
+  onEdit,
 }: {
   method: 'money' | 'materials';
   saving: boolean;
   error?: string;
   onClose: () => void;
   onSave: (body: { entry_date: string; note: string | null }) => void;
+  /** Any change to the inputs: the caller forgets the last refusal. */
+  onEdit?: () => void;
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
@@ -364,12 +397,23 @@ function PaidBackSheet({
     <BottomSheet title={title} open onClose={onClose} closeLabel={t('common:close')}>
       <div className="mz-stack">
         <p>{method === 'money' ? t('damages:confirm_money') : t('damages:confirm_materials')}</p>
-        <DateField label={t('common:date')} value={date} max={formatter.today()} onChange={(event) => setDate(event.target.value)} />
+        <DateField
+          label={t('common:date')}
+          value={date}
+          max={formatter.today()}
+          onChange={(event) => {
+            onEdit?.();
+            setDate(event.target.value);
+          }}
+        />
         <TextField
           label={t('common:note')}
           hint={t('common:optional')}
           value={note}
-          onChange={(event) => setNote(event.target.value)}
+          onChange={(event) => {
+            onEdit?.();
+            setNote(event.target.value);
+          }}
           maxLength={2000}
         />
         {error ? (
@@ -391,11 +435,14 @@ function VoidSheet({
   error,
   onClose,
   onSave,
+  onEdit,
 }: {
   saving: boolean;
   error?: string;
   onClose: () => void;
   onSave: (reason: string) => void;
+  /** Any change to the reason: the caller forgets the last refusal. */
+  onEdit?: () => void;
 }) {
   const { t } = useTranslation();
   const [reason, setReason] = useState('');
@@ -408,7 +455,10 @@ function VoidSheet({
           label={t('glossary:reason')}
           hint={t('materials:note_required')}
           value={reason}
-          onChange={(event) => setReason(event.target.value)}
+          onChange={(event) => {
+            onEdit?.();
+            setReason(event.target.value);
+          }}
           maxLength={2000}
         />
         {error ? (

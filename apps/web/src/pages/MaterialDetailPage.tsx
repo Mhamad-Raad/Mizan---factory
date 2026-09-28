@@ -14,7 +14,10 @@ import {
   TextField,
   Toast,
 } from '@mizan/ui';
-import { apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { apiRequest } from '../lib/api.js';
+import { useIdempotencyKey } from '../lib/idempotency.js';
+import { toMoneyBody } from '../lib/money.js';
+import { parseCount, quantityText } from '../lib/quantity.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
@@ -27,7 +30,7 @@ import { useCursorPaging, useKeepPageInRange, usePaging } from '../lib/paging.js
 import { useFormatter, usePermission } from '../lib/store.js';
 import { useIsWide } from '../lib/wide.js';
 import { errorMessage } from '../lib/errors.js';
-import { invalidateMoneyViews } from '../lib/invalidate.js';
+import { invalidateHistory, invalidateMoneyViews } from '../lib/invalidate.js';
 import { useGlobalRate } from '../lib/rates.js';
 import type { ItemRow } from './MaterialsPage.js';
 
@@ -97,6 +100,8 @@ export function MaterialDetailPage() {
     null,
   );
   const [adding, setAdding] = useState(false);
+  /** Deactivating asks first, like every other action that takes something out of use. */
+  const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
   const [showUsedUp, setShowUsedUp] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -153,17 +158,25 @@ export function MaterialDetailPage() {
   });
   const historyNext = history.data?.next_cursor ?? null;
 
+  // Each write holds one key across its retries, renewed only by its success (FR-1305).
+  const pricesKey = useIdempotencyKey();
+  const addStockKey = useIdempotencyKey();
+  const activeKey = useIdempotencyKey();
+
   const savePrices = useMutation({
     mutationFn: (input: { month: string; body: unknown; version: number | null }) =>
       apiRequest(`/items/${id}/prices/${input.month.slice(0, 7)}`, {
         method: 'PUT',
         body: input.body,
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: pricesKey.key,
       }),
     onSuccess: async () => {
-      setPriceSheet(null);
+      pricesKey.renew();
+      closePrices();
       setToast(t('materials:prices_saved'));
       await queryClient.invalidateQueries({ queryKey: ['items'] });
+      // A month's price values the stock and the margin, which Today, Reports and Accounts sum.
+      await invalidateMoneyViews(queryClient);
     },
   });
 
@@ -178,7 +191,7 @@ export function MaterialDetailPage() {
     }) =>
       apiRequest('/purchases', {
         method: 'POST',
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: addStockKey.key,
         body: {
           company_id: null,
           purchase_date: input.purchase_date,
@@ -194,7 +207,8 @@ export function MaterialDetailPage() {
         },
       }),
     onSuccess: async () => {
-      setAdding(false);
+      addStockKey.renew();
+      closeAddStock();
       setToast(t('materials:stock_added'));
       await queryClient.invalidateQueries({ queryKey: ['items'] });
       await queryClient.invalidateQueries({ queryKey: ['purchases'] });
@@ -207,25 +221,36 @@ export function MaterialDetailPage() {
       apiRequest(`/items/${id}/${active ? 'reactivate' : 'deactivate'}`, {
         method: 'POST',
         body: { version: item.data?.version },
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: activeKey.key,
       }),
     onSuccess: async () => {
+      activeKey.renew();
+      setConfirmingDeactivate(false);
       await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await invalidateHistory(queryClient);
     },
   });
+
+  // A sheet that closes forgets its last refusal, so it does not greet the next attempt with it.
+  function closePrices() {
+    setPriceSheet(null);
+    savePrices.reset();
+  }
+  function closeAddStock() {
+    setAdding(false);
+    addStock.reset();
+  }
+  function closeDeactivate() {
+    setConfirmingDeactivate(false);
+    setActive.reset();
+  }
 
   const setActiveError = errorMessage(t, setActive.error);
   const thisMonth = `${formatter.today().slice(0, 7)}-01`;
 
-  // A movement can carry kg, a count, or both — kept exactly as the phone card showed them.
-  const movementQty = (movement: Movement) => {
-    const parts: string[] = [];
-    if (movement.qty_kg !== null) {
-      parts.push(`${formatter.quantity(movement.qty_kg)} ${t('common:kg_symbol')}`);
-    }
-    if (movement.qty_count !== null) parts.push(formatter.number(movement.qty_count));
-    return parts.length > 0 ? parts.join(' · ') : '—';
-  };
+  // A movement can carry kg, a count, or both — the material's own measure first.
+  const movementQty = (movement: Movement) =>
+    quantityText({ ...movement, priced_measure: item.data?.stock.priced_measure }, formatter, t);
 
   usePageTitle(item.data?.name ?? t('materials:title'));
 
@@ -379,15 +404,20 @@ export function MaterialDetailPage() {
                   ) : null}
 
                   <Can permission="materials.edit">
-                    {setActiveError ? (
+                    {setActiveError && !confirmingDeactivate ? (
                       <div className="mz-warning" role="alert">
                         {setActiveError}
                       </div>
                     ) : null}
                     <Button
                       variant={item.data.is_active ? 'danger' : 'secondary'}
-                      loading={setActive.isPending}
-                      onClick={() => setActive.mutate(!item.data?.is_active)}
+                      loading={setActive.isPending && !confirmingDeactivate}
+                      onClick={() => {
+                        setActive.reset();
+                        // Reactivating puts nothing at risk and happens at once; deactivating asks.
+                        if (item.data?.is_active) setConfirmingDeactivate(true);
+                        else setActive.mutate(true);
+                      }}
                     >
                       {item.data.is_active ? t('materials:deactivate') : t('materials:reactivate')}
                     </Button>
@@ -628,7 +658,7 @@ export function MaterialDetailPage() {
             initial={priceSheet.existing}
             saving={savePrices.isPending}
             error={errorMessage(t, savePrices.error) ?? undefined}
-            onClose={() => setPriceSheet(null)}
+            onClose={closePrices}
             onSave={(input) =>
               savePrices.mutate({
                 month: priceSheet.month,
@@ -651,9 +681,31 @@ export function MaterialDetailPage() {
             latest={(lots.data?.items ?? []).at(-1) ?? null}
             saving={addStock.isPending}
             error={errorMessage(t, addStock.error) ?? undefined}
-            onClose={() => setAdding(false)}
+            onClose={closeAddStock}
+            onEdit={addStock.reset}
             onSave={(input) => addStock.mutate(input)}
           />
+        ) : null}
+
+        {confirmingDeactivate && item.data ? (
+          <BottomSheet title={t('materials:deactivate')} open onClose={closeDeactivate} closeLabel={t('common:close')}>
+            <div className="mz-stack">
+              <p>
+                <strong>
+                  <bdi>{item.data.name}</bdi>
+                </strong>
+              </p>
+              <p className="mz-muted">{t('common:deactivate_material_body')}</p>
+              {setActiveError ? (
+                <div className="mz-warning" role="alert">
+                  {setActiveError}
+                </div>
+              ) : null}
+              <Button variant="danger" block loading={setActive.isPending} onClick={() => setActive.mutate(false)}>
+                {t('materials:deactivate')}
+              </Button>
+            </div>
+          </BottomSheet>
         ) : null}
 
         {toast ? (
@@ -662,16 +714,6 @@ export function MaterialDetailPage() {
       </div>
     </>
   );
-}
-
-function toMoneyBody(value: {
-  amount: number | null;
-  currency: 'IQD' | 'USD';
-  other_amount?: number | null;
-}) {
-  return value.amount === null
-    ? null
-    : { amount: value.amount, currency: value.currency, other_amount: value.other_amount ?? null };
 }
 
 /**
@@ -777,6 +819,7 @@ function AddStockSheet({
   error,
   onClose,
   onSave,
+  onEdit,
 }: {
   pricedMeasure: 'count' | 'kg';
   rate: string | null;
@@ -791,12 +834,20 @@ function AddStockSheet({
     qty_kg: string | null;
     unit_price: { amount: number; currency: 'IQD' | 'USD'; other_amount: number | null };
   }) => void;
+  /** Any change to the inputs: the caller forgets the last refusal. */
+  onEdit?: () => void;
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const [date, setDate] = useState(formatter.today());
   const [quantity, setQuantity] = useState('');
   const [note, setNote] = useState('');
+  const edit =
+    <T,>(set: (value: T) => void) =>
+    (value: T) => {
+      onEdit?.();
+      set(value);
+    };
   const [cost, setCost] = useState<MoneyValue>(() => {
     if (latest && latest.unit_cost_iqd !== undefined && latest.unit_cost_usd_cents !== undefined) {
       return {
@@ -808,7 +859,12 @@ function AddStockSheet({
     return { amount: null, currency: 'IQD', other_amount: null };
   });
 
-  const valid = quantity.trim() !== '' && Number(quantity) > 0 && cost.amount !== null && cost.amount >= 0;
+  // Pieces are whole: "2.5" is refused under the field, never rounded to 3.
+  const count = parseCount(quantity);
+  const countInvalid = pricedMeasure === 'count' && count.kind === 'invalid';
+  const quantityValid =
+    pricedMeasure === 'count' ? count.kind === 'count' && count.value > 0 : quantity.trim() !== '' && Number(quantity) > 0;
+  const valid = quantityValid && cost.amount !== null && cost.amount >= 0;
 
   return (
     <BottomSheet title={t('materials:add_stock')} open onClose={onClose} closeLabel={t('common:close')}>
@@ -820,13 +876,14 @@ function AddStockSheet({
             unit={pricedMeasure === 'kg' ? t('common:kg_symbol') : t('common:count_symbol')}
             decimals={pricedMeasure === 'kg' ? 3 : 0}
             value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
+            error={countInvalid ? t('common:count_whole') : undefined}
+            onChange={(event) => edit(setQuantity)(event.target.value)}
           />
           <DateField
             label={t('materials:bought_on')}
             value={date}
             max={formatter.today()}
-            onChange={(event) => setDate(event.target.value)}
+            onChange={(event) => edit(setDate)(event.target.value)}
           />
         </div>
         <MoneyInput
@@ -834,7 +891,7 @@ function AddStockSheet({
           value={cost}
           rate={rate}
           sourceLabel={t('glossary:system_rate')}
-          onChange={setCost}
+          onChange={edit(setCost)}
         />
         <TextField
           label={t('materials:buy_note')}
@@ -842,7 +899,7 @@ function AddStockSheet({
           value={note}
           error={error}
           maxLength={500}
-          onChange={(event) => setNote(event.target.value)}
+          onChange={(event) => edit(setNote)(event.target.value)}
         />
         <Button
           block
@@ -853,7 +910,7 @@ function AddStockSheet({
             onSave({
               purchase_date: date,
               note: note.trim() === '' ? null : note.trim(),
-              qty_count: pricedMeasure === 'count' ? Math.round(Number(quantity)) : null,
+              qty_count: count.kind === 'count' && pricedMeasure === 'count' ? count.value : null,
               qty_kg: pricedMeasure === 'kg' ? quantity.trim() : null,
               unit_price: { amount: cost.amount, currency: cost.currency, other_amount: cost.other_amount ?? null },
             })

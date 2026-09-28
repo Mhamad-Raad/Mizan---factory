@@ -13,6 +13,22 @@ export async function loadTwice<T>(load: () => Promise<T>, pauseMs = 600): Promi
     return await load();
   } catch {
     await new Promise((resolve) => setTimeout(resolve, pauseMs));
-    return load();
+    try {
+      return await load();
+    } catch (error) {
+      throw new ChunkLoadError(error);
+    }
+  }
+}
+
+/**
+ * A screen's file that did not arrive — told apart from a screen that arrived and then failed
+ * to draw, because the two need different words: "check your connection" is the right advice
+ * for the first and a wrong one for the second.
+ */
+export class ChunkLoadError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = 'ChunkLoadError';
   }
 }

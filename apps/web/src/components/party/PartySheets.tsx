@@ -22,12 +22,15 @@ export function EditPartySheet({
   error,
   onClose,
   onSave,
+  onEdit,
 }: {
   party: CustomerRow;
   saving: boolean;
   error?: string;
   onClose: () => void;
   onSave: (body: Record<string, unknown>) => void;
+  /** Any change to the inputs: the caller forgets the last refusal. */
+  onEdit?: () => void;
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
@@ -41,16 +44,20 @@ export function EditPartySheet({
   const [address, setAddress] = useState(party.address ?? '');
   const [notes, setNotes] = useState(party.notes ?? '');
   const rateChanged = rate.trim() !== '' && rate.trim() !== ownRate;
+  const edit = (set: (value: string) => void, value: string) => {
+    onEdit?.();
+    set(value);
+  };
 
   return (
     <BottomSheet title={t('common:edit')} open onClose={onClose} closeLabel={t('common:close')}>
       <div className="mz-stack">
-        <TextField label={t('customers:name')} value={name} onChange={(event) => setName(event.target.value)} />
+        <TextField label={t('customers:name')} value={name} onChange={(event) => edit(setName, event.target.value)} />
         <TextField
           label={t('companies:contact_name')}
           hint={t('common:optional')}
           value={contactName}
-          onChange={(event) => setContactName(event.target.value)}
+          onChange={(event) => edit(setContactName, event.target.value)}
         />
         {(maySetCustomerRate || maySetCompanyRate) && !party.is_system ? (
           <NumberField
@@ -59,7 +66,7 @@ export function EditPartySheet({
             decimals={4}
             value={rate}
             placeholder={formatter.rate(party.rate?.rate_iqd_per_usd ?? '0')}
-            onChange={(event) => setRate(event.target.value)}
+            onChange={(event) => edit(setRate, event.target.value)}
           />
         ) : null}
         <TextField
@@ -68,19 +75,19 @@ export function EditPartySheet({
           type="tel"
           inputMode="tel"
           value={phone}
-          onChange={(event) => setPhone(event.target.value)}
+          onChange={(event) => edit(setPhone, event.target.value)}
         />
         <TextField
           label={t('customers:address')}
           hint={t('common:optional')}
           value={address}
-          onChange={(event) => setAddress(event.target.value)}
+          onChange={(event) => edit(setAddress, event.target.value)}
         />
         <TextField
           label={t('glossary:notes')}
           hint={t('common:optional')}
           value={notes}
-          onChange={(event) => setNotes(event.target.value)}
+          onChange={(event) => edit(setNotes, event.target.value)}
         />
         {error ? (
           <p className="mz-field__error" role="alert">
@@ -187,8 +194,10 @@ export function SettlementCurrencySheet({
   rate,
   saving,
   error,
+  rateRequired,
   onClose,
   onSave,
+  onEdit,
 }: {
   current: Currency;
   /** Whether either side has money on it; then the carry-over needs a rate. */
@@ -198,14 +207,27 @@ export function SettlementCurrencySheet({
   rate: string;
   saving: boolean;
   error?: string;
+  /**
+   * The server answered REBASE_RATE_REQUIRED. `hasMoney` is worked out from the balance the
+   * caller may see, which reads zero when the figures are withheld or the two sides cancel —
+   * while the server asks for a rate whenever either side has money. Its answer wins.
+   */
+  rateRequired?: boolean;
   onClose: () => void;
   onSave: (body: unknown) => void;
+  /** Any change to the inputs: the caller forgets the last refusal. */
+  onEdit?: () => void;
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const target: Currency = current === 'IQD' ? 'USD' : 'IQD';
   const [rebaseRate, setRebaseRate] = useState(rate);
   const [note, setNote] = useState('');
+  // Once the server has asked for the rate the field stays, even after the refusal is cleared
+  // by typing — otherwise it would vanish under the thumb that is answering it.
+  const [asked, setAsked] = useState(false);
+  if (rateRequired && !asked) setAsked(true);
+  const needsRate = hasMoney || asked || Boolean(rateRequired);
 
   return (
     <BottomSheet
@@ -229,12 +251,15 @@ export function SettlementCurrencySheet({
           <span data-tabular>{formatter.money(balance, current)}</span>
         </div>
 
-        {hasMoney ? (
+        {needsRate ? (
           <NumberField
             label={t('companies:rebase_rate')}
             decimals={4}
             value={rebaseRate}
-            onChange={(event) => setRebaseRate(event.target.value)}
+            onChange={(event) => {
+              onEdit?.();
+              setRebaseRate(event.target.value);
+            }}
             error={error}
           />
         ) : error ? (
@@ -245,17 +270,24 @@ export function SettlementCurrencySheet({
         ) : null}
         <p className="mz-caption">{t('companies:rebase_hint')}</p>
 
-        <TextField label={t('common:note')} value={note} onChange={(event) => setNote(event.target.value)} />
+        <TextField
+          label={t('common:note')}
+          value={note}
+          onChange={(event) => {
+            onEdit?.();
+            setNote(event.target.value);
+          }}
+        />
 
         <Button
           block
           loading={saving}
-          disabled={note.trim() === '' || (hasMoney && rebaseRate.trim() === '')}
+          disabled={note.trim() === '' || (needsRate && rebaseRate.trim() === '')}
           onClick={() =>
             onSave({
               currency: target,
               note: note.trim(),
-              rebase_rate: hasMoney ? rebaseRate.trim() : null,
+              rebase_rate: needsRate ? rebaseRate.trim() : null,
             })
           }
         >

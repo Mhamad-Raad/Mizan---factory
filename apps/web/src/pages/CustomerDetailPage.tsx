@@ -5,7 +5,9 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { BottomSheet, Button, Card, DateField, Icon, Menu, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import type { IconName, MenuItem } from '@mizan/ui';
 import type { Currency, Rate } from '@mizan/money';
-import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { ApiError, apiRequest } from '../lib/api.js';
+import { useIdempotencyKey } from '../lib/idempotency.js';
+import type { IdempotencyKey } from '../lib/idempotency.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { DualAmount } from '../components/DualAmount.js';
@@ -21,13 +23,13 @@ import { OrderTable } from '../components/OrderTable.js';
 import { Pager } from '../components/Pager.js';
 import { useCursorPaging, useKeepPageInRange, usePaging } from '../lib/paging.js';
 import { EditPartySheet, RateHistorySheet, SettlementCurrencySheet } from '../components/party/PartySheets.js';
-import { customerName } from '../lib/customers.js';
+import { DIRECTION_LABELS, customerName, directionOf } from '../lib/customers.js';
+import { InactiveChip } from '../components/chips.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
 import { readNote } from '../lib/record-names.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { lastTwelveMonths } from '../lib/periods.js';
-import { DIRECTION_LABELS, InactiveChip, directionOf } from './CustomersPage.js';
 import type { BalanceValue, CustomerRow } from './CustomersPage.js';
 import type { OrderRow } from './OrdersPage.js';
 
@@ -84,6 +86,8 @@ export function CustomerDetailPage() {
   const maySetCompanyRate = usePermission('companies.set_rate');
   const mayEditCustomer = usePermission('customers.edit');
   const mayEditCompany = usePermission('companies.edit');
+  // The orders are asked for only by someone who may read them; the API refuses the rest.
+  const mayViewOrders = usePermission('orders.view');
 
   const [tab, setTab] = useState<Tab>('overview');
   const [sheet, setSheet] = useState<Sheet | null>(null);
@@ -106,7 +110,7 @@ export function CustomerDetailPage() {
     queryKey: ['customers', id, 'orders', ordersPaging.page, ordersPaging.pageSize],
     queryFn: () =>
       apiRequest<{ items: OrderRow[]; total: number }>(`/customers/${id}/orders?${ordersPaging.query}`),
-    enabled: selling && tab === 'orders',
+    enabled: selling && mayViewOrders && tab === 'orders',
     placeholderData: keepPreviousData,
   });
   useKeepPageInRange(ordersPaging, orders);
@@ -116,7 +120,7 @@ export function CustomerDetailPage() {
     queryKey: ['customers', id, 'orders', 'owing'],
     queryFn: () =>
       apiRequest<{ items: OrderRow[]; total: number }>(`/customers/${id}/orders?status=owing&page_size=5`),
-    enabled: selling && tab === 'overview',
+    enabled: selling && mayViewOrders && tab === 'overview',
   });
 
   const salesPaging = usePaging({ storageKey: 'account-ledger', prefix: 'sales_' });
@@ -179,45 +183,68 @@ export function CustomerDetailPage() {
     await queryClient.invalidateQueries({ queryKey: ['orders'] });
     await invalidateMoneyViews(queryClient);
   };
-  const done = async (message?: string) => {
-    setSheet(null);
-    setEntrySheet(null);
+  // One key per kind of write, held across its retries and renewed by its success (FR-1305).
+  const paymentKey = useIdempotencyKey();
+  const entryKey = useIdempotencyKey();
+  const rateKey = useIdempotencyKey();
+  const currencyKey = useIdempotencyKey();
+  const updateKey = useIdempotencyKey();
+  const post =
+    (path: string, key: IdempotencyKey, method: 'POST' | 'PUT' | 'PATCH' = 'POST') =>
+    (body: unknown) =>
+      apiRequest(`/customers/${id}${path}`, { method, body, idempotencyKey: key.key });
+  const done = async (key: IdempotencyKey, message?: string) => {
+    key.renew();
+    closeSheets();
     if (message) setToast(message);
     await refresh();
   };
-  const post = (path: string, method: 'POST' | 'PUT' | 'PATCH' = 'POST') => (body: unknown) =>
-    apiRequest(`/customers/${id}${path}`, { method, body, idempotencyKey: newIdempotencyKey() });
 
   const payment = useMutation({
-    mutationFn: post('/payments'),
+    mutationFn: post('/payments', paymentKey),
     onSuccess: async () => {
-      await done(t('customers:payment_recorded'));
+      await done(paymentKey, t('customers:payment_recorded'));
       setLandedVersion((version) => version + 1);
     },
   });
   const entry = useMutation({
-    mutationFn: (input: { kind: EntryKind; body: unknown }) => post(`/${pathOf(input.kind)}`)(input.body),
+    mutationFn: (input: { kind: EntryKind; body: unknown }) => post(`/${pathOf(input.kind)}`, entryKey)(input.body),
     onSuccess: async () => {
-      await done(t('customers:entry_recorded'));
+      await done(entryKey, t('customers:entry_recorded'));
       setLandedVersion((version) => version + 1);
     },
   });
   const setRate = useMutation({
-    mutationFn: post('/rates'),
-    onSuccess: () => done(t('customers:rate_saved')),
+    mutationFn: post('/rates', rateKey),
+    onSuccess: () => done(rateKey, t('customers:rate_saved')),
   });
   const setCurrency = useMutation({
-    mutationFn: post('/settlement-currency', 'PUT'),
-    onSuccess: () => done(),
+    mutationFn: post('/settlement-currency', currencyKey, 'PUT'),
+    onSuccess: () => done(currencyKey),
   });
   const update = useMutation({
-    mutationFn: post('', 'PATCH'),
-    onSuccess: () => done(),
+    mutationFn: post('', updateKey, 'PATCH'),
+    onSuccess: () => done(updateKey),
   });
+
+  /**
+   * A sheet that closes forgets its last answer: reopened, it must not show yesterday's refusal —
+   * nor carry "record the excess as credit" over to a payment of a different amount.
+   */
+  function closeSheets() {
+    setSheet(null);
+    setEntrySheet(null);
+    payment.reset();
+    entry.reset();
+    setRate.reset();
+    setCurrency.reset();
+    update.reset();
+  }
 
   const errorOf = (error: unknown) => errorMessage(t, error) ?? undefined;
   const excessNeeded =
     payment.error instanceof ApiError && payment.error.fieldError('amount')?.code === 'EXCEEDS_REMAINING';
+  const rebaseRateRequired = setCurrency.error instanceof ApiError && setCurrency.error.code === 'REBASE_RATE_REQUIRED';
 
   const mayRate = maySetCustomerRate || maySetCompanyRate;
   const mayEdit = !walkIn && (mayEditCustomer || mayEditCompany);
@@ -263,7 +290,7 @@ export function CustomerDetailPage() {
                       </span>
                     ) : null}
                     {data.phone ? (
-                      <a href={`tel:${data.phone}`} className="mz-caption" dir="ltr">
+                      <a href={`tel:${data.phone}`} className="mz-caption mz-tap-link" dir="ltr">
                         {data.phone}
                       </a>
                     ) : null}
@@ -318,7 +345,7 @@ export function CustomerDetailPage() {
                 onChange={setTab}
                 options={[
                   { value: 'overview', label: t('materials:tab_overview') },
-                  ...(selling ? [{ value: 'orders' as Tab, label: t('orders:title') }] : []),
+                  ...(selling && mayViewOrders ? [{ value: 'orders' as Tab, label: t('orders:title') }] : []),
                   ...(selling && maySeeSelling && !walkIn
                     ? [{ value: 'sales' as Tab, label: t('customers:tab_account') }]
                     : []),
@@ -326,7 +353,7 @@ export function CustomerDetailPage() {
                 ]}
               />
 
-              {tab === 'overview' && selling ? (
+              {tab === 'overview' && selling && mayViewOrders ? (
                 <Card>
                   <h3 className="mz-heading">{t('customers:unpaid_first')}</h3>
                   <QueryStates
@@ -444,7 +471,8 @@ export function CustomerDetailPage() {
             saving={payment.isPending}
             needsExcessConfirmation={excessNeeded}
             error={excessNeeded ? undefined : errorOf(payment.error)}
-            onClose={() => setSheet(null)}
+            onClose={closeSheets}
+            onEdit={payment.reset}
             onSave={(body) => payment.mutate(body)}
           />
         ) : null}
@@ -455,7 +483,8 @@ export function CustomerDetailPage() {
             rate={rate}
             saving={entry.isPending}
             error={errorOf(entry.error)}
-            onClose={() => setEntrySheet(null)}
+            onClose={closeSheets}
+            onEdit={entry.reset}
             onSave={(body) => entry.mutate({ kind: entrySheet, body })}
           />
         ) : null}
@@ -465,7 +494,8 @@ export function CustomerDetailPage() {
             party={data}
             saving={update.isPending}
             error={errorOf(update.error)}
-            onClose={() => setSheet(null)}
+            onClose={closeSheets}
+            onEdit={update.reset}
             onSave={(body) => update.mutate(body)}
           />
         ) : null}
@@ -478,7 +508,8 @@ export function CustomerDetailPage() {
             current={data?.rate?.is_customer_rate ? data.rate.rate_iqd_per_usd : null}
             saving={setRate.isPending}
             error={errorOf(setRate.error)}
-            onClose={() => setSheet(null)}
+            onClose={closeSheets}
+            onEdit={setRate.reset}
             onSave={(body) => setRate.mutate(body)}
           />
         ) : null}
@@ -493,7 +524,9 @@ export function CustomerDetailPage() {
             rate={rate ?? ''}
             saving={setCurrency.isPending}
             error={errorOf(setCurrency.error)}
-            onClose={() => setSheet(null)}
+            rateRequired={rebaseRateRequired}
+            onClose={closeSheets}
+            onEdit={setCurrency.reset}
             onSave={(body) => setCurrency.mutate(body)}
           />
         ) : null}
@@ -670,6 +703,7 @@ function LedgerEntrySheet({
   error,
   onClose,
   onSave,
+  onEdit,
 }: {
   kind: EntryKind;
   rate: Rate | null;
@@ -677,28 +711,36 @@ function LedgerEntrySheet({
   error?: string;
   onClose: () => void;
   onSave: (body: unknown) => void;
+  /** Any change to the inputs: the caller forgets the last refusal. */
+  onEdit?: () => void;
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const [amount, setAmount] = useState<MoneyValue>({ amount: null, currency: 'IQD', other_amount: null });
   const [date, setDate] = useState(formatter.today());
   const [note, setNote] = useState('');
+  const edit =
+    <T,>(set: (value: T) => void) =>
+    (value: T) => {
+      onEdit?.();
+      set(value);
+    };
 
   return (
     <BottomSheet title={t(`customers:sheet.${kind}`)} open onClose={onClose} closeLabel={t('common:close')}>
       <div className="mz-stack">
-        <MoneyInput label={t('customers:amount')} value={amount} rate={rate} onChange={setAmount} error={error} />
+        <MoneyInput label={t('customers:amount')} value={amount} rate={rate} onChange={edit(setAmount)} error={error} />
         <DateField
           label={t('common:date')}
           value={date}
           max={formatter.today()}
-          onChange={(event) => setDate(event.target.value)}
+          onChange={(event) => edit(setDate)(event.target.value)}
         />
         <TextField
           label={t('common:note')}
           value={note}
           hint={t('materials:note_required')}
-          onChange={(event) => setNote(event.target.value)}
+          onChange={(event) => edit(setNote)(event.target.value)}
         />
         {kind === 'adjustment' ? <p className="mz-caption">{t('customers:adjustment_hint')}</p> : null}
         <Button

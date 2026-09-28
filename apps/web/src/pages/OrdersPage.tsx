@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon, TextField, Toast } from '@mizan/ui';
 import type { Currency, Rate, RateSource } from '@mizan/money';
-import { apiRequest, newIdempotencyKey } from '../lib/api.js';
+import { apiRequest } from '../lib/api.js';
+import { useIdempotencyKey } from '../lib/idempotency.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
 import { QueryStates } from '../components/states.js';
@@ -20,7 +21,7 @@ import { OrderTable } from '../components/OrderTable.js';
 import { Pager } from '../components/Pager.js';
 import { useKeepPageInRange, usePaging } from '../lib/paging.js';
 import { useDebouncedValue } from '../lib/debounce.js';
-import { thisMonth, thisWeek, yesterdayOf } from '../lib/periods.js';
+import { presetPeriod } from '../lib/periods.js';
 
 export interface OrderRow {
   id: string;
@@ -102,14 +103,17 @@ export function OrdersPage() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  // One key for the undo, held across its retries and renewed only by its success (FR-1305).
+  const undoKey = useIdempotencyKey();
   const undo = useMutation({
     mutationFn: (orderId: string) =>
       apiRequest(`/orders/${orderId}/undo`, {
         method: 'POST',
         body: {},
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: undoKey.key,
       }),
     onSuccess: async () => {
+      undoKey.renew();
       setToast(null);
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
       await queryClient.invalidateQueries({ queryKey: ['items'] });
@@ -263,7 +267,9 @@ export function OrdersPage() {
         <QueryStates
           query={orders}
           isEmpty={rows.length === 0}
-          emptyTitle={t('orders:empty')}
+          // A search that matched nothing says so, rather than "no orders" — which reads as a
+          // statement about the business.
+          emptyTitle={query.trim() ? t('orders:empty_search', { query: query.trim() }) : t('orders:empty')}
           emptyAction={
             <Can permission="orders.create">
               <Link to="/orders/new" className="mz-button mz-button--primary">
@@ -302,8 +308,5 @@ export function OrdersPage() {
  * so the Sold card here and the Sold figure there agree.
  */
 function rangeOf(chip: DateChip, today: string): { from?: string; to?: string } {
-  if (chip === 'all') return {};
-  if (chip === 'month') return thisMonth(today);
-  if (chip === 'week') return thisWeek(today);
-  return { from: yesterdayOf(today), to: today };
+  return presetPeriod(chip === 'today' ? 'since_yesterday' : chip, today);
 }

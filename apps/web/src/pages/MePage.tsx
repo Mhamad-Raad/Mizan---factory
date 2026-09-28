@@ -7,10 +7,11 @@ import { apiRequest } from '../lib/api.js';
 import { errorMessage } from '../lib/errors.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { passwordChangeError } from '../lib/signInError.js';
-import { QueryStates } from '../components/states.js';
+import { FieldsSkeleton, QueryStates, SkeletonBlock } from '../components/states.js';
 import { useApp, useFormatter } from '../lib/store.js';
 import { recordName } from '../lib/record-names.js';
 import { initialsOf } from '../lib/initials.js';
+import { invalidateHistory } from '../lib/invalidate.js';
 
 interface Profile {
   id: string;
@@ -51,7 +52,26 @@ export function MePage() {
 
   return (
     <div className="mz-stack mz-me">
-      <QueryStates query={profile}>
+      <QueryStates
+        query={profile}
+        skeleton={
+          // The head card and the two form cards, the size they arrive at (layout shift 0.26).
+          <>
+            <Card className="mz-me__head">
+              <SkeletonBlock height="3.5rem" width="3.5rem" />
+              <div className="mz-stack" style={{ gap: 'var(--space-2)', flex: 1 }}>
+                <SkeletonBlock height="1.5rem" width="50%" />
+                <SkeletonBlock height="0.875rem" width="35%" />
+                <SkeletonBlock height="1.5rem" width="20%" />
+              </div>
+            </Card>
+            <div className="mz-me__grid">
+              <FieldsSkeleton fields={3} />
+              <FieldsSkeleton fields={3} />
+            </div>
+          </>
+        }
+      >
         {data ? (
           <>
             <Card className="mz-me__head">
@@ -139,6 +159,7 @@ function ProfileCard({
       if (user) useApp.setState({ user: { ...user, display_name: updated.display_name } });
       await queryClient.invalidateQueries({ queryKey: ['me'] });
       await queryClient.invalidateQueries({ queryKey: ['users'] });
+      await invalidateHistory(queryClient);
     },
   });
 
@@ -220,6 +241,7 @@ function PasswordCard() {
       // The change moved the account's version: the profile form must start from the new one,
       // or its next save is refused as somebody else's edit.
       await queryClient.invalidateQueries({ queryKey: ['me', 'profile'] });
+      await invalidateHistory(queryClient);
     },
     onError: (caught) => {
       setMessage(null);

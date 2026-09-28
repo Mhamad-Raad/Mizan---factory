@@ -156,7 +156,7 @@ export function DashboardPage() {
                   <h2 className="mz-heading">
                     {withPurchases ? t('dashboard:trend_title') : t('dashboard:sales_title')}
                   </h2>
-                  <p className="mz-caption">{t('dashboard:trend_subtitle')}</p>
+                  <p className="mz-caption">{t('dashboard:trend_subtitle', { days: formatter.number(days.length) })}</p>
                 </div>
                 <Button variant="ghost" onClick={() => setAsTable(!asTable)}>
                   {asTable ? t('dashboard:show_chart') : t('dashboard:show_table')}
@@ -176,7 +176,7 @@ export function DashboardPage() {
               ) : null}
 
               {quiet ? (
-                <p className="mz-muted mz-chart-empty">{t('dashboard:no_activity')}</p>
+                <p className="mz-muted mz-chart-empty">{t('dashboard:no_activity', { days: formatter.number(days.length) })}</p>
               ) : asTable ? (
                 <TrendTable days={days} withPurchases={withPurchases} />
               ) : (

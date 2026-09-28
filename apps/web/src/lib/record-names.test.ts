@@ -19,6 +19,8 @@ describe('record names and notes in the reader’s language', () => {
   it('translates the notes the system writes for broken goods, old rows included', () => {
     expect(readNote('Broken #2', t, number)).toBe('history:entity.damage #<2>');
     expect(readNote('Broken #2 paid back', t, number)).toBe('damages:paid_back_note(history:entity.damage #<2>)');
+    expect(readNote('Damage #7', t, number)).toBe('history:entity.damage #<7>');
+    expect(readNote('Damage #7 paid back', t, number)).toBe('damages:paid_back_note(history:entity.damage #<7>)');
   });
 
   it('leaves what a person typed as it is', () => {

@@ -59,5 +59,6 @@
   "tile_to_collect": "المتبقي للتحصيل",
   "rounded_up": "قُرِّب للأعلى بمقدار {{amount}} إلى أقرب {{step}}",
   "rounding": "التقريب",
-  "save_order_one": "حفظ الطلب ({{count}} سطر)"
+  "save_order_one": "حفظ الطلب ({{count}} سطر)",
+  "empty_search": "لا نتائج لـ ‏«{{query}}»"
 }

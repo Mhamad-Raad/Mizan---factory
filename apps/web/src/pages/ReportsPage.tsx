@@ -14,7 +14,7 @@ import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
 import { ColumnChart } from '../components/charts/ColumnChart.js';
 import { useKeepPageInRange, usePaging } from '../lib/paging.js';
-import { lastDays, lastMonth, thisMonth, thisWeek, thisYear } from '../lib/periods.js';
+import { presetPeriod, thisMonth } from '../lib/periods.js';
 import { useIsWide } from '../lib/wide.js';
 import { downloadXlsx } from '../lib/xlsx.js';
 import type { Cell, Sheet, SheetColumn } from '../lib/xlsx.js';
@@ -192,13 +192,30 @@ const ORDER: ReportKey[] = [
 
 /** The period of a preset, from today's Baghdad day. */
 export function periodOf(preset: Preset, today: string, custom: { from: string; to: string }): { from: string; to: string } {
-  const month = thisMonth(today);
-  if (preset === 'custom') return { from: custom.from || month.from, to: custom.to || today };
-  if (preset === 'today') return { from: today, to: today };
-  if (preset === 'month') return month;
-  if (preset === 'year') return thisYear(today);
-  if (preset === 'last_month') return lastMonth(today);
-  return preset === 'week' ? thisWeek(today) : lastDays(today, 90);
+  if (preset === 'custom') return { from: custom.from || thisMonth(today).from, to: custom.to || today };
+  return presetPeriod(preset === 'quarter' ? 'last_90_days' : preset, today);
+}
+
+/**
+ * The Profit report's adjustments from its totals (review): what the orders' discounts took off
+ * and their rounding added, and the profit after both — the figure the Accounts page shows. Null
+ * from an older API, or when the report is narrowed to one material and the API leaves them out.
+ */
+export function profitAdjustments(totals: Record<string, unknown>): {
+  margin: { iqd: number; usd: number };
+  discount: { iqd: number; usd: number };
+  rounding: { iqd: number; usd: number };
+  net: { iqd: number; usd: number };
+} | null {
+  const cost = (totals.cost ?? {}) as Record<string, unknown>;
+  if (cost.net_margin_iqd === undefined || cost.net_margin_iqd === null) return null;
+  const pair = (iqd: string, usd: string) => ({ iqd: Number(cost[iqd] ?? 0), usd: Number(cost[usd] ?? 0) });
+  return {
+    margin: pair('margin_iqd', 'margin_usd_cents'),
+    discount: pair('discount_iqd', 'discount_usd_cents'),
+    rounding: pair('rounding_iqd', 'rounding_usd_cents'),
+    net: pair('net_margin_iqd', 'net_margin_usd_cents'),
+  };
 }
 
 /** A figure lives on the row or inside its `cost` / `balance` group (D-022). */
@@ -316,7 +333,7 @@ export function ReportsPage() {
             <option value="week">{t('common:this_week')}</option>
             <option value="month">{t('common:this_month')}</option>
             <option value="last_month">{t('reports:last_month')}</option>
-            <option value="quarter">{t('reports:last_quarter')}</option>
+            <option value="quarter">{t('reports:last_quarter', { days: formatter.number(90) })}</option>
             <option value="year">{t('reports:this_year')}</option>
             <option value="custom">{t('common:custom_range')}</option>
           </select>
@@ -454,6 +471,18 @@ async function reportSheet(
       ]),
     ];
   };
+  // Under the Profit sheet's totals, the same breakdown as the screen: the margin column's
+  // total less the orders' discounts plus their rounding, which is the Accounts page's profit.
+  const adjusted = key === 'profit' && data.totals ? profitAdjustments(data.totals) : null;
+  const marginIndex = amounts.findIndex(([, iqd]) => iqd === 'margin_iqd');
+  const summaryRow = (label: string, pair: { iqd: number; usd: number }): Cell[] => {
+    const row: Cell[] = columns.map(() => null);
+    row[0] = label;
+    const at = columns.length - amounts.length * 2 + marginIndex * 2;
+    row[at] = pair.iqd;
+    row[at + 1] = pair.usd / 100;
+    return row;
+  };
   return {
     sheet: {
       name: t(shape.titleKey),
@@ -462,6 +491,14 @@ async function reportSheet(
       columns,
       rows: data.groups.map((group) => rowOf(group as Record<string, unknown>, labelOf(group, data.group_by, formatter, t))),
       totals: data.totals ? rowOf(data.totals, t('reports:total_row')) : undefined,
+      afterTotals:
+        adjusted && marginIndex >= 0
+          ? [
+              summaryRow(t('reports:profit_discounts'), { iqd: -adjusted.discount.iqd, usd: -adjusted.discount.usd }),
+              summaryRow(t('reports:profit_rounding'), adjusted.rounding),
+              summaryRow(t('reports:profit_net'), adjusted.net),
+            ]
+          : undefined,
     },
     truncated,
   };
@@ -611,6 +648,10 @@ function ReportTab({
   const totalFigures = figuresOf(shape, totals);
   const amounts = shape.amounts.filter(([, iqd]) => totalFigures[iqd] !== undefined || groups.some((g) => figuresOf(shape, g)[iqd] !== undefined));
   const headline = amounts[0];
+  // The profit as the Accounts page counts it (review): the lines' margin less the orders'
+  // discounts plus their rounding. Absent when the report is narrowed to one material, where
+  // an order's discount belongs to no single line.
+  const adjusted = reportKey === 'profit' ? profitAdjustments(totals) : null;
 
   const download = () =>
     exporter.run(async () => {
@@ -686,8 +727,13 @@ function ReportTab({
       <QueryStates query={report} isEmpty={groups.length === 0} emptyTitle={t('reports:empty')}>
         {/* The totals of the whole period, as tiles — never just the page's. */}
         <div className="mz-kpis">
-          {amounts.map((amount) =>
-            totalFigures[amount[1]] === undefined ? null : (
+          {amounts.map((amount, index) =>
+            totalFigures[amount[1]] === undefined ? null : index === 0 && adjusted ? (
+              // The headline profit is the one the Accounts page shows; the breakdown is below.
+              <Tile key={amount[1]} icon="chart" label={t('reports:profit_net')}>
+                <DualAmount amount_iqd={adjusted.net.iqd} amount_usd_cents={adjusted.net.usd} />
+              </Tile>
+            ) : (
               <Tile key={amount[1]} icon="chart" label={t(amount[0])}>
                 {money(totals, amount)}
               </Tile>
@@ -719,6 +765,34 @@ function ReportTab({
             ),
           )}
         </div>
+        {adjusted ? (
+          <dl className="mz-card mz-profit-breakdown">
+            <div>
+              <dt>{t('reports:margin')}</dt>
+              <dd>
+                <DualAmount amount_iqd={adjusted.margin.iqd} amount_usd_cents={adjusted.margin.usd} />
+              </dd>
+            </div>
+            <div>
+              <dt>{t('reports:profit_discounts')}</dt>
+              <dd>
+                <DualAmount amount_iqd={-adjusted.discount.iqd} amount_usd_cents={-adjusted.discount.usd} />
+              </dd>
+            </div>
+            <div>
+              <dt>{t('reports:profit_rounding')}</dt>
+              <dd>
+                <DualAmount amount_iqd={adjusted.rounding.iqd} amount_usd_cents={adjusted.rounding.usd} />
+              </dd>
+            </div>
+            <div className="mz-profit-breakdown__total">
+              <dt>{t('reports:profit_net')}</dt>
+              <dd>
+                <DualAmount amount_iqd={adjusted.net.iqd} amount_usd_cents={adjusted.net.usd} />
+              </dd>
+            </div>
+          </dl>
+        ) : null}
         {reportKey === 'profit' && Number(totals.lines_without_cost ?? 0) > 0 ? (
           <p className="mz-caption">{t('reports:no_cost_price', { count: Number(totals.lines_without_cost) })}</p>
         ) : null}

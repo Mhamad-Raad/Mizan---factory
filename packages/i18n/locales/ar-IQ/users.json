@@ -27,5 +27,6 @@
   "saved": "تم الحفظ",
   "what_changed": "ما تغيّر",
   "no_details": "لا توجد تفاصيل",
-  "record": "السجل"
+  "record": "السجل",
+  "empty_search": "لا نتائج لـ ‏«{{query}}»"
 }

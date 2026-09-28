@@ -2,6 +2,7 @@ import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, ErrorState } from '@mizan/ui';
+import { ChunkLoadError } from '../lib/chunk.js';
 
 interface Props {
   /** Changes with the route: a new screen gets a fresh try, without a reload. */
@@ -12,7 +13,13 @@ interface Props {
 }
 
 interface State {
-  failed: boolean;
+  /** Nothing failed, the screen's file did not arrive, or the screen failed to draw. */
+  failed: false | 'chunk' | 'render';
+}
+
+interface Words {
+  title: string;
+  body: string;
 }
 
 /**
@@ -30,13 +37,13 @@ interface State {
  * clears it, because that screen's file may well be in the cache already.
  */
 class Boundary extends Component<
-  Props & { title: string; body: string; reload: string; leave: string },
+  Props & { chunk: Words; render: Words; reload: string; leave: string },
   State
 > {
   override state: State = { failed: false };
 
-  static getDerivedStateFromError(): State {
-    return { failed: true };
+  static getDerivedStateFromError(error: unknown): State {
+    return { failed: error instanceof ChunkLoadError ? 'chunk' : 'render' };
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
@@ -52,11 +59,13 @@ class Boundary extends Component<
 
   override render(): ReactNode {
     if (!this.state.failed) return this.props.children;
+    const words = this.state.failed === 'chunk' ? this.props.chunk : this.props.render;
+    // A <div>: the shell's own <main> is already around this, and a page has one main.
     return (
-      <main className="mz-main">
+      <div>
         <ErrorState
-          title={this.props.title}
-          body={this.props.body}
+          title={words.title}
+          body={words.body}
           action={
             // Two ways out, because the navigation bar lives inside the screen that failed:
             // reload, which is what fixes a file the server no longer has, and leave, which
@@ -69,7 +78,7 @@ class Boundary extends Component<
             </div>
           }
         />
-      </main>
+      </div>
     );
   }
 }
@@ -77,14 +86,18 @@ class Boundary extends Component<
 export function RouteBoundary({ resetKey, onLeave, children }: Props) {
   const { t } = useTranslation();
   // Offline is a different sentence from broken, and the difference is the only thing the
-  // employee can act on: wait for signal, or reload.
+  // employee can act on: wait for signal, or reload. A screen that arrived and then failed to
+  // draw is neither, and says so rather than blaming the connection.
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
   return (
     <Boundary
       resetKey={resetKey}
       onLeave={onLeave}
-      title={offline ? t('common:offline_title') : t('common:error_title')}
-      body={offline ? t('common:offline_body') : t('common:error_body')}
+      chunk={{
+        title: offline ? t('common:offline_title') : t('common:error_title'),
+        body: offline ? t('common:offline_not_loaded') : t('common:error_body'),
+      }}
+      render={{ title: t('common:screen_failed_title'), body: t('common:screen_failed_body') }}
       reload={t('common:reload')}
       leave={t('common:back')}
     >
