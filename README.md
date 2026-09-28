@@ -1,27 +1,45 @@
-# Mizan — hand-off folder
+# Jiyan Management
 
-Everything an implementation agent (or a developer) needs to start building, plus the client-facing summary.
+A warehouse, sales and accounts system for one factory: materials and stock valued at what each
+buy cost, orders and payments in Iraqi dinars and US dollars, the companies that buy from us,
+broken goods, expenses, reports with Excel export, and a complete history of every change. It
+works in Kurdish (Sorani), Arabic and English, right-to-left where the language is, on phones,
+tablets and desktops.
 
-| Path | What it is |
-|---|---|
-| `CLAUDE.md` | Rules for every agent session: how work is organised, the ten non-negotiable rules, the definition of done. Read first. |
-| `KICKOFF-PROMPT.md` | The prompt to paste into the agent to start Iteration 0 (fill in the component-library path). |
-| `spec/mizan-factory-system-spec-v1.2.md` | The complete specification — the source of truth (requirements, architecture, UX direction, iteration plan, self-check). |
-| `spec/0-front-matter-and-change-log.md` | Conventions, table of contents, what changed in v1.1 and v1.2. |
-| `spec/1-requirements.md` | Deliverable 1: raw requirement register, FRs, NFRs, permission catalog, glossary, assumptions, open questions. |
-| `spec/2-architecture.md` | Deliverable 2: domain model and ERD, money/history/stock models, authorization, auth, API, frontend, reports, tests, security, deployment, traceability matrix. |
-| `spec/3-ux-ui-direction.md` | Deliverable 3: principles, identity and tokens, page map, wireframes, flows, animation, typography. |
-| `spec/4-iteration-plan.md` | Deliverable 4: definition of done, iterations 0–6, dependency graph, requirements per iteration, self-check. |
-| `iterations/I0-…I6-*.md` | One standalone brief per iteration: reading list, definition of done, the iteration text, working order and rules. |
-| `client/mizan-client-signoff-summary.md` | The four-page summary for the client: decisions needed, defaults, extras to keep or cut. |
-| `docs/DECISIONS.md`, `docs/QUESTIONS.md`, `docs/PROGRESS.md` | Living files the agent maintains. |
-| `.env.example` | Environment variables to fill in. |
+## Deploying
 
-## Before starting the agent
+**[DEPLOY.md](DEPLOY.md)** takes a fresh Linux server to a running system with HTTPS and
+encrypted off-site backups, step by step. You need a server with Docker, a domain, and an
+S3-compatible bucket for the backups. Day-to-day operation afterwards — updates, backups,
+restores, incidents — is in **[ops/runbook/README.md](ops/runbook/README.md)**.
 
-1. `git init` in this folder and commit it as-is.
-2. Put the palette system's component library where the agent can install it, and write its path or package name into `KICKOFF-PROMPT.md`.
-3. Copy `.env.example` to `.env` and fill it in (a local PostgreSQL is enough for I0).
-4. Open the agent in this folder and paste `KICKOFF-PROMPT.md`.
+## How it is built
 
-Iteration 0 needs nothing from the client. Iteration 1 must not start before the materials workshop (open question Q-37) and the glossary tick-off (Q-26) — see `client/mizan-client-signoff-summary.md`.
+| Part | Where | What |
+|---|---|---|
+| Web app | `apps/web` | React single-page app (Vite), served by Caddy |
+| API | `apps/api` | NestJS with plain SQL on PostgreSQL; migrations in `apps/api/prisma/migrations` |
+| Shared packages | `packages/*` | money (integer minor units, two currencies), ledgers, text, translations, permissions, UI components |
+| Deployment | `compose.yml`, `ops/` | Docker images, Caddy, backups, the runbook |
+| Decisions | `docs/DECISIONS.md` | Why things are the way they are, numbered D-001 onwards |
+| Specification | `spec/` | The original specification the system was built from |
+
+Rules that hold everywhere: money is stored as whole dinars and whole cents with the rate that
+converted them, never as floating point; the ledgers and the history are append-only, so a
+correction is a reversal, never an edit; every write is recorded with who, when and what
+changed.
+
+## Developing
+
+Requirements: Node 22 or newer, pnpm 10, PostgreSQL 15 or newer.
+
+```sh
+pnpm install
+cp .env.example .env                 # local development settings
+pnpm db:up                           # creates the local database and its roles
+pnpm db:migrate && pnpm db:seed      # structure, then the first admin
+pnpm dev                             # the API and the web app together
+pnpm verify                          # lint, types, translations, contrast, all tests
+```
+
+`scripts/seed-demo.mjs` fills an empty database with demo data through the API.

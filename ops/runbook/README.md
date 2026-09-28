@@ -12,25 +12,21 @@ which is what lets the session cookie stay `SameSite=Lax` with no cross-site exc
 
 ## First deployment
 
-1. Point the domain at the host. Caddy obtains the certificate itself on first start.
-2. Copy `.env.example` to `.env` and fill every value. `SESSION_PEPPER`,
-   `POSTGRES_PASSWORD`, `BACKUP_DB_PASSWORD` and `BACKUP_ENCRYPTION_KEY` must each be freshly
-   generated: `openssl rand -base64 32`. Set up the bucket first ("Off-site retention") and put
-   its **put-only** key in `.env`; set `BACKUP_HEARTBEAT_URL`.
-3. Nothing to do for the Content-Security-Policy: the web image hashes its own inline scripts
-   at build time and writes them into its Caddyfile (`ops/docker/csp-hashes.mjs`).
-4. Build, migrate, then start: `docker compose --profile tools build`, `docker compose run --rm migrate`,
-   `docker compose up -d`. The API does not hold the migrate role's credentials — only the
-   one-off `migrate` job does — and it refuses to start while a migration is pending, so the
-   migrations go first. The first migrate creates the application role `mizan_app` without a
-   password; give it the one in `DATABASE_URL` before `up`:
-   `docker compose exec db psql -U mizan_migrate -d mizan -c "ALTER ROLE mizan_app PASSWORD '<the DATABASE_URL password>'"`.
-   Then take the superuser away from `mizan_migrate` (below, "The migrate role and the
-   superuser") — **after** this first migrate, never before it.
-5. Seed the first admin: `docker compose exec api node apps/api/dist/database/seed.js`,
-   then **sign in once and change the password** — the account is created with
-   `must_change_password`, and the value in `.env` should be removed afterwards.
-6. Check `https://<domain>/api/v1/health` returns `{"status":"ok"}`.
+The complete, tested procedure is **[DEPLOY.md](../../DEPLOY.md)** at the top of the repository
+(tested on a fresh clone in Docker on 2026-09-28). The notes below explain the why of its steps.
+
+- The API never holds the migrate role's credentials — only the one-off `migrate` job does —
+  and it refuses to start while a migration is pending, so migrations always go first.
+- The first migrate creates the application role `mizan_app` without a password; DEPLOY.md
+  gives it the one in `DATABASE_URL` before the API starts.
+- The database volume's first start runs `ops/docker/db-init/10-backup-role.sh`, which creates
+  the backup job's read-only `mizan_backup` role — so `.env` must be complete before the first
+  `docker compose up`.
+- The superuser is taken away from `mizan_migrate` **after** the first migrate, never before
+  (below). A role named `pg_…` cannot be created — PostgreSQL reserves the prefix — hence
+  `db_admin`.
+- The web image computes the Content-Security-Policy hashes of its inline scripts at build time
+  and keeps fonts as files, so the CSP needs nothing by hand.
 
 ## Ordinary deployment
 
@@ -59,15 +55,15 @@ superuser has, and the demoted role below does not). On a new host that is right
 of "First deployment"; on an existing one, at a planned maintenance window:
 
 ```sh
-docker compose exec db psql -U mizan_migrate -d mizan -c "CREATE ROLE pg_admin LOGIN SUPERUSER PASSWORD '<new, from openssl rand -base64 32>'"
-docker compose exec db psql -U pg_admin -d mizan -c "ALTER ROLE mizan_migrate NOSUPERUSER CREATEDB"
+docker compose exec db psql -U mizan_migrate -d mizan -c "CREATE ROLE db_admin LOGIN SUPERUSER PASSWORD '<new, from openssl rand -base64 32>'"
+docker compose exec db psql -U db_admin -d mizan -c "ALTER ROLE mizan_migrate NOSUPERUSER CREATEDB"
 ```
 
-then keep the `pg_admin` password with the backup key (off the host) and use it only for
+then keep the `db_admin` password with the backup key (off the host) and use it only for
 restores and emergencies. Migrations, the nightly dump and the restore drill keep working as
 `mizan_migrate`, which still owns the schema. A later migration that has to create or alter a
 role will fail as `mizan_migrate` with "permission denied to create role": run that one as
-`pg_admin`, or grant `CREATEROLE` for the window and revoke it after. This is not automated
+`db_admin`, or grant `CREATEROLE` for the window and revoke it after. This is not automated
 because the init scripts of the `postgres` image run only on an empty volume, and the
 production volume is not empty.
 
@@ -134,7 +130,7 @@ trusting a system, and every line has somebody's name against it before the next
 Rotating `SESSION_PEPPER` invalidates every session and every PIN device ticket — everybody
 signs in again with a password. That is the intended cost, and it is the remedy if a session
 store is ever suspected. `POSTGRES_PASSWORD` rotates with a `docker compose up -d db api`; `BACKUP_DB_PASSWORD` with
-`ALTER ROLE mizan_backup PASSWORD '…'` (as `pg_admin`) and then `docker compose up -d backup`;
+`ALTER ROLE mizan_backup PASSWORD '…'` (as `db_admin`) and then `docker compose up -d backup`;
 `BACKUP_ENCRYPTION_KEY` must **never** be rotated without keeping the old key for as long as the
 copies it encrypted are still in retention, which is thirteen months.
 
@@ -168,12 +164,12 @@ the disk alert (80 %) is the second warning.
 anything**; it never holds the schema owner's password. `ops/docker/db-init/10-backup-role.sh`
 creates it, with `BACKUP_DB_PASSWORD`, and its `pg_hba.conf` line for replication, when the
 database volume is first initialised. On a database initialised before that script existed, do
-the same by hand once (it needs a superuser: `mizan_migrate` before it is demoted, or `pg_admin`):
+the same by hand once (it needs a superuser: `mizan_migrate` before it is demoted, or `db_admin`):
 
 ```sh
-docker compose exec db psql -U pg_admin -d mizan -c "CREATE ROLE mizan_backup LOGIN REPLICATION PASSWORD '<BACKUP_DB_PASSWORD>'" -c "GRANT pg_read_all_data TO mizan_backup"
+docker compose exec db psql -U db_admin -d mizan -c "CREATE ROLE mizan_backup LOGIN REPLICATION PASSWORD '<BACKUP_DB_PASSWORD>'" -c "GRANT pg_read_all_data TO mizan_backup"
 docker compose exec db sh -c 'printf "\nhost replication mizan_backup all scram-sha-256\n" >> "$PGDATA/pg_hba.conf"'
-docker compose exec db psql -U pg_admin -d mizan -c "SELECT pg_reload_conf()"
+docker compose exec db psql -U db_admin -d mizan -c "SELECT pg_reload_conf()"
 docker compose up -d backup                                # now connects as mizan_backup
 ```
 
@@ -355,3 +351,14 @@ whole story of one action can be reconstructed from it.
    refused anyway — the application's database role has no such privilege, and that is
    deliberate.
 5. Write the incident up here with what was seen, what was done, and what would have caught it.
+
+**Nobody can sign in as an admin** (the password is forgotten, or the only admin is locked out):
+
+```sh
+docker compose exec api node apps/api/dist/database/reset-password.js admin
+```
+
+It prints a new temporary password for that user (any username works), which must be changed
+at the next sign-in. It also ends that user's sessions, lifts a lockout, and writes a
+`password_reset` row to History. An admin who can still sign in does the same from **Users →
+Reset password**.
