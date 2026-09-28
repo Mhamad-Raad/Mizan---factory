@@ -25,6 +25,12 @@ export class Database implements Db, OnModuleDestroy {
       max: 10,
       idleTimeoutMillis: 30_000,
       application_name: 'mizan-api',
+      // No statement, and no transaction left open, outlives a minute. The slowest query at ten
+      // years is under half a second; the limit is what makes a stale idempotency reservation
+      // (taken over after two minutes) certainly dead, and it stops a stuck request holding
+      // locks the rest of the floor waits on (review).
+      statement_timeout: 60_000,
+      idle_in_transaction_session_timeout: 60_000,
     });
     this.pool.on('error', (error) => this.logger.error(`idle client error: ${error.message}`));
   }

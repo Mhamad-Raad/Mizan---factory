@@ -7,7 +7,10 @@ import type { RequestWithContext } from './request-context.js';
 import { Database } from '../database/pool.js';
 
 const IDEMPOTENCY_HEADER = 'idempotency-key';
-const TTL_HOURS = 24;
+// Longer than any session or draft lives (a personal device's session is 30 days): a draft whose
+// save went through but whose answer was lost must still find its key when it is retried days
+// later, or the order is written twice (review).
+const TTL_HOURS = 24 * 31;
 /** How long a duplicate waits for the request that is already running (milliseconds). */
 const WAIT_FOR_IN_FLIGHT_MS = 5_000;
 const POLL_INTERVAL_MS = 100;
@@ -68,12 +71,14 @@ export class IdempotencyInterceptor implements NestInterceptor {
       .update(`${request.method}:${request.originalUrl}:${JSON.stringify(request.body ?? {})}`)
       .digest('hex');
 
-    const reserved = await this.reserve(key, userId, requestHash);
+    const since = await this.reserve(key, userId, requestHash);
     // Ownership is recorded on the request so the error filter releases a reservation only
     // when *this* request made it. Releasing on any failure would let a duplicate that was
     // told to try again shortly delete the reservation the first copy is still working under.
-    if (reserved) request.idempotencyKeyOwned = { key, userId };
-    if (!reserved) {
+    // `since` is the reservation's own stamp: a request whose key was taken over after it went
+    // stale can no longer complete or release the new owner's row (review).
+    if (since) request.idempotencyKeyOwned = { key, userId, since };
+    if (!since) {
       const stored = await this.awaitStored(key, userId);
       if (stored.request_hash !== requestHash) throw new ApiError('IDEMPOTENCY_MISMATCH');
       if (stored.response_status === IN_FLIGHT) {
@@ -88,14 +93,14 @@ export class IdempotencyInterceptor implements NestInterceptor {
     return next.handle().pipe(
       switchMap((body) => {
         const status = context.switchToHttp().getResponse().statusCode as number;
-        return from(this.complete(key, userId, status, body).then(() => body));
+        return from(this.complete(key, userId, since, status, body).then(() => body));
       }),
     );
   }
 
-  /** True when this request owns the key; false when another copy already reserved it. */
-  private async reserve(key: string, userId: string, requestHash: string): Promise<boolean> {
-    const { rowCount } = await this.database.query(
+  /** The reservation's stamp when this request owns the key; null when another copy holds it. */
+  private async reserve(key: string, userId: string, requestHash: string): Promise<string | null> {
+    const { rows } = await this.database.query<{ since: string }>(
       `INSERT INTO idempotency_keys (key, user_id, request_hash, response_status, response_body, expires_at)
        VALUES ($1, $2, $3, ${IN_FLIGHT}, 'null'::jsonb, now() + make_interval(hours => ${TTL_HOURS}))
        ON CONFLICT (user_id, key) DO UPDATE
@@ -106,24 +111,27 @@ export class IdempotencyInterceptor implements NestInterceptor {
         -- with it must not be refused for ever (review).
         WHERE idempotency_keys.expires_at < now()
            OR (idempotency_keys.response_status = ${IN_FLIGHT}
-               AND idempotency_keys.created_at < now() - make_interval(mins => ${STALE_IN_FLIGHT_MINUTES}))`,
+               AND idempotency_keys.created_at < now() - make_interval(mins => ${STALE_IN_FLIGHT_MINUTES}))
+       RETURNING created_at::text AS since`,
       [key, userId, requestHash],
     );
-    return (rowCount ?? 0) > 0;
+    return rows[0]?.since ?? null;
   }
 
-  private async complete(key: string, userId: string, status: number, body: unknown): Promise<void> {
+  private async complete(key: string, userId: string, since: string, status: number, body: unknown): Promise<void> {
     await this.database.query(
-      'UPDATE idempotency_keys SET response_status = $3, response_body = $4 WHERE key = $1 AND user_id = $2',
-      [key, userId, status, JSON.stringify(body ?? null)],
+      `UPDATE idempotency_keys SET response_status = $4, response_body = $5
+        WHERE key = $1 AND user_id = $2 AND created_at = $3::timestamptz`,
+      [key, userId, since, status, JSON.stringify(body ?? null)],
     );
   }
 
   /** A failed request releases its key, so the user can correct the problem and retry. */
-  private async release(key: string, userId: string): Promise<void> {
+  private async release(key: string, userId: string, since: string): Promise<void> {
     await this.database.query(
-      'DELETE FROM idempotency_keys WHERE key = $1 AND user_id = $2 AND response_status = $3',
-      [key, userId, IN_FLIGHT],
+      `DELETE FROM idempotency_keys
+        WHERE key = $1 AND user_id = $2 AND response_status = $3 AND created_at = $4::timestamptz`,
+      [key, userId, IN_FLIGHT, since],
     );
   }
 
@@ -149,6 +157,6 @@ export class IdempotencyInterceptor implements NestInterceptor {
   /** Exposed for the error filter: a request that failed must not hold the key it reserved. */
   async releaseFor(request: RequestWithContext): Promise<void> {
     const owned = request.idempotencyKeyOwned;
-    if (owned) await this.release(owned.key, owned.userId);
+    if (owned) await this.release(owned.key, owned.userId, owned.since);
   }
 }

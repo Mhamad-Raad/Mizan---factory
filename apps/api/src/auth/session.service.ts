@@ -129,7 +129,20 @@ export class SessionService {
     if (!session.is_locked) {
       const idleMinutes = await this.idleLockMinutes(session.is_shared_device);
       if (now - session.last_seen_at.getTime() > idleMinutes * 60_000 + LAST_SEEN_REFRESH_MS) {
-        await this.database.query('UPDATE sessions SET is_locked = true WHERE id = $1 AND NOT is_locked', [session.id]);
+        // Locked like the menu's lock (with its time), and recorded in History like every
+        // other change (rule 3) — in one statement, so only the request that locks it writes the row.
+        await this.database.query(
+          `WITH locked AS (
+             UPDATE sessions SET is_locked = true, locked_at = now()
+              WHERE id = $1 AND NOT is_locked
+             RETURNING id, user_id
+           )
+           INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, entity_label, changes, related, request_id, session_id)
+           SELECT user_id, 'lock', 'session', id::text, 'Screen locked', '{"reason":"idle"}'::jsonb,
+                  jsonb_build_object('user_id', user_id::text), gen_random_uuid(), id
+             FROM locked`,
+          [session.id],
+        );
         session.is_locked = true;
       }
     }

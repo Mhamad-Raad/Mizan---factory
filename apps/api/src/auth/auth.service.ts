@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { expandImplied } from '@mizan/permissions';
 import { normalizePhone } from '@mizan/text';
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { AuditService } from '../audit/audit.service.js';
 import { ApiError } from '../common/errors.js';
 import type { RequestContext } from '../common/request-context.js';
+import { ENV } from '../config/env.js';
+import type { Env } from '../config/env.js';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import { UsersRepository } from '../users/users.repository.js';
@@ -50,14 +52,30 @@ function minutesUntil(until: Date): number {
  * exist; it is normalised the way the lookup normalises it, so the variants of an unknown
  * phone number share one count too.
  */
-export function throttleKeyFor(identifier: string, user: Pick<UserRow, 'username'> | null): string {
+export function throttleKeyFor(
+  identifier: string,
+  user: Pick<UserRow, 'username'> | null,
+  pepper = '',
+): string {
   if (user) return user.username.toLowerCase();
   const typed = identifier.normalize('NFKC').trim();
   if (looksLikePhone(typed)) {
     const phone = normalizePhone(typed);
     if (phone !== '') return phone;
   }
-  return typed.toLowerCase();
+  // A name that is nobody's is kept only as a keyed hash: it is sometimes a password typed into
+  // the wrong box, and `login_attempts` keeps it for ever (review). Same name, same key, so the
+  // count still works; lower case, so it can never meet the SESSION: keys below.
+  return `?${createHmac('sha256', pepper).update(typed.toLowerCase()).digest('hex').slice(0, 32)}`;
+}
+
+/**
+ * The key an in-session password check (unlock, change password) counts against. Upper case:
+ * every key built from a typed name is lower case, so "session:<id>" typed at the sign-in page
+ * can never reach — and lock — a signed-in tablet's unlock (review).
+ */
+function sessionThrottleKey(sessionId: string): string {
+  return `SESSION:${sessionId}`;
 }
 
 /** Digits in any script with the separators people type in a phone number, and enough of them. */
@@ -129,6 +147,7 @@ export interface MeDto {
 @Injectable()
 export class AuthService {
   constructor(
+    @Inject(ENV) private readonly env: Env,
     private readonly database: Database,
     private readonly users: UsersRepository,
     private readonly passwords: PasswordService,
@@ -175,16 +194,19 @@ export class AuthService {
     key: string,
     ip: string | null,
     verify: () => Promise<boolean>,
-    onLocked: (minutes: number, db: Db) => Promise<T>,
+    /** `firstKnock`: the first attempt on this lockout — the one worth recording. */
+    onLocked: (minutes: number, db: Db, firstKnock: boolean) => Promise<T>,
     onResult: (correct: boolean, state: FailureState, tx: Db) => Promise<T>,
   ): Promise<T> {
     return this.queue.run(key, async () => {
       const before = lockedUntil(await this.failureState(key, this.database));
       if (before) {
-        // Knocking on a locked door counts toward the address's ceiling like a wrong password,
-        // so it cannot be repeated without limit (review).
-        this.addresses.begin(ip)(true);
-        return onLocked(minutesUntil(before), this.database);
+        // The first knock on a locked door counts toward the address's ceiling like a wrong
+        // password; the rest do not, or one colleague retrying the right password behind the
+        // factory's single address would lock everybody's sign-in (review).
+        const first = this.firstKnockOn(key, minutesUntil(before));
+        if (first) this.addresses.begin(ip)(true);
+        return onLocked(minutesUntil(before), this.database, first);
       }
 
       const settle = this.addresses.begin(ip);
@@ -201,7 +223,7 @@ export class AuthService {
         await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`mizan:sign-in:${key}`]);
         const state = await this.failureState(key, tx);
         const until = lockedUntil(state);
-        if (until) return onLocked(minutesUntil(until), tx);
+        if (until) return onLocked(minutesUntil(until), tx, this.firstKnockOn(key, minutesUntil(until)));
         return onResult(correct, state, tx);
       });
     });
@@ -220,16 +242,16 @@ export class AuthService {
   ): Promise<{ token: string; user: UserDto; permissions: string[] }> {
     const identifier = input.username_or_phone.trim();
     const user = await this.users.findByUsernameOrPhone(identifier);
-    const key = throttleKeyFor(identifier, user);
+    const key = throttleKeyFor(identifier, user, this.env.SESSION_PEPPER);
 
     const outcome = await this.attemptPassword<LoginOutcome>(
       key,
       ctx.ip,
       () => this.verifyOrDummy(user, input.password),
-      async (minutes, db) => {
+      async (minutes, db, firstKnock) => {
         // Recorded in History once per lockout, and not as a failure: trying a locked door does
         // not move when it opens, and a row per knock let anybody fill the append-only log (review).
-        if (this.firstKnockOn(key, minutes)) {
+        if (firstKnock) {
           await this.recordFailure(key, identifier, user?.id ?? null, ctx, 'locked_out', false, db);
         }
         return { kind: 'locked', minutes };
@@ -520,14 +542,23 @@ export class AuthService {
     // Counted per signed-in session, not per account: five wrong guesses at the sign-in page
     // from anywhere locked the account, and with it the unlock of the tablet already in use
     // (review). A stolen tablet still gets five guesses and then waits, as before.
-    const key = context.sessionId ? `session:${context.sessionId}` : throttleKeyFor(user.username, user);
+    const key = context.sessionId ? sessionThrottleKey(context.sessionId) : throttleKeyFor(user.username, user);
     return this.attemptPassword<PasswordCheck>(
       key,
       context.ip,
       async () => password !== '' && (await this.passwords.verify(user.password_hash, password)),
       async (minutes) => ({ kind: 'locked', minutes }),
       async (correct, state, tx) => {
-        if (correct) return { kind: 'ok' };
+        const accountKey = throttleKeyFor(user.username, user);
+        if (correct) {
+          // A right password clears what came before it, on this session and on the account,
+          // as a successful sign-in does: three slips and a correct unlock must not count as
+          // three toward the next lock (review).
+          for (const counted of new Set([key, accountKey])) {
+            await this.users.recordLoginAttempt({ username: counted, userId: user.id, ip: context.ip, succeeded: true }, tx);
+          }
+          return { kind: 'ok' };
+        }
 
         const lockUntil =
           state.recent + 1 >= MAX_FAILURES ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null;
@@ -539,7 +570,6 @@ export class AuthService {
           { username: key, userId: user.id, ip: context.ip, succeeded: false },
           tx,
         );
-        const accountKey = throttleKeyFor(user.username, user);
         if (accountKey !== key) {
           await this.users.recordLoginAttempt(
             { username: accountKey, userId: user.id, ip: context.ip, succeeded: false },
