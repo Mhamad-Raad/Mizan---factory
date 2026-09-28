@@ -1459,3 +1459,39 @@ as they were unless it says otherwise.
   untaken. Real first-in-first-out stock leaves only the newest buys open.
 
 Relied on: 2.2.6, 2.4.3, 2.11, NFR-03, NFR-13, D-032, D-047, D-058, [[mizan-longevity]].
+
+## D-076 · 2026-09-28 · fifth review · A second look at the fourth
+
+Three reviewers read only the fourth review's changes (D-073…D-075): the maintained totals, the
+sign-in and session changes, and the web.
+
+- **The maintained totals held.** No write path lets `lot_balances`, `account_totals` or
+  `account_owing` drift, and no new lock cycle was found. Three smaller fixes:
+  - A purchase void finds its buys by index (migration 0036); it had scanned every purchase line
+    while holding locks.
+  - Receivables and Payables keep their true totals on a page past the end.
+  - The Orders list's paid count cannot dip below zero between its two reads.
+- **Sessions:**
+  - An in-session lock key can no longer be reached by typing it at the sign-in page. It is now
+    upper case, and every typed key is lower case.
+  - A correct unlock clears the slips before it.
+  - Names that are nobody's are stored in `login_attempts` only as a keyed hash.
+  - A locked door counts once toward the address ceiling.
+  - The idle lock is recorded in History, with its time.
+  - Idempotency keys live 31 days, longer than any session or draft. A reservation carries its
+    own stamp, so a request whose key was taken over can neither complete nor release it.
+  - Statements and idle transactions stop after a minute.
+  - Accepted: a stolen signed-in tablet gets its five in-session guesses as well as the sign-in
+    page's five (ten per fifteen minutes). The price of the sign-in page no longer being able to
+    shut a tablet already in use.
+- **Web:**
+  - The idle lock counts activity in every tab and sends a keep-alive at most once a minute
+    while someone is typing.
+  - Save keys are per sheet opening, record and kind. A mismatch refreshes the page and says an
+    earlier attempt was saved.
+  - Drafts survive a session that simply expired.
+  - Only record-number titles are split, so "Rebar 12" never reads "12 Rebar" in RTL.
+  - Links and tiles a user cannot open are plain text.
+  - The error screens set their own titles.
+  - Focus returns to a menu's trigger.
+  - Used-up buys are their own group, newest first, with an error and Retry.
