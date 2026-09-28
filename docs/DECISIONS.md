@@ -1305,3 +1305,58 @@ replayed onto anything. Everything below was run end to end on a throwaway stack
   the WAL.
 
 Relied on: 2.13, 2.14, NFR-08, D-066, D-067.
+
+## D-074 · 2026-09-28 · fourth review · Security, correctness and the screens, for years unattended
+
+Four read-only reviews ran in parallel: security, scale, the screens in three languages at three
+widths, and correctness over years of use. Every finding below was traced in code; each fix has
+a test that fails without it (`test/review-wave-four.test.ts`, web `lib/*.test.ts`).
+
+- **Security:**
+  - Sessions lock after the device's idle minutes, on the server as well as the screen
+    (FR-106). `/auth/me` returns `idle_lock_minutes`.
+  - A lockout set from the sign-in page no longer shuts the tablet already signed in. In-session
+    password checks count per session, and against the account too.
+  - A locked account records "locked out" once per lockout, and knocking on it counts toward the
+    address's ceiling. A name that is nobody's is stored masked.
+  - A new sign-in on a browser ends the session it replaces and records `switch_user`.
+  - Balance before/after and buy line totals are stripped for readers without the flags. A
+    deactivation error no longer carries the balance.
+  - The ledger's reverse undoes only money rows (payment, credit, refund, adjustment, opening).
+    A non-admin may reverse only their own payment of today.
+  - Definer functions pin `search_path`, and the app role cannot create temporary tables
+    (migration 0032).
+  - The CSP hashes are computed from the built page at image build time (D-073 covers the
+    backups).
+- **Correctness:**
+  - An edit keeps the order's or buy's rate unless a new one is typed.
+  - An edit keeps its employee without asking for admin, and keeps a material deactivated since.
+  - "Return to stock" is checked again under the lock.
+  - A damage is "owed" only when a charge was written, and cannot also be credited as a return.
+  - Kilograms are summed as decimals.
+  - A split payment obeys "no more than owed".
+  - Only the tolerance's own refusal reads as "out of tolerance".
+  - Month arithmetic clamps to the month's end.
+  - Field stripping no longer turns dates into `{}`, which crashed History for every non-admin.
+  - The Profit report carries the orders' discounts and rounding, and its net equals the
+    Accounts profit.
+  - The dashboard's "we owe companies" tile counts only companies we owe.
+- **Years of running:**
+  - An hourly job prunes expired idempotency keys and dead sessions.
+  - A reservation left by a request that never finished is taken over after two minutes.
+  - Write paths read one row, one document or one damage, never an account's whole ledger.
+- **Screens:**
+  - Stable idempotency keys per write.
+  - A no-access state for 403, with routes gated by permission, and not-found for 404.
+  - Sheets close on Escape and manage focus.
+  - Record numbers stay whole in the title.
+  - One digit system in every catalogue, and currency symbols never wrap.
+  - Honest empty-search messages.
+  - Skeletons sized like the content.
+  - 44 px tap targets.
+  - A confirmation before deactivating a material.
+  - Drafts kept per user, and the previous user's cache cleared on a new sign-in.
+  - "This month" means the calendar month on every screen, History included.
+- **Left for the client:**
+  - The buying-side write routes stay.
+  - Lazy-loading the language catalogues was declined: an offline tablet must never show keys.
