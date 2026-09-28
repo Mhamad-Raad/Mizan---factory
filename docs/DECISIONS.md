@@ -1258,3 +1258,50 @@ languages, and the stock queries were timed on 520,000 buys and 1.56 million tak
   - **New theme:** a "Jiyan" palette, the logo's wine red `#931329` in light and a softer
     wine-rose in dark, first in the picker. All 44 of its contrast pairs meet AA. At the client's word it is
     the **default**: a new device opens in it, and teal and the rest stay a choice.
+
+## D-073 · 2026-09-28 · backup review · A backup chain that actually runs and can be replayed
+
+A review of `ops/backup` found the nightly ran about one night in five, the WAL was never
+archived at all, and what the runbook called a fifteen-minute recovery point could not be
+replayed onto anything. Everything below was run end to end on a throwaway stack
+(`ops/runbook/restore-drills.md`, 2026-09-28).
+
+- **The night is due from 03:00 until it succeeds** (`cron.sh`): once per Baghdad day, the day
+  it last succeeded kept on the `backup-staging` volume (`state/last-nightly`), so a restart
+  neither repeats nor skips it. A failure is retried after 15, 30, 60 minutes, then every two
+  hours. The decisions are plain functions in `lib.sh` (`nightly_due`, `retry_delay`,
+  `base_due`), tested with any clock. The monthly copy is the first good night of the month,
+  remembered in state, not "the 1st".
+- **WAL archiving never worked**: the `wal-archive` volume is created owned by root and
+  PostgreSQL archives as `postgres`, so every `archive_command` failed and `pg_wal` would have
+  grown until the disk filled. The `db` service now hands the volume to `postgres` on every
+  start. `archive_timeout` is 600 s: ten minutes to close a segment plus five to send it is the
+  fifteen of NFR-08.
+- **Point-in-time recovery is real.** A weekly physical base backup (`basebackup.sh`:
+  `pg_basebackup`, tar, gzip, its own WAL streamed in so it is consistent alone), encrypted and
+  tagged per file like the dumps, to `base/<stamp>_<first WAL segment>/`, taken in the nightly
+  run once 7 days have passed since the last good one. Each WAL segment is gzipped, encrypted
+  and tagged on its own before it leaves (`wal-sync.sh`; never in clear), and what has left is
+  remembered locally. The local archive is pruned to the newest base backup's first segment,
+  and only of what has left. `restore-pitr.sh` and `restore-wal.sh` (the `restore_command`)
+  verify every tag before decrypting; a bad WAL tag stops the recovery with FATAL instead of
+  ending it early. The nightly `pg_dump` stays as the simple path.
+- **The backup container has its own role**, `mizan_backup`: `LOGIN REPLICATION`, member of
+  `pg_read_all_data`, writes nothing. The schema owner's password is no longer in that
+  container. Created with `BACKUP_DB_PASSWORD` by `ops/docker/db-init/10-backup-role.sh` (with
+  its `pg_hba` replication line) at the volume's first initialisation — an init script, not a
+  migration, because a role with REPLICATION needs a superuser and `mizan_migrate` stops being
+  one after the first migrate. The runbook gives the same steps for an existing volume.
+- **Off-site retention is the bucket's** (versioning, Object Lock 30 days, lifecycle rules per
+  prefix: daily 31 d, monthly 400 d, base and WAL 22 d), and the host's key is put-only: the
+  scripts never list, read or delete. Pruning from the host is kept behind
+  `BACKUP_PRUNE_OFFSITE=1` (default 0) for stores without lifecycle rules; it keeps 3 base
+  backups and the WAL from the oldest of them on.
+- **The cleartext never outlives a failure**: `backup.sh`, `basebackup.sh` and `wal-sync.sh`
+  remove their unencrypted dump, tars or compressed segment on every exit, signals included,
+  and a run clears what a killed one left behind.
+- **An empty `BACKUP_HEARTBEAT_URL`** is still allowed but is a boxed WARNING at every start and
+  a WARNING every night. The heartbeat now vouches for the dump, the base backup when due, and
+  the WAL.
+
+Relied on: 2.13, 2.14, NFR-08, D-066, D-067.

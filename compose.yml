@@ -74,21 +74,36 @@ services:
 
   db:
     image: postgres:15-alpine
+    # The wal-archive volume is created owned by root, and PostgreSQL archives as `postgres`:
+    # without this every archive_command failed ("Permission denied"), nothing was archived, and
+    # pg_wal kept every segment until the disk filled. Handed over on every start, before the
+    # image's own entrypoint drops to `postgres`.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - chown postgres:postgres /wal-archive && exec docker-entrypoint.sh "$$@"
+      - db-entrypoint
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mizan}
       POSTGRES_USER: ${POSTGRES_USER:-mizan_migrate}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      # Read once, when the volume is first initialised: ops/docker/db-init creates the backup
+      # container's own role, mizan_backup, with this password.
+      BACKUP_DB_PASSWORD: ${BACKUP_DB_PASSWORD:?the password of the mizan_backup role}
       TZ: Asia/Baghdad
     command:
       # Continuous WAL archiving is standard, not optional: a cash ledger cannot afford to
-      # lose a day, and the recovery point objective is fifteen minutes (NFR-08).
+      # lose a day, and the recovery point objective is fifteen minutes (NFR-08). A segment is
+      # closed at least every ten minutes and the backup container sends it off the host within
+      # five, so the WAL off-site is never more than fifteen minutes behind. The weekly base
+      # backup (ops/backup/basebackup.sh) is what that WAL is replayed onto.
       - postgres
       - -c
       - archive_mode=on
       - -c
       - archive_command=/usr/local/bin/archive-wal.sh %p %f
       - -c
-      - archive_timeout=900
+      - archive_timeout=600
       - -c
       - wal_level=replica
       - -c
@@ -97,6 +112,8 @@ services:
       - db-data:/var/lib/postgresql/data
       - ./ops/backup/archive-wal.sh:/usr/local/bin/archive-wal.sh:ro
       - wal-archive:/wal-archive
+      # First initialisation only: the mizan_backup role and its replication entry in pg_hba.
+      - ./ops/docker/db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-mizan_migrate} -d ${POSTGRES_DB:-mizan}']
       interval: 10s
@@ -107,17 +124,25 @@ services:
   backup:
     # pg_dump plus `openssl` and the `aws` client: the stock postgres image has neither, and a
     # backup that cannot leave the host fails instead of pretending (security review, 10).
+    # Nightly dump, weekly base backup, WAL every five minutes — all encrypted and tagged before
+    # they leave (ops/backup, runbook "Backups").
     build:
       context: ops/docker
       dockerfile: Dockerfile.backup
     environment:
       PGHOST: db
       PGDATABASE: ${POSTGRES_DB:-mizan}
-      PGUSER: ${POSTGRES_USER:-mizan_migrate}
-      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      # Its own least-privilege role (read everything, replicate, write nothing) — never the
+      # schema owner, which can rewrite the ledgers.
+      PGUSER: mizan_backup
+      PGPASSWORD: ${BACKUP_DB_PASSWORD:?the password of the mizan_backup role}
       BACKUP_BUCKET: ${BACKUP_BUCKET:?}
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:?}
+      # The dead-man's switch. Empty is allowed but shouted about at every start and every night.
       BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
+      # Off-site retention is the bucket's lifecycle rules (runbook); 1 prunes from here instead,
+      # which needs a key that may list and delete.
+      BACKUP_PRUNE_OFFSITE: ${BACKUP_PRUNE_OFFSITE:-0}
       # The off-site store's credentials. For Backblaze B2, Wasabi or any S3-compatible store,
       # also set AWS_ENDPOINT_URL to its endpoint.
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?the off-site backup store's access key}

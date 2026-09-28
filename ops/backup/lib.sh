@@ -1,5 +1,11 @@
 #!/bin/sh
-# Shared by backup.sh, cron.sh and restore-decrypt.sh.
+# Shared by backup.sh, basebackup.sh, wal-sync.sh, cron.sh and the restore scripts.
+
+# Where the backup container keeps its work and its memory. Both live on the `backup-staging`
+# volume, so a restarted container neither repeats nor skips a night: the state files say which
+# day last succeeded, when the last base backup was taken and which WAL files have left the host.
+STAGING="${BACKUP_STAGING:-/var/backups/mizan}"
+STATE_DIR="$STAGING/state"
 
 # The off-site copy is not optional (spec 2.13, NFR-08): a backup that stays on the host it is
 # meant to survive is not a backup. Refuse loudly rather than log a warning nobody reads.
@@ -36,11 +42,78 @@ mac_key() {
     -pass env:BACKUP_ENCRYPTION_KEY -P | sed -n 's/^key=//p'
 }
 
-# Prints the tag line for a file: "hmac-sha256-v2 <hex>".
+# Prints the tag line for a file: "hmac-sha256-v2 <hex>". The key may be passed in, so a run
+# that tags hundreds of WAL files stretches the passphrase once, not once per file.
 mac_of() {
-  key="$(mac_key)"
+  key="${2:-$(mac_key)}"
   [ -n "$key" ] || return 1
   tag="$(openssl dgst -sha256 -mac HMAC -macopt "hexkey:$key" -r "$1" | cut -d' ' -f1)"
   [ -n "$tag" ] || return 1
   echo "hmac-sha256-v2 $tag"
+}
+
+# Encrypts <in> to <out> and writes <out>.hmac beside it — the one way anything is prepared to
+# leave the host: the nightly dump, each file of a base backup, each WAL segment.
+encrypt_and_tag() {
+  openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+    -in "$1" -out "$2" -pass env:BACKUP_ENCRYPTION_KEY || return 1
+  mac_of "$2" "${3:-}" > "$2.hmac" || { rm -f "$2.hmac"; return 1; }
+  [ -s "$2.hmac" ]
+}
+
+# 0 when <file>.hmac exists and matches <file>; 1 otherwise (a missing tag is a failure too).
+tag_matches() {
+  [ -f "$1.hmac" ] || return 1
+  [ "$(cat "$1.hmac")" = "$(mac_of "$1" "${2:-}")" ]
+}
+
+# --- scheduling (cron.sh) ------------------------------------------------------------------
+# Kept here as plain functions of their inputs, so the decision can be tested with any clock.
+
+# Is the nightly run due? <today YYYY-MM-DD> <now HHMM> <last successful day, or empty>.
+# Due once per Baghdad day, at or after BACKUP_AT (03:00): a container that was down at 03:00
+# runs as soon as it is back, and one restarted after a successful night does not run again.
+nightly_due() {
+  [ "$1" != "${3:-}" ] || return 1
+  # "x" prefixes make expr compare the four digits as text, which for HHMM is their order.
+  expr "x$2" '>=' "x${BACKUP_AT:-0300}" > /dev/null
+}
+
+# Seconds to wait after the <n>th failed attempt of a night: 15 min, 30, 60, then every 2 h.
+retry_delay() {
+  delay=900
+  n="$1"
+  while [ "$n" -gt 1 ] && [ "$delay" -lt 7200 ]; do
+    delay=$((delay * 2))
+    n=$((n - 1))
+  done
+  [ "$delay" -le 7200 ] || delay=7200
+  echo "$delay"
+}
+
+# Is a physical base backup due? <today YYYY-MM-DD> <day of the last one, or empty>.
+# Weekly (BASE_BACKUP_EVERY_DAYS, 7). Counted from the last one that succeeded, so a failed week
+# is retried the next night instead of waiting another seven days.
+base_due() {
+  [ -n "${2:-}" ] || return 0
+  now_s="$(date -d "$1" +%s)" || return 0
+  then_s="$(date -d "$2" +%s)" || return 0
+  [ $(((now_s - then_s) / 86400)) -ge "${BASE_BACKUP_EVERY_DAYS:-7}" ]
+}
+
+# Reads names on stdin and prints the WAL files (segments and .backup files, plain or
+# encrypted) that come before segment <cutoff>. Like pg_archivecleanup, the timeline (the first
+# eight characters) is ignored; timeline history files (`*.history`) are never printed — they are
+# tiny, and a restore past a promotion needs every one of them.
+wal_before() {
+  awk -v cut="$1" '
+    length($0) >= 24 && substr($0, 1, 24) !~ /[^0-9A-F]/ {
+      if ((substr($0, 9, 16) "") < (substr(cut, 9, 16) "")) print
+    }'
+}
+
+state_read() { cat "$STATE_DIR/$1" 2> /dev/null || true; }
+state_write() {
+  mkdir -p "$STATE_DIR"
+  echo "$2" > "$STATE_DIR/$1.tmp" && mv "$STATE_DIR/$1.tmp" "$STATE_DIR/$1"
 }
