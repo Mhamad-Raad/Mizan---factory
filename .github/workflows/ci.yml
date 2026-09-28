@@ -75,6 +75,13 @@ jobs:
       - name: Unit and API integration tests
         run: pnpm test
 
+      # A database fit to run on has an admin, as every deployment does after its seed. The
+      # tests leave the database in whatever state their last file did, so seed it here.
+      - name: Seed the first admin
+        run: pnpm db:seed
+        env:
+          FIRST_ADMIN_PASSWORD: ci-admin-not-a-secret-2026
+
       # NFR-08: the checks a restored database must satisfy. Run here against the test
       # database, so a change that breaks a ledger invariant fails before a restore drill does.
       - name: Ledger and schema integrity
