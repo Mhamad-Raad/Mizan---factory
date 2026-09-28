@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BottomSheet,
   Button,
@@ -54,6 +54,16 @@ interface Movement {
   performed_by: string | null;
   is_live: boolean;
 }
+
+/** `/items/:id/lots` (D-075): the buys with stock left, the used-up count, and the latest buy. */
+interface LotsResponse {
+  items: Lot[];
+  used_up_count: number;
+  latest: Lot | null;
+}
+
+/** How many used-up buys one "show more" brings. */
+const USED_UP_PAGE = 100;
 
 /**
  * One buy of this material (D-062): how much came in, how much of it is left, and what each unit
@@ -110,9 +120,21 @@ export function MaterialDetailPage() {
     queryFn: () => apiRequest<ItemDetail>(`/items/${id}`),
   });
 
+  // The buys with stock left, how many are used up, and the latest buy (D-075). The used-up
+  // ones arrive only when asked for, a page at a time: at ten years a material had 520 buys.
   const lots = useQuery({
     queryKey: ['items', id, 'lots'],
-    queryFn: () => apiRequest<{ items: Lot[] }>(`/items/${id}/lots`),
+    queryFn: () => apiRequest<LotsResponse>(`/items/${id}/lots`),
+  });
+  const usedUpLots = useInfiniteQuery({
+    queryKey: ['items', id, 'lots', 'used_up'],
+    queryFn: ({ pageParam }) =>
+      apiRequest<{ items: Lot[]; has_more: boolean }>(
+        `/items/${id}/lots?used_up=true&page=${pageParam}&page_size=${USED_UP_PAGE}`,
+      ),
+    initialPageParam: 1,
+    getNextPageParam: (last, pages) => (last.has_more ? pages.length + 1 : undefined),
+    enabled: showUsedUp,
   });
 
   const { rate: currentRate } = useGlobalRate();
@@ -304,10 +326,17 @@ export function MaterialDetailPage() {
 
               <StockByPrice
                 lots={lots.data?.items ?? []}
-                loading={lots.isPending}
+                usedUp={usedUpLots.data?.pages.flatMap((page) => page.items) ?? []}
+                usedUpCount={lots.data?.used_up_count ?? 0}
+                loading={lots.isPending || (showUsedUp && usedUpLots.isPending)}
                 pricedMeasure={item.data.stock.priced_measure}
                 showUsedUp={showUsedUp}
                 onToggleUsedUp={() => setShowUsedUp(!showUsedUp)}
+                moreUsedUp={
+                  showUsedUp && usedUpLots.hasNextPage
+                    ? { loading: usedUpLots.isFetchingNextPage, load: () => void usedUpLots.fetchNextPage() }
+                    : null
+                }
                 action={
                   mayBuy && item.data.is_active ? (
                     <Button icon="plus" onClick={() => setAdding(true)}>
@@ -678,7 +707,7 @@ export function MaterialDetailPage() {
           <AddStockSheet
             pricedMeasure={item.data.stock.priced_measure}
             rate={currentRate}
-            latest={(lots.data?.items ?? []).at(-1) ?? null}
+            latest={lots.data?.latest ?? null}
             saving={addStock.isPending}
             error={errorMessage(t, addStock.error) ?? undefined}
             onClose={closeAddStock}
@@ -723,25 +752,38 @@ export function MaterialDetailPage() {
  */
 function StockByPrice({
   lots,
+  usedUp,
+  usedUpCount,
   loading,
   pricedMeasure,
   showUsedUp,
   onToggleUsedUp,
+  moreUsedUp,
   action,
 }: {
+  /** The buys with stock left, oldest first. */
   lots: readonly Lot[];
+  /** The used-up buys fetched so far (newest first, a page at a time). */
+  usedUp: readonly Lot[];
+  usedUpCount: number;
   loading: boolean;
   pricedMeasure: 'count' | 'kg';
   showUsedUp: boolean;
   onToggleUsedUp: () => void;
+  /** Another page of used-up buys, when there is one. */
+  moreUsedUp: { loading: boolean; load: () => void } | null;
   action: ReactNode;
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const unit = pricedMeasure === 'kg' ? ` ${t('common:kg_symbol')}` : '';
-  const live = lots.filter((lot) => Number(lot.remaining) > 0);
-  const usedUp = lots.length - live.length;
-  const shown = showUsedUp ? lots : live;
+  // One list, oldest first — the order a sale takes them in — whichever request each buy came from.
+  const shown = showUsedUp
+    ? [...lots, ...usedUp].sort(
+        (left, right) =>
+          left.bought_on.localeCompare(right.bought_on) || left.purchase_number - right.purchase_number,
+      )
+    : lots;
 
   return (
     <Card>
@@ -797,9 +839,16 @@ function StockByPrice({
         </ul>
       )}
 
-      {usedUp > 0 ? (
+      {moreUsedUp ? (
+        <Button variant="ghost" loading={moreUsedUp.loading} onClick={moreUsedUp.load}>
+          {t('customers:show_more')}
+        </Button>
+      ) : null}
+      {usedUpCount > 0 ? (
         <Button variant="ghost" onClick={onToggleUsedUp}>
-          {showUsedUp ? t('materials:hide_used_up') : t('materials:show_used_up', { count: formatter.number(usedUp) })}
+          {showUsedUp
+            ? t('materials:hide_used_up')
+            : t('materials:show_used_up', { count: formatter.number(usedUpCount) })}
         </Button>
       ) : null}
     </Card>

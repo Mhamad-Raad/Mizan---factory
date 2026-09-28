@@ -1360,3 +1360,102 @@ a test that fails without it (`test/review-wave-four.test.ts`, web `lib/*.test.t
 - **Left for the client:**
   - The buying-side write routes stay.
   - Lazy-loading the language catalogues was declined: an offline tablet must never show keys.
+
+## D-075 · 2026-09-28 · performance review · Ten years of data, every screen under 300 ms
+
+The scale reviewer timed every endpoint against the ten-year volume database (1.8 million orders
+and rows in each ledger, 2.6 million buys, 7.8 million lot allocations, 3.65 million audit rows,
+5,000 materials, 10,501 accounts). Thirteen findings; each fix below was proved on that database
+with `EXPLAIN (ANALYZE, BUFFERS)` before and after, and each keeps the response and its numbers
+as they were unless it says otherwise.
+
+- **Three more maintained sums** (2.2.6, like `order_remaining` and `item_stock_totals`): written
+  only by `SECURITY DEFINER` triggers with a pinned `search_path`, read-only to `mizan_app`,
+  backfilled in their migration and checked against their rows by `check-integrity.mjs`.
+  - `lot_balances` (0033): what each buy has given out, and whether the buy is live (not
+    replaced by an edit, purchase active). `item_lots` now reads only the open buys; a used-up
+    buy adds 0 to every figure the view makes, so its rows are identical — proved on both
+    databases: every row of the new view equals the old row, every old row left out had 0
+    remaining, and every material's remaining and value are the same.
+  - `account_totals` (0033): both ledgers per account, per currency column. The balance is the
+    column of the account's currency *today*, so a change of settlement currency needs nothing
+    from the table. `party_balances` reads it; so do both account lists, the dashboard's
+    supplier tile and top debtors, Receivables and Payables.
+  - `account_owing` (0035): per account, the active orders still owed in dinars and in dollars,
+    and of those the ones owed in full. The dashboard's unpaid tile, the Orders list's figures
+    for "All" and each status, the account's Orders tab and Receivables' unpaid count read it.
+    Kept by triggers on `order_remaining` and on an order's status, account or total.
+- **Queries:**
+  - **Page first, then fill:** the Orders, Purchases, Accounts › Sales, customers and companies
+    lists choose the page's ids, then read the page's laterals.
+  - The Orders status comes from `order_remaining`. Count and totals are one pass, or the
+    maintained sum when nothing but the account narrows the list. `totals=false` leaves the
+    figures out; the dashboard's latest orders use it.
+  - **Search** in Orders and Purchases is a union of three index reads: the account's name, the
+    notes (new trigram indexes) and the number.
+  - **The Stock report** gives the stock on hand to the newest open buys. This is the same
+    arithmetic as trimming the oldest. A material with nothing on hand reads no buys.
+  - **Receivables and Payables:**
+    - The balance on a day is the maintained total less what was dated after that day, and the
+      period comes from one index range per account.
+    - Payables is paged in the database.
+  - **Employee activity** is one grouped pass per table.
+  - **History** compares the action as the enum, and an unknown action finds nothing without
+    asking.
+  - **Accounts › Materials** counts in the same pass.
+- **Changed on purpose:**
+  - **Payables** lists only accounts with a buying-side row, as Receivables already did. An
+    account with none owes and is owed nothing; it was 10,000 zero rows at ten years. It
+    is also sorted by the balance as a number: the old query ordered by the text column, so
+    "9" came before "10".
+  - **`GET /items/:id/lots`** sends the buys with stock left, `used_up_count` and `latest` (what
+    "add stock" opens with and what a sale past every buy is costed at). `used_up=true` pages
+    through the rest, newest first. At ten years the old answer was 191 kB for every order-form
+    line; the material page fetches the used-up buys when its toggle is opened.
+  - **Report exports** ask once with `all=true`: up to 10,000 groups, the same permission, pin
+    and field stripping, and `has_more` when a period had more.
+- **Indexes (0034):**
+  - **Added:**
+    - (date, number) for Orders and Purchases.
+    - Partial indexes of the voided documents.
+    - The owing orders.
+    - Covering indexes of an order's and a buy's lines.
+    - `company_ledger (company_id, entry_date) INCLUDE (…)`.
+    - `audit_log (action, occurred_at, id)`.
+  - **Dropped,** each with its evidence in the migration:
+    - The date-only and status indexes.
+    - `orders_creator_idx` and `purchases_creator_idx` (0 scans).
+    - `order_lines_order_idx`, a duplicate.
+    - `order_remaining_owed_idx` (2 scans).
+    - `item_stock_totals_levels_idx` (0 scans, 43 MB for 5,000 rows). The table is now
+      fillfactor 70, so its counter updates can be heap-only.
+- **Measured** through the API (median of three, warm):
+
+  | Endpoint | Before | After |
+  |---|---|---|
+  | Stock report (page 1 / page 50 / export) | 17.8 s / 16.6 s / 18.2 s | 217 / 221 / 228 ms |
+  | Orders, owing, all dates | 8.6 s | 8 ms |
+  | Orders, unpaid / paid, all dates | 9.7 s / 8.8 s | 8 / 119 ms |
+  | Orders "All", page 1 / last page | 509 ms / 3.7 s | 115 / 128 ms |
+  | Orders, search by name / number / notes | 713 / 789 / 779 ms | 3–4 ms |
+  | Dashboard | 634 ms | 11 ms |
+  | Dashboard's latest orders (`totals=false`) | 553 ms | 96 ms |
+  | Customers page 1 / page 400 / by balance | 284 / 335 / 276 ms | 8 / 63 / 7 ms |
+  | Companies page 1 / by balance | 132 / 139 ms | 8 / 10 ms |
+  | Purchases page 10,000 / search | 1.8 s / 159 ms | 94 / 3 ms |
+  | Payables month / year | 2.6 / 2.7 s | 10 / 36 ms |
+  | Receivables month / year page 100 | 255 / 253 ms | 26 / 53 ms |
+  | Receivables export of a year | 19.4 s (57 pages) | 78 ms (one request) |
+  | Employee activity, year | 2.5 s | 167 ms |
+  | History, filtered by action | 663–766 ms | 2–3 ms |
+  | Accounts › Materials month / year | 371 / 562 ms | 92 / 382 ms |
+- **Still over 300 ms,** because they sum a whole period or table:
+  - Accounts › Materials for a year (382 ms): a year of lines and of buys, hashed.
+  - Orders filtered by payment type over all dates (410 ms): what is owed is joined for every
+    owing order. In this fixture two orders in three still owe.
+  - The same holds for any narrowed filter over all dates.
+- **Migration time** on the ten-year database: 0033 and 0034 took 71 s; 0035 takes about a
+  second. `lot_balances` is 436 MB there, because the fixture leaves a tenth of every buy
+  untaken. Real first-in-first-out stock leaves only the newest buys open.
+
+Relied on: 2.2.6, 2.4.3, 2.11, NFR-03, NFR-13, D-032, D-047, D-058, [[mizan-longevity]].

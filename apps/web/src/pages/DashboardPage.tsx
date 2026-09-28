@@ -97,7 +97,7 @@ export function DashboardPage() {
 
   const recent = useQuery({
     queryKey: ['orders', 'recent'],
-    queryFn: () => apiRequest<{ items: OrderRow[] }>('/orders?page_size=8'),
+    queryFn: () => apiRequest<{ items: OrderRow[] }>('/orders?page_size=8&totals=false'),
     enabled: maySeeOrders,
   });
 

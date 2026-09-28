@@ -94,7 +94,7 @@ export function DamageFormPage({ mode }: { mode: 'create' | 'edit' }) {
 
 const WHO: FormState['attribution'][] = ['us', 'company'];
 
-/** One buy of the material, as `/items/:id/lots` returns it (D-062); costs absent without the flag. */
+/** One buy of the material, as `/items/:id/lots` returns it (D-062, D-075); costs absent without the flag. */
 interface LotRow {
   remaining: string;
   unit_cost_iqd?: number;
@@ -110,10 +110,14 @@ interface LotRow {
  */
 function costOf(
   lots: readonly LotRow[],
+  latestBuy: LotRow | null,
   quantity: string,
 ): { amount_iqd: number; amount_usd_cents: number; currency: Currency } | null {
-  const priced = lots.filter((lot) => lot.unit_cost_iqd !== undefined && lot.unit_cost_usd_cents !== undefined);
-  if (priced.length === 0 || !(Number(quantity) > 0)) return null;
+  const isPriced = (lot: LotRow) => lot.unit_cost_iqd !== undefined && lot.unit_cost_usd_cents !== undefined;
+  const priced = lots.filter(isPriced);
+  // The latest buy, used up or not, is what the server costs stock past every buy at (D-075).
+  const latest = latestBuy && isPriced(latestBuy) ? latestBuy : priced[priced.length - 1];
+  if (!latest || !(Number(quantity) > 0)) return null;
   // Decimal all the way, rounded once per currency at the end: money never passes through a
   // float, even in a preview (rule 1).
   let left = new Decimal(quantity);
@@ -127,7 +131,6 @@ function costOf(
     usd = usd.plus(take.times(lot.unit_cost_usd_cents ?? 0));
     left = left.minus(take);
   }
-  const latest = priced[priced.length - 1] as LotRow;
   if (left.gt(0)) {
     iqd = iqd.plus(left.times(latest.unit_cost_iqd ?? 0));
     usd = usd.plus(left.times(latest.unit_cost_usd_cents ?? 0));
@@ -233,10 +236,13 @@ function DamageForm({ initial }: { initial: FormState }) {
   /** What the broken goods cost us: taken from the buys oldest first, as the save will (D-062). */
   const lots = useQuery({
     queryKey: ['items', form.item_id, 'lots'],
-    queryFn: () => apiRequest<{ items: LotRow[] }>(`/items/${form.item_id}/lots`),
+    queryFn: () => apiRequest<{ items: LotRow[]; latest: LotRow | null }>(`/items/${form.item_id}/lots`),
     enabled: Boolean(form.item_id) && maySeeBought,
   });
-  const estimate = maySeeBought && quantity !== null ? costOf(lots.data?.items ?? [], String(quantity)) : null;
+  const estimate =
+    maySeeBought && quantity !== null
+      ? costOf(lots.data?.items ?? [], lots.data?.latest ?? null, String(quantity))
+      : null;
 
   const unit = t(pricedMeasure === 'kg' ? 'common:kg_symbol' : 'common:count_symbol');
   const typed = pricedMeasure === 'kg' ? Number(form.qty_kg ?? 0) : Number(form.qty_count ?? 0);

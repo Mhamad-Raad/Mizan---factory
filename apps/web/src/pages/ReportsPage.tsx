@@ -394,8 +394,9 @@ function labelOf(group: ReportGroup, groupBy: string, formatter: Formatter, t: T
 }
 
 /**
- * How far a file export reads: 100 pages of the API's 100 rows. A period with more than that is
- * not silently cut short — the export says the file holds only the first rows (see `useExport`).
+ * How far a file export reads: the API's one-pass export (`all=true`) carries up to 10,000 groups.
+ * A period with more than that is not silently cut short — the export says the file holds only
+ * the first rows (see `useExport`). The expenses list still pages: 100 pages of 100 rows.
  */
 const EXPORT_PAGES = 100;
 const EXPORT_ROWS = EXPORT_PAGES * 100;
@@ -411,20 +412,13 @@ async function fetchAll(
   groupBy: string,
   range: { from: string; to: string },
 ): Promise<{ data: ReportResponse; truncated: boolean }> {
-  // Every group, a page at a time (the API sends at most 100), for the file — the screen shows one page.
-  const pages: ReportGroup[] = [];
-  let first: ReportResponse | null = null;
-  let truncated = false;
-  for (let page = 1; page <= EXPORT_PAGES; page += 1) {
-    const search = new URLSearchParams({ from: range.from, to: range.to, page: String(page), page_size: '100' });
-    if (groupBy) search.set('group_by', groupBy);
-    const response = await apiRequest<ReportResponse>(`/reports/${key}?${search.toString()}`);
-    first ??= response;
-    pages.push(...response.groups);
-    if (!response.has_more) break;
-    if (page === EXPORT_PAGES) truncated = true;
-  }
-  return { data: { ...(first as ReportResponse), groups: pages }, truncated };
+  // Every group in one answer (D-075): the report is computed once for the file. It used to be
+  // asked page after page, and the server recomputed the whole report for each page — 22.9 s
+  // for a year of Receivables at ten years of data.
+  const search = new URLSearchParams({ from: range.from, to: range.to, all: 'true' });
+  if (groupBy) search.set('group_by', groupBy);
+  const data = await apiRequest<ReportResponse>(`/reports/${key}?${search.toString()}`);
+  return { data, truncated: data.has_more };
 }
 
 /** One report as a sheet: its groups, a column per figure (dinars and dollars apart), totals. */
