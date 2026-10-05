@@ -1,12 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { BottomSheet, Button, Icon, NumberField, TextField } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
-import { apiRequest } from '../../lib/api.js';
-import { Pager } from '../Pager.js';
-import { QueryStates } from '../states.js';
-import { DEFAULT_PAGE_SIZE, clampPageSize } from '../../lib/paging.js';
 import { useFormatter, usePermission } from '../../lib/store.js';
 import type { CustomerRow } from '../../pages/CustomersPage.js';
 
@@ -124,78 +119,6 @@ export function EditPartySheet({
           </Button>
         </div>
       </div>
-    </BottomSheet>
-  );
-}
-
-/** Every rate this business has had, newest first — a rate is never edited, only replaced. */
-export function RateHistorySheet({ id, onClose }: { id: string; onClose: () => void }) {
-  const { t } = useTranslation();
-  const formatter = useFormatter();
-  // A sheet's page is its own: it closes, so it does not belong in the address (D-058).
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const rates = useQuery({
-    queryKey: ['customers', id, 'rates', page, pageSize],
-    queryFn: () =>
-      apiRequest<{
-        items: {
-          id: string;
-          rate_iqd_per_usd: string;
-          effective_from: string;
-          note: string | null;
-          created_by_name: string | null;
-        }[];
-        total: number;
-      }>(`/customers/${id}/rates?page=${page}&page_size=${pageSize}`),
-    placeholderData: keepPreviousData,
-  });
-
-  return (
-    <BottomSheet
-      title={t('companies:rate_history')}
-      open
-      onClose={onClose}
-      closeLabel={t('common:close')}
-    >
-      <QueryStates
-        query={rates}
-        isEmpty={(rates.data?.items.length ?? 0) === 0}
-        emptyTitle={t('companies:rate_is_global')}
-      >
-        <ul className="mz-list">
-          {(rates.data?.items ?? []).map((row) => (
-            <li key={row.id} className="mz-list__item">
-              <span className="mz-list__body">
-                <span className="mz-list__title" data-tabular>
-                  {formatter.rate(row.rate_iqd_per_usd)}
-                </span>
-                <span className="mz-caption">
-                  {t('companies:rate_since', {
-                    date: formatter.date(row.effective_from.slice(0, 10)),
-                  })}
-                  {row.created_by_name ? ` · ${row.created_by_name}` : ''}
-                </span>
-                {row.note ? (
-                  <span className="mz-caption" style={{ display: 'block' }}>
-                    <bdi>{row.note}</bdi>
-                  </span>
-                ) : null}
-              </span>
-            </li>
-          ))}
-        </ul>
-        <Pager
-          page={page}
-          pageSize={pageSize}
-          total={rates.data?.total ?? 0}
-          onPage={setPage}
-          onPageSize={(size) => {
-            setPageSize(clampPageSize(size));
-            setPage(1);
-          }}
-        />
-      </QueryStates>
     </BottomSheet>
   );
 }

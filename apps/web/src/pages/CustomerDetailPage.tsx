@@ -23,7 +23,7 @@ import { QueryStates } from '../components/states.js';
 import { OrderTable } from '../components/OrderTable.js';
 import { Pager } from '../components/Pager.js';
 import { useCursorPaging, useKeepPageInRange, usePaging } from '../lib/paging.js';
-import { EditPartySheet, RateHistorySheet, SettlementCurrencySheet } from '../components/party/PartySheets.js';
+import { EditPartySheet, SettlementCurrencySheet } from '../components/party/PartySheets.js';
 import { DIRECTION_LABELS, customerName, directionOf } from '../lib/customers.js';
 import { InactiveChip } from '../components/chips.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
@@ -36,7 +36,7 @@ import type { OrderRow } from './OrdersPage.js';
 
 type Tab = 'overview' | 'orders' | 'sales' | 'history';
 type EntryKind = 'credit' | 'refund' | 'adjustment';
-type Sheet = 'payment' | 'rate' | 'rate_history' | 'currency' | 'edit' | 'statement';
+type Sheet = 'payment' | 'rate' | 'currency' | 'edit' | 'statement';
 
 interface HistoryRow {
   id: string;
@@ -261,7 +261,6 @@ export function CustomerDetailPage() {
         ]
       : []),
     ...(mayRate && !walkIn ? [{ label: t('customers:set_rate'), onSelect: () => setSheet('rate') }] : []),
-    { label: t('companies:rate_history'), onSelect: () => setSheet('rate_history') },
     ...(isAdmin && !walkIn
       ? [{ label: t('companies:settlement_currency_change'), onSelect: () => setSheet('currency') }]
       : []),
@@ -523,8 +522,6 @@ export function CustomerDetailPage() {
             onSave={(body) => setRate.mutate(body)}
           />
         ) : null}
-
-        {sheet === 'rate_history' ? <RateHistorySheet id={id} onClose={() => setSheet(null)} /> : null}
 
         {sheet === 'currency' && data ? (
           <SettlementCurrencySheet

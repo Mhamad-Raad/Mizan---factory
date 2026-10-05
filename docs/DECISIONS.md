@@ -1560,3 +1560,10 @@ English now says **Account currency** for the field (as Kurdish دراوی حی�
 الحساب already did), the action is **Change currency** in all three languages, its account line
 reads **Currency changed**, and the sheet's hint says what happens in one plain sentence. The
 glossary's English term follows (1.6); nothing but wording changes.
+
+## D-082 · 2026-10-05 · business request · "Rate history" leaves the company's More menu
+
+The business pointed out that the History tab already answers it: its "rate changes" filter
+lists every rate the company has had, with who set it and when. The menu item, its sheet and
+their three strings are removed. `GET /customers/:id/rates` stays — it is read-only, declared
+and tested, and nothing is gained by breaking a caller for it.
