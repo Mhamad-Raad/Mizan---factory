@@ -781,6 +781,9 @@ a.mz-button {
   gap: var(--space-4);
   grid-template-columns: 1fr;
   align-items: start;
+
+  /* It always follows the card's divider, which has no margin of its own. */
+  padding-block-start: var(--space-3);
 }
 
 @media (width >= 48rem) {
