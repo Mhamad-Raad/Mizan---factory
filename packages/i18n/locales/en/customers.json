@@ -44,7 +44,7 @@
   "entry.refund": "Refund",
   "entry.adjustment": "Adjustment",
   "entry.opening": "Opening balance",
-  "entry.settlement_change": "Settlement currency changed",
+  "entry.settlement_change": "Currency changed",
   "entry.reversal": "Reversal",
   "sheet.credit": "Record a credit",
   "sheet.refund": "Record a refund",

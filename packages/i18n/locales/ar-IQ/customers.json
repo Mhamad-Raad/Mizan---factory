@@ -44,7 +44,7 @@
   "entry.refund": "استرجاع مبلغ",
   "entry.adjustment": "تعديل الرصيد",
   "entry.opening": "الرصيد الافتتاحي",
-  "entry.settlement_change": "تغيير عملة الحساب",
+  "entry.settlement_change": "تم تغيير العملة",
   "entry.reversal": "قيد عكسي",
   "sheet.credit": "تسجيل إشعار دائن",
   "sheet.refund": "تسجيل استرجاع مبلغ",

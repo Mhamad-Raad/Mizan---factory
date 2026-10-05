@@ -57,7 +57,7 @@
   "credit": "Credit",
   "refund": "Refund",
   "reversal": "Reversal",
-  "settlement_currency": "Settlement currency",
+  "settlement_currency": "Account currency",
   "done_by": "Done by",
   "discount": "Discount",
   "receipt": "Receipt",

@@ -1552,3 +1552,11 @@ The business asked for the action to be removed. The menu item and its sheet are
 company's page, with their two strings. The route (`POST /customers/:id/opening-balance`) and
 the `customers.opening_balance` permission stay: the go-live import of opening debts writes
 through the same service, and the opening balances already in the ledgers are untouched.
+
+## D-081 · 2026-10-05 · business request · "Settlement currency" is called "Account currency"
+
+The business found "Change the settlement currency" hard to read and asked for plain words.
+English now says **Account currency** for the field (as Kurdish دراوی حیساب and Arabic عملة
+الحساب already did), the action is **Change currency** in all three languages, its account line
+reads **Currency changed**, and the sheet's hint says what happens in one plain sentence. The
+glossary's English term follows (1.6); nothing but wording changes.
