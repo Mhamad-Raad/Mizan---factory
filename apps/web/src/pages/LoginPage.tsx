@@ -10,7 +10,10 @@ import type { SignInError } from '../lib/signInError.js';
 import { useApp } from '../lib/store.js';
 import type { SessionUser } from '../lib/store.js';
 import { rememberUser } from '../lib/preferences.js';
-import { forgetPreviousUser } from '../lib/signOut.js';
+import { SESSION_IDLE_MINUTES } from '@mizan/permissions';
+import { clearIdleNotice, hasIdleNotice, startActivity } from '../lib/idleSignOut.js';
+import { clearPendingSignOut, forgetPreviousUser, idleSignOutSettled } from '../lib/signOut.js';
+import { useFormatter } from '../lib/store.js';
 import { Doorway } from '../components/Doorway.js';
 
 interface LoginResponse {
@@ -28,6 +31,7 @@ export function LoginPage() {
   const setSession = useApp((state) => state.setSession);
   const preferences = useApp((state) => state.preferences);
   const queryClient = useQueryClient();
+  const formatter = useFormatter();
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -39,6 +43,9 @@ export function LoginPage() {
     setBusy(true);
     setError(null);
     try {
+      // An idle sign-out on its way would clear the cookie this sign-in is about to set, were
+      // it answered second. Out of reach, the sign-in below fails and says so.
+      await idleSignOutSettled().catch(() => undefined);
       const response = await apiRequest<LoginResponse>('/auth/login', {
         method: 'POST',
         body: {
@@ -51,6 +58,9 @@ export function LoginPage() {
       // Whatever the last person left on this device — cached answers, drafts — goes before the
       // new session's first screen, however their session ended (2.10.2).
       forgetPreviousUser(queryClient, response.user.id);
+      clearIdleNotice();
+      clearPendingSignOut();
+      startActivity();
       setSession({ user: response.user, permissions: response.permissions });
       rememberUser({
         username: response.user.username,
@@ -69,6 +79,12 @@ export function LoginPage() {
   return (
     <Doorway subtitle={t('auth:sign_in_subtitle')} tabTitle={t('auth:sign_in')}>
       <form className="mz-stack" onSubmit={submit} noValidate>
+        {/* Why the user is looking at this page, when the idle sign-out sent them here (D-078). */}
+        {hasIdleNotice() && !error ? (
+          <div className="mz-warning" role="status">
+            {t('auth:idle_signed_out', { minutes: formatter.number(SESSION_IDLE_MINUTES) })}
+          </div>
+        ) : null}
         <TextField
           label={t('auth:username_or_phone')}
           value={identifier}

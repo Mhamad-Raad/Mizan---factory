@@ -385,13 +385,15 @@ export class AuthService {
     });
   }
 
-  async logout(context: RequestContext): Promise<void> {
-    await this.sessions.revoke(context.sessionId, 'logout');
+  /** `idle`: the screen ended a session nobody had touched for the idle minutes (D-078). */
+  async logout(context: RequestContext, reason: 'logout' | 'idle' = 'logout'): Promise<void> {
+    await this.sessions.revoke(context.sessionId, reason);
     await this.audit.record(context, {
       action: 'logout',
       entity_type: 'session',
       entity_id: context.sessionId,
       entity_label: 'Sign-out',
+      ...(reason === 'idle' ? { changes: { reason } } : {}),
       related: { user_id: context.userId },
     });
   }

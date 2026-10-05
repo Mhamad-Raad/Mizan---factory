@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query, Req, Res } from '@nestjs/common';
 import { z } from 'zod';
 import type { Response } from 'express';
 import { AllowBeforePasswordChange, AllowWhenLocked, Public, SessionOnly } from '../common/decorators.js';
@@ -24,6 +24,9 @@ const changePasswordSchema = z.object({
 });
 
 /** The password unlocks the same session, keeping its drafts (2.8). */
+/** `idle` when the screen signs out a user who did nothing for the idle minutes (D-078). */
+const logoutSchema = z.object({ reason: z.enum(['idle']).optional() });
+
 const unlockSchema = z.object({
   password: z.string().min(1).max(200),
 });
@@ -72,8 +75,12 @@ export class AuthController {
   @AllowBeforePasswordChange()
   @AllowWhenLocked()
   @HttpCode(204)
-  async logout(@Req() request: RequestWithContext, @Res({ passthrough: true }) response: Response) {
-    await this.auth.logout(contextOf(request));
+  async logout(
+    @Req() request: RequestWithContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query(zodBody(logoutSchema)) query: z.infer<typeof logoutSchema>,
+  ) {
+    await this.auth.logout(contextOf(request), query.reason ?? 'logout');
     response.clearCookie(SESSION_COOKIE, { path: '/' });
     response.clearCookie(CSRF_COOKIE, { path: '/' });
   }

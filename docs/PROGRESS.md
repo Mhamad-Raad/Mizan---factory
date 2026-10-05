@@ -858,3 +858,10 @@ defaults and recorded in `docs/QUESTIONS.md` with the default that was taken.
 
 **Next:** nothing in `iterations/`. I0 → I6 are built, reviewed and merged. What remains is the
 go-live checklist in `ops/runbook/README.md`, run with the client on their own hardware.
+
+## After go-live · business edits (2026-10-05) · branch `feat/business-edits`
+
+- **Idle sign-out (D-078):** fifteen minutes with nothing done signs the user out, with a
+  one-minute warning, across tabs, and the server ends an unattended session at thirty. Tests:
+  `idleSignOut.test.ts` (9), `idle-sign-out.test.ts` (5, API), `e2e/idle-sign-out.spec.ts` (4).
+- **Kurdish wording (D-079):** کاڵای شکاو → تەلەف everywhere.
