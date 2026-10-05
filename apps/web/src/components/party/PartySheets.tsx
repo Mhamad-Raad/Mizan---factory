@@ -51,8 +51,15 @@ export function EditPartySheet({
 
   return (
     <BottomSheet title={t('common:edit')} open onClose={onClose} closeLabel={t('common:close')}>
-      <div className="mz-stack">
-        <TextField label={t('customers:name')} value={name} onChange={(event) => edit(setName, event.target.value)} />
+      {/* Two columns from a tablet up, so a laptop shows the whole form without scrolling. */}
+      <div className="mz-form-grid">
+        <div className="mz-form-grid__wide">
+          <TextField
+            label={t('customers:name')}
+            value={name}
+            onChange={(event) => edit(setName, event.target.value)}
+          />
+        </div>
         <TextField
           label={t('companies:contact_name')}
           hint={t('common:optional')}
@@ -83,35 +90,39 @@ export function EditPartySheet({
           value={address}
           onChange={(event) => edit(setAddress, event.target.value)}
         />
-        <TextField
-          label={t('glossary:notes')}
-          hint={t('common:optional')}
-          value={notes}
-          onChange={(event) => edit(setNotes, event.target.value)}
-        />
+        <div className="mz-form-grid__wide">
+          <TextField
+            label={t('glossary:notes')}
+            hint={t('common:optional')}
+            value={notes}
+            onChange={(event) => edit(setNotes, event.target.value)}
+          />
+        </div>
         {error ? (
-          <p className="mz-field__error" role="alert">
+          <p className="mz-field__error mz-form-grid__wide" role="alert">
             {error}
           </p>
         ) : null}
-        <Button
-          block
-          loading={saving}
-          disabled={name.trim() === ''}
-          onClick={() =>
-            onSave({
-              name: name.trim(),
-              contact_name: contactName.trim() === '' ? null : contactName.trim(),
-              phone: phone.trim() === '' ? null : phone.trim(),
-              address: address.trim() === '' ? null : address.trim(),
-              notes: notes.trim() === '' ? null : notes.trim(),
-              ...(rateChanged ? { rate_iqd_per_usd: rate.trim() } : {}),
-              version: party.version,
-            })
-          }
-        >
-          {t('common:save')}
-        </Button>
+        <div className="mz-form-grid__wide">
+          <Button
+            block
+            loading={saving}
+            disabled={name.trim() === ''}
+            onClick={() =>
+              onSave({
+                name: name.trim(),
+                contact_name: contactName.trim() === '' ? null : contactName.trim(),
+                phone: phone.trim() === '' ? null : phone.trim(),
+                address: address.trim() === '' ? null : address.trim(),
+                notes: notes.trim() === '' ? null : notes.trim(),
+                ...(rateChanged ? { rate_iqd_per_usd: rate.trim() } : {}),
+                version: party.version,
+              })
+            }
+          >
+            {t('common:save')}
+          </Button>
+        </div>
       </div>
     </BottomSheet>
   );
@@ -141,7 +152,12 @@ export function RateHistorySheet({ id, onClose }: { id: string; onClose: () => v
   });
 
   return (
-    <BottomSheet title={t('companies:rate_history')} open onClose={onClose} closeLabel={t('common:close')}>
+    <BottomSheet
+      title={t('companies:rate_history')}
+      open
+      onClose={onClose}
+      closeLabel={t('common:close')}
+    >
       <QueryStates
         query={rates}
         isEmpty={(rates.data?.items.length ?? 0) === 0}
@@ -155,7 +171,9 @@ export function RateHistorySheet({ id, onClose }: { id: string; onClose: () => v
                   {formatter.rate(row.rate_iqd_per_usd)}
                 </span>
                 <span className="mz-caption">
-                  {t('companies:rate_since', { date: formatter.date(row.effective_from.slice(0, 10)) })}
+                  {t('companies:rate_since', {
+                    date: formatter.date(row.effective_from.slice(0, 10)),
+                  })}
                   {row.created_by_name ? ` · ${row.created_by_name}` : ''}
                 </span>
                 {row.note ? (
