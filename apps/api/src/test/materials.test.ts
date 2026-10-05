@@ -196,6 +196,22 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
       expect(withInactive.body.items[0]).toMatchObject({ id: material.id, is_active: false });
     });
 
+    it('lists the deactivated materials alone when asked for them', async () => {
+      const kept = await createMaterial(warehouse);
+      const gone = await createMaterial(warehouse, { name: 'Rebar 12 mm' });
+      await as(ctx.http, warehouse)
+        .post(`/api/v1/items/${gone.id}/deactivate`)
+        .send({ version: gone.version })
+        .expect(200);
+
+      const only = await as(ctx.http, sales).get('/api/v1/items?only_inactive=true').expect(200);
+      expect(only.body.items.map((item: { id: string }) => item.id)).toEqual([gone.id]);
+      expect(only.body.total).toBe(1);
+
+      const both = await as(ctx.http, sales).get('/api/v1/items?include_inactive=true').expect(200);
+      expect(both.body.items.map((item: { id: string }) => item.id).sort()).toEqual([kept.id, gone.id].sort());
+    });
+
     it('refuses the admin delete once a material has movements (FR-309, A-32)', async () => {
       const material = await createMaterial(warehouse);
       await as(ctx.http, warehouse)

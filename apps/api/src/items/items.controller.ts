@@ -28,6 +28,8 @@ const listSchema = z.object({
   pricing_unit: z.enum(['per_piece', 'per_kg']).optional(),
   stock: z.enum(['in', 'out']).optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
+  /** The Materials list's "Deactivated" filter: the deactivated ones alone. */
+  only_inactive: z.enum(['true', 'false']).optional(),
   ...pageFields,
 });
 
@@ -127,6 +129,7 @@ export class ItemsController {
       pricing_unit: query.pricing_unit,
       stock: query.stock,
       include_inactive: query.include_inactive === 'true',
+      only_inactive: query.only_inactive === 'true',
       page: query.page,
       page_size: query.page_size,
     });

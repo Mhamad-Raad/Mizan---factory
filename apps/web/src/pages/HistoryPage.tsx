@@ -397,8 +397,8 @@ export function HistoryPage() {
                                   </div>
                                 ))
                               : null}
-                            <p className="mz-caption" dir="ltr">
-                              {t('history:request_id')}: {entry.request_id}
+                            <p className="mz-caption">
+                              {t('history:request_id')}: <bdi dir="ltr">{entry.request_id}</bdi>
                             </p>
                           </div>
                         ) : null}

@@ -1567,3 +1567,31 @@ The business pointed out that the History tab already answers it: its "rate chan
 lists every rate the company has had, with who set it and when. The menu item, its sheet and
 their three strings are removed. `GET /customers/:id/rates` stays — it is read-only, declared
 and tested, and nothing is gained by breaking a caller for it.
+
+## D-083 · 2026-10-06 · business review · Materials' "Deactivated" filter shows the deactivated ones alone
+
+The business reported the filter as not working: it *added* the deactivated materials to the
+list, so with none deactivated nothing changed, and with some it read as a filter that did not
+filter. Beside "In stock" and "Out of stock" it now does what its neighbours do — the list
+becomes the deactivated materials only (`GET /items?only_inactive=true`; `include_inactive`
+is kept for its other callers). Companies and Users keep their "show deactivated too" switches,
+which are worded as that.
+
+## D-084 · 2026-10-06 · business review · The same screen fixes, wherever else they applied
+
+After the company page's fixes the business asked for the rest of the system to be checked for
+the same faults. Found by walking every screen in Kurdish at 1366 × 768 and measuring:
+- **A left-to-right value that dragged its whole line to the far edge in Kurdish and Arabic**
+  (the company's phone): also the username under a name on Users and on My account, a material's
+  code, History's request id and a new employee's temporary password. The direction now sits on
+  the value, not on the line.
+- **A caption printed above a page's tabs** ("More", "Show"): the company, order and purchase
+  pages and Accounts. `SegmentedControl` takes `hideLabel`; a screen reader still gets the name.
+- **A dropdown hung from its button's far edge** on a desktop: Materials' Filter, like the
+  company's More. An empty More menu (the walk-in customer) is no longer drawn.
+- **A sheet that scrolled on a laptop:** "Payment received" (821 px in a 653 px dialog) is two
+  columns from a tablet up, and a dialog may use 92% of the screen's height instead of 85%.
+- **Toolbar controls of two heights:** every button in a toolbar is as tall as the search box
+  and the selects beside it (44 px).
+- **Material page:** "Set this month's prices" sits beside its card's heading and "Deactivate
+  material" beside the material's name, instead of each filling a row of the page.

@@ -14,6 +14,7 @@ import { Pager } from '../components/Pager.js';
 import { useKeepPageInRange, usePaging } from '../lib/paging.js';
 import { useDebouncedValue } from '../lib/debounce.js';
 import { useFormatter } from '../lib/store.js';
+import { useIsWide } from '../lib/wide.js';
 
 export interface ItemRow {
   id: string;
@@ -53,14 +54,17 @@ export function MaterialsPage() {
   // The request waits for the typing to stop (NFR-03): one search, not one per letter.
   const query = useDebouncedValue(search);
   const [stock, setStock] = useState<StockFilter>('all');
-  const [includeInactive, setIncludeInactive] = useState(false);
+  const [onlyInactive, setOnlyInactive] = useState(false);
 
-  const paging = usePaging({ storageKey: 'materials', resetOn: [query, stock, includeInactive] });
+  const isWide = useIsWide();
+  const paging = usePaging({ storageKey: 'materials', resetOn: [query, stock, onlyInactive] });
 
   const items = useQuery({
-    queryKey: ['items', query, stock, includeInactive, paging.page, paging.pageSize],
+    queryKey: ['items', query, stock, onlyInactive, paging.page, paging.pageSize],
     queryFn: () => {
-      const params = new URLSearchParams({ q: query, include_inactive: String(includeInactive) });
+      // "Deactivated" is a filter like the two above it: it shows the deactivated materials
+      // alone, not the whole list with them mixed in.
+      const params = new URLSearchParams({ q: query, only_inactive: String(onlyInactive) });
       if (stock !== 'all') params.set('stock', stock);
       return apiRequest<{ items: ItemRow[]; total: number }>(`/items?${params.toString()}&${paging.query}`);
     },
@@ -92,8 +96,8 @@ export function MaterialsPage() {
           <span className="mz-cell__body">
             <bdi>{item.name}</bdi>
             {item.code ? (
-              <span className="mz-caption" dir="ltr">
-                <bdi>{item.code}</bdi>
+              <span className="mz-caption">
+                <bdi dir="ltr">{item.code}</bdi>
               </span>
             ) : null}
           </span>
@@ -162,6 +166,9 @@ export function MaterialsPage() {
               label={t('common:filter')}
               icon="filter"
               variant="button"
+              // Hung from the button's own leading edge on a desktop, like every dropdown; on a
+              // phone the button may sit at the row's end, and the list opens inward.
+              align={isWide ? 'start' : 'end'}
               items={[
                 {
                   label: t('materials:filter_in_stock'),
@@ -175,8 +182,8 @@ export function MaterialsPage() {
                 },
                 {
                   label: t('common:deactivated'),
-                  current: includeInactive,
-                  onSelect: () => setIncludeInactive(!includeInactive),
+                  current: onlyInactive,
+                  onSelect: () => setOnlyInactive(!onlyInactive),
                 },
               ]}
             />

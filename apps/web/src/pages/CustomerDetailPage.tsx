@@ -338,18 +338,21 @@ export function CustomerDetailPage() {
                   ) : null}
                   {/* On a desktop the list hangs from the button's own leading edge; on a phone the
                       button is at the row's end, and the list opens inward so it stays on screen. */}
-                  <Menu
-                    variant="button"
-                    icon="more"
-                    label={t('common:more')}
-                    items={moreItems}
-                    align={isWide ? 'start' : 'end'}
-                  />
+                  {moreItems.length > 0 ? (
+                    <Menu
+                      variant="button"
+                      icon="more"
+                      label={t('common:more')}
+                      items={moreItems}
+                      align={isWide ? 'start' : 'end'}
+                    />
+                  ) : null}
                 </div>
               </div>
 
               <SegmentedControl
                 label={t('common:more')}
+                hideLabel
                 value={tab}
                 onChange={setTab}
                 options={[

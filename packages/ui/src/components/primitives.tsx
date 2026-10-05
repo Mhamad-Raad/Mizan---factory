@@ -133,12 +133,23 @@ export interface SegmentedOption<T extends string> {
 
 export interface SegmentedControlProps<T extends string> {
   label: string;
+  /**
+   * For a strip that is a page's tabs rather than a form's choice: the label still names the
+   * group to a screen reader, but is not printed above tabs that already say what they are.
+   */
+  hideLabel?: boolean;
   value: T;
   options: readonly SegmentedOption<T>[];
   onChange: (value: T) => void;
 }
 
-export function SegmentedControl<T extends string>({ label, value, options, onChange }: SegmentedControlProps<T>) {
+export function SegmentedControl<T extends string>({
+  label,
+  hideLabel,
+  value,
+  options,
+  onChange,
+}: SegmentedControlProps<T>) {
   const strip = useRef<HTMLDivElement>(null);
 
   /**
@@ -160,7 +171,7 @@ export function SegmentedControl<T extends string>({ label, value, options, onCh
 
   return (
     <div className="mz-field">
-      <span className="mz-field__label">{label}</span>
+      {hideLabel ? null : <span className="mz-field__label">{label}</span>}
       <div className="mz-segmented" role="group" aria-label={label} ref={strip}>
         {options.map((option) => (
           <button

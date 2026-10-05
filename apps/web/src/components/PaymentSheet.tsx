@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BottomSheet, Button, DateField, NumberField, SegmentedControl, TextField, Toggle } from '@mizan/ui';
+import {
+  BottomSheet,
+  Button,
+  DateField,
+  NumberField,
+  SegmentedControl,
+  TextField,
+  Toggle,
+} from '@mizan/ui';
 import { convert } from '@mizan/money';
 import type { Currency, Rate } from '@mizan/money';
 import { MoneyInput, parseMinor } from './MoneyInput.js';
@@ -129,7 +137,9 @@ export function PaymentSheet({
     return parts;
   };
 
-  const canSave = splitting ? splitParts().length >= 2 : amount.amount !== null && amount.amount > 0;
+  const canSave = splitting
+    ? splitParts().length >= 2
+    : amount.amount !== null && amount.amount > 0;
 
   /**
    * "After this payment" (wireframe 3.4.2): the remainder in the settlement currency, taking
@@ -137,7 +147,9 @@ export function PaymentSheet({
    * lands on nothing owed by definition.
    */
   const inSettlement = (minor: number, currency: Currency, other?: number | null): number =>
-    currency === settlement_currency ? minor : (other ?? (rate === null ? 0 : convert(minor, currency, rate)));
+    currency === settlement_currency
+      ? minor
+      : (other ?? (rate === null ? 0 : convert(minor, currency, rate)));
   const paidInSettlement = splitting
     ? splitParts().reduce((total, part) => total + inSettlement(part.amount, part.currency), 0)
     : amount.amount === null
@@ -152,26 +164,29 @@ export function PaymentSheet({
       onClose={onClose}
       closeLabel={t('common:close')}
     >
-      <div className="mz-stack">
-        <div className="mz-row mz-row--between">
+      {/* Two columns from a tablet up, so a laptop shows the whole sheet without scrolling. */}
+      <div className="mz-form-grid">
+        <div className="mz-row mz-row--between mz-form-grid__wide">
           <span>{remainingLabel ?? t('orders:remaining')}</span>
           {/*
-            * The counterpart is converted at this account's rate rather than left at zero:
-            * a remainder of 3,050,000 IQD is not "$0.00", and rule 7 asks for both currencies
-            * with ≈ on the figure that was derived rather than stored.
-            */}
+           * The counterpart is converted at this account's rate rather than left at zero:
+           * a remainder of 3,050,000 IQD is not "$0.00", and rule 7 asks for both currencies
+           * with ≈ on the figure that was derived rather than stored.
+           */}
           <SettlementAmount amount={remaining} currency={settlement_currency} rate={rate} />
         </div>
 
         {!splitting ? (
           <>
-            <MoneyInput
-              label={amountLabel ?? t('customers:amount_received')}
-              value={amount}
-              rate={rate}
-              onChange={setAmount}
-              error={error}
-            />
+            <div className="mz-form-grid__wide">
+              <MoneyInput
+                label={amountLabel ?? t('customers:amount_received')}
+                value={amount}
+                rate={rate}
+                onChange={setAmount}
+                error={error}
+              />
+            </div>
             <Toggle
               label={t('glossary:settle_in_full')}
               hint={settleHint ?? t('customers:settle_in_full_hint')}
@@ -180,7 +195,7 @@ export function PaymentSheet({
             />
           </>
         ) : (
-          <div className="mz-grid-2">
+          <div className="mz-grid-2 mz-form-grid__wide">
             <NumberField
               label={`${t('customers:amount_received')} · ${t('glossary:iqd')}`}
               unit={t('common:iqd_symbol')}
@@ -198,9 +213,11 @@ export function PaymentSheet({
         )}
 
         {/* Proposed — not requested (FR-617): part dinars, part dollars, one note. */}
-        <Button variant="ghost" onClick={() => setSplitting(!splitting)}>
-          {splitting ? t('customers:split_off') : t('customers:split_on')}
-        </Button>
+        <div className={splitting ? 'mz-form-grid__wide' : undefined}>
+          <Button variant="ghost" onClick={() => setSplitting(!splitting)}>
+            {splitting ? t('customers:split_off') : t('customers:split_on')}
+          </Button>
+        </div>
 
         <DateField
           label={t('glossary:date_paid')}
@@ -221,15 +238,27 @@ export function PaymentSheet({
           ]}
         />
 
-        <TextField label={t('common:note')} value={note} onChange={(event) => setNote(event.target.value)} />
+        <div className="mz-form-grid__wide">
+          <TextField
+            label={t('common:note')}
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+          />
+        </div>
 
         {purchases && purchases.length > 0 ? (
           <>
-            <Button variant="ghost" onClick={() => setShowMore(!showMore)} aria-expanded={showMore}>
-              {t('common:more')}
-            </Button>
+            <div className="mz-form-grid__wide">
+              <Button
+                variant="ghost"
+                onClick={() => setShowMore(!showMore)}
+                aria-expanded={showMore}
+              >
+                {t('common:more')}
+              </Button>
+            </div>
             {showMore ? (
-              <label className="mz-field">
+              <label className="mz-field mz-form-grid__wide">
                 <span className="mz-field__label">{t('companies:link_purchase')}</span>
                 <select
                   className="mz-field__control"
@@ -249,46 +278,50 @@ export function PaymentSheet({
         ) : null}
 
         {/* The balance this payment leaves behind, live as the amount is typed (3.4.2). */}
-        <div className="mz-row mz-row--between">
+        <div className="mz-row mz-row--between mz-form-grid__wide">
           <span className="mz-caption">{t('customers:after_payment')}</span>
           <SettlementAmount amount={afterPayment} currency={settlement_currency} rate={rate} />
         </div>
 
         {needsExcessConfirmation ? (
-          <div className="mz-warning" role="alert">
+          <div className="mz-warning mz-form-grid__wide" role="alert">
             {t('customers:excess_warning', {
               remaining: formatter.money(remaining, settlement_currency),
             })}
           </div>
         ) : null}
 
-        <Button
-          block
-          loading={saving}
-          disabled={!canSave}
-          onClick={() =>
-            onSave({
-              amount: splitting ? 0 : (amount.amount as number),
-              currency: splitting ? settlement_currency : amount.currency,
-              other_amount: splitting ? null : (amount.other_amount ?? null),
-              entry_date: date,
-              settle_in_full: splitting ? false : settleInFull,
-              allow_excess: needsExcessConfirmation ? true : undefined,
-              method,
-              split: splitting ? splitParts() : null,
-              note: note.trim() === '' ? null : note.trim(),
-              purchase_id: purchaseId === '' ? null : purchaseId,
-            })
-          }
-        >
-          {needsExcessConfirmation
-            ? t('customers:record_excess')
-            : (saveLabel ?? t('customers:record_payment'))}
-        </Button>
+        <div className="mz-form-grid__wide">
+          <Button
+            block
+            loading={saving}
+            disabled={!canSave}
+            onClick={() =>
+              onSave({
+                amount: splitting ? 0 : (amount.amount as number),
+                currency: splitting ? settlement_currency : amount.currency,
+                other_amount: splitting ? null : (amount.other_amount ?? null),
+                entry_date: date,
+                settle_in_full: splitting ? false : settleInFull,
+                allow_excess: needsExcessConfirmation ? true : undefined,
+                method,
+                split: splitting ? splitParts() : null,
+                note: note.trim() === '' ? null : note.trim(),
+                purchase_id: purchaseId === '' ? null : purchaseId,
+              })
+            }
+          >
+            {needsExcessConfirmation
+              ? t('customers:record_excess')
+              : (saveLabel ?? t('customers:record_payment'))}
+          </Button>
+        </div>
 
-        <span className="mz-caption">
+        <span className="mz-caption mz-form-grid__wide">
           {remainingHint ??
-            t('customers:remaining_hint', { amount: formatter.money(remaining, settlement_currency) })}
+            t('customers:remaining_hint', {
+              amount: formatter.money(remaining, settlement_currency),
+            })}
         </span>
       </div>
     </BottomSheet>
@@ -300,7 +333,15 @@ export function PaymentSheet({
  * rate and marked ≈ as derived. Without a rate there is no counterpart to show, and the figure
  * says so rather than converting at a rate nobody set.
  */
-function SettlementAmount({ amount, currency, rate }: { amount: number; currency: Currency; rate: Rate | null }) {
+function SettlementAmount({
+  amount,
+  currency,
+  rate,
+}: {
+  amount: number;
+  currency: Currency;
+  rate: Rate | null;
+}) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   if (rate === null) {

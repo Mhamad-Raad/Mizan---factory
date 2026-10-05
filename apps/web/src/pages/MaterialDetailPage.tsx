@@ -284,7 +284,10 @@ export function MaterialDetailPage() {
           {item.data ? (
             <>
               <Card>
-                <div className="mz-row mz-row--between">
+                <div
+                  className="mz-row mz-row--between"
+                  style={{ alignItems: 'flex-start', gap: 'var(--space-3)', flexWrap: 'wrap' }}
+                >
                   <div>
                     <h2 className="mz-title">
                       <bdi>{item.data.name}</bdi>
@@ -294,10 +297,33 @@ export function MaterialDetailPage() {
                       {item.data.code ? ` · ${item.data.code}` : ''}
                     </span>
                   </div>
-                  {!item.data.is_active ? (
-                    <Chip icon="close">{t('common:deactivated')}</Chip>
-                  ) : null}
+                  {/* The record's own switch sits with the record's name (business review): alone
+                      at the foot of the page it read as an afterthought. */}
+                  <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                    {!item.data.is_active ? (
+                      <Chip icon="close">{t('common:deactivated')}</Chip>
+                    ) : null}
+                    <Can permission="materials.edit">
+                      <Button
+                        variant={item.data.is_active ? 'danger' : 'secondary'}
+                        loading={setActive.isPending && !confirmingDeactivate}
+                        onClick={() => {
+                          setActive.reset();
+                          // Reactivating puts nothing at risk and happens at once; deactivating asks.
+                          if (item.data?.is_active) setConfirmingDeactivate(true);
+                          else setActive.mutate(true);
+                        }}
+                      >
+                        {item.data.is_active ? t('materials:deactivate') : t('materials:reactivate')}
+                      </Button>
+                    </Can>
+                  </div>
                 </div>
+                {setActiveError && !confirmingDeactivate ? (
+                  <div className="mz-warning" role="alert" style={{ marginBlockStart: 'var(--space-2)' }}>
+                    {setActiveError}
+                  </div>
+                ) : null}
 
                 <p className="mz-title" data-tabular style={{ marginBlockStart: 'var(--space-3)' }}>
                   {item.data.stock.priced_complete
@@ -388,7 +414,16 @@ export function MaterialDetailPage() {
                     </div>
                   </Can>
                   <Card>
-                    <h3 className="mz-heading">{t('materials:this_month_prices')}</h3>
+                    {/* The action sits beside the heading, like "Add stock" above — a button the
+                        width of the page read as a phone's layout on a desk (business review). */}
+                    <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                      <h3 className="mz-heading">{t('materials:this_month_prices')}</h3>
+                      {maySetPrices ? (
+                        <Button variant="secondary" onClick={() => setPriceSheet({ month: thisMonth })}>
+                          {t('materials:set_this_month')}
+                        </Button>
+                      ) : null}
+                    </div>
                     <div
                       className="mz-row mz-row--between"
                       style={{ marginBlockStart: 'var(--space-2)' }}
@@ -422,16 +457,6 @@ export function MaterialDetailPage() {
                         />
                       </div>
                     ) : null}
-                    {maySetPrices ? (
-                      <Button
-                        variant="secondary"
-                        block
-                        onClick={() => setPriceSheet({ month: thisMonth })}
-                        style={{ marginBlockStart: 'var(--space-3)' }}
-                      >
-                        {t('materials:set_this_month')}
-                      </Button>
-                    ) : null}
                   </Card>
 
                   {item.data.notes ? (
@@ -443,25 +468,6 @@ export function MaterialDetailPage() {
                     </Card>
                   ) : null}
 
-                  <Can permission="materials.edit">
-                    {setActiveError && !confirmingDeactivate ? (
-                      <div className="mz-warning" role="alert">
-                        {setActiveError}
-                      </div>
-                    ) : null}
-                    <Button
-                      variant={item.data.is_active ? 'danger' : 'secondary'}
-                      loading={setActive.isPending && !confirmingDeactivate}
-                      onClick={() => {
-                        setActive.reset();
-                        // Reactivating puts nothing at risk and happens at once; deactivating asks.
-                        if (item.data?.is_active) setConfirmingDeactivate(true);
-                        else setActive.mutate(true);
-                      }}
-                    >
-                      {item.data.is_active ? t('materials:deactivate') : t('materials:reactivate')}
-                    </Button>
-                  </Can>
                 </div>
               ) : null}
 
