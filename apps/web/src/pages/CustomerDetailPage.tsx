@@ -292,8 +292,10 @@ export function CustomerDetailPage() {
                       </span>
                     ) : null}
                     {data.phone ? (
-                      <a href={`tel:${data.phone}`} className="mz-caption mz-tap-link" dir="ltr">
-                        {data.phone}
+                      // The digits read left to right; the line itself sits on the page's reading
+                      // side, under the name — `dir` on the link sent it to the far edge in RTL.
+                      <a href={`tel:${data.phone}`} className="mz-caption mz-tap-link">
+                        <bdi dir="ltr">{data.phone}</bdi>
                       </a>
                     ) : null}
                   </div>
