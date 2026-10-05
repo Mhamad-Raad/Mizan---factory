@@ -2751,6 +2751,13 @@ html[data-mirroring='true'] body {
   vertical-align: middle;
 }
 
+/* A row of figures needs room to be read along: at the header's tighter padding a long list
+   looked squeezed (business review). */
+.mz-table tbody th,
+.mz-table tbody td {
+  padding-block: var(--space-3);
+}
+
 .mz-table thead th {
   border-block-end-color: var(--color-border);
   background: var(--color-table-head);
