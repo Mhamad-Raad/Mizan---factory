@@ -113,13 +113,17 @@ describe('companies, purchases and the company ledger (FR-401 to FR-408, FR-701 
       .send({ name, pricing_unit: pricingUnit })
       .expect(201);
     const id = created.body.id as string;
-    await as(ctx.http, admin)
-      .put(`/api/v1/items/${id}/prices/${new Date().toISOString().slice(0, 7)}`)
-      .send({
-        sale: { amount: prices.sale, currency: 'IQD' },
-        bought: { amount: prices.bought, currency: 'IQD' },
-      })
-      .expect(200);
+    // This month, and the September the backdated purchases below are written in: priced for
+    // the current month alone, they were refused from the first of October on.
+    for (const month of new Set([new Date().toISOString().slice(0, 7), '2026-09'])) {
+      await as(ctx.http, admin)
+        .put(`/api/v1/items/${id}/prices/${month}`)
+        .send({
+          sale: { amount: prices.sale, currency: 'IQD' },
+          bought: { amount: prices.bought, currency: 'IQD' },
+        })
+        .expect(200);
+    }
     return id;
   }
 
