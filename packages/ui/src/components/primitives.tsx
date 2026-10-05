@@ -519,6 +519,10 @@ export function Menu({
     };
   }, [open]);
 
+  // The space before a label is kept only in a menu where some row has an icon or a tick to
+  // line up with: in a plain list of actions it read as the labels being pushed off the edge.
+  const marked = items.some((item) => item.icon !== undefined || item.current);
+
   return (
     <div className="mz-menu" ref={root}>
       {variant === 'button' ? (
@@ -573,9 +577,9 @@ export function Menu({
                 <Icon name={item.icon} size={16} />
               ) : item.current ? (
                 <Icon name="check" size={16} />
-              ) : (
+              ) : marked ? (
                 <span className="mz-menu__gap" />
-              )}
+              ) : null}
               {item.label}
             </button>
           ))}

@@ -2970,7 +2970,7 @@ html[data-mirroring='true'] body {
   font-weight: 600;
 }
 
-/* Keeps the labels in one column whether or not a row carries the tick. */
+/* Keeps the labels in one column in a menu where only some rows carry an icon or the tick. */
 .mz-menu__gap {
   inline-size: 16px;
 }
