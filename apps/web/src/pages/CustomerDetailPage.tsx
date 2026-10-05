@@ -34,7 +34,7 @@ import type { BalanceValue, CustomerRow } from './CustomersPage.js';
 import type { OrderRow } from './OrdersPage.js';
 
 type Tab = 'overview' | 'orders' | 'sales' | 'history';
-type EntryKind = 'credit' | 'refund' | 'adjustment' | 'opening';
+type EntryKind = 'credit' | 'refund' | 'adjustment';
 type Sheet = 'payment' | 'rate' | 'rate_history' | 'currency' | 'edit' | 'statement';
 
 interface HistoryRow {
@@ -80,7 +80,6 @@ export function CustomerDetailPage() {
   const isAdmin = useApp((state) => state.user?.role === 'admin');
   const mayRecordPayment = usePermission('orders.record_payment');
   const mayCredit = usePermission('orders.credit');
-  const mayOpeningBalance = usePermission('customers.opening_balance');
   const maySeeSelling = usePermission('fields.see_customer_balances');
   const maySetCustomerRate = usePermission('customers.set_rate');
   const maySetCompanyRate = usePermission('companies.set_rate');
@@ -250,7 +249,7 @@ export function CustomerDetailPage() {
 
   const mayRate = maySetCustomerRate || maySetCompanyRate;
   const mayEdit = !walkIn && (mayEditCustomer || mayEditCompany);
-  const sellingActions = selling && !walkIn && (mayRecordPayment || mayCredit || mayOpeningBalance);
+  const sellingActions = selling && !walkIn && (mayRecordPayment || mayCredit);
 
   const moreItems: MenuItem[] = [
     ...(sellingActions && mayCredit
@@ -258,9 +257,6 @@ export function CustomerDetailPage() {
           { label: t('glossary:credit'), onSelect: () => setEntrySheet('credit') },
           { label: t('glossary:refund'), onSelect: () => setEntrySheet('refund') },
         ]
-      : []),
-    ...(sellingActions && mayOpeningBalance
-      ? [{ label: t('customers:opening_theirs'), onSelect: () => setEntrySheet('opening') }]
       : []),
     ...(mayRate && !walkIn ? [{ label: t('customers:set_rate'), onSelect: () => setSheet('rate') }] : []),
     { label: t('companies:rate_history'), onSelect: () => setSheet('rate_history') },
@@ -673,7 +669,7 @@ function HistoryItem({ row, settlement }: { row: HistoryRow; settlement: Currenc
 }
 
 function pathOf(kind: EntryKind): string {
-  return kind === 'opening' ? 'opening-balance' : `${kind}s`;
+  return `${kind}s`;
 }
 
 /**
@@ -697,8 +693,9 @@ function statementText(
 }
 
 /**
- * Credit, refund, adjustment and the opening balance on the selling side (FR-504, FR-506). All
- * four need a note, because all four are somebody deciding to change a balance by hand.
+ * Credit, refund and adjustment on the selling side (FR-504, FR-506). All three need a note,
+ * because all three are somebody deciding to change a balance by hand. (An opening balance is
+ * brought in by the import at go-live; the business had it taken off this page, D-080.)
  */
 function LedgerEntrySheet({
   kind,

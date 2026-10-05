@@ -1545,3 +1545,10 @@ Every Kurdish string follows, glossary included: the page, the sidebar, the perm
 reports, the History entity, the stock movement and the error messages. The verb forms follow
 the noun so the screens use one word (چەند تەلەف بوو؟, چی تەلەف بوو, کێ تەلەفی کرد). English
 ("Broken goods") and Arabic are unchanged — only the Kurdish was asked for.
+
+## D-080 · 2026-10-05 · business request · "Opening: they owe us" leaves the company page
+
+The business asked for the action to be removed. The menu item and its sheet are gone from a
+company's page, with their two strings. The route (`POST /customers/:id/opening-balance`) and
+the `customers.opening_balance` permission stay: the go-live import of opening debts writes
+through the same service, and the opening balances already in the ledgers are untouched.
