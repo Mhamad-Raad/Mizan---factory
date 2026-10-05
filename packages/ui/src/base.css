@@ -786,6 +786,11 @@ a.mz-button {
   padding-block-start: var(--space-3);
 }
 
+/* And the same air above that divider, under the card's heading — the name, the phone. */
+.mz-divider:has(+ .mz-detail-summary) {
+  margin-block-start: var(--space-3);
+}
+
 @media (width >= 48rem) {
   .mz-detail-summary {
     grid-template-columns: minmax(0, auto) 1fr;
