@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, DateField, Icon, Menu, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import type { IconName, MenuItem } from '@mizan/ui';
+import { useIsWide } from '../lib/wide.js';
 import type { Currency, Rate } from '@mizan/money';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
@@ -89,6 +90,7 @@ export function CustomerDetailPage() {
   const mayViewOrders = usePermission('orders.view');
 
   const [tab, setTab] = useState<Tab>('overview');
+  const isWide = useIsWide();
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [entrySheet, setEntrySheet] = useState<EntryKind | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -335,7 +337,15 @@ export function CustomerDetailPage() {
                       {t('common:edit')}
                     </Button>
                   ) : null}
-                  <Menu variant="button" icon="more" label={t('common:more')} items={moreItems} />
+                  {/* On a desktop the list hangs from the button's own leading edge; on a phone the
+                      button is at the row's end, and the list opens inward so it stays on screen. */}
+                  <Menu
+                    variant="button"
+                    icon="more"
+                    label={t('common:more')}
+                    items={moreItems}
+                    align={isWide ? 'start' : 'end'}
+                  />
                 </div>
               </div>
 
