@@ -1506,3 +1506,92 @@ sign-in and session changes, and the web.
   group takes its own orders' share. Grouped by material, no row can hold an order-wide figure,
   so the totals carry it and say so beside them; filtered to one material, the report is that
   material's lines alone and carries none. Relied on: 1.10 (defaults), D-065.
+
+## D-078 · 2026-10-05 · business request · A user idle for fifteen minutes is signed out
+
+- **Asked:** a user who has done nothing for fifteen minutes is signed out, "as the item
+  lending system does it". Until now nobody was: a personal device stayed signed in for thirty
+  days, and the only thing idleness did was lock the screen (FR-106).
+- **Chosen:** the lending system's design (its Q136), on Mizan's cookie sessions.
+  - **The browser measures it**, since only it sees activity: a key, a press, a touch, a scroll
+    or a move of the pointer in any tab keeps the session of all of them
+    (`apps/web/src/lib/idleSignOut.ts`). The last minute is a warning sheet that a press or a
+    key answers. At the limit the screen is cleared first and the server told after. A browser
+    opened again after the limit starts signed out, and the sign-in page says why. A tab follows
+    a sign-out made in another.
+  - **The server stands behind it** for a session no browser ended: a request more than thirty
+    minutes after the last one ends the session as `idle` (`SESSION_IDLE_MS`), locked or not,
+    with a `logout` row in the audit log carrying `reason: idle`. The fifteen-minute margin is
+    for a user at work whose screen could not reach the server for a while — the same margin the
+    lending system leaves.
+  - **A sign-out the server has not confirmed is not undone:** the app re-asked for the session
+    while the sign-out was still in flight and signed itself back in (found by the browser
+    test). The sign-out is now marked pending in storage and finished before the session is
+    asked for again, in any tab and after a reload.
+  - **Fifteen minutes is a constant** (`SESSION_IDLE_MINUTES` in `@mizan/permissions`), on every
+    device and for every role, as in the lending system — not an admin setting.
+  - **The idle lock stays** (FR-106): a shared tablet still locks after five minutes and asks
+    for the password; ten minutes later the session ends. A personal device's default lock of
+    thirty minutes is now never reached, because the sign-out comes first; the setting is kept
+    for a factory that wants a lock sooner than fifteen.
+  - **Drafts survive an idle sign-out**, as they do an expired session (2.10.2): they are kept
+    under their owner's id and offered to nobody else.
+  - No migration: `sessions.revoke_reason` is free text. Relied on: 2.8, FR-106, 1.10.
+
+## D-079 · 2026-10-05 · business request · Kurdish "کاڵای شکاو" becomes "تەلەف"
+
+The business asked for **تەلەف** in place of کاڵای شکاو (D-063's Kurdish name for Broken goods).
+Every Kurdish string follows, glossary included: the page, the sidebar, the permissions, the
+reports, the History entity, the stock movement and the error messages. The verb forms follow
+the noun so the screens use one word (چەند تەلەف بوو؟, چی تەلەف بوو, کێ تەلەفی کرد). English
+("Broken goods") and Arabic are unchanged — only the Kurdish was asked for.
+
+## D-080 · 2026-10-05 · business request · "Opening: they owe us" leaves the company page
+
+The business asked for the action to be removed. The menu item and its sheet are gone from a
+company's page, with their two strings. The route (`POST /customers/:id/opening-balance`) and
+the `customers.opening_balance` permission stay: the go-live import of opening debts writes
+through the same service, and the opening balances already in the ledgers are untouched.
+
+## D-081 · 2026-10-05 · business request · "Settlement currency" is called "Account currency"
+
+The business found "Change the settlement currency" hard to read and asked for plain words.
+English now says **Account currency** for the field (as Kurdish دراوی حیساب and Arabic عملة
+الحساب already did), the action is **Change currency** in all three languages, its account line
+reads **Currency changed**, and the sheet's hint says what happens in one plain sentence. The
+glossary's English term follows (1.6); nothing but wording changes.
+
+## D-082 · 2026-10-05 · business request · "Rate history" leaves the company's More menu
+
+The business pointed out that the History tab already answers it: its "rate changes" filter
+lists every rate the company has had, with who set it and when. The menu item, its sheet and
+their three strings are removed. `GET /customers/:id/rates` stays — it is read-only, declared
+and tested, and nothing is gained by breaking a caller for it.
+
+## D-083 · 2026-10-06 · business review · Materials' "Deactivated" filter shows the deactivated ones alone
+
+The business reported the filter as not working: it *added* the deactivated materials to the
+list, so with none deactivated nothing changed, and with some it read as a filter that did not
+filter. Beside "In stock" and "Out of stock" it now does what its neighbours do — the list
+becomes the deactivated materials only (`GET /items?only_inactive=true`; `include_inactive`
+is kept for its other callers). Companies and Users keep their "show deactivated too" switches,
+which are worded as that.
+
+## D-084 · 2026-10-06 · business review · The same screen fixes, wherever else they applied
+
+After the company page's fixes the business asked for the rest of the system to be checked for
+the same faults. Found by walking every screen in Kurdish at 1366 × 768 and measuring:
+- **A left-to-right value that dragged its whole line to the far edge in Kurdish and Arabic**
+  (the company's phone): also the username under a name on Users and on My account, a material's
+  code, History's request id and a new employee's temporary password. The direction now sits on
+  the value, not on the line.
+- **A caption printed above a page's tabs** ("More", "Show"): the company, order and purchase
+  pages and Accounts. `SegmentedControl` takes `hideLabel`; a screen reader still gets the name.
+- **A dropdown hung from its button's far edge** on a desktop: Materials' Filter, like the
+  company's More. An empty More menu (the walk-in customer) is no longer drawn.
+- **A sheet that scrolled on a laptop:** "Payment received" (821 px in a 653 px dialog) is two
+  columns from a tablet up, and a dialog may use 92% of the screen's height instead of 85%.
+- **Toolbar controls of two heights:** every button in a toolbar is as tall as the search box
+  and the selects beside it (44 px).
+- **Material page:** "Set this month's prices" sits beside its card's heading and "Deactivate
+  material" beside the material's name, instead of each filling a row of the page.

@@ -133,12 +133,23 @@ export interface SegmentedOption<T extends string> {
 
 export interface SegmentedControlProps<T extends string> {
   label: string;
+  /**
+   * For a strip that is a page's tabs rather than a form's choice: the label still names the
+   * group to a screen reader, but is not printed above tabs that already say what they are.
+   */
+  hideLabel?: boolean;
   value: T;
   options: readonly SegmentedOption<T>[];
   onChange: (value: T) => void;
 }
 
-export function SegmentedControl<T extends string>({ label, value, options, onChange }: SegmentedControlProps<T>) {
+export function SegmentedControl<T extends string>({
+  label,
+  hideLabel,
+  value,
+  options,
+  onChange,
+}: SegmentedControlProps<T>) {
   const strip = useRef<HTMLDivElement>(null);
 
   /**
@@ -160,7 +171,7 @@ export function SegmentedControl<T extends string>({ label, value, options, onCh
 
   return (
     <div className="mz-field">
-      <span className="mz-field__label">{label}</span>
+      {hideLabel ? null : <span className="mz-field__label">{label}</span>}
       <div className="mz-segmented" role="group" aria-label={label} ref={strip}>
         {options.map((option) => (
           <button
@@ -384,6 +395,9 @@ export function ErrorState({ title, body, action }: StateProps) {
   );
 }
 
+/** How many sheets are open: the page behind them is inert while any is. */
+let openSheets = 0;
+
 export interface BottomSheetProps {
   title: string;
   open: boolean;
@@ -422,6 +436,8 @@ export function BottomSheet({ title, open, onClose, closeLabel, children }: Bott
     if (!open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const app = document.querySelector('.mz-app');
+    // Sheets can stack — a warning over a form — and the page stays inert until the last closes.
+    openSheets += 1;
     if (app instanceof HTMLElement) app.setAttribute('inert', '');
 
     const node = sheet.current;
@@ -439,7 +455,8 @@ export function BottomSheet({ title, open, onClose, closeLabel, children }: Bott
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
-      if (app instanceof HTMLElement) app.removeAttribute('inert');
+      openSheets -= 1;
+      if (openSheets === 0 && app instanceof HTMLElement) app.removeAttribute('inert');
       if (opener?.isConnected) opener.focus();
     };
   }, [open]);
@@ -519,6 +536,10 @@ export function Menu({
     };
   }, [open]);
 
+  // The space before a label is kept only in a menu where some row has an icon or a tick to
+  // line up with: in a plain list of actions it read as the labels being pushed off the edge.
+  const marked = items.some((item) => item.icon !== undefined || item.current);
+
   return (
     <div className="mz-menu" ref={root}>
       {variant === 'button' ? (
@@ -573,9 +594,9 @@ export function Menu({
                 <Icon name={item.icon} size={16} />
               ) : item.current ? (
                 <Icon name="check" size={16} />
-              ) : (
+              ) : marked ? (
                 <span className="mz-menu__gap" />
-              )}
+              ) : null}
               {item.label}
             </button>
           ))}

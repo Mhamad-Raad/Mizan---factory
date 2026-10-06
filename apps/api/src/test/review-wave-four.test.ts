@@ -168,8 +168,11 @@ describe('the fourth review', () => {
   it('locks a session left idle past its minutes, and says how many minutes the screen should wait', async () => {
     const me = await as(ctx.http, sales).get('/api/v1/auth/me').expect(200);
     expect(me.body.idle_lock_minutes).toBe(30);
+    // Past thirty minutes the session is ended, not locked (D-078): the lock is for a factory
+    // that sets it sooner than that.
+    await as(ctx.http, admin).patch('/api/v1/settings').send({ idle_lock_default_minutes: 10 }).expect(200);
     await withDatabase((client) =>
-      client.query("UPDATE sessions SET last_seen_at = now() - interval '2 hours' WHERE NOT is_locked AND revoked_at IS NULL"),
+      client.query("UPDATE sessions SET last_seen_at = now() - interval '20 minutes' WHERE NOT is_locked AND revoked_at IS NULL"),
     );
     const locked = await as(ctx.http, sales).get('/api/v1/orders').expect(423);
     expect(locked.body.error.code).toBe('SESSION_LOCKED');

@@ -136,8 +136,8 @@ export function UsersPage() {
                   <Avatar name={user.display_name} />
                   <span className="mz-cell__body">
                     <bdi>{user.display_name}</bdi>
-                    <span className="mz-caption" dir="ltr">
-                      <bdi>{user.username}</bdi>
+                    <span className="mz-caption">
+                      <bdi dir="ltr">{user.username}</bdi>
                     </span>
                   </span>
                 </span>
@@ -166,9 +166,11 @@ export function UsersPage() {
                 <span className="mz-list__title">
                   <bdi>{user.display_name}</bdi>
                 </span>
-                <span className="mz-caption" style={{ display: 'block' }} dir="ltr">
-                  <bdi>{user.username}</bdi>
-                  {user.phone ? ` · ${user.phone}` : ''}
+                <span className="mz-caption" style={{ display: 'block' }}>
+                  <bdi dir="ltr">
+                    {user.username}
+                    {user.phone ? ` · ${user.phone}` : ''}
+                  </bdi>
                 </span>
                 <span className="mz-caption">
                   {roleOf(user)} · {signedIn(user)}

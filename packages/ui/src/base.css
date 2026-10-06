@@ -781,6 +781,14 @@ a.mz-button {
   gap: var(--space-4);
   grid-template-columns: 1fr;
   align-items: start;
+
+  /* It always follows the card's divider, which has no margin of its own. */
+  padding-block-start: var(--space-3);
+}
+
+/* And the same air above that divider, under the card's heading — the name, the phone. */
+.mz-divider:has(+ .mz-detail-summary) {
+  margin-block-start: var(--space-3);
 }
 
 @media (width >= 48rem) {
@@ -1043,7 +1051,7 @@ a.mz-button {
     inset: 50% auto auto 50%;
     transform: translate(-50%, -50%);
     inline-size: min(42rem, calc(100vw - 2 * var(--space-6)));
-    max-block-size: min(85dvh, 46rem);
+    max-block-size: min(92dvh, 46rem);
     border-radius: var(--radius-lg);
     padding-block-end: var(--space-4);
     animation-name: mz-pop;
@@ -2222,6 +2230,14 @@ html[data-mirroring='true'] body {
   padding-block: var(--space-2);
 }
 
+/* …and so does every button in it — the Filter dropdown, a "New" link wrapped in a row — so
+   the search box, the filters and the buttons share one top and one bottom (business review:
+   on Materials the buttons stood taller than the search beside them). */
+.mz-toolbar .mz-button {
+  padding-block: var(--space-2);
+  min-block-size: var(--tap-target);
+}
+
 @media (width >= 48rem) {
   .mz-toolbar {
     flex-direction: row;
@@ -2743,6 +2759,13 @@ html[data-mirroring='true'] body {
   vertical-align: middle;
 }
 
+/* A row of figures needs room to be read along: at the header's tighter padding a long list
+   looked squeezed (business review). */
+.mz-table tbody th,
+.mz-table tbody td {
+  padding-block: var(--space-3);
+}
+
 .mz-table thead th {
   border-block-end-color: var(--color-border);
   background: var(--color-table-head);
@@ -2967,7 +2990,7 @@ html[data-mirroring='true'] body {
   font-weight: 600;
 }
 
-/* Keeps the labels in one column whether or not a row carries the tick. */
+/* Keeps the labels in one column in a menu where only some rows carry an icon or the tick. */
 .mz-menu__gap {
   inline-size: 16px;
 }

@@ -71,9 +71,10 @@ describe('the fifth review', () => {
 
   it('records the idle lock in History, with the time it locked', async () => {
     const user = await seedUser({ username: 'rebaz', permissions: ['orders.view'] });
-    const session = await signIn(ctx.http, user);
+    // A shared tablet locks after five minutes; past thirty the session would be ended (D-078).
+    const session = await signIn(ctx.http, user, { isSharedDevice: true });
     await withDatabase((client) =>
-      client.query("UPDATE sessions SET last_seen_at = now() - interval '2 hours' WHERE revoked_at IS NULL"),
+      client.query("UPDATE sessions SET last_seen_at = now() - interval '10 minutes' WHERE revoked_at IS NULL"),
     );
     await as(ctx.http, session).get('/api/v1/orders').expect(423);
 

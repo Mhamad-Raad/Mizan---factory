@@ -74,8 +74,8 @@ export function NewUserPage() {
           <div className="mz-stack">
             <h2 className="mz-heading">{t('auth:temporary_password')}</h2>
             <p className="mz-muted">{t('auth:temporary_password_once')}</p>
-            <p className="mz-title" dir="ltr" data-tabular>
-              {temporaryPassword}
+            <p className="mz-title" data-tabular>
+              <bdi dir="ltr">{temporaryPassword}</bdi>
             </p>
             <Button
               variant="secondary"

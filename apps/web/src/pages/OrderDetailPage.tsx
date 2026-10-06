@@ -383,6 +383,7 @@ export function OrderDetailPage() {
 
               <SegmentedControl
                 label={t('common:more')}
+                hideLabel
                 value={tab}
                 onChange={setTab}
                 options={[

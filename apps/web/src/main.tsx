@@ -26,9 +26,12 @@ import '@fontsource/ibm-plex-sans-arabic/700.css';
 import '@mizan/ui/tokens.css';
 import '@mizan/ui/base.css';
 import { App } from './App.js';
+import { IdleWarning } from './components/IdleWarning.js';
 import { ApiError } from './lib/api.js';
 import { initI18n } from './lib/i18n.js';
+import { readLastActivity, startActivity, wasLeftIdle } from './lib/idleSignOut.js';
 import { applyPreferences, readPreferences } from './lib/preferences.js';
+import { leaveIdleSession } from './lib/signOut.js';
 import { useApp } from './lib/store.js';
 
 const preferences = readPreferences();
@@ -79,11 +82,17 @@ const queryClient: QueryClient = new QueryClient({
   },
 });
 
+// The idle sign-out (D-078), before the session is asked for: a browser opened again after the
+// limit starts signed out. Otherwise loading a page of a session is the user being there.
+if (wasLeftIdle()) leaveIdleSession();
+else if (readLastActivity() !== null) startActivity();
+
 createRoot(document.getElementById('root') as HTMLElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <App />
+        <IdleWarning />
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,

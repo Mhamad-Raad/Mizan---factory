@@ -59,7 +59,7 @@
   "field.to_user": "Handed over to",
   "field.preset_key": "Preset",
   "field.assigned_user_id": "Assigned to",
-  "field.settlement_currency": "Settlement currency",
+  "field.settlement_currency": "Account currency",
   "field.credit_limit": "Credit limit",
   "field.pricing_unit": "Priced by",
   "field.prices": "Monthly prices",

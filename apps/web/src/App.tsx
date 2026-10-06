@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { Suspense, lazy, useEffect, useRef } from 'react';
 import type { ComponentType, ReactElement } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -9,6 +9,8 @@ import { RouteBoundary } from './components/RouteBoundary.js';
 import { NoAccess } from './components/Can.js';
 import { loadTwice } from './lib/chunk.js';
 import { ApiError, apiRequest } from './lib/api.js';
+import { endSharedRecord, watchForIdleness } from './lib/idleSignOut.js';
+import { followSignOutElsewhere, idleSignOutSettled, signOutForInactivity } from './lib/signOut.js';
 import { useApp } from './lib/store.js';
 import { usePageTitle } from './lib/page-title.js';
 import type { SessionUser } from './lib/store.js';
@@ -143,7 +145,12 @@ export function App() {
 
   const me = useQuery({
     queryKey: ['me'],
-    queryFn: () => apiRequest<MeResponse>('/auth/me'),
+    // An idle sign-out still on its way to the server is finished first (D-078): asked before
+    // it, the session would answer and sign the screen back in.
+    queryFn: async () => {
+      await idleSignOutSettled();
+      return apiRequest<MeResponse>('/auth/me');
+    },
     retry: false,
     // Refreshed on focus and after any 403, so a permission change lands without a reload.
     refetchOnWindowFocus: true,
@@ -164,10 +171,36 @@ export function App() {
       // sign-in that follows clears everybody else's (2.10.2) — an expiry mid-order must not cost
       // the order. Only when somebody *was* signed in: clearing the cache drops `me` too, and its
       // re-ask must not start the same round again.
-      if (useApp.getState().user) queryClient.clear();
+      if (useApp.getState().user) {
+        queryClient.clear();
+        // The other tabs of this browser were counting from the same session (D-078).
+        endSharedRecord();
+      }
       clearSession();
     }
   }, [me.data, me.error, setSession, clearSession, queryClient]);
+
+  // The idle sign-out (D-078): fifteen minutes with nothing done in any tab ends the session,
+  // from whatever screen — the lock screen included. No unsaved-changes question on the way:
+  // nobody is there to answer it. One watch per page load; it reads the latest `navigate`.
+  const toSignIn = useRef(navigate);
+  useEffect(() => {
+    toSignIn.current = navigate;
+  }, [navigate]);
+  useEffect(
+    () =>
+      watchForIdleness({
+        expire: () => {
+          signOutForInactivity(queryClient, clearSession);
+          toSignIn.current('/login', { replace: true });
+        },
+        endedElsewhere: () => {
+          followSignOutElsewhere(queryClient, clearSession);
+          toSignIn.current('/login', { replace: true });
+        },
+      }),
+    [queryClient, clearSession],
+  );
 
   useEffect(() => {
     // The lock screen keeps where the user was, so unlocking takes them back there (bug 12).

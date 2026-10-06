@@ -82,9 +82,11 @@ export function MePage() {
                 <h2 className="mz-title">
                   <bdi>{data.display_name}</bdi>
                 </h2>
-                <span className="mz-caption" dir="ltr">
-                  @{data.username}
-                  {data.phone ? ` · ${data.phone}` : ''}
+                <span className="mz-caption">
+                  <bdi dir="ltr">
+                    @{data.username}
+                    {data.phone ? ` · ${data.phone}` : ''}
+                  </bdi>
                 </span>
                 <span>
                   <Chip tone={data.role === 'admin' ? 'primary' : 'neutral'}>

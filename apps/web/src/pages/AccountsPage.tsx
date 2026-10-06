@@ -238,6 +238,7 @@ export function AccountsPage() {
 
       <SegmentedControl
         label={t('purchases:tabs_label')}
+        hideLabel
         value={tab}
         onChange={(value) => setParam({ tab: value })}
         options={TABS.map((value) => ({ value, label: t(`purchases:tab_${value}`) }))}

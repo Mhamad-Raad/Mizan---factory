@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
+import { SESSION_IDLE_MINUTES } from '@mizan/permissions';
 import { ENV } from '../config/env.js';
 import type { Env } from '../config/env.js';
 import { Database } from '../database/pool.js';
@@ -33,6 +34,14 @@ const SHARED_ABSOLUTE_HOURS = 12;
 const PERSONAL_ABSOLUTE_DAYS = 30;
 const SHARED_LOCK_GRACE_HOURS = 4;
 const LAST_SEEN_REFRESH_MS = 60_000;
+/**
+ * The longest a session may go without a request (D-078). The browser signs a user out after
+ * `SESSION_IDLE_MINUTES` without a touch or a key; a session no browser ended — a closed laptop,
+ * a tab reopened the next day — ends here instead. The margin is for a user who is at work and
+ * briefly out of reach of the server: the screen reports activity once a minute, when it can.
+ */
+const IDLE_SIGN_OUT_MARGIN_MINUTES = 15;
+export const SESSION_IDLE_MS = (SESSION_IDLE_MINUTES + IDLE_SIGN_OUT_MARGIN_MINUTES) * 60_000;
 
 @Injectable()
 export class SessionService {
@@ -122,6 +131,24 @@ export class SessionService {
     if (session.absolute_expires_at.getTime() <= now) return null;
     if (session.idle_expires_at.getTime() <= now) return null;
 
+    // Left alone too long (D-078): the session ends for good, locked or not, so the cookie
+    // cannot wake it later — and History says so (rule 3), written by the one request that ends it.
+    if (now - session.last_seen_at.getTime() > SESSION_IDLE_MS) {
+      await this.database.query(
+        `WITH ended AS (
+           UPDATE sessions SET revoked_at = now(), revoke_reason = 'idle'
+            WHERE id = $1 AND revoked_at IS NULL
+           RETURNING id, user_id
+         )
+         INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, entity_label, changes, related, request_id, session_id)
+         SELECT user_id, 'logout', 'session', id::text, 'Sign-out', '{"reason":"idle"}'::jsonb,
+                jsonb_build_object('user_id', user_id::text), gen_random_uuid(), id
+           FROM ended`,
+        [session.id],
+      );
+      return null;
+    }
+
     // The idle lock of FR-106 / spec 2.8, decided here and not only by the screen: a session
     // left alone past its device's idle minutes is locked, and the guard answers 423 until the
     // password is typed again (review — only the manual lock existed). `last_seen_at` moves
@@ -195,12 +222,14 @@ export class SessionService {
     );
   }
 
-  async revoke(sessionId: string, reason: string, tx?: Db): Promise<void> {
+  /** True when this call ended the session; false when it had already ended. */
+  async revoke(sessionId: string, reason: string, tx?: Db): Promise<boolean> {
     const db = tx ?? this.database;
-    await db.query(
+    const { rowCount } = await db.query(
       'UPDATE sessions SET revoked_at = now(), revoke_reason = $2 WHERE id = $1 AND revoked_at IS NULL',
       [sessionId, reason],
     );
+    return (rowCount ?? 0) > 0;
   }
 
   /**

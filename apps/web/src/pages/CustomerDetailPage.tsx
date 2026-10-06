@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, Card, DateField, Icon, Menu, SegmentedControl, TextField, Toast } from '@mizan/ui';
 import type { IconName, MenuItem } from '@mizan/ui';
+import { useIsWide } from '../lib/wide.js';
 import type { Currency, Rate } from '@mizan/money';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
@@ -22,7 +23,7 @@ import { QueryStates } from '../components/states.js';
 import { OrderTable } from '../components/OrderTable.js';
 import { Pager } from '../components/Pager.js';
 import { useCursorPaging, useKeepPageInRange, usePaging } from '../lib/paging.js';
-import { EditPartySheet, RateHistorySheet, SettlementCurrencySheet } from '../components/party/PartySheets.js';
+import { EditPartySheet, SettlementCurrencySheet } from '../components/party/PartySheets.js';
 import { DIRECTION_LABELS, customerName, directionOf } from '../lib/customers.js';
 import { InactiveChip } from '../components/chips.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
@@ -34,8 +35,8 @@ import type { BalanceValue, CustomerRow } from './CustomersPage.js';
 import type { OrderRow } from './OrdersPage.js';
 
 type Tab = 'overview' | 'orders' | 'sales' | 'history';
-type EntryKind = 'credit' | 'refund' | 'adjustment' | 'opening';
-type Sheet = 'payment' | 'rate' | 'rate_history' | 'currency' | 'edit' | 'statement';
+type EntryKind = 'credit' | 'refund' | 'adjustment';
+type Sheet = 'payment' | 'rate' | 'currency' | 'edit' | 'statement';
 
 interface HistoryRow {
   id: string;
@@ -80,7 +81,6 @@ export function CustomerDetailPage() {
   const isAdmin = useApp((state) => state.user?.role === 'admin');
   const mayRecordPayment = usePermission('orders.record_payment');
   const mayCredit = usePermission('orders.credit');
-  const mayOpeningBalance = usePermission('customers.opening_balance');
   const maySeeSelling = usePermission('fields.see_customer_balances');
   const maySetCustomerRate = usePermission('customers.set_rate');
   const maySetCompanyRate = usePermission('companies.set_rate');
@@ -90,6 +90,7 @@ export function CustomerDetailPage() {
   const mayViewOrders = usePermission('orders.view');
 
   const [tab, setTab] = useState<Tab>('overview');
+  const isWide = useIsWide();
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [entrySheet, setEntrySheet] = useState<EntryKind | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -250,7 +251,7 @@ export function CustomerDetailPage() {
 
   const mayRate = maySetCustomerRate || maySetCompanyRate;
   const mayEdit = !walkIn && (mayEditCustomer || mayEditCompany);
-  const sellingActions = selling && !walkIn && (mayRecordPayment || mayCredit || mayOpeningBalance);
+  const sellingActions = selling && !walkIn && (mayRecordPayment || mayCredit);
 
   const moreItems: MenuItem[] = [
     ...(sellingActions && mayCredit
@@ -259,11 +260,7 @@ export function CustomerDetailPage() {
           { label: t('glossary:refund'), onSelect: () => setEntrySheet('refund') },
         ]
       : []),
-    ...(sellingActions && mayOpeningBalance
-      ? [{ label: t('customers:opening_theirs'), onSelect: () => setEntrySheet('opening') }]
-      : []),
     ...(mayRate && !walkIn ? [{ label: t('customers:set_rate'), onSelect: () => setSheet('rate') }] : []),
-    { label: t('companies:rate_history'), onSelect: () => setSheet('rate_history') },
     ...(isAdmin && !walkIn
       ? [{ label: t('companies:settlement_currency_change'), onSelect: () => setSheet('currency') }]
       : []),
@@ -292,8 +289,10 @@ export function CustomerDetailPage() {
                       </span>
                     ) : null}
                     {data.phone ? (
-                      <a href={`tel:${data.phone}`} className="mz-caption mz-tap-link" dir="ltr">
-                        {data.phone}
+                      // The digits read left to right; the line itself sits on the page's reading
+                      // side, under the name — `dir` on the link sent it to the far edge in RTL.
+                      <a href={`tel:${data.phone}`} className="mz-caption mz-tap-link">
+                        <bdi dir="ltr">{data.phone}</bdi>
                       </a>
                     ) : null}
                   </div>
@@ -337,12 +336,23 @@ export function CustomerDetailPage() {
                       {t('common:edit')}
                     </Button>
                   ) : null}
-                  <Menu variant="button" icon="more" label={t('common:more')} items={moreItems} />
+                  {/* On a desktop the list hangs from the button's own leading edge; on a phone the
+                      button is at the row's end, and the list opens inward so it stays on screen. */}
+                  {moreItems.length > 0 ? (
+                    <Menu
+                      variant="button"
+                      icon="more"
+                      label={t('common:more')}
+                      items={moreItems}
+                      align={isWide ? 'start' : 'end'}
+                    />
+                  ) : null}
                 </div>
               </div>
 
               <SegmentedControl
                 label={t('common:more')}
+                hideLabel
                 value={tab}
                 onChange={setTab}
                 options={[
@@ -516,8 +526,6 @@ export function CustomerDetailPage() {
           />
         ) : null}
 
-        {sheet === 'rate_history' ? <RateHistorySheet id={id} onClose={() => setSheet(null)} /> : null}
-
         {sheet === 'currency' && data ? (
           <SettlementCurrencySheet
             current={settlement}
@@ -671,7 +679,7 @@ function HistoryItem({ row, settlement }: { row: HistoryRow; settlement: Currenc
 }
 
 function pathOf(kind: EntryKind): string {
-  return kind === 'opening' ? 'opening-balance' : `${kind}s`;
+  return `${kind}s`;
 }
 
 /**
@@ -695,8 +703,9 @@ function statementText(
 }
 
 /**
- * Credit, refund, adjustment and the opening balance on the selling side (FR-504, FR-506). All
- * four need a note, because all four are somebody deciding to change a balance by hand.
+ * Credit, refund and adjustment on the selling side (FR-504, FR-506). All three need a note,
+ * because all three are somebody deciding to change a balance by hand. (An opening balance is
+ * brought in by the import at go-live; the business had it taken off this page, D-080.)
  */
 function LedgerEntrySheet({
   kind,

@@ -59,6 +59,8 @@ export interface ItemFilters {
   /** `in` = anything left in stock, `out` = nothing or less than nothing (FR-307). */
   stock?: 'in' | 'out';
   include_inactive?: boolean;
+  /** Only the deactivated ones; wins over `include_inactive`. */
+  only_inactive?: boolean;
   page?: number;
   page_size?: number;
 }
@@ -173,7 +175,8 @@ export class ItemsRepository {
     // month, page size and offset belong to the list query alone.
     const values: unknown[] = [];
 
-    if (!filters.include_inactive) conditions.push('i.is_active = true');
+    if (filters.only_inactive) conditions.push('i.is_active = false');
+    else if (!filters.include_inactive) conditions.push('i.is_active = true');
     if (filters.pricing_unit) {
       values.push(filters.pricing_unit);
       conditions.push(`i.pricing_unit = $${values.length}::pricing_unit`);
