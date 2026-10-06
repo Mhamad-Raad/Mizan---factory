@@ -387,7 +387,9 @@ export class AuthService {
 
   /** `idle`: the screen ended a session nobody had touched for the idle minutes (D-078). */
   async logout(context: RequestContext, reason: 'logout' | 'idle' = 'logout'): Promise<void> {
-    await this.sessions.revoke(context.sessionId, reason);
+    // Two tabs of one browser may both report the same idle sign-out: the one whose request
+    // ended the session writes History's row, and the other writes nothing (review).
+    if (!(await this.sessions.revoke(context.sessionId, reason))) return;
     await this.audit.record(context, {
       action: 'logout',
       entity_type: 'session',

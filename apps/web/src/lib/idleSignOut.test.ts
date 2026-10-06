@@ -104,6 +104,14 @@ describe('the idle sign-out', () => {
     expect(expire).toHaveBeenCalledOnce();
   });
 
+  it('signs out a press that answers the warning too late, after the limit', () => {
+    vi.advanceTimersByTime(IDLE_LIMIT_MS - 30_000);
+    // The warning is up; the laptop sleeps past the limit and no timer runs.
+    vi.setSystemTime(START + IDLE_LIMIT_MS + 5 * 60_000);
+    window.dispatchEvent(new Event('keydown'));
+    expect(expire).toHaveBeenCalledOnce();
+  });
+
   it('follows a sign-out made in another tab', () => {
     vi.advanceTimersByTime(2_000);
     // The other tab ended the session and removed the record.

@@ -395,6 +395,9 @@ export function ErrorState({ title, body, action }: StateProps) {
   );
 }
 
+/** How many sheets are open: the page behind them is inert while any is. */
+let openSheets = 0;
+
 export interface BottomSheetProps {
   title: string;
   open: boolean;
@@ -433,6 +436,8 @@ export function BottomSheet({ title, open, onClose, closeLabel, children }: Bott
     if (!open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const app = document.querySelector('.mz-app');
+    // Sheets can stack — a warning over a form — and the page stays inert until the last closes.
+    openSheets += 1;
     if (app instanceof HTMLElement) app.setAttribute('inert', '');
 
     const node = sheet.current;
@@ -450,7 +455,8 @@ export function BottomSheet({ title, open, onClose, closeLabel, children }: Bott
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
-      if (app instanceof HTMLElement) app.removeAttribute('inert');
+      openSheets -= 1;
+      if (openSheets === 0 && app instanceof HTMLElement) app.removeAttribute('inert');
       if (opener?.isConnected) opener.focus();
     };
   }, [open]);

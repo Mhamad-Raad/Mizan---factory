@@ -206,16 +206,16 @@ export function watchForIdleness(on: IdleWatch): () => void {
 
   const activity = (event: Event): void => {
     if (!signedIn()) return;
+    // A screen seen again after the limit is signed out, rather than the return counted as
+    // activity: a sleeping laptop's timers may not have run yet when the lid is lifted — with
+    // the warning already showing or not.
+    const last = Math.max(ownActivity, sharedActivity());
+    if (last !== 0 && Date.now() - last >= IDLE_LIMIT_MS) return check();
     if (secondsLeft !== null) {
       if (NOT_AN_ANSWER.has(event.type)) return;
       // Escape answers the warning and nothing else: the sheet open underneath it, which
       // listens for the same key, keeps what was typed into it.
       if (event instanceof KeyboardEvent && event.key === 'Escape') event.stopPropagation();
-    } else {
-      // A screen seen again after the limit is signed out, rather than the return counted as
-      // activity: a sleeping laptop's timers may not have run yet when the lid is lifted.
-      const last = Math.max(ownActivity, sharedActivity());
-      if (last !== 0 && Date.now() - last >= IDLE_LIMIT_MS) return check();
     }
     noteActivity();
   };

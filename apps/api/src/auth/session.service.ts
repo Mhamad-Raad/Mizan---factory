@@ -222,12 +222,14 @@ export class SessionService {
     );
   }
 
-  async revoke(sessionId: string, reason: string, tx?: Db): Promise<void> {
+  /** True when this call ended the session; false when it had already ended. */
+  async revoke(sessionId: string, reason: string, tx?: Db): Promise<boolean> {
     const db = tx ?? this.database;
-    await db.query(
+    const { rowCount } = await db.query(
       'UPDATE sessions SET revoked_at = now(), revoke_reason = $2 WHERE id = $1 AND revoked_at IS NULL',
       [sessionId, reason],
     );
+    return (rowCount ?? 0) > 0;
   }
 
   /**
