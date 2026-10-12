@@ -1368,21 +1368,9 @@ a.mz-button {
   gap: var(--space-3);
 }
 
-/*
- * An off-screen copy of a printable document (the order receipt), kept in the DOM so the Print
- * button can print it straight away with no preview modal. It is pushed out of sight on screen
- * rather than `display: none` so the print stylesheet below can still reach it.
- */
-.mz-print-region {
-  position: absolute;
-  inset-block-start: 0;
-  inset-inline-start: -9999px;
-  inline-size: 21cm;
-}
-
-/* ── the order invoice/receipt: a proper printed document, not a stack of lines ──────────────
-   Who issued it, who it is for, an item table, the money worked down to the total and balance,
-   and the rate it settled at. Built from design tokens so it also reads on screen if ever shown,
+/* ── a printed document (D-086): receipts, vouchers, statements and lists ────────────────────
+   Who issued it, who it is about, a table, the money worked down to the total and balance, and
+   the rate it was valued at. Built from design tokens so it also reads on screen if ever shown,
    and forced to black-on-white by the print block below. */
 .mz-invoice {
   display: flex;
@@ -1516,59 +1504,139 @@ a.mz-button {
   font-size: 0.8125rem;
 }
 
+/* A voided document says so above everything else on the page. */
+.mz-invoice__void {
+  border: 2px solid currentColor;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-weight: 600;
+}
+
+/* A voucher's one amount, large, where the eye lands first. */
+.mz-invoice__amount {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-block: var(--space-2);
+}
+
+.mz-invoice__note {
+  margin: 0;
+}
+
+.mz-invoice__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mz-invoice__section-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.mz-invoice__row--quiet td {
+  color: var(--color-text-muted);
+}
+
+.mz-invoice__row--strong td {
+  font-weight: 700;
+}
+
+.mz-invoice__row--void td {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+/* Two lines to sign on, at the foot of a document money changed hands over. */
+.mz-invoice__signatures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-6);
+  padding-block-start: var(--space-6);
+}
+
+.mz-invoice__signatures span {
+  border-block-start: 1px solid var(--color-text);
+  padding-block-start: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
 /*
- * Printing a receipt (FR-613). The receipt otherwise sits either off-screen (the order's Print
- * button) or inside a fixed, centre-translated share sheet behind a full-page backdrop (customer
- * and company statements); either way the browser would print the app shell and drop the receipt,
- * so the page comes out blank. Here we silence everything, bring back just the receipt, and lift
- * it to the top of the sheet of paper in plain black on white.
+ * Where printed documents live (D-086). Never on screen; on paper, only while a print the app
+ * asked for is under way (`body.mz-printing`) — then the app itself is taken off the paper and
+ * the documents flow a page each. Nothing is positioned absolutely, so a statement longer than a
+ * page breaks across pages instead of being cut at the first.
  */
+.mz-print-host {
+  display: none;
+}
+
+@page {
+  margin: 12mm;
+}
+
 @media print {
-  body * {
-    visibility: hidden !important;
-  }
-
-  .mz-receipt,
-  .mz-receipt *,
-  .mz-invoice,
-  .mz-invoice * {
-    visibility: visible !important;
-  }
-
-  .mz-backdrop {
+  body.mz-printing > *:not(.mz-print-host) {
     display: none !important;
   }
 
-  .mz-sheet {
-    position: static !important;
-    max-block-size: none !important;
-    overflow: visible !important;
-    box-shadow: none !important;
-    inline-size: auto !important;
-    padding: 0 !important;
-    transform: none !important;
+  body.mz-printing > .mz-print-host {
+    display: block;
+    background: #fff;
+    color: #000;
   }
 
-  .mz-print-region {
-    position: absolute;
-    inset-block-start: 0;
-    inset-inline: 0;
-    inline-size: 100%;
+  .mz-print-page {
+    break-after: page;
   }
 
-  .mz-receipt,
-  .mz-invoice {
-    position: absolute;
-    inset-block-start: 0;
-    inset-inline: 0;
+  .mz-print-page:last-child {
+    break-after: auto;
+  }
+
+  .mz-print-host .mz-invoice {
     border: 0;
+    border-radius: 0;
+    padding: 0;
     background: #fff;
     color: #000;
     print-color-adjust: exact;
   }
 
-  .mz-invoice__head {
-    border-block-end-color: #000;
+  .mz-print-host .mz-invoice__muted,
+  .mz-print-host .mz-invoice__label,
+  .mz-print-host .mz-invoice__doctype,
+  .mz-print-host .mz-invoice__table th,
+  .mz-print-host .mz-invoice__foot,
+  .mz-print-host .mz-caption,
+  .mz-print-host .mz-invoice__row--quiet td,
+  .mz-print-host .mz-invoice__row--void td,
+  .mz-print-host .mz-invoice__signatures span {
+    color: #333;
+  }
+
+  .mz-print-host .mz-invoice__head,
+  .mz-print-host .mz-invoice__signatures span {
+    border-color: #000;
+  }
+
+  .mz-print-host .mz-invoice__table th,
+  .mz-print-host .mz-invoice__table td,
+  .mz-print-host .mz-invoice__foot,
+  .mz-print-host .mz-invoice__total-row--grand {
+    border-color: #999;
+  }
+
+  /* A table row is never split across two sheets; its header repeats on each. */
+  .mz-print-host .mz-invoice__table tr {
+    break-inside: avoid;
+  }
+
+  .mz-print-host .mz-invoice__table thead {
+    display: table-header-group;
   }
 }
 

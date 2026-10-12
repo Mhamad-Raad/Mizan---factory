@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, ErrorState, Skeleton } from '@mizan/ui';
 import { AppShell } from './components/AppShell.js';
+import { PrintHost } from './components/print/PrintHost.js';
 import { RouteBoundary } from './components/RouteBoundary.js';
 import { NoAccess } from './components/Can.js';
 import { loadTwice } from './lib/chunk.js';
@@ -334,6 +335,8 @@ export function App() {
           </Routes>
         </Suspense>
       </RouteBoundary>
+      {/* Everything printed is printed from here (D-086). */}
+      <PrintHost />
     </AppShell>
   );
 }

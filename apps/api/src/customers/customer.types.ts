@@ -89,6 +89,8 @@ export interface LedgerGroupDto {
   balance_after: number;
   note: string | null;
   order_id: string | null;
+  /** The order's own number, for the screen and the printed statement (D-086). */
+  order_number?: number | null;
   performed_by_user_id: string | null;
   performed_by_name: string | null;
   voucher_number: number | null;

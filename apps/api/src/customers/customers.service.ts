@@ -631,7 +631,7 @@ export class CustomersService {
       balance_as_of: options.as_of
         ? balanceAsOf(entries, row.settlement_currency, options.as_of)
         : null,
-      items: page.map((group) => toGroupDto(group, names)),
+      items: await this.withOrderNumbers(page.map((group) => toGroupDto(group, names))),
       total: visible.length,
       page: paging.page,
       page_size: paging.page_size,
@@ -999,6 +999,24 @@ export class CustomersService {
    * client renders and shares the page, so there is no server-side PDF stack to maintain
    * (D-014).
    */
+  /**
+   * The number of the order each row names, so an account and a printed statement say
+   * "Order #40" rather than "Order" (D-086) — one query for the rows being sent.
+   */
+  private async withOrderNumbers(items: LedgerGroupDto[]): Promise<LedgerGroupDto[]> {
+    const ids = [...new Set(items.map((item) => item.order_id).filter((id): id is string => id !== null))];
+    if (ids.length === 0) return items;
+    const { rows } = await this.database.query<{ id: string; number: string }>(
+      'SELECT id, number::text AS number FROM orders WHERE id = ANY($1::uuid[])',
+      [ids],
+    );
+    const numbers = new Map(rows.map((row) => [row.id, Number(row.number)]));
+    return items.map((item) => ({
+      ...item,
+      order_number: item.order_id ? (numbers.get(item.order_id) ?? null) : null,
+    }));
+  }
+
   async statement(
     context: RequestContext,
     id: string,
@@ -1055,7 +1073,7 @@ export class CustomersService {
       closing_balance: closing,
       // The most recent rows, because a statement is read from its end: the older ones are
       // already in the opening balance, which is exact either way.
-      items: inRange.slice(-STATEMENT_ITEM_CAP).map((group) => toGroupDto(group, names)),
+      items: await this.withOrderNumbers(inRange.slice(-STATEMENT_ITEM_CAP).map((group) => toGroupDto(group, names))),
       item_count: inRange.length,
       has_more: inRange.length > STATEMENT_ITEM_CAP,
     };

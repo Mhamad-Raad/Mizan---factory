@@ -261,7 +261,7 @@ export class CompaniesService {
       balance_as_of: options.as_of
         ? balanceAsOf(entries, row.settlement_currency, options.as_of)
         : null,
-      items: page.map((group) => toGroupDto(group, names)),
+      items: await this.withPurchaseNumbers(page.map((group) => toGroupDto(group, names))),
       total: matching.length,
       page: paging.page,
       page_size: paging.page_size,
@@ -810,7 +810,7 @@ export class CompaniesService {
         : balanceOf(entries, row.settlement_currency),
       // The most recent rows, because a statement is read from its end: the older ones are
       // already in the opening balance, which is exact either way.
-      items: inRange.slice(-STATEMENT_ITEM_CAP).map((group) => toGroupDto(group, names)),
+      items: await this.withPurchaseNumbers(inRange.slice(-STATEMENT_ITEM_CAP).map((group) => toGroupDto(group, names))),
       item_count: inRange.length,
       has_more: inRange.length > STATEMENT_ITEM_CAP,
     };
@@ -851,6 +851,24 @@ export class CompaniesService {
   }
 
   // ───────────────────────────────── the pieces they share ─────────────────────────────────
+
+  /**
+   * The number of the purchase each row names, so an account and a printed statement say
+   * "Purchase #12" rather than "Purchase" (D-086) — one query for the rows being sent.
+   */
+  private async withPurchaseNumbers(items: LedgerGroupDto[]): Promise<LedgerGroupDto[]> {
+    const ids = [...new Set(items.map((item) => item.purchase_id).filter((id): id is string => id !== null))];
+    if (ids.length === 0) return items;
+    const { rows } = await this.database.query<{ id: string; number: string }>(
+      'SELECT id, number::text AS number FROM purchases WHERE id = ANY($1::uuid[])',
+      [ids],
+    );
+    const numbers = new Map(rows.map((row) => [row.id, Number(row.number)]));
+    return items.map((item) => ({
+      ...item,
+      purchase_number: item.purchase_id ? (numbers.get(item.purchase_id) ?? null) : null,
+    }));
+  }
 
   private async lockFor(tx: Db, id: string): Promise<LedgerAccount> {
     const account = await this.ledger.lockOwner(tx, id);
@@ -961,6 +979,8 @@ export interface LedgerGroupDto {
   balance_after: number;
   note: string | null;
   purchase_id: string | null;
+  /** The purchase's own number, for the screen and the printed statement (D-086). */
+  purchase_number?: number | null;
   performed_by_user_id: string | null;
   performed_by_name: string | null;
   voucher_number: number | null;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,6 +19,7 @@ import { useCursorPaging } from '../lib/paging.js';
 import { OrderStatusChip, PaymentTypeChip, RateBadge } from '../components/chips.js';
 import { useJustSettled } from '../lib/motion.js';
 import { customerName } from '../lib/customers.js';
+import { usePrint } from '../lib/print.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import type { OrderDetail } from './OrderFormPage.js';
 import { errorMessage } from '../lib/errors.js';
@@ -51,10 +52,8 @@ export function OrderDetailPage() {
   const [paying, setPaying] = useState(false);
   const [changingType, setChangingType] = useState(false);
   const [voiding, setVoiding] = useState(false);
-  // The receipt is fetched once, kept in an off-screen block, and printed straight from the
-  // Print button — no preview modal (the browser's own print dialog is the preview).
-  const [receiptWanted, setReceiptWanted] = useState(false);
-  const printPending = useRef(false);
+  // The receipt is printed by the one print host (D-086); the browser's dialog is the preview.
+  const print = usePrint();
   const [toast, setToast] = useState<string | null>(null);
 
   // The warnings of an edit just saved arrive in the navigation state (see OrderFormPage); they
@@ -103,46 +102,6 @@ export function OrderDetailPage() {
         }),
       }
     : undefined;
-
-  const receiptData = useQuery({
-    queryKey: ['orders', id, 'receipt'],
-    queryFn: () =>
-      apiRequest<{
-        order: OrderDetail;
-        customer: { name: string; is_system: boolean; phone: string | null; settlement_currency: Currency };
-        balance_after: number | null;
-      }>(`/orders/${id}/receipt`),
-    enabled: receiptWanted,
-  });
-
-  // Print the moment the receipt data is in the DOM. The click handler enables the fetch and arms
-  // the ref; this fires window.print() once — a side effect only, no state set inside the effect.
-  // A failed fetch disarms it, so a later success does not print by surprise.
-  useEffect(() => {
-    if (!printPending.current) return;
-    if (receiptData.data) {
-      printPending.current = false;
-      window.print();
-    } else if (receiptData.isError) {
-      printPending.current = false;
-    }
-  }, [receiptData.data, receiptData.isError]);
-  const printError = receiptWanted && !receiptData.data ? errorMessage(t, receiptData.error) : null;
-
-  const printReceipt = () => {
-    if (receiptData.data) {
-      window.print();
-      return;
-    }
-    printPending.current = true;
-    if (receiptWanted) {
-      // A retry that fails again leaves `isError` as it was, so the effect above cannot see it:
-      // disarm here, or a later background refetch would print by surprise (review).
-      void receiptData.refetch().then((result) => {
-        if (result.isError) printPending.current = false;
-      });
-    } else setReceiptWanted(true);
-  };
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -223,11 +182,6 @@ export function OrderDetailPage() {
           {data ? (
             <>
               <OrderSaveWarningsNotice warnings={saveWarnings} />
-              {printError ? (
-                <div className="mz-warning" role="alert">
-                  {printError}
-                </div>
-              ) : null}
               {data.doc_status === 'void' ? (
                 <div className="mz-warning" role="status">
                   {t('orders:void_banner', {
@@ -349,7 +303,7 @@ export function OrderDetailPage() {
                       </Link>
                     </Can>
                   ) : null}
-                  <Button variant="secondary" icon="print" onClick={printReceipt}>
+                  <Button variant="secondary" icon="print" onClick={() => print([{ kind: 'order', id }])}>
                     {t('common:print')}
                   </Button>
                   {data.doc_status === 'void' ? (
@@ -604,173 +558,6 @@ export function OrderDetailPage() {
             onSave={(reason) => voidOrder.mutate(reason)}
           />
         ) : null}
-
-        {/* Kept off-screen and printed straight from the Print button — the browser's print dialog
-            is the only preview, so there is no modal to dismiss first. A full invoice: who issued
-            it, who it is for, the lines, the money, and the rate it was settled at. */}
-        {receiptData.data
-          ? (() => {
-              const rc = receiptData.data;
-              const subtotalIqd = rc.order.lines.reduce((sum, line) => sum + line.line_total_iqd, 0);
-              const subtotalUsd = rc.order.lines.reduce((sum, line) => sum + line.line_total_usd_cents, 0);
-              const primary = rc.customer.settlement_currency;
-              return (
-                <div className="mz-print-region" aria-hidden="true">
-                  <div className="mz-invoice">
-                    {/* Who issued it, and what this document is. */}
-                    <header className="mz-invoice__head">
-                      <div className="mz-invoice__brand">
-                        <strong className="mz-invoice__name">{t('common:app_name')}</strong>
-                        <span className="mz-invoice__muted">{t('common:app_tagline')}</span>
-                      </div>
-                      <div className="mz-invoice__doc">
-                        <span className="mz-invoice__doctype">{t('glossary:receipt')}</span>
-                        <strong>{t('orders:number', { number: formatter.identifier(rc.order.number) })}</strong>
-                        <span className="mz-invoice__muted">{formatter.date(rc.order.order_date)}</span>
-                      </div>
-                    </header>
-
-                    {/* Who it is for, and how it was paid. */}
-                    <div className="mz-invoice__parties">
-                      <div className="mz-invoice__party">
-                        <span className="mz-invoice__label">{t('glossary:customer')}</span>
-                        <strong>
-                          {customerName({ name: rc.customer.name, is_system: rc.customer.is_system }, t)}
-                        </strong>
-                        {rc.customer.phone ? (
-                          <span className="mz-invoice__muted">
-                            <bdi>{rc.customer.phone}</bdi>
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="mz-invoice__party mz-invoice__party--end">
-                        <span className="mz-invoice__label">{t('glossary:payment_type')}</span>
-                        <strong>
-                          {t(`glossary:${rc.order.payment_type}`)} · {t(`glossary:${rc.order.status}`)}
-                        </strong>
-                        {rc.order.acting_user_name ? (
-                          <span className="mz-invoice__muted">
-                            {t('glossary:done_by')}: {rc.order.acting_user_name}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {/* The lines. */}
-                    <table className="mz-invoice__table">
-                      <thead>
-                        <tr>
-                          <th>{t('glossary:item')}</th>
-                          <th className="mz-invoice__num">{t('glossary:quantity')}</th>
-                          <th className="mz-invoice__num">{t('glossary:unit_price')}</th>
-                          <th className="mz-invoice__num">{t('glossary:amount')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rc.order.lines.map((line) => (
-                          <tr key={line.id}>
-                            <td>
-                              <bdi>{line.item_name}</bdi>
-                            </td>
-                            <td className="mz-invoice__num" data-tabular>
-                              {line.priced_measure === 'kg'
-                                ? `${formatter.quantity(line.qty_kg ?? '0')} ${t('common:kg_symbol')}`
-                                : formatter.number(line.qty_count ?? 0)}
-                            </td>
-                            <td className="mz-invoice__num">
-                              <DualAmount
-                                amount_iqd={line.unit_price_iqd}
-                                amount_usd_cents={line.unit_price_usd_cents}
-                                primary={line.price_entered_currency}
-                              />
-                            </td>
-                            <td className="mz-invoice__num">
-                              <DualAmount
-                                amount_iqd={line.line_total_iqd}
-                                amount_usd_cents={line.line_total_usd_cents}
-                                primary={primary}
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-
-                    {/* The money. */}
-                    <div className="mz-invoice__totals">
-                      <div className="mz-invoice__total-row">
-                        <span>{t('orders:subtotal')}</span>
-                        <DualAmount amount_iqd={subtotalIqd} amount_usd_cents={subtotalUsd} primary={primary} />
-                      </div>
-                      {rc.order.discount_iqd > 0 ? (
-                        <div className="mz-invoice__total-row">
-                          <span>{t('glossary:discount')}</span>
-                          <span>
-                            −
-                            <DualAmount
-                              amount_iqd={rc.order.discount_iqd}
-                              amount_usd_cents={rc.order.discount_usd_cents}
-                              primary={primary}
-                            />
-                          </span>
-                        </div>
-                      ) : null}
-                      {(rc.order.rounding_iqd ?? 0) > 0 ? (
-                        <div className="mz-invoice__total-row">
-                          <span>{t('orders:rounding')}</span>
-                          <span>
-                            +
-                            <DualAmount
-                              amount_iqd={rc.order.rounding_iqd ?? 0}
-                              amount_usd_cents={rc.order.rounding_usd_cents ?? 0}
-                              primary={primary}
-                            />
-                          </span>
-                        </div>
-                      ) : null}
-                      <div className="mz-invoice__total-row mz-invoice__total-row--grand">
-                        <span>{t('glossary:total')}</span>
-                        <strong>
-                          <DualAmount
-                            amount_iqd={rc.order.total_iqd}
-                            amount_usd_cents={rc.order.total_usd_cents}
-                            primary={rc.customer.settlement_currency}
-                          />
-                        </strong>
-                      </div>
-                      <div className="mz-invoice__total-row">
-                        <span>{t('orders:remaining')}</span>
-                        <DualAmount
-                          {...bothOf(rc.order.remaining, primary, rc.order.rate_iqd_per_usd)}
-                          primary={primary}
-                          kind="derived"
-                        />
-                      </div>
-                      {rc.balance_after !== null ? (
-                        <div className="mz-invoice__total-row">
-                          <span>{t('glossary:balance')}</span>
-                          <DualAmount
-                            {...bothOf(rc.balance_after, primary, rc.order.rate_iqd_per_usd)}
-                            primary={primary}
-                            kind="derived"
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-
-                    {/* The rate it was settled at, and a closing line. */}
-                    <footer className="mz-invoice__foot">
-                      <span>{t('common:rate_used', { rate: formatter.rate(rc.order.rate_iqd_per_usd) })}</span>
-                      <span>
-                        {t('orders:thank_you')} ·{' '}
-                        {t('orders:printed_on', { date: formatter.date(formatter.today()) })}
-                      </span>
-                    </footer>
-                  </div>
-                </div>
-              );
-            })()
-          : null}
 
         {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
       </div>
