@@ -179,7 +179,11 @@ export class PurchasesRepository {
     return rows[0] ?? null;
   }
 
-  async list(filters: PurchaseFilters): Promise<{ rows: PurchaseListRow[]; total: number }> {
+  async list(filters: PurchaseFilters): Promise<{
+    rows: PurchaseListRow[];
+    total: number;
+    totals: { buys: number; total_iqd: number; total_usd_cents: number };
+  }> {
     const conditions = ['p.deleted_at IS NULL'];
     const values: unknown[] = [];
 
@@ -264,10 +268,53 @@ export class PurchasesRepository {
           ORDER BY page.purchase_date DESC, page.number DESC`,
         values,
       ),
-      this.database.query<{ total: string }>(`SELECT count(*)::text AS total FROM purchases p ${where}`, countValues),
+      // The count and the list's figures in one pass over the same filter: how many buys are
+      // standing (a voided one is listed but bought nothing) and what they came to, each
+      // currency summed on its own (2.3.4).
+      this.database.query<{ total: string; buys: string; total_iqd: string; total_usd_cents: string }>(
+        `SELECT count(*)::text AS total,
+                count(*) FILTER (WHERE p.status = 'active')::text AS buys,
+                coalesce(sum(p.total_iqd) FILTER (WHERE p.status = 'active'), 0)::text AS total_iqd,
+                coalesce(sum(p.total_usd_cents) FILTER (WHERE p.status = 'active'), 0)::text AS total_usd_cents
+           FROM purchases p ${where}`,
+        countValues,
+      ),
     ]);
 
-    return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0) };
+    const counted = count.rows[0];
+    return {
+      rows: list.rows,
+      total: Number(counted?.total ?? 0),
+      totals: {
+        buys: Number(counted?.buys ?? 0),
+        total_iqd: Number(counted?.total_iqd ?? 0),
+        total_usd_cents: Number(counted?.total_usd_cents ?? 0),
+      },
+    };
+  }
+
+  /**
+   * What we still owe every company we owe anything (D-085), from the maintained per-account
+   * sums of migration 0033 — one row per account, never a ledger sum. Each column is summed in
+   * its own currency over the accounts whose own balance says we owe them: an account we paid
+   * ahead does not lower what we owe another.
+   */
+  async owedToCompanies(): Promise<{ companies: number; owed_iqd: number; owed_usd_cents: number }> {
+    const { rows } = await this.database.query<{ companies: string; owed_iqd: string; owed_usd_cents: string }>(
+      `SELECT count(*)::text AS companies,
+              coalesce(sum(t.payable_iqd), 0)::text AS owed_iqd,
+              coalesce(sum(t.payable_usd_cents), 0)::text AS owed_usd_cents
+         FROM account_totals t
+         JOIN customers c ON c.id = t.account_id
+        WHERE c.deleted_at IS NULL
+          AND CASE WHEN c.settlement_currency = 'IQD' THEN t.payable_iqd ELSE t.payable_usd_cents END > 0`,
+    );
+    const row = rows[0];
+    return {
+      companies: Number(row?.companies ?? 0),
+      owed_iqd: Number(row?.owed_iqd ?? 0),
+      owed_usd_cents: Number(row?.owed_usd_cents ?? 0),
+    };
   }
 
   async linesOf(purchaseId: string, tx?: Db): Promise<PurchaseLineRow[]> {

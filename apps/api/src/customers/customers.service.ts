@@ -165,9 +165,13 @@ export class CustomersService {
     // anyone else they are ignored: a list filtered to "owes us" and ranked by it would tell
     // them the very figure the response hides (review).
     const seesNet = sight.selling && sight.buying;
-    const { rows, total } = await this.customers.list(
-      seesNet ? filters : { ...filters, balance: undefined, sort: filters.sort === 'balance' ? 'name' : filters.sort },
-    );
+    // "We owe them" reads only the buying side, so the buying side's flag is enough for it (D-085).
+    const filterAllowed = filters.balance === 'we_owe' ? sight.buying : seesNet;
+    const { rows, total } = await this.customers.list({
+      ...filters,
+      balance: filterAllowed ? filters.balance : undefined,
+      sort: !seesNet && filters.sort === 'balance' ? 'name' : filters.sort,
+    });
     // The list values balances at the global rate; a customer's own rate is applied on the
     // detail, where a single per-row lookup is not thousands of them.
     const globalRate = await this.rates.current();

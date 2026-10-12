@@ -36,7 +36,8 @@ function customerColumns(alias = 'customers'): string {
 export interface CustomerFilters {
   q?: string;
   /** On the net figure: `owes` = they owe us, `credit` = we owe them, `settled` = zero (FR-505). */
-  balance?: 'owes' | 'settled' | 'credit';
+  /** `we_owe`: the accounts we still owe on the buying side, whatever they owe us (D-085). */
+  balance?: 'owes' | 'settled' | 'credit' | 'we_owe';
   include_inactive?: boolean;
   sort?: 'name' | 'balance';
   page?: number;
@@ -135,6 +136,7 @@ export class CustomersRepository {
     if (filters.balance === 'owes') conditions.push(`${net} > 0`);
     if (filters.balance === 'credit') conditions.push(`${net} < 0`);
     if (filters.balance === 'settled') conditions.push(`${net} = 0`);
+    if (filters.balance === 'we_owe') conditions.push(`${payable} > 0`);
 
     const where = `WHERE ${conditions.join(' AND ')}`;
     // Counting thirty thousand customers does not need anybody's balance — only a filter on the

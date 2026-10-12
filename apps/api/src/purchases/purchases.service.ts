@@ -63,7 +63,17 @@ export interface CreatePurchaseInput {
   discount?: { amount: number; currency: Currency; other_amount?: number | null } | null;
   lines: PurchaseLineInput[];
   acting_user_id?: string | null;
+  /**
+   * What was paid to the company at the moment of buying (D-085): all of it, or a part typed in
+   * either currency. Written in the buy's own transaction as a payment that names the buy, so a
+   * buy paid on the spot never shows as owed, not even for a moment.
+   */
+  paid?: PaidNowInput | null;
 }
+
+export type PaidNowInput =
+  | { in_full: true }
+  | { in_full?: false; amount: number; currency: Currency; other_amount?: number | null };
 
 /**
  * A line as it leaves the API. Every price and total lives under one `cost` key, so the
@@ -123,6 +133,8 @@ export interface PurchaseDto {
   created_at: string;
   /** Proposed — not requested: the same material on two lines is a warning, not a block. */
   duplicate_item_warning?: { item_id: string; item_name: string }[];
+  /** The payment written with the buy (D-085), so its receipt can be printed straight away. */
+  paid_entry_id?: string | null;
 }
 
 interface PreparedLine extends NewPurchaseLine {
@@ -156,9 +168,34 @@ export class PurchasesService {
     private readonly lots: LotsService,
   ) {}
 
-  async list(filters: PurchaseFilters): Promise<{ items: PurchaseDto[]; total: number }> {
-    const { rows, total } = await this.purchases.list(filters);
-    return { items: rows.map((row) => toPurchaseDto(row, [])), total };
+  /**
+   * The Buys list (D-085) with its figures over the whole filter: how many buys and what they came
+   * to (under `cost`, the bought-price flag's), and what we still owe the companies altogether
+   * (under `owed_by_us`, the company-balances flag's) — the same for every filter, because it is
+   * a fact about the accounts, not about the buys on the page.
+   */
+  async list(filters: PurchaseFilters): Promise<{
+    items: PurchaseDto[];
+    total: number;
+    totals: {
+      buys: number;
+      cost: { total_iqd: number; total_usd_cents: number };
+      owed_by_us: { companies: number; owed_iqd: number; owed_usd_cents: number };
+    };
+  }> {
+    const [{ rows, total, totals }, owed] = await Promise.all([
+      this.purchases.list(filters),
+      this.purchases.owedToCompanies(),
+    ]);
+    return {
+      items: rows.map((row) => toPurchaseDto(row, [])),
+      total,
+      totals: {
+        buys: totals.buys,
+        cost: { total_iqd: totals.total_iqd, total_usd_cents: totals.total_usd_cents },
+        owed_by_us: owed,
+      },
+    };
   }
 
   async get(id: string): Promise<PurchaseDto> {
@@ -188,16 +225,8 @@ export class PurchasesService {
 
     const company = input.company_id ? await this.companies.findById(input.company_id) : null;
     if (input.company_id && !company) throw ApiError.notFound();
-    if (company && !company.is_active) {
-      throw ApiError.validation([
-        {
-          path: 'company_id',
-          code: 'INACTIVE',
-          message_key: 'errors:company_inactive',
-          params: {},
-        },
-      ]);
-    }
+    this.assertMayPayNow(context, input);
+    if (company) this.assertCompanyActive(company);
 
     const { rate, rateSource } = await this.rateFor(
       input.company_id ?? null,
@@ -210,7 +239,29 @@ export class PurchasesService {
     );
 
     const dto = await this.get(created.id);
-    return { ...dto, duplicate_item_warning: created.duplicates };
+    return { ...dto, duplicate_item_warning: created.duplicates, paid_entry_id: created.paidEntryId };
+  }
+
+  /** A hidden company is not bought from (FR-701): show it again first. */
+  private assertCompanyActive(company: { is_active: boolean }): void {
+    if (company.is_active) return;
+    throw ApiError.validation([
+      { path: 'company_id', code: 'INACTIVE', message_key: 'errors:company_inactive', params: {} },
+    ]);
+  }
+
+  /**
+   * "Paid now" is a payment to the company, so it asks for what a payment asks for, and it needs a
+   * company to have been paid (D-085). Checked before the transaction opens.
+   */
+  private assertMayPayNow(context: RequestContext, input: CreatePurchaseInput): void {
+    if (!input.paid) return;
+    if (!input.company_id) {
+      throw ApiError.validation([
+        { path: 'paid', code: 'NO_COMPANY', message_key: 'errors:paid_needs_company', params: {} },
+      ]);
+    }
+    if (!can(context, 'companies.record_payment')) throw ApiError.permissionDenied('companies.record_payment');
   }
 
   /**
@@ -222,12 +273,17 @@ export class PurchasesService {
     tx: Db,
     context: RequestContext,
     input: CreatePurchaseInput,
-  ): Promise<{ id: string }> {
+  ): Promise<{ id: string; paid_entry_id: string | null }> {
     this.period.assertNotFuture(input.purchase_date, 'purchase_date');
-    const { rate, rateSource } = await this.rateFor(null, input.rate_iqd_per_usd);
+    // The first buy of a new material may name the company it came from (D-085).
+    const company = input.company_id ? await this.companies.findById(input.company_id, tx) : null;
+    if (input.company_id && !company) throw ApiError.notFound();
+    if (company) this.assertCompanyActive(company);
+    this.assertMayPayNow(context, input);
+    const { rate, rateSource } = await this.rateFor(company?.id ?? null, input.rate_iqd_per_usd);
     const actingUserId = await this.actingUser(context, input.acting_user_id);
-    const written = await this.writePurchase(tx, context, input, null, rate, rateSource, actingUserId);
-    return { id: written.id };
+    const written = await this.writePurchase(tx, context, input, company, rate, rateSource, actingUserId);
+    return { id: written.id, paid_entry_id: written.paidEntryId };
   }
 
   private async writePurchase(
@@ -238,7 +294,7 @@ export class PurchasesService {
     rate: Rate,
     rateSource: RateSource,
     actingUserId: string,
-  ): Promise<{ id: string; duplicates: ReturnType<typeof duplicateItems> }> {
+  ): Promise<{ id: string; duplicates: ReturnType<typeof duplicateItems>; paidEntryId: string | null }> {
     // A company is locked before its balance is touched (2.9.5); a stock-only purchase has
     // no counterparty to lock.
     const account = company ? await this.ledger.lockOwner(tx, company.id) : null;
@@ -281,6 +337,7 @@ export class PurchasesService {
     );
     await this.writeStockIn(tx, context, input.purchase_date, insertedLines, lines);
 
+    let paidEntryId: string | null = null;
     if (account) {
       await this.writeCompanyEntry(context, tx, account, {
         purchaseId: purchase.id,
@@ -289,6 +346,17 @@ export class PurchasesService {
         rate,
         rateSource,
       });
+      if (input.paid) {
+        paidEntryId = await this.writePaidNow(context, tx, account, {
+          purchaseId: purchase.id,
+          purchaseDate: input.purchase_date,
+          totals,
+          rate,
+          rateSource,
+          paid: input.paid,
+          performedBy: actingUserId,
+        });
+      }
     }
 
     await this.audit.record(
@@ -317,7 +385,7 @@ export class PurchasesService {
       tx,
     );
 
-    return { id: purchase.id, duplicates: duplicateItems(lines) };
+    return { id: purchase.id, duplicates: duplicateItems(lines), paidEntryId };
   }
 
   /**
@@ -954,6 +1022,92 @@ export class PurchasesService {
       },
       { related: { purchase_id: input.purchaseId, company_id: account.id } },
     );
+  }
+
+  /**
+   * The payment of "paid now" (D-085): a `payment` row on the company's account naming this buy,
+   * with a voucher number, dated the day of the buy and valued at the buy's own rate.
+   *
+   * "All of it" is the exact negation of the buy's two totals, so the buy lands on zero in both
+   * currencies whatever the rate. A part is typed in either currency and filled at the buy's rate;
+   * it may not come to more than the buy, because a buy cannot be paid twice over by mistake —
+   * money paid ahead is a payment on the company's page, where it is a decision of its own.
+   */
+  private async writePaidNow(
+    context: RequestContext,
+    tx: Db,
+    account: LedgerAccount,
+    input: {
+      purchaseId: string;
+      purchaseDate: string;
+      totals: { total_iqd: number; total_usd_cents: number };
+      rate: Rate;
+      rateSource: RateSource;
+      paid: PaidNowInput;
+      performedBy: string;
+    },
+  ): Promise<string> {
+    const settlement = account.settlement_currency;
+    const owed = settlement === 'IQD' ? input.totals.total_iqd : input.totals.total_usd_cents;
+    if (owed <= 0) {
+      throw ApiError.validation([
+        { path: 'paid', code: 'NOTHING_OWED', message_key: 'errors:nothing_owed', params: {} },
+      ]);
+    }
+
+    const money = input.paid.in_full
+      ? {
+          amount_iqd: -input.totals.total_iqd,
+          amount_usd_cents: -input.totals.total_usd_cents,
+          entered_currency: settlement,
+          rate_iqd_per_usd: input.rate,
+          rate_source: input.rateSource,
+        }
+      : completePair({
+          amount: -Math.abs(input.paid.amount),
+          currency: input.paid.currency,
+          rate: input.rate,
+          rate_source: input.rateSource,
+          other_amount:
+            input.paid.other_amount === undefined || input.paid.other_amount === null
+              ? undefined
+              : -Math.abs(input.paid.other_amount),
+        });
+
+    const paidInSettlement = -(settlement === 'IQD' ? money.amount_iqd : money.amount_usd_cents);
+    if (paidInSettlement <= 0) {
+      throw ApiError.validation([
+        { path: 'paid.amount', code: 'REQUIRED', message_key: 'errors:field.required', params: { field: 'paid' } },
+      ]);
+    }
+    if (paidInSettlement > owed) {
+      throw ApiError.validation([
+        {
+          path: 'paid.amount',
+          code: 'EXCEEDS_TOTAL',
+          message_key: 'errors:paid_exceeds_buy',
+          params: { total: owed, currency: settlement },
+        },
+      ]);
+    }
+
+    const result = await this.ledger.write(
+      context,
+      tx,
+      account,
+      {
+        entry_type: 'payment',
+        money,
+        entry_date: input.purchaseDate,
+        note: null,
+        performed_by_user_id: input.performedBy,
+        refs: { purchase_id: input.purchaseId },
+        method: 'cash',
+        assign_voucher_number: true,
+      },
+      { related: { purchase_id: input.purchaseId, company_id: account.id } },
+    );
+    return result.entry.id;
   }
 
   private async versionConflict(id: string): Promise<ApiError> {

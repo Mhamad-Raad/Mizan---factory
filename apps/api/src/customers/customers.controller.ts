@@ -24,7 +24,7 @@ const rateSchema = z.object({
 
 const listSchema = z.object({
   q: z.string().max(200).optional(),
-  balance: z.enum(['owes', 'settled', 'credit']).optional(),
+  balance: z.enum(['owes', 'settled', 'credit', 'we_owe']).optional(),
   include_inactive: z.enum(['true', 'false']).optional(),
   sort: z.enum(['name', 'balance']).optional(),
   ...pageFields,
