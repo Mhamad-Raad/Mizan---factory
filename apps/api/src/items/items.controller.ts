@@ -43,9 +43,10 @@ const baseSchema = z.object({
 });
 
 /**
- * Creating a material is buying it (D-062): the first buy — how much came in and what each one
- * cost — travels with the material and is written in the same transaction. Optional here only
- * because the go-live import creates materials by the hundred; the screen always sends it.
+ * A material and its first purchase (D-062, D-085): how much came in, what each one cost, who it
+ * was bought from and what was paid them — written in the same transaction as the material.
+ * Optional: the go-live import creates materials by the hundred, and a material can be named now
+ * and bought later on a purchase of several materials.
  */
 export const createSchema = baseSchema.extend({
   buy: z

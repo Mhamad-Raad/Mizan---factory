@@ -70,7 +70,6 @@
   "credit_from_them": "Credit from them",
   "tab_sales_ledger": "Sales account",
   "tab_purchase_ledger": "Purchases account",
-  "statement_sales": "Statement",
   "statement_purchases": "Purchases statement",
   "rate_own": "Their own rate",
   "rate_label": "Their rate",
@@ -95,6 +94,5 @@
   "rate_changed": "Rate {{old}} → {{new}}",
   "rate_set": "Rate set to {{new}}",
   "entry.damage": "Broken goods",
-  "tab_account": "Account",
   "filter_we_owe": "We owe them"
 }

@@ -88,16 +88,16 @@ describe('what a row of an account is called (D-086)', () => {
 describe('"paid now" on a purchase (D-085)', () => {
   it('sends nothing for "not yet", the whole for "all of it", and the typed part otherwise', () => {
     expect(paidNowBody(NOTHING_PAID)).toBeNull();
-    expect(paidNowBody({ ...NOTHING_PAID, mode: 'all' })).toEqual({ in_full: true });
+    expect(paidNowBody({ ...NOTHING_PAID, mode: 'all', paidIn: 'USD' })).toEqual({ in_full: true, currency: 'USD' });
     expect(
-      paidNowBody({ mode: 'part', amount: { amount: 5_000, currency: 'USD', other_amount: null } }),
+      paidNowBody({ mode: 'part', amount: { amount: 5_000, currency: 'USD', other_amount: null }, paidIn: 'IQD' }),
     ).toEqual({ amount: 5_000, currency: 'USD', other_amount: null });
   });
 
   it('refuses a part with nothing typed, or nothing above zero', () => {
-    expect(paidNowValid({ mode: 'part', amount: { amount: null, currency: 'IQD' } })).toBe(false);
-    expect(paidNowValid({ mode: 'part', amount: { amount: 0, currency: 'IQD' } })).toBe(false);
-    expect(paidNowValid({ mode: 'part', amount: { amount: 1, currency: 'IQD' } })).toBe(true);
+    expect(paidNowValid({ ...NOTHING_PAID, mode: 'part', amount: { amount: null, currency: 'IQD' } })).toBe(false);
+    expect(paidNowValid({ ...NOTHING_PAID, mode: 'part', amount: { amount: 0, currency: 'IQD' } })).toBe(false);
+    expect(paidNowValid({ ...NOTHING_PAID, mode: 'part', amount: { amount: 1, currency: 'IQD' } })).toBe(true);
     expect(paidNowValid(NOTHING_PAID)).toBe(true);
   });
 });

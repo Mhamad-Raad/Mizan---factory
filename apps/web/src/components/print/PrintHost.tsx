@@ -54,10 +54,8 @@ function PrintRun({ job }: { job: PrintJob }) {
     if (!ready || printed.current) return undefined;
     printed.current = true;
     let cancelled = false;
-    const title = document.title;
     const done = () => {
       document.body.classList.remove('mz-printing');
-      document.title = title;
       finish(job.id);
     };
     // The browser says when the dialog has closed — printed, saved or cancelled alike.
@@ -76,7 +74,6 @@ function PrintRun({ job }: { job: PrintJob }) {
       cancelled = true;
       window.removeEventListener('afterprint', done);
       document.body.classList.remove('mz-printing');
-      document.title = title;
     };
   }, [ready, finish, job.id]);
 

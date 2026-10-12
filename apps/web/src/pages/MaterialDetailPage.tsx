@@ -32,7 +32,7 @@ import { errorMessage } from '../lib/errors.js';
 import { invalidateHistory, invalidateMoneyViews } from '../lib/invalidate.js';
 import { useGlobalRate } from '../lib/rates.js';
 import type { ItemRow } from './MaterialsPage.js';
-import type { CustomerRow } from './CustomersPage.js';
+import { useAccount, useDocumentRate } from '../lib/accounts.js';
 import { CompanyField, NOTHING_PAID, PaidNowField, companyIdOf, paidNowBody, paidNowValid } from '../components/BuyFields.js';
 import type { CompanyChoice, PaidNow } from '../components/BuyFields.js';
 import { SavedToast } from '../components/SavedToast.js';
@@ -96,7 +96,7 @@ type Tab = 'overview' | 'prices' | 'movements' | 'history';
 
 /**
  * The material detail page (FR-307): stock and the two derived dates on the header card, the
- * stock split by what we paid for it (D-062) with "Add stock" — which is how stock comes in now —
+ * stock split by what we paid for it (D-062) with "Buy more" — a purchase from a company (D-085) —
  * then the monthly prices, the movements that produced the stock, and this material's History.
  */
 export function MaterialDetailPage() {
@@ -969,13 +969,10 @@ function AddStockSheet({
   const [paid, setPaid] = useState<PaidNow>(NOTHING_PAID);
   const mayPay = usePermission('companies.record_payment');
   const companyId = companyIdOf(company);
-  // The company's own rate fills the other currency, as the server will (2.3.3).
-  const details = useQuery({
-    queryKey: ['customers', companyId],
-    queryFn: () => apiRequest<CustomerRow>(`/customers/${companyId}`),
-    enabled: Boolean(companyId),
-  });
-  const buyRate = details.data?.rate?.rate_iqd_per_usd ?? rate;
+  // The company's own rate fills the other currency, as the server will (2.3.3), and says so.
+  const account = useAccount(companyId);
+  const documentRate = useDocumentRate(account.data);
+  const buyRate = companyId ? documentRate.rate : rate;
   const edit =
     <T,>(set: (value: T) => void) =>
     (value: T) => {
@@ -1010,7 +1007,7 @@ function AddStockSheet({
           onChange={(choice) => {
             onEdit?.();
             setCompany(choice);
-            if (choice.kind !== 'company') setPaid(NOTHING_PAID);
+            setPaid({ ...NOTHING_PAID, paidIn: choice.kind === 'company' ? choice.settlement_currency : 'IQD' });
           }}
         />
         <div className="mz-grid-2">
@@ -1033,7 +1030,7 @@ function AddStockSheet({
           label={t('materials:cost_per_unit')}
           value={cost}
           rate={buyRate}
-          sourceLabel={t('glossary:system_rate')}
+          sourceLabel={documentRate.label}
           onChange={edit(setCost)}
         />
         <TextField

@@ -303,8 +303,7 @@ export function App() {
             <Route path="/companies" element={<Navigate to="/customers" replace />} />
             <Route path="/companies/new" element={<Navigate to="/customers/new" replace />} />
             <Route path="/companies/:id" element={<CompanyRedirect />} />
-            {/* The accountant page took the Purchases page's place (D-062); buying is done in
-                Materials now, so the old purchase form's links land there. A buy's own page stays. */}
+            {/* Purchases and the purchase form are back (D-085), beside the accountant page. */}
             <Route path="/accounts" element={gate(may('accounts.view'), <AccountsPage />)} />
             <Route path="/purchases" element={gate(may('purchases.view'), <PurchasesPage />)} />
             <Route path="/purchases/new" element={gate(may('purchases.create'), <PurchaseFormPage />)} />

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,7 +24,7 @@ import { PaymentSheet } from '../components/PaymentSheet.js';
 import type { PaymentBody } from '../components/PaymentSheet.js';
 import { SavedToast, paymentReceipt } from '../components/SavedToast.js';
 import type { SavedNotice } from '../components/SavedToast.js';
-import type { CustomerRow } from './CustomersPage.js';
+import { useAccount } from '../lib/accounts.js';
 
 /** What is paid and still owed on one purchase, by the oldest-first reading (FR-712). */
 interface PurchaseBalance {
@@ -64,16 +64,18 @@ export function PurchaseDetailPage() {
   const [paying, setPaying] = useState(false);
   const [reason, setReason] = useState('');
   // A purchase just saved arrives with `justSaved` (see PurchaseFormPage): its receipt is offered
-  // at once, and the history entry is cleared so a reload does not offer it again.
+  // at once. The history entry is wiped as the page opens — as the Orders list does with its
+  // saved order — so a reload or a step back does not offer it again.
   const [notice, setNotice] = useState<SavedNotice | null>(() =>
     (location.state as { justSaved?: boolean } | null)?.justSaved
       ? { message: t('purchases:saved'), receipt: { kind: 'purchase', id } }
       : null,
   );
-  const dismiss = useCallback(() => {
-    setNotice(null);
+  useEffect(() => {
     if (location.state) navigate(location.pathname, { replace: true, state: null });
-  }, [location.pathname, location.state, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const dismiss = useCallback(() => setNotice(null), []);
 
   const purchase = useQuery({
     queryKey: ['purchases', id],
@@ -89,11 +91,7 @@ export function PurchaseDetailPage() {
     enabled: Boolean(companyId) && maySeeOwed,
   });
   // The company's rate, which a payment is filled at (2.3.3).
-  const company = useQuery({
-    queryKey: ['customers', companyId],
-    queryFn: () => apiRequest<CustomerRow>(`/customers/${companyId}`),
-    enabled: Boolean(companyId) && paying,
-  });
+  const company = useAccount(paying ? companyId : null);
 
   // The audit trail is paged by cursor (D-058).
   const historyPaging = useCursorPaging({ storageKey: 'record-history', resetOn: [id] });
@@ -161,7 +159,6 @@ export function PurchaseDetailPage() {
   const active = data?.doc_status === 'active';
   const remaining = balance.data?.cost.remaining ?? null;
   const total = balance.data?.cost.total ?? null;
-  const allocated = balance.data?.cost.allocated ?? 0;
 
   const titleNumber = data ? formatter.identifier(data.number) : null;
   usePageTitle(titleNumber ? t('purchases:number', { number: titleNumber }) : t('purchases:title'), {
@@ -468,16 +465,9 @@ export function PurchaseDetailPage() {
               pay.reset();
             }}
             onEdit={pay.reset}
-            onSave={(body) =>
-              // "Settle in full" against a purchase closes what is *linked* to it (FR-705). When
-              // unlinked money already covers part of it oldest-first, that is more than what is
-              // left here, so the payment is sent as exactly what is left instead.
-              pay.mutate(
-                body.settle_in_full && allocated !== 0
-                  ? { ...body, settle_in_full: false, amount: remaining, currency: settlement, other_amount: null }
-                  : body,
-              )
-            }
+            // "Settle in full" closes what this purchase still owes, oldest-first — the figure
+            // above — on the server (D-085).
+            onSave={(body) => pay.mutate(body)}
           />
         ) : null}
 

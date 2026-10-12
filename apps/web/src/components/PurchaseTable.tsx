@@ -5,6 +5,7 @@ import type { Column } from './DataList.js';
 import type { RowSelection } from './PrintSelection.js';
 import { DualAmount } from './DualAmount.js';
 import { useFormatter } from '../lib/store.js';
+import { bothOf } from '../lib/money.js';
 import type { PurchaseRow } from '../lib/purchases.js';
 
 /**
@@ -54,9 +55,11 @@ export function PurchaseTable({
     const remaining = row.doc_status === 'void' ? null : (remainingOf?.(row) ?? null);
     if (remaining === null) return <span className="mz-muted">—</span>;
     if (remaining <= 0) return <Chip tone="success">{t('glossary:paid')}</Chip>;
+    const currency = row.settlement_currency ?? 'IQD';
+    // In both currencies, the other at the purchase's own rate (rule 7).
     return (
-      <span className="mz-owed" data-tabular>
-        {formatter.money(remaining, row.settlement_currency ?? 'IQD')}
+      <span className="mz-owed">
+        <DualAmount {...bothOf(remaining, currency, row.rate_iqd_per_usd)} primary={currency} kind="derived" />
       </span>
     );
   };

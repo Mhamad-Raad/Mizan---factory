@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Toast } from '@mizan/ui';
-import { usePrint } from '../lib/print.js';
+import { useMayPrint, usePrint } from '../lib/print.js';
 import type { PrintDocument } from '../lib/print.js';
 
 /** What a page says after a write: the sentence, and the receipt it can print, if any. */
@@ -19,6 +19,9 @@ export interface SavedNotice {
 export function SavedToast({ notice, onDone }: { notice: SavedNotice; onDone: () => void }) {
   const { t } = useTranslation();
   const print = usePrint();
+  const mayPrint = useMayPrint();
+  // A receipt the reader may not load is not offered: the toast just closes.
+  const receipt = notice.receipt && mayPrint(notice.receipt) ? notice.receipt : null;
   useEffect(() => {
     const timer = window.setTimeout(onDone, 12_000);
     return () => window.clearTimeout(timer);
@@ -27,9 +30,9 @@ export function SavedToast({ notice, onDone }: { notice: SavedNotice; onDone: ()
   return (
     <Toast
       message={notice.message}
-      actionLabel={notice.receipt ? t('print:print_receipt') : t('common:close')}
+      actionLabel={receipt ? t('print:print_receipt') : t('common:close')}
       onAction={() => {
-        if (notice.receipt) print([notice.receipt]);
+        if (receipt) print([receipt]);
         onDone();
       }}
     />

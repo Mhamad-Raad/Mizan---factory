@@ -15,6 +15,8 @@ import { invalidateMoneyViews } from '../../lib/invalidate.js';
 import { documentOfLedgerRow, usePrint } from '../../lib/print.js';
 import type { PurchaseRow } from '../../lib/purchases.js';
 import { Can } from '../Can.js';
+import { DualAmount } from '../DualAmount.js';
+import { bothOf } from '../../lib/money.js';
 import { LedgerList } from '../LedgerList.js';
 import type { LedgerRow } from '../LedgerList.js';
 import { MoneyInput } from '../MoneyInput.js';
@@ -110,6 +112,17 @@ export function useBuyingSide(input: {
   useKeepPageInRange(purchasesPaging, purchases);
 
   const owingRows = owing.data?.allocation.purchases ?? [];
+  // What is actually still owed: a purchase overpaid through a payment that named it has a
+  // negative remainder, which is money paid ahead, not a debt (review).
+  const stillOwed = owingRows.filter((row) => row.remaining > 0);
+  const stillOwedTotal = stillOwed.reduce((total, row) => total + row.remaining, 0);
+  /** A figure in the account's currency, with the other side at the account's rate (rule 7). */
+  const owedAmount = (value: number) =>
+    rate === null ? (
+      <span data-tabular>{formatter.money(value, settlement)}</span>
+    ) : (
+      <DualAmount {...bothOf(value, settlement, rate)} primary={settlement} kind="derived" />
+    );
   const owingNumbers = new Map((owing.data?.purchases ?? []).map((row) => [row.id, row]));
   /** A purchase not among the owing ones is paid — unless the owing list was cut short. */
   const remainingOf = (row: PurchaseRow): number | null => {
@@ -124,7 +137,7 @@ export function useBuyingSide(input: {
     (row) => row.id,
   );
   const selectEntries = usePrintSelection<LedgerRow>(
-    (row) => documentOfLedgerRow('buying', id, row),
+    (row) => documentOfLedgerRow('buying', id, row, maySeePurchases),
     (row) => row.entry_id,
   );
 
@@ -199,12 +212,12 @@ export function useBuyingSide(input: {
         <h3 className="mz-heading">{t('companies:purchases_owed')}</h3>
         <QueryStates
           query={owing}
-          isEmpty={owingRows.length === 0}
+          isEmpty={stillOwed.length === 0}
           emptyTitle={t('companies:nothing_owed')}
           skeletonLines={3}
         >
           <ul className="mz-list">
-            {owingRows.slice(0, 5).map((row) => {
+            {stillOwed.slice(0, 5).map((row) => {
               const purchase = owingNumbers.get(row.purchase_id);
               return (
                 <li key={row.purchase_id}>
@@ -215,19 +228,17 @@ export function useBuyingSide(input: {
                       </span>
                       {purchase ? <span className="mz-caption">{formatter.date(purchase.purchase_date)}</span> : null}
                     </span>
-                    <span className="mz-list__end mz-owed" data-tabular>
-                      {formatter.money(row.remaining, settlement)}
-                    </span>
+                    <span className="mz-list__end mz-owed">{owedAmount(row.remaining)}</span>
                   </Link>
                 </li>
               );
             })}
           </ul>
-          {owing.data && owing.data.owing_count > 5 ? (
+          {stillOwed.length > 5 ? (
             <p className="mz-caption">
               {t('companies:more_owed', {
-                count: owing.data.owing_count - 5,
-                total: formatter.money(owing.data.owing_total, settlement),
+                count: stillOwed.length - 5,
+                total: formatter.money(stillOwedTotal, settlement),
               })}
             </p>
           ) : null}
@@ -290,7 +301,7 @@ export function useBuyingSide(input: {
               <IconButton
                 icon="print"
                 label={t('print:print_receipt')}
-                onClick={() => print([documentOfLedgerRow('buying', id, row)])}
+                onClick={() => print([documentOfLedgerRow('buying', id, row, maySeePurchases)])}
               />
             )}
           />

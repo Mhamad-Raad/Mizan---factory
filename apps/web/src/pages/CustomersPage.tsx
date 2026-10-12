@@ -16,6 +16,7 @@ import { FilterChip } from '../components/FilterChip.js';
 import { DIRECTION_LABELS, customerName, directionOf } from '../lib/customers.js';
 import { InactiveChip } from '../components/chips.js';
 import { usePermission } from '../lib/store.js';
+import { payableAmount, payableLabel } from '../lib/accounts.js';
 
 export interface BalanceValue {
   amount_iqd: number;
@@ -70,7 +71,6 @@ export function CustomersPage() {
   });
   const seesSelling = usePermission('fields.see_customer_balances');
   const seesBuying = usePermission('fields.see_company_balances');
-  const seesNet = seesSelling && seesBuying;
   const [includeInactive, setIncludeInactive] = useState(false);
   const [sort, setSort] = useState<'name' | 'balance'>('name');
 
@@ -106,9 +106,9 @@ export function CustomersPage() {
               inputMode="search"
             />
           </div>
-          {/* The net balance needs both sides' flags (D-054), and "we owe them" the buying side's
-              (D-085); without them the server ignores the filter, so it is not offered (review). */}
-          {seesNet || seesBuying ? (
+          {/* Each filter needs the flag of the side it reads (D-085); without it the server
+              ignores the filter, so it is not offered (review). */}
+          {seesSelling || seesBuying ? (
             <select
               className="mz-select"
               aria-label={t('customers:net_balance')}
@@ -116,17 +116,17 @@ export function CustomersPage() {
               onChange={(event) => setBalance(event.target.value as BalanceFilter)}
             >
               <option value="all">{t('customers:all_balances')}</option>
-              {seesNet ? (
+              {seesSelling ? (
                 <>
                   <option value="owes">{t('customers:filter_owes')}</option>
                   <option value="credit">{t('customers:filter_credit')}</option>
                   <option value="settled">{t('customers:filter_settled')}</option>
                 </>
               ) : null}
-              <option value="we_owe">{t('customers:filter_we_owe')}</option>
+              {seesBuying ? <option value="we_owe">{t('customers:filter_we_owe')}</option> : null}
             </select>
           ) : null}
-          {seesNet ? (
+          {seesSelling ? (
             <>
               <FilterChip active={sort === 'balance'} onClick={() => setSort(sort === 'balance' ? 'name' : 'balance')}>
                 {t('customers:sort_by_balance')}
@@ -256,12 +256,12 @@ function PayableCell({ row }: { row: CustomerRow }) {
   const { t } = useTranslation();
   const payable = row.payable;
   if (!payable) return null;
-  const amount = payable.currency === 'IQD' ? payable.amount_iqd : payable.amount_usd_cents;
+  const amount = payableAmount(payable);
   if (amount === 0) return <span className="mz-muted">—</span>;
   return (
     <span className="mz-cell__body">
       <span className={amount > 0 ? 'mz-caption mz-owed' : 'mz-caption'}>
-        {t(amount > 0 ? 'companies:we_owe_them' : 'print:paid_ahead')}
+        {t(payableLabel(amount))}
       </span>
       <DualAmount
         amount_iqd={Math.abs(payable.amount_iqd)}

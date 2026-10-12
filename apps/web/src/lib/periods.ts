@@ -50,13 +50,6 @@ export function thisYear(today: string): Period {
   return { from: `${today.slice(0, 4)}-01-01`, to: today };
 }
 
-/** The same day a year earlier to today — the twelve months a statement covers (FR-507). */
-export function lastTwelveMonths(today: string): Period {
-  const date = new Date(`${today}T00:00:00Z`);
-  date.setUTCFullYear(date.getUTCFullYear() - 1);
-  return { from: date.toISOString().slice(0, 10), to: today };
-}
-
 /**
  * Every named period a screen offers, resolved in one place. The screens name their own choices
  * (Orders' "Today" chip is today *and* yesterday, FR-611; History's month is the last thirty

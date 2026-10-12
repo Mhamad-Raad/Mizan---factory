@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useApp } from './store.js';
 
 /**
  * Everything the system prints (D-086), named by what it is rather than how it is drawn: a
@@ -60,6 +61,37 @@ export function usePrint(): (documents: PrintDocument[]) => void {
 }
 
 /**
+ * What each document needs the reader to hold — the permissions of the routes it is read from —
+ * so nothing is offered for printing that the API would refuse (review: a cashier who may take a
+ * payment but not see balances was offered its voucher, and the print failed).
+ */
+export function requiredFor(document: PrintDocument): string[] {
+  switch (document.kind) {
+    case 'order':
+    case 'order_list':
+      return ['orders.view'];
+    case 'purchase':
+    case 'purchase_list':
+      return ['purchases.view'];
+    case 'voucher':
+      return document.side === 'sales'
+        ? ['customers.view', 'fields.see_customer_balances']
+        : ['companies.view', 'fields.see_company_balances'];
+    case 'statement':
+      return document.sides.map((side) =>
+        side === 'sales' ? 'fields.see_customer_balances' : 'fields.see_company_balances',
+      );
+  }
+}
+
+/** Whether the reader may print a document, by the same rule the API applies. */
+export function useMayPrint(): (document: PrintDocument) => boolean {
+  const isAdmin = useApp((state) => state.user?.role === 'admin');
+  const permissions = useApp((state) => state.permissions);
+  return (document) => isAdmin || requiredFor(document).every((key) => permissions.has(key));
+}
+
+/**
  * The document a row of an account prints as. A row that *is* a document — the purchase on the
  * buying side, the order on the sales side — prints that document's receipt, which says far more
  * than "Purchase 150,000"; every other row prints as a voucher of its own.
@@ -68,11 +100,13 @@ export function documentOfLedgerRow(
   side: AccountSide,
   accountId: string,
   row: { entry_id: string; entry_type: string; order_id?: string | null; purchase_id?: string | null },
+  /** Whether the reader may open the document itself; without it the row prints as a voucher. */
+  mayOpenDocument = true,
 ): PrintDocument {
-  if (side === 'buying' && row.entry_type === 'purchase' && row.purchase_id) {
+  if (mayOpenDocument && side === 'buying' && row.entry_type === 'purchase' && row.purchase_id) {
     return { kind: 'purchase', id: row.purchase_id };
   }
-  if (side === 'sales' && row.order_id && ORDER_ENTRY_TYPES.has(row.entry_type)) {
+  if (mayOpenDocument && side === 'sales' && row.order_id && ORDER_ENTRY_TYPES.has(row.entry_type)) {
     return { kind: 'order', id: row.order_id };
   }
   return { kind: 'voucher', side, accountId, entryId: row.entry_id };

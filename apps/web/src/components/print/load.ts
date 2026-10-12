@@ -161,8 +161,9 @@ async function allPages<Row, Totals>(path: string): Promise<{ rows: Row[]; total
   let totals: Totals | null = null;
   for (let page = 1; rows.length < PRINT_LIST_ROWS; page += 1) {
     const separator = path.includes('?') ? '&' : '?';
+    // Only the first page's figures are read, so the later pages do not ask for them.
     const answer = await apiRequest<{ items: Row[]; total: number; totals?: Totals }>(
-      `${path}${separator}page=${page}&page_size=100`,
+      `${path}${separator}page=${page}&page_size=100${page > 1 ? '&totals=false' : ''}`,
     );
     if (page === 1) {
       total = answer.total;

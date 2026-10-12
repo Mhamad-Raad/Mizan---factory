@@ -36,6 +36,7 @@ import { PrintSelectionBar, usePrintSelection } from '../components/PrintSelecti
 import { SavedToast, paymentReceipt } from '../components/SavedToast.js';
 import type { SavedNotice } from '../components/SavedToast.js';
 import { useBuyingSide } from '../components/party/BuyingSide.js';
+import { payableAmount, payableLabel } from '../lib/accounts.js';
 import type { BalanceValue, CustomerRow } from './CustomersPage.js';
 import type { OrderRow } from './OrdersPage.js';
 
@@ -180,7 +181,7 @@ export function CustomerDetailPage() {
 
   // The sales account's rows, ticked to print again (D-086).
   const selectSales = usePrintSelection<LedgerRow>(
-    (row) => documentOfLedgerRow('sales', id, row),
+    (row) => documentOfLedgerRow('sales', id, row, mayViewOrders),
     (row) => row.entry_id,
   );
 
@@ -442,7 +443,7 @@ export function CustomerDetailPage() {
                         <IconButton
                           icon="print"
                           label={t('print:print_receipt')}
-                          onClick={() => print([documentOfLedgerRow('sales', id, row)])}
+                          onClick={() => print([documentOfLedgerRow('sales', id, row, mayViewOrders)])}
                         />
                       )}
                     />
@@ -623,8 +624,8 @@ function PayableFigure({ party }: { party: CustomerRow }) {
   const { t } = useTranslation();
   const payable = party.payable;
   if (!payable || party.is_system) return null;
-  const amount = payable.currency === 'IQD' ? payable.amount_iqd : payable.amount_usd_cents;
-  const label = amount > 0 ? 'companies:we_owe_them' : amount < 0 ? 'print:paid_ahead' : 'companies:we_owe_nothing';
+  const amount = payableAmount(payable);
+  const label = payableLabel(amount);
   return (
     <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
       <span className={amount > 0 ? 'mz-figure__label mz-owed' : 'mz-figure__label'}>{t(label)}</span>

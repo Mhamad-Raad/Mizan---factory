@@ -1649,7 +1649,14 @@ costing) is unchanged, and so is the API's buying side, which D-062 had only tak
   maintained `account_totals` of the accounts we owe, each currency in its own column (rule 4 of
   the review lessons), so an account paid ahead does not lower what we owe another.
 
-No migration. Tests: `buying-from-companies.test.ts` (11). Relied on: the business's request;
+- **After the review (`docs/REVIEW-D085-D086.md`):** a void or an undo takes back the money paid
+  *with* the purchase (later payments stay); an edit may not go below what was paid; "settle in
+  full" against a purchase settles what it still owes oldest-first; "All of it" records the
+  currency handed over; an untouched line takes the month's bought price on the server; the owed
+  figure is per currency and leaves hidden companies out; the Companies filters read the side
+  their column shows (replacing D-054's net filter).
+
+No migration. Tests: `buying-from-companies.test.ts` (18). Relied on: the business's request;
 FR-401 to FR-408, FR-704 to FR-712; rules 1–4 and 10.
 
 ## D-086 · 2026-10-12 · business request · Print receipts on the spot, again later, and the whole history
@@ -1689,6 +1696,9 @@ user can select the older transactions and print it out again."
 - **The statement sheet with its share button is gone** from the company page: "Print account"
   replaces it, and the print dialog's "Save as PDF" is the file to send. Nothing else used
   `ShareDocumentSheet` or the `.mz-receipt` styles, so both are removed.
+
+After the review, a receipt is offered only to someone who may load it (`requiredFor`), and an
+account row prints as a voucher when its order or purchase is not the reader's to open.
 
 Tests: `print.test.ts` (10). Relied on: the business's request; FR-613 to FR-615 (proposed, now
 requested); rules 5–7 (each document in the page's direction, every string in three languages,

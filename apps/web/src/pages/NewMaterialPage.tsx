@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Checkbox, DateField, NumberField, StickyFooter, TextField } from '@mizan/ui';
-import { useQuery } from '@tanstack/react-query';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
 import { toMoneyBody } from '../lib/money.js';
@@ -18,7 +17,7 @@ import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { useGlobalRate } from '../lib/rates.js';
 import { CompanyField, NOTHING_PAID, PaidNowField, companyIdOf, paidNowBody, paidNowValid } from '../components/BuyFields.js';
 import type { CompanyChoice, PaidNow } from '../components/BuyFields.js';
-import type { CustomerRow } from './CustomersPage.js';
+import { useAccount, useDocumentRate } from '../lib/accounts.js';
 
 const emptyMoney = (): MoneyValue => ({ amount: null, currency: 'IQD', other_amount: null });
 
@@ -50,11 +49,8 @@ export function NewMaterialPage() {
   const [paid, setPaid] = useState<PaidNow>(NOTHING_PAID);
   const mayPay = usePermission('companies.record_payment');
   const companyId = companyIdOf(company);
-  const companyDetails = useQuery({
-    queryKey: ['customers', companyId],
-    queryFn: () => apiRequest<CustomerRow>(`/customers/${companyId}`),
-    enabled: Boolean(companyId),
-  });
+  const companyAccount = useAccount(companyId);
+  const buyDocumentRate = useDocumentRate(companyAccount.data);
   const [sale, setSale] = useState<MoneyValue>(emptyMoney);
   const [bought, setBought] = useState<MoneyValue>(emptyMoney);
   // The material and its prices are two writes, each with its own key held across retries.
@@ -120,7 +116,7 @@ export function NewMaterialPage() {
     !mayBuy ||
     (company.kind !== 'unset' && quantityValid && costValid && boughtOn !== '' && paidNowValid(paid));
   const ready = name.trim() !== '' && buyReady;
-  const buyRate = companyDetails.data?.rate?.rate_iqd_per_usd ?? rate;
+  const buyRate = companyId ? buyDocumentRate.rate : rate;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -184,7 +180,7 @@ export function NewMaterialPage() {
                 value={company}
                 onChange={(choice) => {
                   setCompany(choice);
-                  if (choice.kind !== 'company') setPaid(NOTHING_PAID);
+                  setPaid({ ...NOTHING_PAID, paidIn: choice.kind === 'company' ? choice.settlement_currency : 'IQD' });
                 }}
               />
               <div className="mz-form-grid">
@@ -206,7 +202,7 @@ export function NewMaterialPage() {
                 label={t('materials:cost_per_unit')}
                 value={unitCost}
                 rate={buyRate}
-                sourceLabel={t('glossary:system_rate')}
+                sourceLabel={buyDocumentRate.label}
                 onChange={setUnitCost}
               />
               <TextField

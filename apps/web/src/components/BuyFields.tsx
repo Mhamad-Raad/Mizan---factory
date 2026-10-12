@@ -114,15 +114,24 @@ export function CompanyField({
 export interface PaidNow {
   mode: 'none' | 'all' | 'part';
   amount: MoneyValue;
+  /**
+   * For "all of it": the currency the money went out in, which the cash-up counts (FR-1013). A
+   * dinar company paid in dollars is recorded as dollars handed over, not as dinars (review).
+   */
+  paidIn: Currency;
 }
 
-export const NOTHING_PAID: PaidNow = { mode: 'none', amount: { amount: null, currency: 'IQD', other_amount: null } };
+export const NOTHING_PAID: PaidNow = {
+  mode: 'none',
+  amount: { amount: null, currency: 'IQD', other_amount: null },
+  paidIn: 'IQD',
+};
 
 /** The `paid` field of a purchase request, or null when nothing was paid now. */
 export function paidNowBody(
   paid: PaidNow,
-): { in_full: true } | { amount: number; currency: Currency; other_amount: number | null } | null {
-  if (paid.mode === 'all') return { in_full: true };
+): { in_full: true; currency: Currency } | { amount: number; currency: Currency; other_amount: number | null } | null {
+  if (paid.mode === 'all') return { in_full: true, currency: paid.paidIn };
   if (paid.mode === 'part' && paid.amount.amount !== null && paid.amount.amount > 0) {
     return { amount: paid.amount.amount, currency: paid.amount.currency, other_amount: paid.amount.other_amount ?? null };
   }
@@ -163,6 +172,17 @@ export function PaidNowField({
           { value: 'part', label: t('purchases:paid_now_part') },
         ]}
       />
+      {value.mode === 'all' ? (
+        <SegmentedControl
+          label={t('purchases:paid_in')}
+          value={value.paidIn}
+          onChange={(paidIn) => onChange({ ...value, paidIn })}
+          options={[
+            { value: 'IQD', label: t('glossary:iqd') },
+            { value: 'USD', label: t('glossary:usd') },
+          ]}
+        />
+      ) : null}
       {value.mode === 'part' ? (
         <MoneyInput
           label={t('purchases:paid_now_amount')}

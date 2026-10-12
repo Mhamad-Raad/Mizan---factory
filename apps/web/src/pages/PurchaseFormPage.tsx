@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Chip, DateField, EmptyState, Icon, IconButton, NumberField, TextField } from '@mizan/ui';
 import { computeLineTotals, convert, documentTotals } from '@mizan/money';
-import type { Currency, Rate, RateSource } from '@mizan/money';
+import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
 import { usePageTitle } from '../lib/page-title.js';
-import { useGlobalRate } from '../lib/rates.js';
+import { useAccount, useDocumentRate } from '../lib/accounts.js';
 import { usableRate } from '../lib/money.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
@@ -21,7 +21,6 @@ import { TotalsFooter } from '../components/TotalsFooter.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { CompanyField, NOTHING_PAID, PaidNowField, companyIdOf, paidNowBody, paidNowValid } from '../components/BuyFields.js';
 import type { CompanyChoice, PaidNow } from '../components/BuyFields.js';
-import type { CustomerRow } from './CustomersPage.js';
 import type { ItemRow } from './MaterialsPage.js';
 import type { PurchaseDetail } from '../lib/purchases.js';
 
@@ -33,6 +32,13 @@ interface FormLine {
   qty_count: number | null;
   qty_kg: string | null;
   cost: MoneyValue;
+  /**
+   * The cost is still this month's bought price as the line opened with it: the line then sends
+   * no price and the server applies the month's, in the currency it was set in (FR-408). Opening
+   * the field with that price in dinars and sending it back as "typed" turned a price set in
+   * dollars into a dinar figure at another rate (review).
+   */
+  from_month_price: boolean;
   note: string;
 }
 
@@ -58,11 +64,7 @@ export function PurchaseFormPage() {
   const [company, setCompany] = useState<CompanyChoice>({ kind: 'unset' });
   // A link from a company's page names it; its name and currency are read from the API below.
   const linkedCompanyId = company.kind === 'unset' ? params.get('company') : null;
-  const linked = useQuery({
-    queryKey: ['customers', linkedCompanyId],
-    queryFn: () => apiRequest<CustomerRow>(`/customers/${linkedCompanyId}`),
-    enabled: Boolean(linkedCompanyId),
-  });
+  const linked = useAccount(linkedCompanyId);
   const chosen: CompanyChoice =
     company.kind === 'unset' && linked.data && !linked.data.is_system
       ? { kind: 'company', id: linked.data.id, name: linked.data.name, settlement_currency: linked.data.settlement_currency }
@@ -77,27 +79,18 @@ export function PurchaseFormPage() {
   const [picking, setPicking] = useState(false);
   const saveKey = useIdempotencyKey();
 
-  const { rate: globalRate } = useGlobalRate();
-  const details = useQuery({
-    queryKey: ['customers', companyId],
-    queryFn: () => apiRequest<CustomerRow>(`/customers/${companyId}`),
-    enabled: Boolean(companyId),
-  });
+  const details = useAccount(companyId);
   const settlement: Currency = chosen.kind === 'company' ? chosen.settlement_currency : 'IQD';
 
   // The rate of this purchase (2.3.3): typed for this deal, else the company's own, else the
   // system's — the precedence the server applies.
   const typedRate = usableRate(rateText);
   const rateTypedBadly = rateText.trim() !== '' && typedRate === null;
-  const companyRate = details.data?.rate;
-  const rate: Rate | null = typedRate ?? companyRate?.rate_iqd_per_usd ?? globalRate;
-  const rateSource: RateSource = typedRate ? 'manual' : companyRate?.is_customer_rate ? 'company' : 'global';
-  const rateSourceLabel =
-    rateSource === 'manual'
-      ? t('purchases:rate_source_purchase')
-      : rateSource === 'company'
-        ? t('glossary:customer_rate')
-        : t('glossary:system_rate');
+  const {
+    rate,
+    source: rateSource,
+    label: rateSourceLabel,
+  } = useDocumentRate(details.data, { rate: typedRate, label: t('purchases:rate_source_purchase') });
 
   const totals = useMemo(() => {
     const perLine = lines.map((line) => {
@@ -135,11 +128,9 @@ export function PurchaseFormPage() {
             item_id: line.item_id,
             qty_count: line.priced_measure === 'count' ? line.qty_count : null,
             qty_kg: line.priced_measure === 'kg' ? line.qty_kg : null,
-            unit_price: {
-              amount: line.cost.amount,
-              currency: line.cost.currency,
-              other_amount: line.cost.other_amount ?? null,
-            },
+            unit_price: line.from_month_price
+              ? null
+              : { amount: line.cost.amount, currency: line.cost.currency, other_amount: line.cost.other_amount ?? null },
             note: line.note.trim() === '' ? null : line.note.trim(),
           })),
           paid: companyId && mayPay ? paidNowBody(paid) : null,
@@ -158,8 +149,16 @@ export function PurchaseFormPage() {
 
   const error = save.error instanceof ApiError ? save.error : null;
   const paidError = error?.fieldError('paid.amount') ?? error?.fieldError('paid');
-  const lineErrors = error?.fields.some((field) => /^lines\.\d+\./.test(field.path)) ?? false;
-  const saveError = paidError ? null : errorMessage(t, save.error);
+  // Refusals a line card or the payment card already shows under its own input need no banner as
+  // well; anything else — a material deactivated since it was picked — must reach the banner,
+  // or Save would do nothing in silence (review).
+  const shownUnderInputs =
+    error !== null &&
+    error.fields.length > 0 &&
+    error.fields.every(
+      (field) => /^lines\.\d+\.(qty_kg|qty_count|unit_price)$/.test(field.path) || field.path.startsWith('paid'),
+    );
+  const saveError = shownUnderInputs ? null : errorMessage(t, save.error);
 
   const ready =
     chosen.kind !== 'unset' &&
@@ -187,6 +186,7 @@ export function PurchaseFormPage() {
         cost: item.bought
           ? { amount: item.bought.amount_iqd, currency: 'IQD', other_amount: null }
           : { amount: null, currency: 'IQD', other_amount: null },
+        from_month_price: Boolean(item.bought),
         note: '',
       },
     ]);
@@ -215,7 +215,8 @@ export function PurchaseFormPage() {
                 onChange={(choice) => {
                   save.reset();
                   setCompany(choice);
-                  if (choice.kind !== 'company') setPaid(NOTHING_PAID);
+                  // "Paid in" opens at the company's own currency.
+                  setPaid({ ...NOTHING_PAID, paidIn: choice.kind === 'company' ? choice.settlement_currency : 'IQD' });
                 }}
               />
               {owedNow && maySeeOwed && chosen.kind === 'company' && (owedNow.amount_iqd !== 0 || owedNow.amount_usd_cents !== 0) ? (
@@ -295,7 +296,11 @@ export function PurchaseFormPage() {
               <IconButton
                 icon="trash"
                 label={t('purchases:remove_line')}
-                onClick={() => setLines((current) => current.filter((row) => row.key !== line.key))}
+                onClick={() => {
+                  // The refusals are by line number, so they would land on the wrong card now.
+                  save.reset();
+                  setLines((current) => current.filter((row) => row.key !== line.key));
+                }}
               />
             </span>
           </div>
@@ -315,7 +320,7 @@ export function PurchaseFormPage() {
               value={line.cost}
               rate={rate}
               sourceLabel={rateSourceLabel}
-              onChange={(cost) => updateLine(line.key, { cost })}
+              onChange={(cost) => updateLine(line.key, { cost, from_month_price: false })}
               error={error?.fieldError(`lines.${index}.unit_price`) ? t('errors:price_required') : undefined}
             />
           </div>
@@ -362,7 +367,7 @@ export function PurchaseFormPage() {
         </Card>
       ) : null}
 
-      {saveError && !lineErrors ? (
+      {saveError ? (
         <div className="mz-warning" role="alert">
           {saveError}
         </div>
