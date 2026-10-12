@@ -10,7 +10,7 @@ import {
   selectMonthPrice,
 } from '@mizan/money';
 import type { Currency, Measure, Rate, RateSource } from '@mizan/money';
-import { allocateOldestFirst } from '@mizan/ledger';
+import { liveEntries } from '@mizan/ledger';
 import { AuditService } from '../audit/audit.service.js';
 import { resolveActingUser } from '../common/acting-user.js';
 import { ApiError } from '../common/errors.js';
@@ -72,8 +72,19 @@ export interface CreatePurchaseInput {
 }
 
 export type PaidNowInput =
-  | { in_full: true }
+  /** All of it, in the currency the money went out in (the account's own when not said). */
+  | { in_full: true; currency?: Currency | null }
   | { in_full?: false; amount: number; currency: Currency; other_amount?: number | null };
+
+/**
+ * The note on a "paid now" payment (D-085). With being written in the purchase's own transaction,
+ * it is what tells that payment apart from one made later, so a void or an undo takes back the
+ * money paid *with* the purchase — as an order's void takes back its cash settlement — and leaves
+ * every later payment standing. Stored in English and translated where it is read.
+ */
+export function paidNowNote(purchaseNumber: number | string): string {
+  return `Paid with purchase #${purchaseNumber}`;
+}
 
 /**
  * A line as it leaves the API. Every price and total lives under one `cost` key, so the
@@ -177,23 +188,29 @@ export class PurchasesService {
   async list(filters: PurchaseFilters): Promise<{
     items: PurchaseDto[];
     total: number;
-    totals: {
+    totals?: {
       buys: number;
       cost: { total_iqd: number; total_usd_cents: number };
-      owed_by_us: { companies: number; owed_iqd: number; owed_usd_cents: number };
+      /** What we owe the dinar-account companies in dinars and the dollar-account ones in dollars. */
+      owed_by_us?: { companies: number; owed_iqd: number; owed_usd_cents: number };
     };
   }> {
+    // What we owe the companies altogether is the Purchases page's figure: a company's own
+    // Purchases tab, and a printout's later pages, never show it, so they never pay for it.
+    const wantsOwed = filters.totals !== false && !filters.company_id;
     const [{ rows, total, totals }, owed] = await Promise.all([
       this.purchases.list(filters),
-      this.purchases.owedToCompanies(),
+      wantsOwed ? this.purchases.owedToCompanies() : Promise.resolve(null),
     ]);
+    const items = rows.map((row) => toPurchaseDto(row, []));
+    if (filters.totals === false) return { items, total };
     return {
-      items: rows.map((row) => toPurchaseDto(row, [])),
+      items,
       total,
       totals: {
         buys: totals.buys,
         cost: { total_iqd: totals.total_iqd, total_usd_cents: totals.total_usd_cents },
-        owed_by_us: owed,
+        ...(owed ? { owed_by_us: owed } : {}),
       },
     };
   }
@@ -355,6 +372,7 @@ export class PurchasesService {
           rateSource,
           paid: input.paid,
           performedBy: actingUserId,
+          note: paidNowNote(purchase.number),
         });
       }
     }
@@ -498,6 +516,7 @@ export class PurchasesService {
           rate,
           rateSource,
         });
+        await this.assertNotBelowPaid(tx, account, id, totals);
       }
 
       await this.audit.record(
@@ -527,9 +546,10 @@ export class PurchasesService {
   }
 
   /**
-   * Void (FR-405): the company entry and every live movement are reversed, the purchase is
-   * marked void with its reason, and payments already made stay on the account — the money did
-   * leave the till.
+   * Void (FR-405): the company entry and every live movement are reversed, and so is the payment
+   * written with the purchase as "paid now" (D-085) — a purchase typed twice was not paid twice.
+   * The purchase is marked void with its reason; payments made to it afterwards stay on the
+   * account, because that money did leave the till.
    */
   async void(
     context: RequestContext,
@@ -575,6 +595,14 @@ export class PurchasesService {
           types: PURCHASE_DOCUMENT_TYPES,
           related: { purchase_id: id, company_id: account.id },
         });
+        // The money paid with it goes back too; later payments stay (D-085).
+        for (const entry of await this.paidNowEntries(tx, account, id, purchase.number)) {
+          await this.ledger.reverse(context, tx, account, entry.id, {
+            note: input.reason,
+            entry_date: purchase.purchase_date,
+            related: { purchase_id: id, company_id: account.id },
+          });
+        }
       }
 
       const updated = await this.purchases.updatePurchase(
@@ -668,22 +696,8 @@ export class PurchasesService {
       };
     }
 
-    const [entries, siblings] = await Promise.all([
-      this.ledger.entriesFor(this.database, purchase.company_id),
-      this.companies.purchasesForAllocation(purchase.company_id),
-    ]);
     const settlement = purchase.settlement_currency;
-    const allocation = allocateOldestFirst(
-      entries,
-      siblings.map((row) => ({
-        id: row.id,
-        total: settlement === 'IQD' ? Number(row.total_iqd) : Number(row.total_usd_cents),
-        purchase_date: row.purchase_date,
-        voided: row.status === 'void',
-        number: Number(row.number),
-      })),
-      settlement,
-    );
+    const { allocation } = await this.companiesService.allocationOf(this.database, purchase.company_id, settlement);
 
     const mine = allocation.purchases.find((row) => row.purchase_id === id);
     return {
@@ -1045,6 +1059,7 @@ export class PurchasesService {
       rateSource: RateSource;
       paid: PaidNowInput;
       performedBy: string;
+      note: string;
     },
   ): Promise<string> {
     const settlement = account.settlement_currency;
@@ -1059,7 +1074,7 @@ export class PurchasesService {
       ? {
           amount_iqd: -input.totals.total_iqd,
           amount_usd_cents: -input.totals.total_usd_cents,
-          entered_currency: settlement,
+          entered_currency: input.paid.currency ?? settlement,
           rate_iqd_per_usd: input.rate,
           rate_source: input.rateSource,
         }
@@ -1099,7 +1114,7 @@ export class PurchasesService {
         entry_type: 'payment',
         money,
         entry_date: input.purchaseDate,
-        note: null,
+        note: input.note,
         performed_by_user_id: input.performedBy,
         refs: { purchase_id: input.purchaseId },
         method: 'cash',
@@ -1108,6 +1123,55 @@ export class PurchasesService {
       { related: { purchase_id: input.purchaseId, company_id: account.id } },
     );
     return result.entry.id;
+  }
+
+  /**
+   * The live "paid now" payment of a purchase: the payment that names it, carries its note, and
+   * was written in the same transaction as its first company entry (one transaction, one
+   * `created_at`). Both are asked for, so a later payment that happens to carry the same words is
+   * never taken back.
+   */
+  private async paidNowEntries(tx: Db, account: LedgerAccount, purchaseId: string, number: string) {
+    const entries = await this.ledger.entriesOfDocument(tx, account.id, purchaseId);
+    const first = entries
+      .filter((entry) => entry.entry_type === 'purchase' && entry.reverses_entry_id === null)
+      .sort((a, b) => a.posting_seq - b.posting_seq)[0];
+    if (!first) return [];
+    const note = paidNowNote(number);
+    return liveEntries(entries).filter(
+      (entry) =>
+        entry.entry_type === 'payment' &&
+        entry.note === note &&
+        entry.created_at.getTime() === first.created_at.getTime(),
+    );
+  }
+
+  /**
+   * An edit may lower a purchase, but not below what has been paid against it (D-085): the
+   * "never more than the purchase" rule of paying now would otherwise be undone by editing the
+   * purchase down afterwards. A payment made in error is reversed on the company's page first.
+   */
+  private async assertNotBelowPaid(
+    tx: Db,
+    account: LedgerAccount,
+    purchaseId: string,
+    totals: { total_iqd: number; total_usd_cents: number },
+  ): Promise<void> {
+    // The live rows that name the purchase other than its own charge: payments, credits and
+    // adjustments still standing. Not `purchase_linked_totals`, which also counts the reversal
+    // of the purchase's previous version and so read every edit as an overpayment.
+    const entries = await this.ledger.entriesOfDocument(tx, account.id, purchaseId);
+    const settled = (entry: { amount_iqd: number; amount_usd_cents: number }) =>
+      account.settlement_currency === 'IQD' ? entry.amount_iqd : entry.amount_usd_cents;
+    const paid = -liveEntries(entries)
+      .filter((entry) => entry.entry_type !== 'purchase')
+      .reduce((sum, entry) => sum + settled(entry), 0);
+    const total = account.settlement_currency === 'IQD' ? totals.total_iqd : totals.total_usd_cents;
+    if (paid > total) {
+      throw ApiError.validation([
+        { path: 'lines', code: 'BELOW_PAID', message_key: 'errors:purchase_below_paid', params: {} },
+      ]);
+    }
   }
 
   private async versionConflict(id: string): Promise<ApiError> {

@@ -73,5 +73,6 @@
   "entry_not_reversible": "This row belongs to an order, a buy or broken goods — edit or void that record instead",
   "damage_owed_not_returnable": "The company owes us for these goods — record it with \"Paid back\", not as a return credit",
   "paid_needs_company": "Choose the company you paid — a purchase from no company is not owed to anyone",
-  "paid_exceeds_buy": "That is more than this purchase came to — record money paid ahead on the company's page"
+  "paid_exceeds_buy": "That is more than this purchase came to — record money paid ahead on the company's page",
+  "purchase_below_paid": "This would make the purchase less than what has already been paid on it — reverse the payment on the company's page first"
 }

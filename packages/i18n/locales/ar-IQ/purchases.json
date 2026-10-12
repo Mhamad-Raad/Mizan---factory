@@ -25,7 +25,7 @@
   "void_purchase": "إبطال الشراء",
   "voided": "تم إبطال الشراء",
   "void_banner": "أُبطل بواسطة {{employee}}: {{reason}}",
-  "void_explanation": "سيُخرَج مخزون {{count}} مواد ويُخصم {{amount}} من ما علينا. الدفعات المدفوعة تبقى في الحساب.",
+  "void_explanation": "سيُسحب مخزون {{count}} مواد، ويُخصم {{amount}} مما علينا، ويُسترجع ما دُفع معه أيضاً. الدفعات اللاحقة تبقى في الحساب.",
   "duplicate": "استنساخ كشراء جديد",
   "empty": "لا توجد مشتريات بعد",
   "empty_search": "لا نتائج لـ ‏«{{query}}»",
@@ -115,5 +115,7 @@
   "tile_purchases": "المشتريات",
   "tile_we_owe": "ما زال علينا للشركات",
   "tile_we_owe_count": "الشركات: {{count}}",
-  "rate_source_purchase": "سعر هذا الشراء"
+  "rate_source_purchase": "سعر هذا الشراء",
+  "paid_with_note": "دُفع مع {{name}}",
+  "paid_in": "دُفع بـ"
 }

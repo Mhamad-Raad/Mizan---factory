@@ -6,6 +6,7 @@ import type { LedgerEntry, LedgerGroup } from '@mizan/ledger';
 import { AuditService, diffOf } from '../audit/audit.service.js';
 import { resolveActingUser } from '../common/acting-user.js';
 import { ApiError } from '../common/errors.js';
+import { documentNumbers } from '../common/document-numbers.js';
 import { assertMayReverse } from '../ledger/reversible.js';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
@@ -161,16 +162,15 @@ export class CustomersService {
     filters: CustomerFilters,
   ): Promise<{ items: CustomerDto[]; total: number }> {
     const sight = this.sightOf(context);
-    // The filter and the sort read the net balance (D-054), which needs both sides' flags. For
-    // anyone else they are ignored: a list filtered to "owes us" and ranked by it would tell
-    // them the very figure the response hides (review).
-    const seesNet = sight.selling && sight.buying;
-    // "We owe them" reads only the buying side, so the buying side's flag is enough for it (D-085).
-    const filterAllowed = filters.balance === 'we_owe' ? sight.buying : seesNet;
+    // Each filter needs the flag of the side it reads (D-085): "we owe them" the company-balances
+    // flag, the others and the sort the customer-balances flag. For anyone else they are ignored —
+    // a list filtered to "owes us" and ranked by it would tell them the very figure the response
+    // hides (review).
+    const filterAllowed = filters.balance === 'we_owe' ? sight.buying : sight.selling;
     const { rows, total } = await this.customers.list({
       ...filters,
       balance: filterAllowed ? filters.balance : undefined,
-      sort: !seesNet && filters.sort === 'balance' ? 'name' : filters.sort,
+      sort: !sight.selling && filters.sort === 'balance' ? 'name' : filters.sort,
     });
     // The list values balances at the global rate; a customer's own rate is applied on the
     // detail, where a single per-row lookup is not thousands of them.
@@ -984,6 +984,12 @@ export class CustomersService {
     });
   }
 
+  /** Each row's order number, for the screen and the printed statement (D-086). */
+  private async withOrderNumbers(items: LedgerGroupDto[]): Promise<LedgerGroupDto[]> {
+    const numbers = await documentNumbers(this.database, 'orders', items.map((item) => item.order_id));
+    return items.map((item) => ({ ...item, order_number: item.order_id ? (numbers.get(item.order_id) ?? null) : null }));
+  }
+
   async historyOf(
     context: RequestContext,
     id: string,
@@ -999,24 +1005,6 @@ export class CustomersService {
    * client renders and shares the page, so there is no server-side PDF stack to maintain
    * (D-014).
    */
-  /**
-   * The number of the order each row names, so an account and a printed statement say
-   * "Order #40" rather than "Order" (D-086) — one query for the rows being sent.
-   */
-  private async withOrderNumbers(items: LedgerGroupDto[]): Promise<LedgerGroupDto[]> {
-    const ids = [...new Set(items.map((item) => item.order_id).filter((id): id is string => id !== null))];
-    if (ids.length === 0) return items;
-    const { rows } = await this.database.query<{ id: string; number: string }>(
-      'SELECT id, number::text AS number FROM orders WHERE id = ANY($1::uuid[])',
-      [ids],
-    );
-    const numbers = new Map(rows.map((row) => [row.id, Number(row.number)]));
-    return items.map((item) => ({
-      ...item,
-      order_number: item.order_id ? (numbers.get(item.order_id) ?? null) : null,
-    }));
-  }
-
   async statement(
     context: RequestContext,
     id: string,

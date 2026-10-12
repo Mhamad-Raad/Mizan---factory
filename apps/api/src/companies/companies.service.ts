@@ -6,6 +6,7 @@ import type { AllocationResult, LedgerEntry, LedgerGroup } from '@mizan/ledger';
 import { AuditService } from '../audit/audit.service.js';
 import { resolveActingUser } from '../common/acting-user.js';
 import { ApiError } from '../common/errors.js';
+import { documentNumbers } from '../common/document-numbers.js';
 import { assertMayReverse } from '../ledger/reversible.js';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
@@ -290,25 +291,7 @@ export class CompaniesService {
     page_size: number;
   }> {
     const row = await this.requireCompany(id);
-    const [entries, purchases] = await Promise.all([
-      this.ledger.entriesFor(this.database, id),
-      this.companies.purchasesForAllocation(id),
-    ]);
-
-    const allocation = allocateOldestFirst(
-      entries,
-      purchases.map((purchase) => ({
-        id: purchase.id,
-        total:
-          row.settlement_currency === 'IQD'
-            ? Number(purchase.total_iqd)
-            : Number(purchase.total_usd_cents),
-        purchase_date: purchase.purchase_date,
-        voided: purchase.status === 'void',
-        number: Number(purchase.number),
-      })),
-      row.settlement_currency,
-    );
+    const { allocation, purchases } = await this.allocationOf(this.database, id, row.settlement_currency);
 
     // Only what is still owed travels, oldest first — which is the order the money goes out
     // in — and at most a page of it. A supplier of fifteen years whose payments lag has
@@ -409,7 +392,7 @@ export class CompaniesService {
 
       if (input.settle_in_full) {
         const remaining = input.purchase_id
-          ? await this.purchaseRemaining(tx, input.purchase_id)
+          ? await this.purchaseRemaining(tx, account, input.purchase_id)
           : await this.ledger.balanceOf(tx, account);
         if (remaining <= 0) {
           throw ApiError.validation([
@@ -852,18 +835,9 @@ export class CompaniesService {
 
   // ───────────────────────────────── the pieces they share ─────────────────────────────────
 
-  /**
-   * The number of the purchase each row names, so an account and a printed statement say
-   * "Purchase #12" rather than "Purchase" (D-086) — one query for the rows being sent.
-   */
+  /** Each row's purchase number, for the screen and the printed statement (D-086). */
   private async withPurchaseNumbers(items: LedgerGroupDto[]): Promise<LedgerGroupDto[]> {
-    const ids = [...new Set(items.map((item) => item.purchase_id).filter((id): id is string => id !== null))];
-    if (ids.length === 0) return items;
-    const { rows } = await this.database.query<{ id: string; number: string }>(
-      'SELECT id, number::text AS number FROM purchases WHERE id = ANY($1::uuid[])',
-      [ids],
-    );
-    const numbers = new Map(rows.map((row) => [row.id, Number(row.number)]));
+    const numbers = await documentNumbers(this.database, 'purchases', items.map((item) => item.purchase_id));
     return items.map((item) => ({
       ...item,
       purchase_number: item.purchase_id ? (numbers.get(item.purchase_id) ?? null) : null,
@@ -891,11 +865,6 @@ export class CompaniesService {
   }
 
   /**
-   * What one purchase still owes, counting only the entries that name it (FR-712). The
-   * oldest-first allocation is deliberately *not* used here: settling "this purchase in full"
-   * means the amount actually tied to it, not a share of somebody's lump sum.
-   */
-  /**
    * A credit that names a damage record (FR-805) must name **this** company's record: the
    * goods went back to the supplier the record is attributed to, and a credit on anyone else's
    * account is a mis-typed id rather than an accounting decision.
@@ -915,14 +884,42 @@ export class CompaniesService {
     if (row.status === 'void') throw new ApiError('DOCUMENT_VOID', { damage_id: damageId });
   }
 
-  private async purchaseRemaining(tx: Db, purchaseId: string): Promise<number> {
-    const { rows } = await tx.query<{ total: string; linked: string }>(
-      'SELECT total::text AS total, linked::text AS linked FROM purchase_linked_totals WHERE purchase_id = $1',
-      [purchaseId],
+  /**
+   * The oldest-first allocation of a company's account over its purchases (FR-712): what each
+   * purchase still owes once the entries that name it, and then its share of everything that
+   * names none, are taken off. The breakdown, a purchase's own figures and "settle in full"
+   * against a purchase all read it, so they can never disagree.
+   */
+  async allocationOf(db: Db, companyId: string, settlement: Currency) {
+    const [entries, purchases] = await Promise.all([
+      this.ledger.entriesFor(db, companyId),
+      this.companies.purchasesForAllocation(companyId, db),
+    ]);
+    const allocation = allocateOldestFirst(
+      entries,
+      purchases.map((purchase) => ({
+        id: purchase.id,
+        total: settlement === 'IQD' ? Number(purchase.total_iqd) : Number(purchase.total_usd_cents),
+        purchase_date: purchase.purchase_date,
+        voided: purchase.status === 'void',
+        number: Number(purchase.number),
+      })),
+      settlement,
     );
-    const row = rows[0];
-    if (!row) throw ApiError.notFound();
-    return Number(row.total) + Number(row.linked);
+    return { allocation, purchases };
+  }
+
+  /**
+   * What one purchase still owes, as every screen shows it: oldest-first (FR-712, D-085). It
+   * used to count only the entries that named the purchase, so "settle in full" on a purchase
+   * an unlinked payment had already half covered paid its whole total again — the sheet said
+   * 50,000 and the account was charged 150,000.
+   */
+  private async purchaseRemaining(tx: Db, account: LedgerAccount, purchaseId: string): Promise<number> {
+    const { allocation } = await this.allocationOf(tx, account.id, account.settlement_currency);
+    const mine = allocation.purchases.find((row) => row.purchase_id === purchaseId);
+    if (!mine) throw ApiError.notFound();
+    return mine.remaining;
   }
 
   private async writeMoneyRow(

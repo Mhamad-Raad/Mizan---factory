@@ -62,6 +62,7 @@ const listSchema = z.object({
   status: z.enum(['active', 'void']).optional(),
   q: z.string().max(200).optional(),
   include_undone: z.enum(['true', 'false']).optional(),
+  totals: z.enum(['true', 'false']).optional(),
   ...pageFields,
 });
 
@@ -94,7 +95,11 @@ export class PurchasesController {
   @Get('purchases')
   @RequirePermission('purchases.view')
   async list(@Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
-    return this.purchases.list({ ...query, include_undone: query.include_undone === 'true' });
+    return this.purchases.list({
+      ...query,
+      include_undone: query.include_undone === 'true',
+      totals: query.totals !== 'false',
+    });
   }
 
   /** The company's Purchases tab; the same list, filtered to one supplier (FR-709). */
@@ -109,6 +114,7 @@ export class PurchasesController {
       ...query,
       company_id: id,
       include_undone: query.include_undone === 'true',
+      totals: query.totals !== 'false',
     });
   }
 

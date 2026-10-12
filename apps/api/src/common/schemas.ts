@@ -36,7 +36,7 @@ export const rateString = z
  * filled at the buy's rate unless typed too.
  */
 export const paidNow = z.union([
-  z.object({ in_full: z.literal(true) }),
+  z.object({ in_full: z.literal(true), currency: z.enum(['IQD', 'USD']).nullish() }),
   z.object({
     in_full: z.literal(false).optional(),
     amount: minorAmount.positive(),

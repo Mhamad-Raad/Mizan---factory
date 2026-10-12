@@ -290,4 +290,123 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
     expect(statement.body.items.every((row: { purchase_number: number | null }) => row.purchase_number === number)).toBe(true);
     expect(statement.body.closing_balance).toBe(100_000);
   });
+
+  describe('what the review of D-085 found', () => {
+    async function liveSum(companyId: string): Promise<{ iqd: number; usd: number }> {
+      const ledger = await ledgerOf(companyId);
+      return {
+        iqd: ledger.reduce((total, row) => total + Number(row.amount_iqd), 0),
+        usd: ledger.reduce((total, row) => total + Number(row.amount_usd_cents), 0),
+      };
+    }
+
+    it('takes back the money paid with a purchase when it is voided, and leaves later payments standing', async () => {
+      const created = await buy(buyer, { paid: { in_full: true } }).expect(201);
+      // A later payment against the same purchase, made by hand.
+      await as(ctx.http, buyer)
+        .post(`/api/v1/companies/${alNoor}/payments`)
+        .send({ amount: 10_000, currency: 'IQD', entry_date: today(), purchase_id: created.body.id })
+        .expect(201);
+      await as(ctx.http, admin)
+        .post(`/api/v1/purchases/${created.body.id}/void`)
+        .send({ reason: 'typed twice' })
+        .expect(200);
+      // The purchase and its paid-now payment cancel out; the later 10,000 stays — paid ahead.
+      expect(await liveSum(alNoor)).toMatchObject({ iqd: -10_000 });
+    });
+
+    it('takes back the money paid with a purchase on the creator’s undo', async () => {
+      const created = await buy(buyer, { paid: { in_full: true } }).expect(201);
+      await as(ctx.http, buyer).post(`/api/v1/purchases/${created.body.id}/undo`).expect(200);
+      expect(await liveSum(alNoor)).toEqual({ iqd: 0, usd: 0 });
+    });
+
+    it('refuses an edit that would bring a purchase below what has been paid on it', async () => {
+      const created = await buy(buyer, { paid: { amount: 100_000, currency: 'IQD' } }).expect(201);
+      const refused = await as(ctx.http, admin)
+        .put(`/api/v1/purchases/${created.body.id}`)
+        .send({
+          company_id: alNoor,
+          purchase_date: today(),
+          version: created.body.version,
+          lines: [{ item_id: bolts, qty_count: 50, unit_price: { amount: 1_500, currency: 'IQD' } }],
+        })
+        .expect(422);
+      expect(refused.body.error.fields[0].code).toBe('BELOW_PAID');
+      // Nothing moved: still 150,000 bought and 100,000 paid.
+      expect(await liveSum(alNoor)).toMatchObject({ iqd: 50_000 });
+    });
+
+    it('settles a purchase in full by what it still owes oldest-first, not its whole total again', async () => {
+      const created = await buy(buyer).expect(201);
+      // 100,000 paid on the account without naming the purchase: oldest-first, it covers this one.
+      await as(ctx.http, buyer)
+        .post(`/api/v1/companies/${alNoor}/payments`)
+        .send({ amount: 100_000, currency: 'IQD', entry_date: today() })
+        .expect(201);
+      await as(ctx.http, buyer)
+        .post(`/api/v1/companies/${alNoor}/payments`)
+        .send({ amount: 50_000, currency: 'IQD', entry_date: today(), purchase_id: created.body.id, settle_in_full: true })
+        .expect(201);
+      expect(await liveSum(alNoor)).toMatchObject({ iqd: 0 });
+      const balance = await as(ctx.http, buyer).get(`/api/v1/purchases/${created.body.id}/balance`).expect(200);
+      expect(balance.body.cost.remaining).toBe(0);
+    });
+
+    it('records "all of it" in the currency the money went out in', async () => {
+      await buy(buyer, { paid: { in_full: true, currency: 'USD' } }).expect(201);
+      const entered = await withDatabase(async (client) => {
+        const { rows } = await client.query<{ entered_currency: string }>(
+          `SELECT entered_currency::text AS entered_currency FROM company_ledger
+            WHERE company_id = $1 AND entry_type = 'payment'`,
+          [alNoor],
+        );
+        return rows[0]?.entered_currency;
+      });
+      expect(entered).toBe('USD');
+    });
+
+    it('sums what we owe each company in its own currency only, and leaves hidden companies out', async () => {
+      // A dollar company bought from at 1,300 and paid at 1,500: we still owe it $100, while its
+      // dinar column has gone negative.
+      await buy(buyer, {
+        company_id: dollarCo,
+        rate_iqd_per_usd: '1300',
+        lines: [{ item_id: bolts, qty_count: 1, unit_price: { amount: 100_000, currency: 'USD' } }],
+      }).expect(201);
+      await as(ctx.http, admin).post(`/api/v1/customers/${dollarCo}/rates`).send({ rate_iqd_per_usd: '1500' }).expect(201);
+      await as(ctx.http, buyer)
+        .post(`/api/v1/companies/${dollarCo}/payments`)
+        .send({ amount: 90_000, currency: 'USD', entry_date: today() })
+        .expect(201);
+      await buy(buyer).expect(201); // 150,000 IQD owed to Al-Noor.
+
+      const list = await as(ctx.http, buyer).get('/api/v1/purchases').expect(200);
+      expect(list.body.totals.owed_by_us).toEqual({ companies: 2, owed_iqd: 150_000, owed_usd_cents: 10_000 });
+
+      const hidden = await as(ctx.http, admin).get(`/api/v1/customers/${alNoor}`).expect(200);
+      await as(ctx.http, admin)
+        .post(`/api/v1/customers/${alNoor}/deactivate`)
+        .send({ version: hidden.body.version })
+        .expect(200);
+      const after = await as(ctx.http, buyer).get('/api/v1/purchases').expect(200);
+      expect(after.body.totals.owed_by_us).toEqual({ companies: 1, owed_iqd: 0, owed_usd_cents: 10_000 });
+      // A company's own Purchases tab does not pay for the figure it never shows.
+      const tab = await as(ctx.http, buyer).get(`/api/v1/companies/${dollarCo}/purchases`).expect(200);
+      expect(tab.body.totals.owed_by_us).toBeUndefined();
+    });
+
+    it('filters "they owe us" by what they owe us, whatever we owe them', async () => {
+      // Al-Noor owes us 100,000 and we owe it 150,000: the net is negative, the column says it owes.
+      await as(ctx.http, admin)
+        .post(`/api/v1/customers/${alNoor}/opening-balance`)
+        .send({ amount: 100_000, currency: 'IQD', entry_date: today(), note: 'owed at go-live' })
+        .expect(201);
+      await buy(buyer).expect(201);
+      const owes = await as(ctx.http, admin).get('/api/v1/customers?balance=owes').expect(200);
+      expect(owes.body.items.map((row: { id: string }) => row.id)).toContain(alNoor);
+      const credit = await as(ctx.http, admin).get('/api/v1/customers?balance=credit').expect(200);
+      expect(credit.body.items.map((row: { id: string }) => row.id)).not.toContain(alNoor);
+    });
+  });
 });

@@ -25,7 +25,7 @@
   "void_purchase": "Void purchase",
   "voided": "Purchase voided",
   "void_banner": "Voided by {{employee}}: {{reason}}",
-  "void_explanation": "Stock for {{count}} materials will be taken back out and {{amount}} will come off what we owe. Payments already made stay on the account.",
+  "void_explanation": "Stock for {{count}} materials will be taken back out, {{amount}} comes off what we owe, and anything paid with it is taken back too. Payments made to it later stay on the account.",
   "duplicate": "Duplicate as new purchase",
   "empty": "No purchases yet",
   "empty_search": "No match for '{{query}}'",
@@ -115,5 +115,7 @@
   "tile_purchases": "Purchases",
   "tile_we_owe": "We still owe companies",
   "tile_we_owe_count": "Companies: {{count}}",
-  "rate_source_purchase": "this purchase's rate"
+  "rate_source_purchase": "this purchase's rate",
+  "paid_with_note": "Paid with {{name}}",
+  "paid_in": "Paid in"
 }
