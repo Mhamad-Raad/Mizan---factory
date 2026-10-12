@@ -55,7 +55,16 @@
   "link_purchase": "ربطها بعملية شراء",
   "no_link": "غير مرتبطة بشراء",
   "sheet.payment": "تسجيل دفعة",
-  "sheet.credit": "تسجيل إشعار دائن",
+  "sheet.credit": "إشعار دائن منهم",
   "sheet.adjustment": "تعديل ما علينا",
-  "sheet.opening": "تسجيل الرصيد الافتتاحي"
+  "sheet.opening": "تسجيل الرصيد الافتتاحي",
+  "pay_them": "الدفع لهم",
+  "credit_from_them": "إشعار دائن منهم",
+  "credit_hint": "بضاعة أعدناها أو مبلغ سامحونا به — يُنقص ما علينا لهم.",
+  "adjust_delta_hint": "الرقم الموجب يزيد ما علينا لهم، والسالب يُنقصه.",
+  "purchases_owed": "مشتريات ما زال علينا ثمنها",
+  "nothing_owed": "ليس علينا لهم شيء",
+  "we_owe_nothing": "ليس علينا لهم شيء",
+  "they_owe_nothing": "ليس لنا عليهم شيء",
+  "more_owed": "و{{count}} أخرى — {{total}} علينا بالمجمل"
 }

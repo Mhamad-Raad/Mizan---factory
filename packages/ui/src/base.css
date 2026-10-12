@@ -1506,7 +1506,7 @@ a.mz-button {
 
 /* A voided document says so above everything else on the page. */
 .mz-invoice__void {
-  border: 2px solid currentColor;
+  border: 2px solid currentcolor;
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
   font-weight: 600;
@@ -4313,4 +4313,57 @@ html[data-mirroring='true'] body {
 .mz-totals__note {
   margin: 0;
   text-align: end;
+}
+
+/* ─────────────── "select to print" on a list (D-086) ───────────────
+ *
+ * While selecting, every row carries a tick box at its start: a column of its own on a desktop
+ * table, beside the card on a phone — never inside the row's link, so ticking a row does not
+ * open it. The bar above the list says how many are ticked and prints them.
+ */
+.mz-selectable {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.mz-selectable > a {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.mz-table__tick {
+  inline-size: 3rem;
+  padding-inline: var(--space-1);
+}
+
+.mz-table__tick .mz-check {
+  justify-content: center;
+}
+
+.mz-table tr[data-selected='true'] td {
+  background: var(--color-primary-soft);
+}
+
+.mz-selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  padding: var(--space-2) var(--space-3);
+}
+
+.mz-selection-bar__count {
+  color: var(--color-on-primary-soft);
+  font-weight: 600;
+}
+
+.mz-selection-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-inline-start: auto;
 }

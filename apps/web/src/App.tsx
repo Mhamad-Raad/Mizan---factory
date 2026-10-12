@@ -57,6 +57,8 @@ const CustomerDetailPage = chunk(
 );
 const NewCustomerPage = chunk(() => import('./pages/NewCustomerPage.js'), 'NewCustomerPage');
 const AccountsPage = chunk(() => import('./pages/AccountsPage.js'), 'AccountsPage');
+const PurchasesPage = chunk(() => import('./pages/PurchasesPage.js'), 'PurchasesPage');
+const PurchaseFormPage = chunk(() => import('./pages/PurchaseFormPage.js'), 'PurchaseFormPage');
 const PurchaseDetailPage = chunk(
   () => import('./pages/PurchaseDetailPage.js'),
   'PurchaseDetailPage',
@@ -304,8 +306,8 @@ export function App() {
             {/* The accountant page took the Purchases page's place (D-062); buying is done in
                 Materials now, so the old purchase form's links land there. A buy's own page stays. */}
             <Route path="/accounts" element={gate(may('accounts.view'), <AccountsPage />)} />
-            <Route path="/purchases" element={<Navigate to="/accounts" replace />} />
-            <Route path="/purchases/new" element={<Navigate to="/materials" replace />} />
+            <Route path="/purchases" element={gate(may('purchases.view'), <PurchasesPage />)} />
+            <Route path="/purchases/new" element={gate(may('purchases.create'), <PurchaseFormPage />)} />
             <Route path="/purchases/:id" element={gate(may('purchases.view'), <PurchaseDetailPage />)} />
             <Route path="/purchases/:id/edit" element={<Navigate to="/materials" replace />} />
             <Route path="/damages" element={gate(may('damages.view'), <DamagesPage />)} />

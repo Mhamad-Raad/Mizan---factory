@@ -95,5 +95,6 @@
   "rate_changed": "نرخ {{old}} ← {{new}}",
   "rate_set": "نرخ دانرا بە {{new}}",
   "entry.damage": "تەلەف",
-  "tab_account": "حساب"
+  "tab_account": "حساب",
+  "filter_we_owe": "قەرزی ئێمە بۆ ئەوان"
 }

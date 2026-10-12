@@ -95,5 +95,6 @@
   "rate_changed": "Rate {{old}} → {{new}}",
   "rate_set": "Rate set to {{new}}",
   "entry.damage": "Broken goods",
-  "tab_account": "Account"
+  "tab_account": "Account",
+  "filter_we_owe": "We owe them"
 }

@@ -1,0 +1,184 @@
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Button, SegmentedControl } from '@mizan/ui';
+import type { Currency, Rate } from '@mizan/money';
+import { DualAmount } from './DualAmount.js';
+import { MoneyInput } from './MoneyInput.js';
+import type { MoneyValue } from './MoneyInput.js';
+import { PickerSheet } from './PickerSheet.js';
+import type { CustomerRow } from '../pages/CustomersPage.js';
+
+/*
+ * The two questions every buy asks (D-085) — who did we buy it from, and did we pay them now —
+ * asked the same way wherever stock comes in: the purchase form, "Buy more" on a material, and a
+ * new material's first purchase.
+ */
+
+/** Who a purchase is from: not chosen yet, nobody (stock that owes nobody), or a company. */
+export type CompanyChoice =
+  | { kind: 'unset' }
+  | { kind: 'none' }
+  | { kind: 'company'; id: string; name: string; settlement_currency: Currency };
+
+export function companyIdOf(choice: CompanyChoice): string | null {
+  return choice.kind === 'company' ? choice.id : null;
+}
+
+const NO_COMPANY = '__no_company__';
+
+/**
+ * "Bought from": a button that opens the company picker. "Not from a company" is the first row
+ * of the picker, so a purchase is never left without an answer by accident — a purchase from
+ * nobody owes nobody, and the business wants to know what it owes (D-085).
+ */
+export function CompanyField({
+  value,
+  onChange,
+  error,
+}: {
+  value: CompanyChoice;
+  onChange: (choice: CompanyChoice) => void;
+  error?: string;
+}) {
+  const { t } = useTranslation();
+  const [picking, setPicking] = useState(false);
+  const label =
+    value.kind === 'company' ? value.name : value.kind === 'none' ? t('purchases:no_company') : t('purchases:pick_company');
+
+  return (
+    <div className="mz-field">
+      <span className="mz-field__label">{t('print:bought_from')}</span>
+      <Button variant="secondary" block icon="companies" onClick={() => setPicking(true)}>
+        <bdi>{label}</bdi>
+      </Button>
+      {value.kind === 'none' ? <span className="mz-field__hint">{t('purchases:no_company_hint')}</span> : null}
+      {error ? (
+        <span className="mz-field__error" role="alert">
+          {error}
+        </span>
+      ) : null}
+      {picking ? (
+        <PickerSheet
+          title={t('purchases:pick_company')}
+          open
+          onClose={() => setPicking(false)}
+          path="/customers"
+          icon="companies"
+          searchLabel={t('customers:search_placeholder')}
+          emptyTitle={t('customers:empty')}
+          // The walk-in customer is a till, never a supplier.
+          exclude={(row: never) => (row as unknown as CustomerRow).is_system}
+          pinned={{
+            id: NO_COMPANY,
+            title: t('purchases:no_company'),
+            subtitle: t('purchases:no_company_hint'),
+            row: null as never,
+          }}
+          toItem={(row: never) => {
+            const company = row as unknown as CustomerRow;
+            return {
+              id: company.id,
+              title: company.name,
+              subtitle: company.phone ?? undefined,
+              // What we owe them already, so the buyer sees it before adding to it.
+              detail:
+                company.payable && (company.payable.amount_iqd !== 0 || company.payable.amount_usd_cents !== 0) ? (
+                  <span className="mz-picker__meta">
+                    <span className="mz-caption">{t('companies:we_owe_them')} </span>
+                    <DualAmount
+                      amount_iqd={company.payable.amount_iqd}
+                      amount_usd_cents={company.payable.amount_usd_cents}
+                      primary={company.payable.currency}
+                      kind="derived"
+                    />
+                  </span>
+                ) : undefined,
+            };
+          }}
+          onPick={(id, row) => {
+            setPicking(false);
+            if (id === NO_COMPANY) {
+              onChange({ kind: 'none' });
+              return;
+            }
+            const company = row as unknown as CustomerRow;
+            onChange({ kind: 'company', id: company.id, name: company.name, settlement_currency: company.settlement_currency });
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** "Paid now": nothing (it is owed), all of it, or a part typed in either currency. */
+export interface PaidNow {
+  mode: 'none' | 'all' | 'part';
+  amount: MoneyValue;
+}
+
+export const NOTHING_PAID: PaidNow = { mode: 'none', amount: { amount: null, currency: 'IQD', other_amount: null } };
+
+/** The `paid` field of a purchase request, or null when nothing was paid now. */
+export function paidNowBody(
+  paid: PaidNow,
+): { in_full: true } | { amount: number; currency: Currency; other_amount: number | null } | null {
+  if (paid.mode === 'all') return { in_full: true };
+  if (paid.mode === 'part' && paid.amount.amount !== null && paid.amount.amount > 0) {
+    return { amount: paid.amount.amount, currency: paid.amount.currency, other_amount: paid.amount.other_amount ?? null };
+  }
+  return null;
+}
+
+/** Whether what was typed can be sent: a part needs an amount above zero. */
+export function paidNowValid(paid: PaidNow): boolean {
+  return paid.mode !== 'part' || (paid.amount.amount !== null && paid.amount.amount > 0);
+}
+
+/**
+ * Did we pay them now? Shown only for a purchase from a company, and only to someone who may pay
+ * companies — "nothing now" leaves it all owed, which the company's page then tracks until it is
+ * paid back.
+ */
+export function PaidNowField({
+  value,
+  onChange,
+  rate,
+  error,
+}: {
+  value: PaidNow;
+  onChange: (value: PaidNow) => void;
+  rate: Rate | null;
+  error?: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
+      <SegmentedControl
+        label={t('purchases:paid_now')}
+        value={value.mode}
+        onChange={(mode) => onChange({ ...value, mode })}
+        options={[
+          { value: 'none', label: t('purchases:paid_now_none') },
+          { value: 'all', label: t('purchases:paid_now_all') },
+          { value: 'part', label: t('purchases:paid_now_part') },
+        ]}
+      />
+      {value.mode === 'part' ? (
+        <MoneyInput
+          label={t('purchases:paid_now_amount')}
+          value={value.amount}
+          rate={rate}
+          onChange={(amount) => onChange({ ...value, amount })}
+          error={error}
+        />
+      ) : error ? (
+        <span className="mz-field__error" role="alert">
+          {error}
+        </span>
+      ) : null}
+      <span className="mz-field__hint">
+        {t(value.mode === 'none' ? 'purchases:paid_now_none_hint' : 'purchases:paid_now_hint')}
+      </span>
+    </div>
+  );
+}

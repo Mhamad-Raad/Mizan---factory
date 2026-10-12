@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Icon, TextField, Toast } from '@mizan/ui';
+import { Button, Icon, TextField, Toast } from '@mizan/ui';
 import type { Currency, Rate, RateSource } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
@@ -22,6 +22,8 @@ import { Pager } from '../components/Pager.js';
 import { useKeepPageInRange, usePaging } from '../lib/paging.js';
 import { useDebouncedValue } from '../lib/debounce.js';
 import { presetPeriod } from '../lib/periods.js';
+import { usePrint } from '../lib/print.js';
+import { PrintSelectionBar, usePrintSelection } from '../components/PrintSelection.js';
 
 export interface OrderRow {
   id: string;
@@ -68,6 +70,7 @@ export function OrdersPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const print = usePrint();
 
   // A just-saved order arrives in the navigation state (see OrderFormPage). Read it once, up front,
   // so the save toast (with its 8-second undo, FR-610) shows the moment the list mounts.
@@ -127,21 +130,22 @@ export function OrdersPage() {
   const range = rangeOf(chip, formatter.today());
   const paging = usePaging({ storageKey: 'orders', resetOn: [chip, unpaidOnly, paymentType, doneBy, query] });
 
+  const filters = new URLSearchParams();
+  if (range.from) filters.set('from', range.from);
+  if (range.to) filters.set('to', range.to);
+  // "Unpaid" is every order still owing something — unpaid or partly paid (client review).
+  if (unpaidOnly) filters.set('status', 'owing');
+  if (paymentType !== 'all') filters.set('payment_type', paymentType);
+  if (doneBy) filters.set('done_by', doneBy);
+  if (query) filters.set('q', query);
+  const filterQuery = filters.toString();
+
   const orders = useQuery({
     queryKey: ['orders', chip, unpaidOnly, paymentType, doneBy, query, paging.page, paging.pageSize],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (range.from) params.set('from', range.from);
-      if (range.to) params.set('to', range.to);
-      // "Unpaid" is every order still owing something — unpaid or partly paid (client review).
-      if (unpaidOnly) params.set('status', 'owing');
-      if (paymentType !== 'all') params.set('payment_type', paymentType);
-      if (doneBy) params.set('done_by', doneBy);
-      if (query) params.set('q', query);
-      return apiRequest<{ items: OrderRow[]; total: number; totals: OrderTotals }>(
-        `/orders?${params.toString()}&${paging.query}`,
-      );
-    },
+    queryFn: () =>
+      apiRequest<{ items: OrderRow[]; total: number; totals: OrderTotals }>(
+        `/orders?${filterQuery}${filterQuery ? '&' : ''}${paging.query}`,
+      ),
     // Keep the current rows on screen while a filter change refetches, so the table dims for a
     // moment instead of collapsing to a skeleton on every keystroke or dropdown change.
     placeholderData: keepPreviousData,
@@ -157,6 +161,11 @@ export function OrdersPage() {
 
   const rows = orders.data?.items ?? [];
   const totals = orders.data?.totals;
+  // Old orders ticked and their receipts printed again (D-086).
+  const selecting = usePrintSelection<OrderRow>(
+    (row) => ({ kind: 'order', id: row.id }),
+    (row) => row.id,
+  );
 
   usePageTitle(t('orders:title'));
 
@@ -265,6 +274,21 @@ export function OrdersPage() {
           </div>
         ) : null}
 
+        <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+          <PrintSelectionBar state={selecting} />
+          {!selecting.active && rows.length > 0 ? (
+            <Button
+              variant="secondary"
+              icon="print"
+              onClick={() =>
+                print([{ kind: 'order_list', query: filterQuery, from: range.from ?? null, to: range.to ?? null }])
+              }
+            >
+              {t('print:print_list')}
+            </Button>
+          ) : null}
+        </div>
+
         <QueryStates
           query={orders}
           isEmpty={rows.length === 0}
@@ -280,7 +304,7 @@ export function OrdersPage() {
           }
         >
           <div className="mz-refreshable" data-busy={refreshing ? 'true' : undefined} aria-busy={refreshing}>
-          <OrderTable rows={rows} />
+          <OrderTable rows={rows} selection={selecting.selection} />
           </div>
           <Pager
             page={paging.page}
@@ -297,6 +321,9 @@ export function OrdersPage() {
           message={toast.message}
           actionLabel={t('common:undo')}
           onAction={() => undo.mutate(toast.orderId)}
+          // The receipt of the order just saved, offered at once (D-086).
+          secondaryLabel={t('print:print_receipt')}
+          onSecondary={() => print([{ kind: 'order', id: toast.orderId }])}
         />
       ) : null}
     </>

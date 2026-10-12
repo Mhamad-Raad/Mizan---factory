@@ -610,12 +610,20 @@ export interface ToastProps {
   message: string;
   actionLabel?: string;
   onAction?: () => void;
+  /** A second action beside the first — "Print receipt" beside "Undo" (D-086). */
+  secondaryLabel?: string;
+  onSecondary?: () => void;
 }
 
-export function Toast({ message, actionLabel, onAction }: ToastProps) {
+export function Toast({ message, actionLabel, onAction, secondaryLabel, onSecondary }: ToastProps) {
   return (
     <div className="mz-toast" role="status" aria-live="polite">
       <span style={{ flex: 1 }}>{message}</span>
+      {secondaryLabel && onSecondary ? (
+        <button type="button" className="mz-button mz-button--ghost" onClick={onSecondary}>
+          {secondaryLabel}
+        </button>
+      ) : null}
       {actionLabel && onAction ? (
         <button type="button" className="mz-button mz-button--ghost" onClick={onAction}>
           {actionLabel}

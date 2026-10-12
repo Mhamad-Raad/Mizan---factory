@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -12,7 +12,6 @@ import {
   NumberField,
   Tabs,
   TextField,
-  Toast,
 } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
@@ -33,6 +32,11 @@ import { errorMessage } from '../lib/errors.js';
 import { invalidateHistory, invalidateMoneyViews } from '../lib/invalidate.js';
 import { useGlobalRate } from '../lib/rates.js';
 import type { ItemRow } from './MaterialsPage.js';
+import type { CustomerRow } from './CustomersPage.js';
+import { CompanyField, NOTHING_PAID, PaidNowField, companyIdOf, paidNowBody, paidNowValid } from '../components/BuyFields.js';
+import type { CompanyChoice, PaidNow } from '../components/BuyFields.js';
+import { SavedToast } from '../components/SavedToast.js';
+import type { SavedNotice } from '../components/SavedToast.js';
 
 interface MonthPrice {
   id: string;
@@ -113,7 +117,8 @@ export function MaterialDetailPage() {
   /** Deactivating asks first, like every other action that takes something out of use. */
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
   const [showUsedUp, setShowUsedUp] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [notice, setNotice] = useState<SavedNotice | null>(null);
+  const dismissNotice = useCallback(() => setNotice(null), []);
 
   const item = useQuery({
     queryKey: ['items', id],
@@ -196,27 +201,22 @@ export function MaterialDetailPage() {
     onSuccess: async () => {
       pricesKey.renew();
       closePrices();
-      setToast(t('materials:prices_saved'));
+      setNotice({ message: t('materials:prices_saved') });
       await queryClient.invalidateQueries({ queryKey: ['items'] });
       // A month's price values the stock and the margin, which Today, Reports and Accounts sum.
       await invalidateMoneyViews(queryClient);
     },
   });
 
-  // "Add stock" is a buy of this one material, with no company (D-062).
+  // "Buy more" is a purchase of this one material, from the company it came from (D-085).
   const addStock = useMutation({
-    mutationFn: (input: {
-      purchase_date: string;
-      note: string | null;
-      qty_count: number | null;
-      qty_kg: string | null;
-      unit_price: { amount: number; currency: 'IQD' | 'USD'; other_amount: number | null };
-    }) =>
-      apiRequest('/purchases', {
+    mutationFn: (input: BuyMoreInput) =>
+      apiRequest<{ id: string }>('/purchases', {
         method: 'POST',
         idempotencyKey: addStockKey.key,
         body: {
-          company_id: null,
+          company_id: input.company_id,
+          paid: input.paid,
           purchase_date: input.purchase_date,
           notes: input.note,
           lines: [
@@ -229,10 +229,11 @@ export function MaterialDetailPage() {
           ],
         },
       }),
-    onSuccess: async () => {
+    onSuccess: async (purchase) => {
       addStockKey.renew();
       closeAddStock();
-      setToast(t('materials:stock_added'));
+      // Its receipt, offered at once (D-086).
+      setNotice({ message: t('materials:stock_added'), receipt: { kind: 'purchase', id: purchase.id } });
       await queryClient.invalidateQueries({ queryKey: ['items'] });
       await queryClient.invalidateQueries({ queryKey: ['purchases'] });
       await invalidateMoneyViews(queryClient);
@@ -754,9 +755,7 @@ export function MaterialDetailPage() {
           </BottomSheet>
         ) : null}
 
-        {toast ? (
-          <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} />
-        ) : null}
+        {notice ? <SavedToast notice={notice} onDone={dismissNotice} /> : null}
       </div>
     </>
   );
@@ -924,10 +923,22 @@ function LotRow({ lot, unit, link }: { lot: Lot; unit: string; link: boolean }) 
   );
 }
 
+/** What "Buy more" sends: the purchase of one material, its company and what was paid now. */
+interface BuyMoreInput {
+  company_id: string | null;
+  paid: ReturnType<typeof paidNowBody>;
+  purchase_date: string;
+  note: string | null;
+  qty_count: number | null;
+  qty_kg: string | null;
+  unit_price: { amount: number; currency: 'IQD' | 'USD'; other_amount: number | null };
+}
+
 /**
- * "Add stock" (D-062): a new buy of this material — how much came in, what each one cost, when.
- * The cost opens with the last buy's, in the currency it was paid in, since a new shipment is
- * most often at or near the last price; the buy keeps its own price whatever is typed.
+ * "Buy more" (D-062, D-085): a new purchase of this material — who it was bought from, how much
+ * came in, what each one cost, when, and what was paid them on the spot. The cost opens with the
+ * last purchase's, in the currency it was paid in, since a new shipment is most often at or near
+ * the last price; the purchase keeps its own price whatever is typed.
  */
 function AddStockSheet({
   pricedMeasure,
@@ -945,13 +956,7 @@ function AddStockSheet({
   saving: boolean;
   error?: string;
   onClose: () => void;
-  onSave: (input: {
-    purchase_date: string;
-    note: string | null;
-    qty_count: number | null;
-    qty_kg: string | null;
-    unit_price: { amount: number; currency: 'IQD' | 'USD'; other_amount: number | null };
-  }) => void;
+  onSave: (input: BuyMoreInput) => void;
   /** Any change to the inputs: the caller forgets the last refusal. */
   onEdit?: () => void;
 }) {
@@ -960,6 +965,17 @@ function AddStockSheet({
   const [date, setDate] = useState(formatter.today());
   const [quantity, setQuantity] = useState('');
   const [note, setNote] = useState('');
+  const [company, setCompany] = useState<CompanyChoice>({ kind: 'unset' });
+  const [paid, setPaid] = useState<PaidNow>(NOTHING_PAID);
+  const mayPay = usePermission('companies.record_payment');
+  const companyId = companyIdOf(company);
+  // The company's own rate fills the other currency, as the server will (2.3.3).
+  const details = useQuery({
+    queryKey: ['customers', companyId],
+    queryFn: () => apiRequest<CustomerRow>(`/customers/${companyId}`),
+    enabled: Boolean(companyId),
+  });
+  const buyRate = details.data?.rate?.rate_iqd_per_usd ?? rate;
   const edit =
     <T,>(set: (value: T) => void) =>
     (value: T) => {
@@ -982,12 +998,21 @@ function AddStockSheet({
   const countInvalid = pricedMeasure === 'count' && count.kind === 'invalid';
   const quantityValid =
     pricedMeasure === 'count' ? count.kind === 'count' && count.value > 0 : quantity.trim() !== '' && Number(quantity) > 0;
-  const valid = quantityValid && cost.amount !== null && cost.amount >= 0;
+  const valid =
+    company.kind !== 'unset' && quantityValid && cost.amount !== null && cost.amount >= 0 && paidNowValid(paid);
 
   return (
     <BottomSheet title={t('materials:add_stock')} open onClose={onClose} closeLabel={t('common:close')}>
       <div className="mz-stack">
         <p className="mz-muted">{t('materials:add_stock_hint')}</p>
+        <CompanyField
+          value={company}
+          onChange={(choice) => {
+            onEdit?.();
+            setCompany(choice);
+            if (choice.kind !== 'company') setPaid(NOTHING_PAID);
+          }}
+        />
         <div className="mz-grid-2">
           <NumberField
             label={t('glossary:quantity')}
@@ -1007,7 +1032,7 @@ function AddStockSheet({
         <MoneyInput
           label={t('materials:cost_per_unit')}
           value={cost}
-          rate={rate}
+          rate={buyRate}
           sourceLabel={t('glossary:system_rate')}
           onChange={edit(setCost)}
         />
@@ -1019,6 +1044,9 @@ function AddStockSheet({
           maxLength={500}
           onChange={(event) => edit(setNote)(event.target.value)}
         />
+        {company.kind === 'company' && mayPay ? (
+          <PaidNowField value={paid} rate={buyRate} onChange={edit(setPaid)} />
+        ) : null}
         <Button
           block
           loading={saving}
@@ -1026,6 +1054,8 @@ function AddStockSheet({
           onClick={() =>
             cost.amount !== null &&
             onSave({
+              company_id: companyId,
+              paid: companyId && mayPay ? paidNowBody(paid) : null,
               purchase_date: date,
               note: note.trim() === '' ? null : note.trim(),
               qty_count: count.kind === 'count' && pricedMeasure === 'count' ? count.value : null,

@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
+import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextField } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import { ORDER_ROUNDING_IQD } from '@mizan/money';
 import type { Currency, Rate } from '@mizan/money';
@@ -20,6 +20,8 @@ import { OrderStatusChip, PaymentTypeChip, RateBadge } from '../components/chips
 import { useJustSettled } from '../lib/motion.js';
 import { customerName } from '../lib/customers.js';
 import { usePrint } from '../lib/print.js';
+import { SavedToast, paymentReceipt } from '../components/SavedToast.js';
+import type { SavedNotice } from '../components/SavedToast.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import type { OrderDetail } from './OrderFormPage.js';
 import { errorMessage } from '../lib/errors.js';
@@ -54,7 +56,8 @@ export function OrderDetailPage() {
   const [voiding, setVoiding] = useState(false);
   // The receipt is printed by the one print host (D-086); the browser's dialog is the preview.
   const print = usePrint();
-  const [toast, setToast] = useState<string | null>(null);
+  const [notice, setNotice] = useState<SavedNotice | null>(null);
+  const dismissNotice = useCallback(() => setNotice(null), []);
 
   // The warnings of an edit just saved arrive in the navigation state (see OrderFormPage); they
   // are read once, and the history entry wiped so a refresh does not raise them again.
@@ -118,11 +121,15 @@ export function OrderDetailPage() {
 
   const payment = useMutation({
     mutationFn: (body: unknown) =>
-      apiRequest(`/orders/${id}/payments`, { method: 'POST', body, idempotencyKey: paymentKey.key }),
-    onSuccess: async () => {
+      apiRequest<unknown>(`/orders/${id}/payments`, { method: 'POST', body, idempotencyKey: paymentKey.key }),
+    onSuccess: async (answer) => {
       paymentKey.renew();
       closeSheets();
-      setToast(t('customers:payment_recorded'));
+      // The payment's own receipt, offered at once (D-086).
+      setNotice({
+        message: t('customers:payment_recorded'),
+        receipt: order.data ? paymentReceipt('sales', order.data.customer_id, answer) : null,
+      });
       await invalidate();
     },
   });
@@ -133,7 +140,7 @@ export function OrderDetailPage() {
     onSuccess: async () => {
       typeKey.renew();
       closeSheets();
-      setToast(t('orders:payment_type_changed'));
+      setNotice({ message: t('orders:payment_type_changed') });
       await invalidate();
     },
   });
@@ -148,7 +155,7 @@ export function OrderDetailPage() {
     onSuccess: async () => {
       voidKey.renew();
       closeSheets();
-      setToast(t('orders:voided'));
+      setNotice({ message: t('orders:voided') });
       await invalidate();
     },
   });
@@ -559,7 +566,7 @@ export function OrderDetailPage() {
           />
         ) : null}
 
-        {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
+        {notice ? <SavedToast notice={notice} onDone={dismissNotice} /> : null}
       </div>
     </>
   );

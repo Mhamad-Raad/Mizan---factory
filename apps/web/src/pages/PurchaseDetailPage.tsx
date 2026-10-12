@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useCallback, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
+import { BottomSheet, Button, Card, Chip, Icon, SegmentedControl, TextField } from '@mizan/ui';
+import type { Currency } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
 import { quantityText } from '../lib/quantity.js';
@@ -17,6 +18,19 @@ import { useCursorPaging } from '../lib/paging.js';
 import { PriceFromMonth, RateBadge } from '../components/chips.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import type { PurchaseDetail } from '../lib/purchases.js';
+import { bothOf } from '../lib/money.js';
+import { usePrint } from '../lib/print.js';
+import { PaymentSheet } from '../components/PaymentSheet.js';
+import type { PaymentBody } from '../components/PaymentSheet.js';
+import { SavedToast, paymentReceipt } from '../components/SavedToast.js';
+import type { SavedNotice } from '../components/SavedToast.js';
+import type { CustomerRow } from './CustomersPage.js';
+
+/** What is paid and still owed on one purchase, by the oldest-first reading (FR-712). */
+interface PurchaseBalance {
+  settlement_currency: Currency | null;
+  cost: { total: number | null; linked: number | null; allocated: number | null; remaining: number | null };
+}
 
 type Tab = 'lines' | 'history';
 
@@ -26,11 +40,12 @@ interface PurchaseHistory {
 }
 
 /**
- * One buy (D-062): stock we bought for ourselves — made by creating a material or adding to one
- * in Materials, never with a company. The header says when and who, the total at its rate, the
- * materials it brought in at their own prices, and its History. It can be voided while none of its
- * stock has gone out; once some has been sold or damaged it is the cost of those, and the API
- * refuses (BUY_IN_USE) — the sheet says so in words.
+ * One purchase (D-085): what we bought, from which company, and — for a company — what we have
+ * paid on it and what we still owe, read oldest-first like the company's own page (FR-712). From
+ * here the rest of it can be paid, and its receipt printed at any time; a purchase just saved opens
+ * here with its receipt offered at once (D-086). It can be voided while none of its stock has gone
+ * out; once some has been sold or damaged it is the cost of those, and the API refuses
+ * (BUY_IN_USE) — the sheet says so in words.
  */
 export function PurchaseDetailPage() {
   const { id = '' } = useParams();
@@ -38,18 +53,47 @@ export function PurchaseDetailPage() {
   const formatter = useFormatter();
   const queryClient = useQueryClient();
   const mayVoid = usePermission('purchases.void');
+  const mayPay = usePermission('companies.record_payment');
+  const maySeeOwed = usePermission('fields.see_company_balances');
+  const print = usePrint();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const [tab, setTab] = useState<Tab>('lines');
   const [voiding, setVoiding] = useState(false);
+  const [paying, setPaying] = useState(false);
   const [reason, setReason] = useState('');
-  const [toast, setToast] = useState<string | null>(null);
+  // A purchase just saved arrives with `justSaved` (see PurchaseFormPage): its receipt is offered
+  // at once, and the history entry is cleared so a reload does not offer it again.
+  const [notice, setNotice] = useState<SavedNotice | null>(() =>
+    (location.state as { justSaved?: boolean } | null)?.justSaved
+      ? { message: t('purchases:saved'), receipt: { kind: 'purchase', id } }
+      : null,
+  );
+  const dismiss = useCallback(() => {
+    setNotice(null);
+    if (location.state) navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
 
   const purchase = useQuery({
     queryKey: ['purchases', id],
     queryFn: () => apiRequest<PurchaseDetail>(`/purchases/${id}`),
   });
   const data = purchase.data;
+  const companyId = data?.company_id ?? null;
 
+  // Paid and still owed, for a purchase from a company and a reader who may see what we owe.
+  const balance = useQuery({
+    queryKey: ['purchases', id, 'balance'],
+    queryFn: () => apiRequest<PurchaseBalance>(`/purchases/${id}/balance`),
+    enabled: Boolean(companyId) && maySeeOwed,
+  });
+  // The company's rate, which a payment is filled at (2.3.3).
+  const company = useQuery({
+    queryKey: ['customers', companyId],
+    queryFn: () => apiRequest<CustomerRow>(`/customers/${companyId}`),
+    enabled: Boolean(companyId) && paying,
+  });
 
   // The audit trail is paged by cursor (D-058).
   const historyPaging = useCursorPaging({ storageKey: 'record-history', resetOn: [id] });
@@ -82,7 +126,27 @@ export function PurchaseDetailPage() {
     onSuccess: async () => {
       voidKey.renew();
       closeVoid();
-      setToast(t('purchases:voided'));
+      setNotice({ message: t('purchases:voided') });
+      await invalidate();
+    },
+  });
+
+  // "Pay for this purchase": a company payment that names it (FR-705), with its own receipt.
+  const payKey = useIdempotencyKey(`pay:${id}:${paying}`);
+  const pay = useMutation({
+    mutationFn: (body: PaymentBody) =>
+      apiRequest<unknown>(`/companies/${companyId}/payments`, {
+        method: 'POST',
+        body: { ...body, purchase_id: id },
+        idempotencyKey: payKey.key,
+      }),
+    onSuccess: async (answer) => {
+      payKey.renew();
+      setPaying(false);
+      setNotice({
+        message: t('companies:payment_recorded'),
+        receipt: companyId ? paymentReceipt('buying', companyId, answer) : null,
+      });
       await invalidate();
     },
   });
@@ -95,6 +159,9 @@ export function PurchaseDetailPage() {
 
   const settlement = data?.settlement_currency ?? 'IQD';
   const active = data?.doc_status === 'active';
+  const remaining = balance.data?.cost.remaining ?? null;
+  const total = balance.data?.cost.total ?? null;
+  const allocated = balance.data?.cost.allocated ?? 0;
 
   const titleNumber = data ? formatter.identifier(data.number) : null;
   usePageTitle(titleNumber ? t('purchases:number', { number: titleNumber }) : t('purchases:title'), {
@@ -120,7 +187,16 @@ export function PurchaseDetailPage() {
                 <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)', alignItems: 'flex-start' }}>
                   <div className="mz-stack" style={{ gap: '2px', minInlineSize: 0 }}>
                     <h2 className="mz-title">{t('purchases:number', { number: formatter.identifier(data.number) })}</h2>
-                    <span className="mz-caption">{t('purchases:buy_caption')}</span>
+                    <span className="mz-caption">
+                      {t('print:bought_from')}:{' '}
+                      {data.company_id && data.company_name ? (
+                        <Link to={`/customers/${data.company_id}`} className="mz-tap-link">
+                          <bdi>{data.company_name}</bdi>
+                        </Link>
+                      ) : (
+                        t('purchases:no_company')
+                      )}
+                    </span>
                     <span className="mz-caption" style={{ display: 'block' }}>
                       {formatter.date(data.purchase_date)}
                       {data.acting_user_name ? ` · ${t('glossary:done_by')}: ${data.acting_user_name}` : ''}
@@ -161,6 +237,29 @@ export function PurchaseDetailPage() {
                   </div>
 
                   <div className="mz-detail-figures">
+                    {/* What we have paid on it and what we still owe, oldest-first (FR-712). */}
+                    {active && total !== null && remaining !== null ? (
+                      <>
+                        <div className="mz-figure">
+                          <span className="mz-figure__label">{t('print:paid_so_far')}</span>
+                          <DualAmount
+                            {...bothOf(total - remaining, settlement, data.rate_iqd_per_usd)}
+                            primary={settlement}
+                            kind="derived"
+                          />
+                        </div>
+                        <div className="mz-figure">
+                          <span className={remaining > 0 ? 'mz-figure__label mz-owed' : 'mz-figure__label'}>
+                            {remaining > 0 ? t('print:still_owed_on_purchase') : t('companies:settled')}
+                          </span>
+                          <DualAmount
+                            {...bothOf(Math.max(remaining, 0), settlement, data.rate_iqd_per_usd)}
+                            primary={settlement}
+                            kind="derived"
+                          />
+                        </div>
+                      </>
+                    ) : null}
                     {data.cost && data.cost.discount_iqd > 0 ? (
                       <div className="mz-figure">
                         <span className="mz-figure__label">{t('glossary:discount')}</span>
@@ -173,10 +272,20 @@ export function PurchaseDetailPage() {
                 </div>
               </Card>
 
-              {/* Its damage, and — set apart at the end — Void, so it is never a slip. Buying more
-                  is done from the material itself (D-062). */}
+              {/* Paying it and printing it first; its damage; and — set apart at the end — Void, so
+                  it is never a slip. */}
               <div className="mz-actions">
+                {active && companyId && mayPay && remaining !== null && remaining > 0 ? (
+                  <div className="mz-actions__group mz-actions__group--primary">
+                    <Button icon="check" onClick={() => setPaying(true)}>
+                      {t('purchases:make_payment')}
+                    </Button>
+                  </div>
+                ) : null}
                 <div className="mz-actions__group">
+                  <Button variant="secondary" icon="print" onClick={() => print([{ kind: 'purchase', id }])}>
+                    {t('print:print_receipt')}
+                  </Button>
                   {/* What arrived damaged in this delivery (FR-802, FR-805). */}
                   <Can permission="damages.view">
                     <Link to={`/damages?purchase=${id}`} className="mz-button mz-button--secondary">
@@ -340,7 +449,38 @@ export function PurchaseDetailPage() {
           </BottomSheet>
         ) : null}
 
-        {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
+        {paying && data && remaining !== null ? (
+          <PaymentSheet
+            open
+            title={t('purchases:make_payment')}
+            amountLabel={t('companies:amount_paid')}
+            remainingLabel={t('print:still_owed_on_purchase')}
+            saveLabel={t('purchases:make_payment')}
+            settleHint={t('purchases:settle_in_full_hint')}
+            remaining={remaining}
+            settlement_currency={settlement}
+            rate={company.data?.rate?.rate_iqd_per_usd ?? data.rate_iqd_per_usd}
+            saving={pay.isPending}
+            error={errorMessage(t, pay.error) ?? undefined}
+            onClose={() => {
+              setPaying(false);
+              pay.reset();
+            }}
+            onEdit={pay.reset}
+            onSave={(body) =>
+              // "Settle in full" against a purchase closes what is *linked* to it (FR-705). When
+              // unlinked money already covers part of it oldest-first, that is more than what is
+              // left here, so the payment is sent as exactly what is left instead.
+              pay.mutate(
+                body.settle_in_full && allocated !== 0
+                  ? { ...body, settle_in_full: false, amount: remaining, currency: settlement, other_amount: null }
+                  : body,
+              )
+            }
+          />
+        ) : null}
+
+        {notice ? <SavedToast notice={notice} onDone={dismiss} /> : null}
       </div>
     </>
   );

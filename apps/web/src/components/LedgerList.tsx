@@ -2,7 +2,8 @@ import { Fragment, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLandedFirstRow } from '../lib/motion.js';
 import { useTranslation } from 'react-i18next';
-import { Chip } from '@mizan/ui';
+import { Checkbox, Chip } from '@mizan/ui';
+import type { RowSelection } from './PrintSelection.js';
 import type { Currency, Rate } from '@mizan/money';
 import { DualAmount } from './DualAmount.js';
 import { useFormatter } from '../lib/store.js';
@@ -21,6 +22,10 @@ export interface LedgerRow {
   balance_after: number;
   note: string | null;
   order_id: string | null;
+  /** The order's or the purchase's own number, so a row says which one (D-086). */
+  order_number?: number | null;
+  purchase_id?: string | null;
+  purchase_number?: number | null;
   performed_by_name: string | null;
   voucher_number: number | null;
   received_currency: Currency | null;
@@ -54,6 +59,8 @@ export interface LedgerListProps {
    * recorded a payment sees where it went instead of a blank success message.
    */
   landedVersion?: number;
+  /** "Select to print" (D-086): a tick box at the start of every row while it is on. */
+  selection?: RowSelection<LedgerRow>;
 }
 
 /**
@@ -77,6 +84,7 @@ export function LedgerList({
   actions,
   namespace = 'customers',
   landedVersion = 0,
+  selection,
 }: LedgerListProps) {
   const { t } = useTranslation();
   const formatter = useFormatter();
@@ -84,6 +92,15 @@ export function LedgerList({
   const [expanded, setExpanded] = useState<string | null>(null);
   const landedId = useLandedFirstRow(items[0]?.entry_id ?? null, landedVersion);
   const toggle = (id: string) => setExpanded(expanded === id ? null : id);
+  const tick = (row: LedgerRow) =>
+    selection ? (
+      <Checkbox
+        labelHidden
+        label={t('print:select_row', { name: `${t(`${namespace}:entry.${row.entry_type}`)} ${formatter.date(row.entry_date)}` })}
+        checked={selection.isSelected(row)}
+        onChange={() => selection.onToggle(row)}
+      />
+    ) : null;
 
   const rowClass = (row: LedgerRow) =>
     [
@@ -106,6 +123,11 @@ export function LedgerList({
           <table className="mz-table mz-ledger-table">
             <thead>
               <tr>
+                {selection ? (
+                  <th scope="col" className="mz-table__tick">
+                    <span className="mz-visually-hidden">{t('print:select')}</span>
+                  </th>
+                ) : null}
                 <th scope="col">{t('common:date')}</th>
                 <th scope="col">{t('customers:ledger_entry')}</th>
                 <th scope="col" data-numeric="true">
@@ -119,7 +141,8 @@ export function LedgerList({
             <tbody>
               {items.map((row) => (
                 <Fragment key={row.entry_id}>
-                  <tr className={rowClass(row)}>
+                  <tr className={rowClass(row)} data-selected={selection?.isSelected(row) ? 'true' : undefined}>
+                    {selection ? <td className="mz-table__tick">{tick(row)}</td> : null}
                     <td data-tabular><EntryDate date={row.entry_date} /></td>
                     <td>
                       <EntryLabel
@@ -140,6 +163,7 @@ export function LedgerList({
                   {expanded === row.entry_id
                     ? row.rows.map((underlying) => (
                         <tr key={underlying.id} className="mz-ledger-table__underlying">
+                          {selection ? <td /> : null}
                           <td data-tabular>
                             <EntryDate date={underlying.entry_date} />
                           </td>
@@ -172,6 +196,7 @@ export function LedgerList({
         <ul className="mz-list">
           {items.map((row) => (
             <li key={row.entry_id} className={`mz-list__item mz-ledger-card ${rowClass(row)}`}>
+              {tick(row)}
               <div className="mz-ledger-card__main">
                 <EntryLabel
                   row={row}
@@ -242,6 +267,16 @@ function EntryLabel({
     <span className="mz-cell__body">
       <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
         <strong>{t(`${namespace}:entry.${row.entry_type}`)}</strong>
+        {row.order_number ? (
+          <span className="mz-caption" data-tabular>
+            {t('orders:number', { number: formatter.identifier(row.order_number) })}
+          </span>
+        ) : null}
+        {row.purchase_number ? (
+          <span className="mz-caption" data-tabular>
+            {t('purchases:number', { number: formatter.identifier(row.purchase_number) })}
+          </span>
+        ) : null}
         {row.kind === 'edited' ? <Chip tone="warning">{t('customers:edited')}</Chip> : null}
         {row.kind === 'undone' ? <Chip>{t('customers:undone')}</Chip> : null}
         {row.kind === 'cash_order' && row.received_currency ? (

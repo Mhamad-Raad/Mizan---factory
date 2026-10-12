@@ -29,6 +29,8 @@ export interface PickerSheetProps {
   icon?: IconName;
   /** A row pinned to the top, such as the walk-in customer (wireframe 3.4.1). */
   pinned?: PickerItem & { row: never };
+  /** Rows the search may return that cannot be picked here — the walk-in, when buying (D-085). */
+  exclude?: (row: never) => boolean;
 }
 
 /**
@@ -47,6 +49,7 @@ export function PickerSheet({
   emptyTitle,
   icon,
   pinned,
+  exclude,
 }: PickerSheetProps) {
   const { t } = useTranslation();
   // The sheet is mounted only while it is open, so the query starts empty on every visit
@@ -62,7 +65,7 @@ export function PickerSheet({
     enabled: open,
   });
 
-  const rows = results.data?.items ?? [];
+  const rows = (results.data?.items ?? []).filter((raw) => !exclude?.(raw as never));
 
   const row = (item: PickerItem, onClick: () => void) => (
     <li key={item.id}>
