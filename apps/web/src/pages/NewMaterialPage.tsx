@@ -82,7 +82,7 @@ export function NewMaterialPage() {
                 purchase_date: boughtOn,
                 note: buyNote.trim() === '' ? null : buyNote.trim(),
                 company_id: companyId,
-                paid: companyId && mayPay ? paidNowBody(paid) : null,
+                paid: company.kind === 'company' && mayPay ? paidNowBody(paid, company.settlement_currency) : null,
               }
             : null,
         },
@@ -180,7 +180,7 @@ export function NewMaterialPage() {
                 value={company}
                 onChange={(choice) => {
                   setCompany(choice);
-                  setPaid({ ...NOTHING_PAID, paidIn: choice.kind === 'company' ? choice.settlement_currency : 'IQD' });
+                  if (choice.kind !== 'company') setPaid(NOTHING_PAID);
                 }}
               />
               <div className="mz-form-grid">
@@ -213,7 +213,12 @@ export function NewMaterialPage() {
                 maxLength={500}
               />
               {company.kind === 'company' && mayPay ? (
-                <PaidNowField value={paid} rate={buyRate} onChange={setPaid} />
+                <PaidNowField
+                  value={paid}
+                  rate={buyRate}
+                  accountCurrency={company.settlement_currency}
+                  onChange={setPaid}
+                />
               ) : null}
             </>
           ) : mayBuy ? (

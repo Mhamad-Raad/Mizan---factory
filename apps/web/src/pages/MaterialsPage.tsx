@@ -33,7 +33,8 @@ export interface ItemRow {
     is_low: boolean;
   };
   sale: { amount_iqd: number; amount_usd_cents: number; from_month: string; source: string } | null;
-  bought?: { amount_iqd: number; amount_usd_cents: number } | null;
+  /** This month's bought price, in the currency it was set in; absent without the bought-price flag. */
+  bought?: { amount_iqd: number; amount_usd_cents: number; entered_currency: 'IQD' | 'USD' } | null;
   last_sold_on: string | null;
 }
 

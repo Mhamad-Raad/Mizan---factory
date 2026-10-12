@@ -106,8 +106,10 @@ export function PurchaseDetailPage() {
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['purchases'] });
     await queryClient.invalidateQueries({ queryKey: ['items'] });
-    // A company's buy is on its account: voiding it moves what we owe them.
+    // A company's buy is on its account: voiding it moves what we owe them, and takes back the
+    // money paid with it — the company's account tabs read under `companies` (second review).
     await queryClient.invalidateQueries({ queryKey: ['customers'] });
+    await queryClient.invalidateQueries({ queryKey: ['companies'] });
     await invalidateMoneyViews(queryClient);
   };
 

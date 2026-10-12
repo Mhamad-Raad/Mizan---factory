@@ -18,9 +18,7 @@ import { useDebouncedValue } from '../lib/debounce.js';
 import { presetPeriod } from '../lib/periods.js';
 import { usePrint } from '../lib/print.js';
 import { useFormatter } from '../lib/store.js';
-import { useGlobalRate } from '../lib/rates.js';
-import { bothOf } from '../lib/money.js';
-import type { Currency, Rate } from '@mizan/money';
+import { OwedAmounts } from '../components/OwedAmounts.js';
 import type { PurchaseRow } from '../lib/purchases.js';
 
 type DateChip = 'today' | 'week' | 'month' | 'all';
@@ -83,7 +81,6 @@ export function PurchasesPage() {
     (row) => row.id,
   );
 
-  const { rate: globalRate } = useGlobalRate();
   const rows = purchases.data?.items ?? [];
   const totals = purchases.data?.totals;
 
@@ -167,13 +164,9 @@ export function PurchasesPage() {
                 <span className="mz-kpi__count" data-tabular>
                   {t('purchases:tile_we_owe_count', { count: totals.owed_by_us.companies })}
                 </span>
-                {/* The dinar companies in dinars and the dollar companies in dollars, each with the
-                    other side at today's rate — never one sum of both (review, lesson 4). */}
-                {owedFigures(totals.owed_by_us, globalRate).map((figure) => (
-                  <span key={figure.primary} className="mz-owed">
-                    <DualAmount {...figure} kind="derived" />
-                  </span>
-                ))}
+                <OwedAmounts
+                  owed={{ amount_iqd: totals.owed_by_us.owed_iqd, amount_usd_cents: totals.owed_by_us.owed_usd_cents }}
+                />
               </Link>
             ) : null}
           </div>
@@ -215,28 +208,4 @@ export function PurchasesPage() {
 
     </>
   );
-}
-
-/**
- * What we owe the companies, as figures to show: what the dinar companies are owed in dinars and
- * the dollar companies in dollars, each one only when there is any — and one zero when there is
- * nothing at all. Without a rate the other side is not invented.
- */
-function owedFigures(
-  owed: { owed_iqd: number; owed_usd_cents: number },
-  rate: Rate | null,
-): { amount_iqd: number; amount_usd_cents: number; primary: Currency }[] {
-  const figure = (amount: number, primary: Currency) => ({
-    ...(rate === null
-      ? primary === 'IQD'
-        ? { amount_iqd: amount, amount_usd_cents: 0 }
-        : { amount_iqd: 0, amount_usd_cents: amount }
-      : bothOf(amount, primary, rate)),
-    primary,
-  });
-  const figures = [
-    ...(owed.owed_iqd !== 0 ? [figure(owed.owed_iqd, 'IQD')] : []),
-    ...(owed.owed_usd_cents !== 0 ? [figure(owed.owed_usd_cents, 'USD')] : []),
-  ];
-  return figures.length > 0 ? figures : [figure(0, 'IQD')];
 }

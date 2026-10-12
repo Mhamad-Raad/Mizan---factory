@@ -117,21 +117,25 @@ export interface PaidNow {
   /**
    * For "all of it": the currency the money went out in, which the cash-up counts (FR-1013). A
    * dinar company paid in dollars is recorded as dollars handed over, not as dinars (review).
+   * Null until chosen: it then follows the company's own currency, whichever way the company was
+   * reached — picked, or named by the link from its page (second review).
    */
-  paidIn: Currency;
+  paidIn: Currency | null;
 }
 
 export const NOTHING_PAID: PaidNow = {
   mode: 'none',
   amount: { amount: null, currency: 'IQD', other_amount: null },
-  paidIn: 'IQD',
+  paidIn: null,
 };
 
 /** The `paid` field of a purchase request, or null when nothing was paid now. */
 export function paidNowBody(
   paid: PaidNow,
+  /** The company's own currency, which "paid in" follows until somebody chooses. */
+  accountCurrency: Currency,
 ): { in_full: true; currency: Currency } | { amount: number; currency: Currency; other_amount: number | null } | null {
-  if (paid.mode === 'all') return { in_full: true, currency: paid.paidIn };
+  if (paid.mode === 'all') return { in_full: true, currency: paid.paidIn ?? accountCurrency };
   if (paid.mode === 'part' && paid.amount.amount !== null && paid.amount.amount > 0) {
     return { amount: paid.amount.amount, currency: paid.amount.currency, other_amount: paid.amount.other_amount ?? null };
   }
@@ -152,11 +156,14 @@ export function PaidNowField({
   value,
   onChange,
   rate,
+  accountCurrency,
   error,
 }: {
   value: PaidNow;
   onChange: (value: PaidNow) => void;
   rate: Rate | null;
+  /** The company's own currency, which "paid in" shows until somebody chooses. */
+  accountCurrency: Currency;
   error?: string;
 }) {
   const { t } = useTranslation();
@@ -175,7 +182,7 @@ export function PaidNowField({
       {value.mode === 'all' ? (
         <SegmentedControl
           label={t('purchases:paid_in')}
-          value={value.paidIn}
+          value={value.paidIn ?? accountCurrency}
           onChange={(paidIn) => onChange({ ...value, paidIn })}
           options={[
             { value: 'IQD', label: t('glossary:iqd') },

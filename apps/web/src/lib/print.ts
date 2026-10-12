@@ -78,8 +78,10 @@ export function requiredFor(document: PrintDocument): string[] {
         ? ['customers.view', 'fields.see_customer_balances']
         : ['companies.view', 'fields.see_company_balances'];
     case 'statement':
-      return document.sides.map((side) =>
-        side === 'sales' ? 'fields.see_customer_balances' : 'fields.see_company_balances',
+      return document.sides.flatMap((side) =>
+        side === 'sales'
+          ? ['customers.view', 'fields.see_customer_balances']
+          : ['companies.view', 'fields.see_company_balances'],
       );
   }
 }

@@ -66,5 +66,5 @@
   "nothing_owed": "We owe them nothing",
   "we_owe_nothing": "We owe them nothing",
   "they_owe_nothing": "They owe us nothing",
-  "more_owed": "And {{count}} more — {{total}} owed altogether"
+  "more_owed": "And {{count}} more — owed on all of them:"
 }

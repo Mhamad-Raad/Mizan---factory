@@ -32,13 +32,6 @@ interface FormLine {
   qty_count: number | null;
   qty_kg: string | null;
   cost: MoneyValue;
-  /**
-   * The cost is still this month's bought price as the line opened with it: the line then sends
-   * no price and the server applies the month's, in the currency it was set in (FR-408). Opening
-   * the field with that price in dinars and sending it back as "typed" turned a price set in
-   * dollars into a dinar figure at another rate (review).
-   */
-  from_month_price: boolean;
   note: string;
 }
 
@@ -128,12 +121,10 @@ export function PurchaseFormPage() {
             item_id: line.item_id,
             qty_count: line.priced_measure === 'count' ? line.qty_count : null,
             qty_kg: line.priced_measure === 'kg' ? line.qty_kg : null,
-            unit_price: line.from_month_price
-              ? null
-              : { amount: line.cost.amount, currency: line.cost.currency, other_amount: line.cost.other_amount ?? null },
+            unit_price: { amount: line.cost.amount, currency: line.cost.currency, other_amount: line.cost.other_amount ?? null },
             note: line.note.trim() === '' ? null : line.note.trim(),
           })),
-          paid: companyId && mayPay ? paidNowBody(paid) : null,
+          paid: companyId && mayPay ? paidNowBody(paid, settlement) : null,
         },
       }),
     onSuccess: async (purchase) => {
@@ -183,10 +174,16 @@ export function PurchaseFormPage() {
         priced_measure: item.stock.priced_measure,
         qty_count: null,
         qty_kg: null,
+        // This month's bought price, in the currency it was set in: the cost a line opens with is
+        // the cost it saves, at this purchase's rate, whatever is then typed (second review —
+        // a dinar copy of a dollar price was a different figure at another rate).
         cost: item.bought
-          ? { amount: item.bought.amount_iqd, currency: 'IQD', other_amount: null }
+          ? {
+              amount: item.bought.entered_currency === 'USD' ? item.bought.amount_usd_cents : item.bought.amount_iqd,
+              currency: item.bought.entered_currency,
+              other_amount: null,
+            }
           : { amount: null, currency: 'IQD', other_amount: null },
-        from_month_price: Boolean(item.bought),
         note: '',
       },
     ]);
@@ -215,8 +212,8 @@ export function PurchaseFormPage() {
                 onChange={(choice) => {
                   save.reset();
                   setCompany(choice);
-                  // "Paid in" opens at the company's own currency.
-                  setPaid({ ...NOTHING_PAID, paidIn: choice.kind === 'company' ? choice.settlement_currency : 'IQD' });
+                  // What was typed survives a change of company; "paid in" follows the new one.
+                  if (choice.kind !== 'company') setPaid(NOTHING_PAID);
                 }}
               />
               {owedNow && maySeeOwed && chosen.kind === 'company' && (owedNow.amount_iqd !== 0 || owedNow.amount_usd_cents !== 0) ? (
@@ -320,7 +317,7 @@ export function PurchaseFormPage() {
               value={line.cost}
               rate={rate}
               sourceLabel={rateSourceLabel}
-              onChange={(cost) => updateLine(line.key, { cost, from_month_price: false })}
+              onChange={(cost) => updateLine(line.key, { cost })}
               error={error?.fieldError(`lines.${index}.unit_price`) ? t('errors:price_required') : undefined}
             />
           </div>
@@ -357,6 +354,7 @@ export function PurchaseFormPage() {
             <PaidNowField
               value={paid}
               rate={rate}
+              accountCurrency={settlement}
               error={paidError ? errorMessage(t, save.error) ?? undefined : undefined}
               onChange={(value) => {
                 save.reset();

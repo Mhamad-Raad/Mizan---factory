@@ -8,6 +8,7 @@ import type { Currency } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
+import { OwedAmounts } from '../components/OwedAmounts.js';
 import { KpiHead } from '../components/KpiHead.js';
 import { OrderTable } from '../components/OrderTable.js';
 import { QueryStates } from '../components/states.js';
@@ -60,7 +61,7 @@ const LINKS: Record<string, { to: string; permission: string }> = {
   sales_today: { to: '/orders', permission: 'orders.view' },
   unpaid_orders: { to: '/orders', permission: 'orders.view' },
   purchases_today: { to: '/accounts', permission: 'accounts.view' },
-  we_owe_companies: { to: '/customers', permission: 'customers.view' },
+  we_owe_companies: { to: '/customers?balance=we_owe', permission: 'customers.view' },
   low_stock: { to: '/materials', permission: 'materials.view' },
   pending_returns: { to: '/damages', permission: 'damages.view' },
   my_actions_today: { to: '/history', permission: 'history.view' },
@@ -148,7 +149,10 @@ export function DashboardPage() {
                   </span>
                 ) : null}
                 {/* A balance or a total is a pair: dinars and dollars, never a sum of the two. */}
-                {money ? (
+                {/* What we owe the companies is a figure per currency, not a pair (D-085). */}
+                {money && tile.key === 'we_owe_companies' ? (
+                  <OwedAmounts owed={money} />
+                ) : money ? (
                   <DualAmount amount_iqd={money.amount_iqd} amount_usd_cents={money.amount_usd_cents} />
                 ) : null}
               </>

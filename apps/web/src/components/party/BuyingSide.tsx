@@ -42,6 +42,9 @@ interface Breakdown {
   purchases: { id: string; number: number; purchase_date: string; status: string }[];
   owing_count: number;
   owing_total: number;
+  /** Over every purchase, not the page: only those with something left to pay (D-085). */
+  still_owed_count: number;
+  still_owed_total: number;
 }
 
 /**
@@ -115,7 +118,10 @@ export function useBuyingSide(input: {
   // What is actually still owed: a purchase overpaid through a payment that named it has a
   // negative remainder, which is money paid ahead, not a debt (review).
   const stillOwed = owingRows.filter((row) => row.remaining > 0);
-  const stillOwedTotal = stillOwed.reduce((total, row) => total + row.remaining, 0);
+  // The count and the total are the server's, over every purchase — the page above holds at most
+  // a hundred, and a long-standing supplier has more (second review).
+  const stillOwedCount = owing.data?.still_owed_count ?? stillOwed.length;
+  const stillOwedTotal = owing.data?.still_owed_total ?? 0;
   /** A figure in the account's currency, with the other side at the account's rate (rule 7). */
   const owedAmount = (value: number) =>
     rate === null ? (
@@ -212,7 +218,7 @@ export function useBuyingSide(input: {
         <h3 className="mz-heading">{t('companies:purchases_owed')}</h3>
         <QueryStates
           query={owing}
-          isEmpty={stillOwed.length === 0}
+          isEmpty={stillOwedCount === 0}
           emptyTitle={t('companies:nothing_owed')}
           skeletonLines={3}
         >
@@ -234,12 +240,10 @@ export function useBuyingSide(input: {
               );
             })}
           </ul>
-          {stillOwed.length > 5 ? (
-            <p className="mz-caption">
-              {t('companies:more_owed', {
-                count: stillOwed.length - 5,
-                total: formatter.money(stillOwedTotal, settlement),
-              })}
+          {stillOwedCount > 5 ? (
+            <p className="mz-caption mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <span>{t('companies:more_owed', { count: stillOwedCount - 5 })}</span>
+              {owedAmount(stillOwedTotal)}
             </p>
           ) : null}
         </QueryStates>

@@ -1007,7 +1007,7 @@ function AddStockSheet({
           onChange={(choice) => {
             onEdit?.();
             setCompany(choice);
-            setPaid({ ...NOTHING_PAID, paidIn: choice.kind === 'company' ? choice.settlement_currency : 'IQD' });
+            if (choice.kind !== 'company') setPaid(NOTHING_PAID);
           }}
         />
         <div className="mz-grid-2">
@@ -1042,7 +1042,12 @@ function AddStockSheet({
           onChange={(event) => edit(setNote)(event.target.value)}
         />
         {company.kind === 'company' && mayPay ? (
-          <PaidNowField value={paid} rate={buyRate} onChange={edit(setPaid)} />
+          <PaidNowField
+            value={paid}
+            rate={buyRate}
+            accountCurrency={company.settlement_currency}
+            onChange={edit(setPaid)}
+          />
         ) : null}
         <Button
           block
@@ -1052,7 +1057,7 @@ function AddStockSheet({
             cost.amount !== null &&
             onSave({
               company_id: companyId,
-              paid: companyId && mayPay ? paidNowBody(paid) : null,
+              paid: company.kind === 'company' && mayPay ? paidNowBody(paid, company.settlement_currency) : null,
               purchase_date: date,
               note: note.trim() === '' ? null : note.trim(),
               qty_count: count.kind === 'count' && pricedMeasure === 'count' ? count.value : null,

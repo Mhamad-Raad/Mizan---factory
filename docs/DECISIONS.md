@@ -1655,6 +1655,12 @@ costing) is unchanged, and so is the API's buying side, which D-062 had only tak
   currency handed over; an untouched line takes the month's bought price on the server; the owed
   figure is per currency and leaves hidden companies out; the Companies filters read the side
   their column shows (replacing D-054's net filter).
+- **After the second review:** a void takes back the paid-now money only for whoever may reverse
+  a payment (an administrator, or whoever paid it, on the day) — anyone else is told so; a purchase
+  paid ahead can still be edited as long as the edit does not lower it below what was paid;
+  "paid in" follows the company's currency until chosen; a line opens at the month's bought price
+  in its own currency; "Settled" means nothing owed either way; Today's "We owe companies" tile
+  and the Purchases page share one per-currency figure and leave hidden companies out.
 
 No migration. Tests: `buying-from-companies.test.ts` (18). Relied on: the business's request;
 FR-401 to FR-408, FR-704 to FR-712; rules 1–4 and 10.

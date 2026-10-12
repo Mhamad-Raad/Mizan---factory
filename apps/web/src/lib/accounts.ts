@@ -30,6 +30,16 @@ export function useDocumentRate(
 ): { rate: Rate | null; source: RateSource; label: string } {
   const { t } = useTranslation();
   const { rate: globalRate } = useGlobalRate();
+  return documentRateOf(account, typed, globalRate, t);
+}
+
+/** The rule of `useDocumentRate`, apart from where its inputs come from (and so testable). */
+export function documentRateOf(
+  account: Pick<CustomerRow, 'rate'> | undefined,
+  typed: { rate: Rate | null; label: string } | null,
+  globalRate: Rate | null,
+  t: (key: string) => string,
+): { rate: Rate | null; source: RateSource; label: string } {
   if (typed?.rate) return { rate: typed.rate, source: 'manual', label: typed.label };
   if (account?.rate?.is_customer_rate) {
     return { rate: account.rate.rate_iqd_per_usd, source: 'company', label: t('glossary:customer_rate') };

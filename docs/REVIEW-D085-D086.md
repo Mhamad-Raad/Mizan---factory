@@ -81,3 +81,46 @@ say it.
 
 Tests added by this review: 8 API cases in `buying-from-companies.test.ts` (18 in all), the
 paid-now note in `record-names.test.ts`.
+
+## Second pass — the review's own fixes (`bddd1ab..b8a839b`)
+
+Fifteen findings on the fixes above; thirteen fixed, two kept.
+
+1. **"Paid in" stayed in dinars when the company came from its page's link** (`?company=`), so a
+   dollar company paid in full was recorded as dinars handed over — the bug the first pass fixed,
+   on the main way into the form. **Fixed:** "paid in" is unset until chosen and follows the
+   company's own currency, however it was reached. Changing company no longer wipes what was typed.
+2. **An untouched line sent no price, so the server priced it at the purchase date's month, in
+   that price's currency, while the form showed and summed this month's dinar figure** — the total
+   saved was not the total shown. **Fixed differently:** the line opens at the month's bought price
+   *in the currency it was set in* and sends it as typed, so what is shown is what is saved.
+3. **A void reversed the "paid now" payment for anyone who may void purchases**, past the ledger's
+   own rule (an administrator, or whoever paid it, on the day). **Fixed:** that rule is asked of
+   the payment (`mayReversePayment`, shared with the account page's reversal); anyone else is told
+   who may (`PAID_WITH_PURCHASE`). The undo — the creator, within seconds — always passes.
+4. **A purchase already paid ahead could never be edited**, not even its date. **Fixed:** only an
+   edit that *lowers* the total below what was paid is refused.
+5. **The overview counted "still owed" from one page of a hundred.** **Fixed:** the breakdown sends
+   `still_owed_count` and `still_owed_total` over every purchase.
+6. **Today's "We owe companies" tile summed every account's other column and counted hidden
+   companies**, disagreeing with the Purchases page. **Fixed:** one query for both
+   (`common/owed-to-companies.ts`), drawn by one component (`OwedAmounts`), and the tile opens
+   the companies we owe. Its test now says a dollar account's dinar column is not added.
+7. **After a void the company's account tabs showed the reversed payment for 30 seconds.** Fixed.
+8. **The paid-now payment was matched by its English note**, so a change of wording, or a row
+   written before the note existed, would be missed. **Fixed:** matched by the transaction alone
+   (the same `created_at` as the purchase's first entry, which no later payment can share).
+9. **"Settled" listed suppliers we owe millions.** **Fixed:** nothing owed either way; offered
+   only to those who see both sides.
+10. **The no-rate tile invented "≈ $0.00".** **Fixed:** without a rate, one currency.
+11. **A statement was offered to readers without `companies.view` / `customers.view`.** Fixed in
+    `requiredFor`.
+12. **The "and N more" total was in one currency.** Fixed: both.
+13. **No tests for the permission and money helpers.** Added: `requiredFor`, the voucher fallback,
+    `owedFigures`, `documentRateOf`, and "paid in" following the company; five API cases.
+
+**Kept:** "Settle in full" against a purchase reads the company's ledger to allocate it
+oldest-first, under the company's lock. It is the read the breakdown already makes, it runs only
+for that one choice, and a figure that disagreed with every screen was the bug it replaced. The
+dashboard's top-debtors list keeps ranking by the net figure (D-054): it answers "who owes us most
+once we settle up", which is a different question from the Companies list's column.

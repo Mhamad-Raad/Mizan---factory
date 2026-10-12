@@ -66,5 +66,5 @@
   "nothing_owed": "ليس علينا لهم شيء",
   "we_owe_nothing": "ليس علينا لهم شيء",
   "they_owe_nothing": "ليس لنا عليهم شيء",
-  "more_owed": "و{{count}} أخرى — {{total}} علينا بالمجمل"
+  "more_owed": "و{{count}} أخرى — المستحق عليها كلها:"
 }
