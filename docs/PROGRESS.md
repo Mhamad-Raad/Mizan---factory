@@ -865,3 +865,17 @@ go-live checklist in `ops/runbook/README.md`, run with the client on their own h
   one-minute warning, across tabs, and the server ends an unattended session at thirty. Tests:
   `idleSignOut.test.ts` (9), `idle-sign-out.test.ts` (5, API), `e2e/idle-sign-out.spec.ts` (4).
 - **Kurdish wording (D-079):** کاڵای شکاو → تەلەف everywhere.
+
+## Business requests (2026-10-12) · branch `feat/buying-and-receipts`
+
+- **Buying from companies (D-085):** a Purchases page at the top of the sidebar with what we still
+  owe the companies; a "New purchase" form (company, materials, cost, "Did you pay them now?");
+  "Add stock" is "Buy more" and asks the company too; each purchase shows what is paid and still
+  owed on it and can be paid from its page; the company page shows "They owe us" and "We owe
+  them" with Pay them, its purchases, and both sides of its account; the Companies list has a
+  "We owe them" column and filter. "Paid now" is saved in the same transaction as the purchase.
+- **Printing (D-086):** one print host for every document — order, purchase and payment receipts,
+  the account statement for two dates, and the Purchases and Orders lists — a page each, in the
+  reader's language and direction. Receipts are offered the moment something is saved, can be
+  printed again from any row or page, and old ones can be ticked and printed together (up to 50).
+- **Tests:** `buying-from-companies.test.ts` (11, API), `print.test.ts` (10, web). No migration.

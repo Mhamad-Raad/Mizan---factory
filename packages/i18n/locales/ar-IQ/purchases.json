@@ -114,5 +114,6 @@
   "still_owed": "المتبقي علينا",
   "tile_purchases": "المشتريات",
   "tile_we_owe": "ما زال علينا للشركات",
-  "tile_we_owe_count": "الشركات: {{count}}"
+  "tile_we_owe_count": "الشركات: {{count}}",
+  "rate_source_purchase": "سعر هذا الشراء"
 }

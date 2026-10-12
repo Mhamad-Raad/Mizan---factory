@@ -190,7 +190,7 @@ export function PurchaseDetailPage() {
                     <span className="mz-caption">
                       {t('print:bought_from')}:{' '}
                       {data.company_id && data.company_name ? (
-                        <Link to={`/customers/${data.company_id}`} className="mz-tap-link">
+                        <Link to={`/customers/${data.company_id}`} className="mz-quiet-link">
                           <bdi>{data.company_name}</bdi>
                         </Link>
                       ) : (
@@ -342,9 +342,10 @@ export function PurchaseDetailPage() {
                             </>
                           ) : null}
                         </span>
-                        {line.cost?.price_source === 'override' ? (
-                          <Chip tone="warning">{t('purchases:price_override')}</Chip>
-                        ) : line.cost?.price_from_month ? (
+                        {/* A typed price is the normal case for a purchase (the month's bought price
+                            is only where the form starts, D-062), so only a carried-over month
+                            price is worth a chip. */}
+                        {line.cost?.price_source === 'month' && line.cost.price_from_month ? (
                           <PriceFromMonth month={line.cost.price_from_month} />
                         ) : null}
                         {line.note ? (

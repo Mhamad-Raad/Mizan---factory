@@ -8,6 +8,7 @@ import { customerName } from '../../lib/customers.js';
 import { quantityText } from '../../lib/quantity.js';
 import { readNote } from '../../lib/record-names.js';
 import { bothOf } from '../../lib/money.js';
+import { entryTitle } from '../../lib/entry-title.js';
 import type {
   OrderListData,
   OrderReceiptData,
@@ -552,11 +553,7 @@ function StatementTable({ section }: { section: StatementSection }) {
             <tr key={row.entry_id}>
               <td data-tabular>{formatter.date(row.entry_date)}</td>
               <td>
-                {t(`${namespace}:entry.${row.entry_type}`)}
-                {row.order_number ? ` · ${t('orders:number', { number: formatter.identifier(row.order_number) })}` : ''}
-                {row.purchase_number
-                  ? ` · ${t('purchases:number', { number: formatter.identifier(row.purchase_number) })}`
-                  : ''}
+                {entryTitle(row, namespace, t, formatter.identifier)}
                 {row.voucher_number !== null
                   ? ` · ${t('customers:voucher_number', { number: formatter.identifier(row.voucher_number) })}`
                   : ''}

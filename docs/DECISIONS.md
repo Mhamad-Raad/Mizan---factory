@@ -1595,3 +1595,101 @@ the same faults. Found by walking every screen in Kurdish at 1366 × 768 and mea
   and the selects beside it (44 px).
 - **Material page:** "Set this month's prices" sits beside its card's heading and "Deactivate
   material" beside the material's name, instead of each filling a row of the page.
+
+## D-085 · 2026-10-12 · business request · The system is mostly for buying: purchases from companies, and what we owe them
+
+The business: "we need this system mostly to keep up with our buyings … we buy from companies …
+we should have the same idea [as what a company owes us, and for what item] for buying items and
+a way to track how much we owe and if we paid back at any point." This reverses the part of D-062
+that took the company off a purchase; the stock-by-price model of D-062 (lots, oldest-first
+costing) is unchanged, and so is the API's buying side, which D-062 had only taken off the screens.
+
+- **A Purchases page leads the sidebar** (`/purchases`), laid out as Orders is: search, period
+  (this month by default), who recorded it, voided; three figures over the whole filter — how many
+  purchases, what they came to (bought-price flag), and **what we still owe the companies
+  altogether** (company-balances flag), which opens the Companies list filtered to the ones we owe.
+  The phone bar's four are now Today, Purchases, Orders, Accounts; Accounts takes a wallet icon.
+- **"New purchase"** (`/purchases/new`) mirrors the order form: who it was bought from, the date,
+  the rate (the company's own by default), a card per material with its quantity and cost per unit
+  (opening at this month's bought price), and **"Did you pay them now?" — Not yet / All of it /
+  Part of it**. "Bought from" must be answered before saving; "Not from a company" is its first
+  choice, for cash bought from nobody in particular (that purchase owes nobody, as FR-407 always
+  allowed). Saved, it opens the purchase's own page.
+- **"Paid now" is one transaction with the purchase** (`POST /purchases` `paid`: `{in_full: true}`
+  or an amount in either currency). It writes a company `payment` that names the purchase, dated
+  with it, at the purchase's rate, with a voucher number — so a purchase paid on the spot is never
+  owed, not even for a moment. "All of it" is the exact negation of both stored totals, so it lands
+  on zero in both currencies at any rate. A part may not come to more than the purchase
+  (`EXCEEDS_TOTAL`): money paid ahead is a payment on the company's page, a decision of its own. It
+  needs a company (`NO_COMPANY`) and `companies.record_payment`, and is refused before anything is
+  written. Never on an edit — a payment already made changes on the company's account.
+- **"Add stock" on a material is "Buy more"**, and asks the same two questions (company, paid
+  now). **"New material"** asks them for its first purchase too — and the first purchase is now
+  optional ("Record its first purchase now", on by default), so several new materials can arrive
+  on one purchase from the Purchases page. `POST /items` `buy` takes `company_id` and `paid`.
+- **A purchase's page** says who it was bought from (a link to the company), and — oldest-first,
+  as FR-712 has always defined it — **what is paid on it and what is still owed**, with "Pay for
+  this purchase" (a payment linked to it). "Settle in full" there closes what is *linked* to the
+  purchase (FR-705); when unlinked money already covers part of it, that would overpay, so the
+  sheet sends exactly what is left instead. The "Price typed for this purchase" chip is gone: a
+  typed price is the normal case for a purchase.
+- **The company page shows both sides** — "They owe us" and "We owe them", each labelled, each
+  for those whose flag allows it — with "Pay them" and "New purchase" beside "Payment received",
+  "Credit from them" and "Adjust what we owe" in More, and tabs for its Purchases (each with what
+  is still owed on it, or "Paid") and for each side of its account ("They owe us" / "We owe
+  them"). The overview lists the purchases still owed, oldest first. A zero sales balance reads
+  "They owe us nothing" beside "We owe them", not a bare "Settled".
+- **The Companies list** shows "They owe us" and "We owe them" as two columns, and filters to "We
+  owe them" (`GET /customers?balance=we_owe`, which needs only the company-balances flag; the
+  net filters still need both).
+- **Account rows name their document:** the ledger and statement responses carry `order_number`
+  / `purchase_number` (one query for the rows sent), so a row reads "Purchase #1014" or "Payment
+  made · Purchase #1014", on screen and on paper.
+- `GET /purchases` answers `totals` (`buys`, `cost`, `owed_by_us`); `owed_by_us` sums the
+  maintained `account_totals` of the accounts we owe, each currency in its own column (rule 4 of
+  the review lessons), so an account paid ahead does not lower what we owe another.
+
+No migration. Tests: `buying-from-companies.test.ts` (11). Relied on: the business's request;
+FR-401 to FR-408, FR-704 to FR-712; rules 1–4 and 10.
+
+## D-086 · 2026-10-12 · business request · Print receipts on the spot, again later, and the whole history
+
+The business: "some sort of way to print these transactions as history and one by one as well …
+upon buy or sell … when they pay or we do … on that action show a print receipt, and later on the
+user can select the older transactions and print it out again."
+
+- **One print host for everything** (`components/print/`). A screen asks for documents —
+  `usePrint()([{ kind: 'purchase', id }])` — and the host fetches each one fresh, lays them out a
+  page each and opens the browser's print dialog (where "Save as PDF" also lives). Before this the
+  order page kept an off-screen copy of its receipt lifted to the top of the sheet with
+  `position: absolute`: one document, never more than one page of it. Now the app itself is taken
+  off the paper while a print the app asked for is under way (`body.mz-printing`), documents flow
+  page after page, table rows never split and their headings repeat — so a long statement prints
+  whole. A failure says so in a toast; nothing prints half-loaded.
+- **The documents:** an order's receipt (as before), a **purchase receipt** (what we bought, from
+  whom, each line, the total, what is paid and still owed on it, two lines to sign), a **payment
+  receipt** for any money row of either side (received from / paid to, the amount large, what is
+  owed after it, signatures for a payment; other rows — a credit, a refund, an adjustment — print
+  as themselves), an **account statement** for two dates with a section per side (opening balance,
+  every row with its running balance, closing balance) and, with both sides, what they come to
+  together; and **the Purchases and Orders lists as filtered**, with their totals (up to 1,000
+  rows — ten of the API's largest pages; the totals always cover the whole filter). A document
+  voided since prints as void.
+- **On the spot:** after a purchase is saved (its page opens with "Print receipt"), after "Buy
+  more", after any payment either way, a credit or a refund, the toast's button prints its receipt;
+  the order's save toast has "Print receipt" beside "Undo". The toast goes by itself after twelve
+  seconds. (The library's `Toast` gained an optional second action; nothing was forked.)
+- **Later, one or many:** every row of either account has a print button; every purchase and
+  order page has "Print receipt"; and the Purchases list, the Orders list, a company's Purchases
+  tab and both of its account tabs have **"Select to print"** — tick rows, across pages, up to 50 at
+  a time (`PRINT_LIMIT`; more than that is what a statement is for), then "Print receipts". A row
+  that is a document prints as that document's receipt, never as a bare ledger line.
+- **The whole history:** "Print account" in a company's More menu (this year by default, both
+  sides the reader may see, either can be left out), and "Print list" on Purchases and Orders.
+- **The statement sheet with its share button is gone** from the company page: "Print account"
+  replaces it, and the print dialog's "Save as PDF" is the file to send. Nothing else used
+  `ShareDocumentSheet` or the `.mz-receipt` styles, so both are removed.
+
+Tests: `print.test.ts` (10). Relied on: the business's request; FR-613 to FR-615 (proposed, now
+requested); rules 5–7 (each document in the page's direction, every string in three languages,
+every amount through `DualAmount`, a running balance in its account's currency as on screen).

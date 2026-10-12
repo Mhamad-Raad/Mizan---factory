@@ -114,5 +114,6 @@
   "still_owed": "ماوەی قەرز",
   "tile_purchases": "کڕینەکان",
   "tile_we_owe": "هێشتا قەرزی ئێمە بۆ کۆمپانیاکان",
-  "tile_we_owe_count": "کۆمپانیاکان: {{count}}"
+  "tile_we_owe_count": "کۆمپانیاکان: {{count}}",
+  "rate_source_purchase": "نرخی ئەم کڕینە"
 }

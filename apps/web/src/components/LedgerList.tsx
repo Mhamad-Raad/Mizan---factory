@@ -9,6 +9,7 @@ import { DualAmount } from './DualAmount.js';
 import { useFormatter } from '../lib/store.js';
 import { readNote } from '../lib/record-names.js';
 import { useIsWide } from '../lib/wide.js';
+import { entryTitle } from '../lib/entry-title.js';
 
 export interface LedgerRow {
   kind: string;
@@ -266,17 +267,7 @@ function EntryLabel({
   return (
     <span className="mz-cell__body">
       <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-        <strong>{t(`${namespace}:entry.${row.entry_type}`)}</strong>
-        {row.order_number ? (
-          <span className="mz-caption" data-tabular>
-            {t('orders:number', { number: formatter.identifier(row.order_number) })}
-          </span>
-        ) : null}
-        {row.purchase_number ? (
-          <span className="mz-caption" data-tabular>
-            {t('purchases:number', { number: formatter.identifier(row.purchase_number) })}
-          </span>
-        ) : null}
+        <strong>{entryTitle(row, namespace, t, formatter.identifier)}</strong>
         {row.kind === 'edited' ? <Chip tone="warning">{t('customers:edited')}</Chip> : null}
         {row.kind === 'undone' ? <Chip>{t('customers:undone')}</Chip> : null}
         {row.kind === 'cash_order' && row.received_currency ? (

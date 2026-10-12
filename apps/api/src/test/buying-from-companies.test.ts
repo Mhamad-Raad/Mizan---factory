@@ -273,4 +273,21 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
     expect(stripped.body.totals.cost).toBeUndefined();
     expect(stripped.body.totals.owed_by_us).toBeUndefined();
   });
+
+  it('names the purchase on every account row and statement row that is about one (D-086)', async () => {
+    const created = await buy(buyer, { paid: { amount: 50_000, currency: 'IQD' } }).expect(201);
+    const number = created.body.number as number;
+
+    const ledger = await as(ctx.http, buyer).get(`/api/v1/companies/${alNoor}/ledger`).expect(200);
+    expect(ledger.body.items.map((row: { entry_type: string; purchase_number: number | null }) => [row.entry_type, row.purchase_number])).toEqual([
+      ['payment', number],
+      ['purchase', number],
+    ]);
+
+    const statement = await as(ctx.http, buyer)
+      .get(`/api/v1/companies/${alNoor}/statement?from=${today()}&to=${today()}`)
+      .expect(200);
+    expect(statement.body.items.every((row: { purchase_number: number | null }) => row.purchase_number === number)).toBe(true);
+    expect(statement.body.closing_balance).toBe(100_000);
+  });
 });

@@ -94,9 +94,9 @@ export function PurchaseFormPage() {
   const rateSource: RateSource = typedRate ? 'manual' : companyRate?.is_customer_rate ? 'company' : 'global';
   const rateSourceLabel =
     rateSource === 'manual'
-      ? t('purchases:rate_for_purchase')
+      ? t('purchases:rate_source_purchase')
       : rateSource === 'company'
-        ? t('glossary:company_rate')
+        ? t('glossary:customer_rate')
         : t('glossary:system_rate');
 
   const totals = useMemo(() => {
@@ -218,7 +218,7 @@ export function PurchaseFormPage() {
                   if (choice.kind !== 'company') setPaid(NOTHING_PAID);
                 }}
               />
-              {owedNow && maySeeOwed && chosen.kind === 'company' ? (
+              {owedNow && maySeeOwed && chosen.kind === 'company' && (owedNow.amount_iqd !== 0 || owedNow.amount_usd_cents !== 0) ? (
                 <div className="mz-row mz-row--between" style={{ marginBlockStart: 'var(--space-2)' }}>
                   <span className="mz-caption">{t('purchases:owed_before')}</span>
                   <DualAmount
@@ -349,7 +349,6 @@ export function PurchaseFormPage() {
       {chosen.kind === 'company' && mayPay ? (
         <Card>
           <div className="mz-stack">
-            <h2 className="mz-heading">{t('purchases:paid_now')}</h2>
             <PaidNowField
               value={paid}
               rate={rate}
@@ -398,7 +397,7 @@ export function PurchaseFormPage() {
               subtitle: item.bought ? formatter.money(item.bought.amount_iqd, 'IQD') : undefined,
               detail: item.stock.priced_complete ? (
                 <span className="mz-picker__meta">
-                  {formatter.number(item.stock.priced_quantity, item.stock.priced_measure === 'kg' ? 3 : 0)}{' '}
+                  {formatter.quantity(item.stock.priced_quantity)}{' '}
                   {t(`common:${item.stock.priced_measure}_symbol`)}
                 </span>
               ) : undefined,

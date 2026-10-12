@@ -175,7 +175,7 @@ export function PurchasesPage() {
         ) : null}
 
         <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
-          <PrintSelectionBar state={selecting} />
+          {selecting.active || rows.length > 0 ? <PrintSelectionBar state={selecting} /> : null}
           {!selecting.active && rows.length > 0 ? (
             <Button
               variant="secondary"

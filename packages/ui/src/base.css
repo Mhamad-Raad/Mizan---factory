@@ -1352,22 +1352,6 @@ a.mz-button {
   font-size: 0.875rem;
 }
 
-.mz-receipt {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-}
-
-.mz-receipt__line {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
 /* ── a printed document (D-086): receipts, vouchers, statements and lists ────────────────────
    Who issued it, who it is about, a table, the money worked down to the total and balance, and
    the rate it was valued at. Built from design tokens so it also reads on screen if ever shown,
@@ -1478,7 +1462,21 @@ a.mz-button {
   flex-direction: column;
   gap: var(--space-1);
   margin-inline-start: auto;
-  inline-size: min(22rem, 100%);
+  inline-size: min(30rem, 100%);
+}
+
+/* A figure in a money column sits at the column's end, and so does its heading: the table's own
+   `text-align: start` outranked the plain class, which left every amount column ragged. */
+.mz-invoice__table .mz-invoice__num {
+  text-align: end;
+}
+
+.mz-invoice__num .mz-dual {
+  display: inline-block;
+}
+
+.mz-invoice__total-row > :last-child {
+  text-align: end;
 }
 
 .mz-invoice__total-row {
