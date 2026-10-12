@@ -41,7 +41,7 @@ const GROUPS: { key: NavGroup; labelKey: string | null }[] = [
 
 const DESTINATIONS: Destination[] = [
   // The phone bar takes the first four of these, in this order: Today, then the day's two
-  // kinds of document, then materials — the client's order (client review).
+  // kinds of document — purchases first, since buying is most of the work (D-085).
   {
     to: '/dashboard',
     labelKey: 'dashboard:title',
@@ -49,12 +49,14 @@ const DESTINATIONS: Destination[] = [
     group: 'home',
     permission: 'dashboard.view',
   },
-  // What we sell, and the accountant's page of what it all came to (D-062).
+  // What we buy — most of what the business keeps the system for (D-085) — what we sell, and the
+  // accountant's page of what it all came to (D-062).
+  { to: '/purchases', labelKey: 'purchases:title', icon: 'purchases', group: 'trade', permission: 'purchases.view' },
   { to: '/orders', labelKey: 'orders:title', icon: 'orders', group: 'trade', permission: 'orders.view' },
   {
     to: '/accounts',
     labelKey: 'purchases:accounts_title',
-    icon: 'purchases',
+    icon: 'accounts',
     group: 'trade',
     permission: 'accounts.view',
   },

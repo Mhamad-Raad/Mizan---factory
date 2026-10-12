@@ -84,6 +84,9 @@ async function detailRoutes(page: Page): Promise<string[]> {
 
 for (const lang of LANGUAGES) {
   test(`no screen scrolls sideways at 360 px and 1.25× text in ${lang}`, async ({ page }) => {
+    // One test walks every screen; the default 30 s ran out once the purchase screens became real
+    // pages instead of redirects (D-085), so the budget is per screen, not per test.
+    test.setTimeout(120_000);
     await signIn(page, lang);
     const routes = [...STATIC_ROUTES, ...(await detailRoutes(page))];
     const sideways: string[] = [];
@@ -91,7 +94,7 @@ for (const lang of LANGUAGES) {
     for (const route of routes) {
       await page.goto(route);
       // A screen still loading is not a layout; wait for it to settle first.
-      await expect(page.locator('.mz-skeleton')).toHaveCount(0);
+      await expect(page.locator('.mz-skeleton'), `${route} never finished loading`).toHaveCount(0);
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       );

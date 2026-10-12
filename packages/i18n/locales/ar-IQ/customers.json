@@ -70,7 +70,6 @@
   "credit_from_them": "رصيد منهم",
   "tab_sales_ledger": "حساب المبيعات",
   "tab_purchase_ledger": "حساب المشتريات",
-  "statement_sales": "كشف الحساب",
   "statement_purchases": "كشف حساب المشتريات",
   "rate_own": "سعرهم الخاص",
   "rate_label": "سعرهم",
@@ -95,5 +94,5 @@
   "rate_changed": "السعر {{old}} ← {{new}}",
   "rate_set": "تم تعيين السعر {{new}}",
   "entry.damage": "بضاعة مكسورة",
-  "tab_account": "الحساب"
+  "filter_we_owe": "علينا لهم"
 }

@@ -5,6 +5,7 @@ import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import { pagingOf } from '../common/paging.js';
 import { containing } from '../common/like.js';
+import { owedToCompanies } from '../common/owed-to-companies.js';
 
 export type PriceSource = 'month' | 'override';
 
@@ -92,6 +93,8 @@ export interface PurchaseFilters {
   status?: 'active' | 'void';
   q?: string;
   include_undone?: boolean;
+  /** False when only the rows are wanted — a list printout's later pages (D-086). */
+  totals?: boolean;
   page?: number;
   page_size?: number;
 }
@@ -179,7 +182,11 @@ export class PurchasesRepository {
     return rows[0] ?? null;
   }
 
-  async list(filters: PurchaseFilters): Promise<{ rows: PurchaseListRow[]; total: number }> {
+  async list(filters: PurchaseFilters): Promise<{
+    rows: PurchaseListRow[];
+    total: number;
+    totals: { buys: number; total_iqd: number; total_usd_cents: number };
+  }> {
     const conditions = ['p.deleted_at IS NULL'];
     const values: unknown[] = [];
 
@@ -264,10 +271,34 @@ export class PurchasesRepository {
           ORDER BY page.purchase_date DESC, page.number DESC`,
         values,
       ),
-      this.database.query<{ total: string }>(`SELECT count(*)::text AS total FROM purchases p ${where}`, countValues),
+      // The count and the list's figures in one pass over the same filter: how many buys are
+      // standing (a voided one is listed but bought nothing) and what they came to, each
+      // currency summed on its own (2.3.4).
+      this.database.query<{ total: string; buys: string; total_iqd: string; total_usd_cents: string }>(
+        `SELECT count(*)::text AS total,
+                count(*) FILTER (WHERE p.status = 'active')::text AS buys,
+                coalesce(sum(p.total_iqd) FILTER (WHERE p.status = 'active'), 0)::text AS total_iqd,
+                coalesce(sum(p.total_usd_cents) FILTER (WHERE p.status = 'active'), 0)::text AS total_usd_cents
+           FROM purchases p ${where}`,
+        countValues,
+      ),
     ]);
 
-    return { rows: list.rows, total: Number(count.rows[0]?.total ?? 0) };
+    const counted = count.rows[0];
+    return {
+      rows: list.rows,
+      total: Number(counted?.total ?? 0),
+      totals: {
+        buys: Number(counted?.buys ?? 0),
+        total_iqd: Number(counted?.total_iqd ?? 0),
+        total_usd_cents: Number(counted?.total_usd_cents ?? 0),
+      },
+    };
+  }
+
+  /** What we still owe the companies (D-085); shared with Today's tile. */
+  async owedToCompanies(): Promise<{ companies: number; owed_iqd: number; owed_usd_cents: number }> {
+    return owedToCompanies(this.database);
   }
 
   async linesOf(purchaseId: string, tx?: Db): Promise<PurchaseLineRow[]> {

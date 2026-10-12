@@ -70,7 +70,6 @@
   "credit_from_them": "باڵانس لەوانەوە",
   "tab_sales_ledger": "حیسابی فرۆشتن",
   "tab_purchase_ledger": "حیسابی کڕین",
-  "statement_sales": "کەشفی حساب",
   "statement_purchases": "کەشفی کڕین",
   "rate_own": "نرخی تایبەتی خۆیان",
   "rate_label": "نرخی ئەوان",
@@ -95,5 +94,5 @@
   "rate_changed": "نرخ {{old}} ← {{new}}",
   "rate_set": "نرخ دانرا بە {{new}}",
   "entry.damage": "تەلەف",
-  "tab_account": "حساب"
+  "filter_we_owe": "قەرزی ئێمە بۆ ئەوان"
 }

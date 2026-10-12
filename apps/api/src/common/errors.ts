@@ -22,6 +22,11 @@ export const ERROR_CODES = {
   STOCK_INSUFFICIENT: 422,
   /** A buy whose stock has already gone out in a sale or a damage cannot be voided or edited (D-062). */
   BUY_IN_USE: 409,
+  /**
+   * A purchase paid when it was entered: voiding it takes that money back, which only an
+   * administrator — or whoever paid it, on the day — may do (D-085, spec 2.4.1).
+   */
+  PAID_WITH_PURCHASE: 409,
   IDEMPOTENCY_MISMATCH: 422,
   RATE_LIMITED: 429,
   /** A request body larger than the API will read — a CSV import of more than 10,000 rows. */

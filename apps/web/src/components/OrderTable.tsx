@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '@mizan/ui';
 import { DataList } from './DataList.js';
 import type { Column } from './DataList.js';
+import type { RowSelection } from './PrintSelection.js';
 import { DualAmount } from './DualAmount.js';
 import { OrderStatusChip, PaymentTypeChip } from './chips.js';
 import { customerName } from '../lib/customers.js';
@@ -15,7 +16,16 @@ import type { OrderRow } from '../pages/OrdersPage.js';
  * `showCustomer` is off where every row is the same business: the column would repeat its name
  * down the page, so the column shows who recorded the sale instead.
  */
-export function OrderTable({ rows, showCustomer = true }: { rows: readonly OrderRow[]; showCustomer?: boolean }) {
+export function OrderTable({
+  rows,
+  showCustomer = true,
+  selection,
+}: {
+  rows: readonly OrderRow[];
+  showCustomer?: boolean;
+  /** "Select to print" (D-086). */
+  selection?: RowSelection<OrderRow>;
+}) {
   const { t } = useTranslation();
   const formatter = useFormatter();
 
@@ -84,6 +94,8 @@ export function OrderTable({ rows, showCustomer = true }: { rows: readonly Order
       rowKey={(order) => order.id}
       href={(order) => `/orders/${order.id}`}
       columns={columns}
+      selection={selection}
+      rowLabel={(order) => t('orders:number', { number: formatter.identifier(order.number) })}
       card={(order) => (
         <span className="mz-rowcard">
           <span className="mz-rowcard__head">

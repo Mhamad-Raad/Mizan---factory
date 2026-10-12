@@ -36,7 +36,8 @@ function customerColumns(alias = 'customers'): string {
 export interface CustomerFilters {
   q?: string;
   /** On the net figure: `owes` = they owe us, `credit` = we owe them, `settled` = zero (FR-505). */
-  balance?: 'owes' | 'settled' | 'credit';
+  /** `we_owe`: the accounts we still owe on the buying side, whatever they owe us (D-085). */
+  balance?: 'owes' | 'settled' | 'credit' | 'we_owe';
   include_inactive?: boolean;
   sort?: 'name' | 'balance';
   page?: number;
@@ -124,23 +125,28 @@ export class CustomersRepository {
           ` AND c.phone_normalized LIKE $${phoneParam}))`,
       );
     }
-    // The filters and the sort read the net figure (D-054): "owes us" means after what we owe
-    // them. Both sides come from the maintained per-account sums of migration 0033, in the
-    // account's settlement currency, so a filter or a sort by balance is one join over the
+    // Each filter reads the side its column shows (D-085): "they owe us", "in credit" and
+    // "settled" read what they owe us, "we owe them" reads what we owe them, and the sort ranks by
+    // what they owe us. They read the net figure while the list showed one side (D-054); with
+    // buying back, a company we owe more than it owes us was missing from "they owe us" while
+    // its row said it owed. Both sides come from the maintained per-account sums of migration
+    // 0033, in the account's settlement currency, so a filter or a sort is one join over the
     // accounts instead of two ledger sums per account (D-075).
     const totals = 'LEFT JOIN account_totals t ON t.account_id = c.id';
     const receivable = `coalesce(CASE WHEN c.settlement_currency = 'IQD' THEN t.receivable_iqd ELSE t.receivable_usd_cents END, 0)`;
     const payable = `coalesce(CASE WHEN c.settlement_currency = 'IQD' THEN t.payable_iqd ELSE t.payable_usd_cents END, 0)`;
     const net = `(${receivable} - ${payable})`;
-    if (filters.balance === 'owes') conditions.push(`${net} > 0`);
-    if (filters.balance === 'credit') conditions.push(`${net} < 0`);
-    if (filters.balance === 'settled') conditions.push(`${net} = 0`);
+    if (filters.balance === 'owes') conditions.push(`${receivable} > 0`);
+    if (filters.balance === 'credit') conditions.push(`${receivable} < 0`);
+    // "Settled" is nothing owed either way: a supplier we owe millions is not settled (second review).
+    if (filters.balance === 'settled') conditions.push(`${receivable} = 0 AND ${payable} = 0`);
+    if (filters.balance === 'we_owe') conditions.push(`${payable} > 0`);
 
     const where = `WHERE ${conditions.join(' AND ')}`;
     // Counting thirty thousand customers does not need anybody's balance — only a filter on the
     // balance does (`countFrom`, the system-wide review).
     const narrow = countFrom('FROM customers c', where, [{ alias: 't.', sql: totals }]);
-    const order = filters.sort === 'balance' ? `${net} DESC, c.name ASC, c.id ASC` : 'c.name ASC, c.id ASC';
+    const order = filters.sort === 'balance' ? `${receivable} DESC, c.name ASC, c.id ASC` : 'c.name ASC, c.id ASC';
 
     const countValues = [...values];
     const { page_size: pageSize, offset } = pagingOf(filters);

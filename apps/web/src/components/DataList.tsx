@@ -1,6 +1,9 @@
 import { Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { Checkbox } from '@mizan/ui';
 import { useIsWide } from '../lib/wide.js';
+import type { RowSelection } from './PrintSelection.js';
 
 export interface Column<Row> {
   /** The column heading, already translated. */
@@ -30,6 +33,8 @@ export function DataList<Row>({
   rowKey,
   href,
   card,
+  selection,
+  rowLabel,
 }: {
   rows: readonly Row[];
   columns: readonly Column<Row>[];
@@ -38,14 +43,29 @@ export function DataList<Row>({
   href: (row: Row) => string;
   /** The phone layout, which is what the screenshot suite and the 360 px checks assert. */
   card: (row: Row) => ReactNode;
+  /** "Select to print" (D-086): a tick box at the start of every row while it is on. */
+  selection?: RowSelection<Row>;
+  /** What a row is called, for its tick box's label: "Purchase #12". */
+  rowLabel?: (row: Row) => string;
 }) {
   const wide = useIsWide();
+  const { t } = useTranslation();
+  const tick = (row: Row) =>
+    selection ? (
+      <Checkbox
+        labelHidden
+        label={t('print:select_row', { name: rowLabel?.(row) ?? '' })}
+        checked={selection.isSelected(row)}
+        onChange={() => selection.onToggle(row)}
+      />
+    ) : null;
 
   if (!wide) {
     return (
       <ul className="mz-list">
         {rows.map((row) => (
-          <li key={rowKey(row)}>
+          <li key={rowKey(row)} className={selection ? 'mz-selectable' : undefined}>
+            {tick(row)}
             <Link to={href(row)} className="mz-list__item mz-list__item--interactive">
               {card(row)}
             </Link>
@@ -60,6 +80,11 @@ export function DataList<Row>({
       <table className="mz-table">
         <thead>
           <tr>
+            {selection ? (
+              <th scope="col" className="mz-table__tick">
+                <span className="mz-visually-hidden">{t('print:select')}</span>
+              </th>
+            ) : null}
             {columns.map((column) => (
               <th
                 key={column.header}
@@ -74,7 +99,8 @@ export function DataList<Row>({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={rowKey(row)}>
+            <tr key={rowKey(row)} data-selected={selection?.isSelected(row) ? 'true' : undefined}>
+              {selection ? <td className="mz-table__tick">{tick(row)}</td> : null}
               {columns.map((column, index) => (
                 <td
                   key={column.header}

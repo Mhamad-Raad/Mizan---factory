@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, DateField, Icon, Menu, SegmentedControl, TextField, Toast } from '@mizan/ui';
+import { BottomSheet, Button, Card, Checkbox, DateField, Icon, IconButton, Menu, SegmentedControl, TextField } from '@mizan/ui';
 import type { IconName, MenuItem } from '@mizan/ui';
 import { useIsWide } from '../lib/wide.js';
 import type { Currency, Rate } from '@mizan/money';
@@ -18,7 +18,6 @@ import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { PaymentSheet } from '../components/PaymentSheet.js';
 import { SetRateSheet } from '../components/SetRateSheet.js';
-import { ShareDocumentSheet } from '../components/ShareDocumentSheet.js';
 import { QueryStates } from '../components/states.js';
 import { OrderTable } from '../components/OrderTable.js';
 import { Pager } from '../components/Pager.js';
@@ -30,13 +29,20 @@ import { useApp, useFormatter, usePermission } from '../lib/store.js';
 import { readNote } from '../lib/record-names.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
-import { lastTwelveMonths } from '../lib/periods.js';
+import { thisYear } from '../lib/periods.js';
+import { documentOfLedgerRow, usePrint } from '../lib/print.js';
+import type { AccountSide } from '../lib/print.js';
+import { PrintSelectionBar, usePrintSelection } from '../components/PrintSelection.js';
+import { SavedToast, paymentReceipt } from '../components/SavedToast.js';
+import type { SavedNotice } from '../components/SavedToast.js';
+import { useBuyingSide } from '../components/party/BuyingSide.js';
+import { payableAmount, payableLabel } from '../lib/accounts.js';
 import type { BalanceValue, CustomerRow } from './CustomersPage.js';
 import type { OrderRow } from './OrdersPage.js';
 
-type Tab = 'overview' | 'orders' | 'sales' | 'history';
+type Tab = 'overview' | 'orders' | 'purchases' | 'sales' | 'buying' | 'history';
 type EntryKind = 'credit' | 'refund' | 'adjustment';
-type Sheet = 'payment' | 'rate' | 'currency' | 'edit' | 'statement';
+type Sheet = 'payment' | 'rate' | 'currency' | 'edit' | 'print';
 
 interface HistoryRow {
   id: string;
@@ -65,13 +71,14 @@ const HISTORY_ACTIONS: { value: HistoryAction; label: string }[] = [
 ];
 
 /**
- * One company (D-054, FR-503): somebody who buys from us (D-062 — buying stock is the factory's
- * own business, never a company's).
+ * One company (D-054, FR-503): somebody we buy from, sell to, or both (D-085).
  *
- * The header card carries what anybody looks for first — what they owe us, labelled by which way
- * it points; the one rate every amount is filled at; the settlement currency. Below it the
- * actions — take a payment, the record itself — and then one tab per thing the company has: its
- * orders, its account, and its History.
+ * The header card carries what anybody looks for first — what they owe us and what we owe them,
+ * each labelled by which way it points; the one rate every amount is filled at; the account's
+ * currency. Below it the actions — money in, money out, a new purchase, the record itself — and
+ * then one tab per thing the company has: its orders, its purchases, the two sides of its account,
+ * and its History. Any row of either account prints as a receipt, and the whole account prints as
+ * a statement for the dates chosen (D-086).
  */
 export function CustomerDetailPage() {
   const { id = '' } = useParams();
@@ -93,7 +100,9 @@ export function CustomerDetailPage() {
   const isWide = useIsWide();
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [entrySheet, setEntrySheet] = useState<EntryKind | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [notice, setNotice] = useState<SavedNotice | null>(null);
+  const dismissNotice = useCallback(() => setNotice(null), []);
+  const print = usePrint();
   /** Bumped by every write that puts a row in the sales ledger (signature moment 3, 3.6.2). */
   const [landedVersion, setLandedVersion] = useState(0);
 
@@ -151,25 +160,6 @@ export function CustomerDetailPage() {
     placeholderData: keepPreviousData,
   });
 
-  // The last twelve months to today's Baghdad date (FR-507, spec 2.10.4); the window is in the
-  // key, so a statement opened after midnight is not yesterday's.
-  const statementWindow = lastTwelveMonths(formatter.today());
-  const salesStatement = useQuery({
-    queryKey: ['customers', id, 'statement', statementWindow.from, statementWindow.to],
-    queryFn: () => {
-      const window = statementWindow;
-      return apiRequest<{
-        customer: { name: string; settlement_currency: Currency };
-        opening_balance: number;
-        closing_balance: number;
-        items: LedgerRow[];
-        item_count: number;
-        has_more: boolean;
-      }>(`/customers/${id}/statement?from=${window.from}&to=${window.to}`);
-    },
-    enabled: sheet === 'statement',
-  });
-
   const settlement: Currency = data?.settlement_currency ?? 'IQD';
   // Their own rate, or the global one the API reports in its place; none at all before a rate
   // has ever been set, and then nothing is converted.
@@ -177,6 +167,23 @@ export function CustomerDetailPage() {
   const inSettlement = (value: BalanceValue | null | undefined) =>
     value ? (settlement === 'IQD' ? value.amount_iqd : value.amount_usd_cents) : 0;
   const owedToUs = inSettlement(data?.balance);
+  const weOwe = inSettlement(data?.payable);
+
+  const buying = useBuyingSide({
+    id,
+    enabled: Boolean(data) && !walkIn,
+    tab,
+    settlement,
+    owed: weOwe,
+    rate,
+    onRecorded: setNotice,
+  });
+
+  // The sales account's rows, ticked to print again (D-086).
+  const selectSales = usePrintSelection<LedgerRow>(
+    (row) => documentOfLedgerRow('sales', id, row, mayViewOrders),
+    (row) => row.entry_id,
+  );
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ['customers'] });
@@ -196,24 +203,24 @@ export function CustomerDetailPage() {
     (path: string, key: IdempotencyKey, method: 'POST' | 'PUT' | 'PATCH' = 'POST') =>
     (body: unknown) =>
       apiRequest(`/customers/${id}${path}`, { method, body, idempotencyKey: key.key });
-  const done = async (key: IdempotencyKey, message?: string) => {
+  const done = async (key: IdempotencyKey, message?: string, receipt?: SavedNotice['receipt']) => {
     key.renew();
     closeSheets();
-    if (message) setToast(message);
+    if (message) setNotice({ message, receipt });
     await refresh();
   };
 
   const payment = useMutation({
     mutationFn: post('/payments', paymentKey),
-    onSuccess: async () => {
-      await done(paymentKey, t('customers:payment_recorded'));
+    onSuccess: async (answer) => {
+      await done(paymentKey, t('customers:payment_recorded'), paymentReceipt('sales', id, answer));
       setLandedVersion((version) => version + 1);
     },
   });
   const entry = useMutation({
     mutationFn: (input: { kind: EntryKind; body: unknown }) => post(`/${pathOf(input.kind)}`, entryKey)(input.body),
-    onSuccess: async () => {
-      await done(entryKey, t('customers:entry_recorded'));
+    onSuccess: async (answer) => {
+      await done(entryKey, t('customers:entry_recorded'), paymentReceipt('sales', id, answer));
       setLandedVersion((version) => version + 1);
     },
   });
@@ -264,8 +271,9 @@ export function CustomerDetailPage() {
     ...(isAdmin && !walkIn
       ? [{ label: t('companies:settlement_currency_change'), onSelect: () => setSheet('currency') }]
       : []),
-    ...(selling && maySeeSelling && !walkIn
-      ? [{ label: t('customers:statement_sales'), onSelect: () => setSheet('statement') }]
+    ...buying.menuItems,
+    ...((maySeeSelling || buying.maySeeOwed) && !walkIn
+      ? [{ label: t('print:print_statement'), onSelect: () => setSheet('print') }]
       : []),
   ];
 
@@ -302,7 +310,10 @@ export function CustomerDetailPage() {
                 <hr className="mz-divider" />
 
                 <div className="mz-detail-summary">
-                  <PartyFigure party={data} />
+                  <div className="mz-row" style={{ gap: 'var(--space-6)', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                    <PartyFigure party={data} />
+                    <PayableFigure party={data} />
+                  </div>
                   <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
                     {/* The rate every amount for this business is filled at, on both sides (2.3.3). */}
                     <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)' }}>
@@ -329,6 +340,7 @@ export function CustomerDetailPage() {
                       {t('customers:receive_payment')}
                     </Button>
                   ) : null}
+                  {buying.primaryActions}
                 </div>
                 <div className="mz-actions__group">
                   {mayEdit ? (
@@ -358,12 +370,16 @@ export function CustomerDetailPage() {
                 options={[
                   { value: 'overview', label: t('materials:tab_overview') },
                   ...(selling && mayViewOrders ? [{ value: 'orders' as Tab, label: t('orders:title') }] : []),
+                  ...(buying.maySeePurchases ? [{ value: 'purchases' as Tab, label: t('purchases:title') }] : []),
                   ...(selling && maySeeSelling && !walkIn
-                    ? [{ value: 'sales' as Tab, label: t('customers:tab_account') }]
+                    ? [{ value: 'sales' as Tab, label: t('print:side_sales') }]
                     : []),
+                  ...(buying.maySeeOwed ? [{ value: 'buying' as Tab, label: t('print:side_buying') }] : []),
                   { value: 'history', label: t('glossary:history') },
                 ]}
               />
+
+              {tab === 'overview' ? buying.overviewCard : null}
 
               {tab === 'overview' && selling && mayViewOrders ? (
                 <Card>
@@ -403,6 +419,14 @@ export function CustomerDetailPage() {
                 </QueryStates>
               ) : null}
 
+              {tab === 'purchases' ? buying.purchasesTab : null}
+              {tab === 'buying' ? buying.accountTab : null}
+
+              {tab === 'sales' ? (
+                <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                  <PrintSelectionBar state={selectSales} />
+                </div>
+              ) : null}
               {tab === 'sales' ? (
                 <QueryStates
                   query={salesLedger}
@@ -414,6 +438,14 @@ export function CustomerDetailPage() {
                       items={salesLedger.data?.items ?? []}
                       settlement_currency={salesLedger.data?.customer.settlement_currency ?? settlement}
                       landedVersion={landedVersion}
+                      selection={selectSales.selection}
+                      actions={(row) => (
+                        <IconButton
+                          icon="print"
+                          label={t('print:print_receipt')}
+                          onClick={() => print([documentOfLedgerRow('sales', id, row, mayViewOrders)])}
+                        />
+                      )}
                     />
                     <Pager
                       page={salesPaging.page}
@@ -541,56 +573,23 @@ export function CustomerDetailPage() {
           />
         ) : null}
 
-        {sheet === 'statement' && salesStatement.data ? (
-          <ShareDocumentSheet
-            title={t('customers:statement_sales')}
-            open
-            onClose={() => setSheet(null)}
-            text={statementText(salesStatement.data, formatter, t)}
-          >
-            <div className="mz-receipt">
-              <strong>
-                <bdi>{salesStatement.data.customer.name}</bdi>
-              </strong>
-              <p className="mz-caption">{t('common:statement_window')}</p>
-              {salesStatement.data.has_more ? (
-                <p className="mz-caption">
-                  {t('common:statement_capped', {
-                    shown: salesStatement.data.items.length,
-                    total: salesStatement.data.item_count,
-                  })}
-                </p>
-              ) : null}
-              <div className="mz-receipt__line">
-                <span>{t('glossary:opening_balance')}</span>
-                <span data-tabular>
-                  {formatter.money(salesStatement.data.opening_balance, salesStatement.data.customer.settlement_currency)}
-                </span>
-              </div>
-              {salesStatement.data.items.map((row) => (
-                <div key={row.entry_id} className="mz-receipt__line">
-                  <span>
-                    {formatter.date(row.entry_date)} · {t(`customers:entry.${row.entry_type}`)}
-                  </span>
-                  <span data-tabular>
-                    {formatter.money(
-                      salesStatement.data.customer.settlement_currency === 'IQD' ? row.amount_iqd : row.amount_usd_cents,
-                      salesStatement.data.customer.settlement_currency,
-                    )}
-                  </span>
-                </div>
-              ))}
-              <div className="mz-receipt__line">
-                <strong>{t('glossary:balance')}</strong>
-                <strong data-tabular>
-                  {formatter.money(salesStatement.data.closing_balance, salesStatement.data.customer.settlement_currency)}
-                </strong>
-              </div>
-            </div>
-          </ShareDocumentSheet>
+        {sheet === 'print' ? (
+          <PrintAccountSheet
+            sides={[
+              ...(selling && maySeeSelling && !walkIn ? (['sales'] as AccountSide[]) : []),
+              ...(buying.maySeeOwed ? (['buying'] as AccountSide[]) : []),
+            ]}
+            onClose={closeSheets}
+            onPrint={(range, sides) => {
+              closeSheets();
+              print([{ kind: 'statement', accountId: id, from: range.from, to: range.to, sides }]);
+            }}
+          />
         ) : null}
 
-        {toast ? <Toast message={toast} actionLabel={t('common:close')} onAction={() => setToast(null)} /> : null}
+        {buying.sheets}
+
+        {notice ? <SavedToast notice={notice} onDone={dismissNotice} /> : null}
       </div>
     </>
   );
@@ -606,12 +605,34 @@ function PartyFigure({ party }: { party: CustomerRow }) {
   return (
     <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
       <span className={direction === 'owes' ? 'mz-figure__label mz-owed' : 'mz-figure__label'}>
-        {t(DIRECTION_LABELS[direction])}
+        {/* Beside "We owe them", a bare "Settled" would not say which side (D-085). */}
+        {direction === 'settled' ? t('companies:they_owe_nothing') : t(DIRECTION_LABELS[direction])}
       </span>
       <DualAmount
         amount_iqd={Math.abs(balance.amount_iqd)}
         amount_usd_cents={Math.abs(balance.amount_usd_cents)}
         primary={balance.currency}
+        kind="derived"
+        size="large"
+      />
+    </div>
+  );
+}
+
+/** What we owe them for what we bought (D-085), beside what they owe us; nothing for the walk-in. */
+function PayableFigure({ party }: { party: CustomerRow }) {
+  const { t } = useTranslation();
+  const payable = party.payable;
+  if (!payable || party.is_system) return null;
+  const amount = payableAmount(payable);
+  const label = payableLabel(amount);
+  return (
+    <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
+      <span className={amount > 0 ? 'mz-figure__label mz-owed' : 'mz-figure__label'}>{t(label)}</span>
+      <DualAmount
+        amount_iqd={Math.abs(payable.amount_iqd)}
+        amount_usd_cents={Math.abs(payable.amount_usd_cents)}
+        primary={payable.currency}
         kind="derived"
         size="large"
       />
@@ -683,23 +704,64 @@ function pathOf(kind: EntryKind): string {
 }
 
 /**
- * The statement as plain text, for the message a customer actually receives.
- *
- * Labelled rather than written as "opening → closing": an arrow in a text message does not
- * mirror, so in Kurdish and Arabic it pointed the wrong way, and a bare pair of numbers is not
- * a statement. The labels are the same two the printed sheet above uses.
+ * "Print account" (D-086): the company's transactions between two dates — this year by default —
+ * as one statement, a section per side the reader may see. Anything before the first date is
+ * inside each section's opening balance.
  */
-function statementText(
-  data: { customer: { name: string; settlement_currency: Currency }; opening_balance: number; closing_balance: number },
-  formatter: { money: (minor: number, currency: Currency) => string },
-  t: (key: string) => string,
-): string {
-  const currency = data.customer.settlement_currency;
-  return [
-    data.customer.name,
-    `${t('glossary:opening_balance')}: ${formatter.money(data.opening_balance, currency)}`,
-    `${t('glossary:balance')}: ${formatter.money(data.closing_balance, currency)}`,
-  ].join('\n');
+function PrintAccountSheet({
+  sides,
+  onClose,
+  onPrint,
+}: {
+  sides: AccountSide[];
+  onClose: () => void;
+  onPrint: (range: { from: string; to: string }, sides: AccountSide[]) => void;
+}) {
+  const { t } = useTranslation();
+  const formatter = useFormatter();
+  const [range, setRange] = useState(() => thisYear(formatter.today()));
+  const [chosen, setChosen] = useState<AccountSide[]>(sides);
+  const valid = range.from !== '' && range.to !== '' && range.from <= range.to && chosen.length > 0;
+
+  return (
+    <BottomSheet title={t('print:statement_title')} open onClose={onClose} closeLabel={t('common:close')}>
+      <div className="mz-stack">
+        <p className="mz-muted">{t('print:statement_hint')}</p>
+        <div className="mz-grid-2">
+          <DateField
+            label={t('print:statement_from')}
+            value={range.from}
+            max={range.to || formatter.today()}
+            onChange={(event) => setRange({ ...range, from: event.target.value })}
+          />
+          <DateField
+            label={t('print:statement_to')}
+            value={range.to}
+            max={formatter.today()}
+            onChange={(event) => setRange({ ...range, to: event.target.value })}
+          />
+        </div>
+        {sides.length > 1 ? (
+          <fieldset className="mz-stack" style={{ gap: 0, border: 0, padding: 0, margin: 0 }}>
+            <legend className="mz-field__label">{t('print:statement_sides')}</legend>
+            {sides.map((side) => (
+              <Checkbox
+                key={side}
+                label={t(side === 'sales' ? 'print:side_sales' : 'print:side_buying')}
+                checked={chosen.includes(side)}
+                onChange={(checked) =>
+                  setChosen(checked ? sides.filter((one) => one === side || chosen.includes(one)) : chosen.filter((one) => one !== side))
+                }
+              />
+            ))}
+          </fieldset>
+        ) : null}
+        <Button block icon="print" disabled={!valid} onClick={() => onPrint(range, chosen)}>
+          {t('print:print_statement')}
+        </Button>
+      </div>
+    </BottomSheet>
+  );
 }
 
 /**

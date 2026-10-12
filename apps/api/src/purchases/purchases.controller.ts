@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
-import { isoDate, minorAmount, rateString } from '../common/schemas.js';
+import { isoDate, minorAmount, paidNow, rateString } from '../common/schemas.js';
 import { RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
@@ -31,7 +31,8 @@ const lineSchema = z.object({
   note: z.string().max(500).nullish(),
 });
 
-const createSchema = z.object({
+/** Never on an edit: a payment already made is changed on the company's account (D-085). */
+const baseSchema = z.object({
   /** Null is legitimate: "No company (stock only)" (FR-407). */
   company_id: z.string().uuid().nullish(),
   purchase_date: isoDate,
@@ -42,7 +43,9 @@ const createSchema = z.object({
   acting_user_id: z.string().uuid().nullish(),
 });
 
-const replaceSchema = createSchema.extend({ version: z.number().int().positive() });
+const createSchema = baseSchema.extend({ paid: paidNow.nullish() });
+
+const replaceSchema = baseSchema.extend({ version: z.number().int().positive() });
 
 const voidSchema = z.object({
   reason: z.string().min(1).max(2000),
@@ -59,6 +62,7 @@ const listSchema = z.object({
   status: z.enum(['active', 'void']).optional(),
   q: z.string().max(200).optional(),
   include_undone: z.enum(['true', 'false']).optional(),
+  totals: z.enum(['true', 'false']).optional(),
   ...pageFields,
 });
 
@@ -82,6 +86,8 @@ const historySchema = z.object({
   unit_price: 'fields.see_bought_price',
   line_total: 'fields.see_bought_price',
   purchase_total: 'fields.see_bought_price',
+  // What we owe the companies altogether, on the Buys list (D-085).
+  owed_by_us: 'fields.see_company_balances',
 })
 export class PurchasesController {
   constructor(private readonly purchases: PurchasesService) {}
@@ -89,7 +95,11 @@ export class PurchasesController {
   @Get('purchases')
   @RequirePermission('purchases.view')
   async list(@Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
-    return this.purchases.list({ ...query, include_undone: query.include_undone === 'true' });
+    return this.purchases.list({
+      ...query,
+      include_undone: query.include_undone === 'true',
+      totals: query.totals !== 'false',
+    });
   }
 
   /** The company's Purchases tab; the same list, filtered to one supplier (FR-709). */
@@ -104,6 +114,7 @@ export class PurchasesController {
       ...query,
       company_id: id,
       include_undone: query.include_undone === 'true',
+      totals: query.totals !== 'false',
     });
   }
 
@@ -172,7 +183,7 @@ export class PurchasesController {
   }
 }
 
-function toCreateInput(body: z.infer<typeof createSchema>) {
+function toCreateInput(body: z.infer<typeof baseSchema> & { paid?: z.infer<typeof paidNow> | null }) {
   return {
     company_id: body.company_id ?? null,
     purchase_date: body.purchase_date,
@@ -188,5 +199,6 @@ function toCreateInput(body: z.infer<typeof createSchema>) {
       note: line.note ?? null,
     })),
     acting_user_id: body.acting_user_id ?? null,
+    paid: body.paid ?? null,
   };
 }

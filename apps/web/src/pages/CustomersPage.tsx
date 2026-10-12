@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Icon, TextField } from '@mizan/ui';
@@ -16,6 +16,7 @@ import { FilterChip } from '../components/FilterChip.js';
 import { DIRECTION_LABELS, customerName, directionOf } from '../lib/customers.js';
 import { InactiveChip } from '../components/chips.js';
 import { usePermission } from '../lib/store.js';
+import { payableAmount, payableLabel } from '../lib/accounts.js';
 
 export interface BalanceValue {
   amount_iqd: number;
@@ -38,29 +39,38 @@ export interface CustomerRow {
   credit_limit: { amount_iqd: number; amount_usd_cents: number } | null;
   /** What they owe us; absent without `fields.see_customer_balances`. */
   balance?: BalanceValue | null;
+  /** What we owe them for what we bought (D-085); absent without `fields.see_company_balances`. */
+  payable?: BalanceValue | null;
+  /** They owe us less we owe them (D-054); present only with both balance flags. */
+  net?: BalanceValue | null;
   /** Their own IQD-per-USD rate, or the global one when they have none. */
   rate: { rate_iqd_per_usd: string; since: string | null; is_customer_rate: boolean } | null;
   version: number;
 }
 
-type BalanceFilter = 'all' | 'owes' | 'settled' | 'credit';
+type BalanceFilter = 'all' | 'owes' | 'settled' | 'credit' | 'we_owe';
+
+const BALANCE_FILTERS: readonly BalanceFilter[] = ['all', 'owes', 'settled', 'credit', 'we_owe'];
 
 /**
- * The Companies page (D-054, D-055, FR-505): every company that buys from us.
+ * The Companies page (D-054, D-055, FR-505): every company we sell to or buy from.
  *
- * Buying stock is the factory's own business, never a company's (D-062), so a row carries one
- * balance — what the company owes us — labelled by which way it points: owing, settled, or in
- * credit when they have paid ahead.
+ * A row carries both sides, each for those allowed to see it: what the company owes us, labelled
+ * by which way it points, and what we owe them for what we bought (D-085). "We owe them" is also a
+ * filter, which the Purchases page's "We still owe" figure opens (`?balance=we_owe`).
  */
 export function CustomersPage() {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
   // The request waits for the typing to stop (NFR-03): one search, not one per letter.
   const query = useDebouncedValue(search);
-  const [balance, setBalance] = useState<BalanceFilter>('all');
+  const [params] = useSearchParams();
+  const [balance, setBalance] = useState<BalanceFilter>(() => {
+    const asked = params.get('balance') as BalanceFilter | null;
+    return asked && BALANCE_FILTERS.includes(asked) ? asked : 'all';
+  });
   const seesSelling = usePermission('fields.see_customer_balances');
   const seesBuying = usePermission('fields.see_company_balances');
-  const seesNet = seesSelling && seesBuying;
   const [includeInactive, setIncludeInactive] = useState(false);
   const [sort, setSort] = useState<'name' | 'balance'>('name');
 
@@ -96,21 +106,28 @@ export function CustomersPage() {
               inputMode="search"
             />
           </div>
-          {/* The net balance needs both sides' flags (D-054); without them the server ignores
-              this filter and sort, so they are not offered (review). */}
-          {seesNet ? (
+          {/* Each filter needs the flag of the side it reads (D-085); without it the server
+              ignores the filter, so it is not offered (review). */}
+          {seesSelling || seesBuying ? (
+            <select
+              className="mz-select"
+              aria-label={t('customers:net_balance')}
+              value={balance}
+              onChange={(event) => setBalance(event.target.value as BalanceFilter)}
+            >
+              <option value="all">{t('customers:all_balances')}</option>
+              {seesSelling ? (
+                <>
+                  <option value="owes">{t('customers:filter_owes')}</option>
+                  <option value="credit">{t('customers:filter_credit')}</option>
+                  <option value="settled">{t('customers:filter_settled')}</option>
+                </>
+              ) : null}
+              {seesBuying ? <option value="we_owe">{t('customers:filter_we_owe')}</option> : null}
+            </select>
+          ) : null}
+          {seesSelling ? (
             <>
-              <select
-                className="mz-select"
-                aria-label={t('customers:net_balance')}
-                value={balance}
-                onChange={(event) => setBalance(event.target.value as BalanceFilter)}
-              >
-                <option value="all">{t('customers:all_balances')}</option>
-                <option value="owes">{t('customers:filter_owes')}</option>
-                <option value="credit">{t('customers:filter_credit')}</option>
-                <option value="settled">{t('customers:filter_settled')}</option>
-              </select>
               <FilterChip active={sort === 'balance'} onClick={() => setSort(sort === 'balance' ? 'name' : 'balance')}>
                 {t('customers:sort_by_balance')}
               </FilterChip>
@@ -146,11 +163,12 @@ export function CustomersPage() {
                   </span>
                 ),
               },
-              {
-                header: t('customers:net_balance'),
-                numeric: true,
-                cell: (row) => <PartyBalance row={row} />,
-              },
+              ...(seesSelling
+                ? [{ header: t('companies:they_owe_us'), numeric: true, cell: (row: CustomerRow) => <PartyBalance row={row} /> }]
+                : []),
+              ...(seesBuying
+                ? [{ header: t('companies:we_owe_them'), numeric: true, cell: (row: CustomerRow) => <PayableCell row={row} /> }]
+                : []),
             ]}
             card={(row) => (
               <span className="mz-rowcard">
@@ -163,6 +181,7 @@ export function CustomersPage() {
                 <PartyCaption row={row} />
                 <span className="mz-rowcard__foot">
                   <PartyBalance row={row} />
+                  <PayableCell row={row} />
                 </span>
               </span>
             )}
@@ -232,3 +251,24 @@ export function PartyBalance({ row }: { row: CustomerRow }) {
   );
 }
 
+/** What we owe them for what we bought (D-085); a dash when we owe them nothing. */
+function PayableCell({ row }: { row: CustomerRow }) {
+  const { t } = useTranslation();
+  const payable = row.payable;
+  if (!payable) return null;
+  const amount = payableAmount(payable);
+  if (amount === 0) return <span className="mz-muted">—</span>;
+  return (
+    <span className="mz-cell__body">
+      <span className={amount > 0 ? 'mz-caption mz-owed' : 'mz-caption'}>
+        {t(payableLabel(amount))}
+      </span>
+      <DualAmount
+        amount_iqd={Math.abs(payable.amount_iqd)}
+        amount_usd_cents={Math.abs(payable.amount_usd_cents)}
+        primary={payable.currency}
+        kind="derived"
+      />
+    </span>
+  );
+}

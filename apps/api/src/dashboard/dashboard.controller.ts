@@ -6,6 +6,7 @@ import { can, contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { Database } from '../database/pool.js';
+import { owedToCompanies } from '../common/owed-to-companies.js';
 import { RatesService } from '../rates/rates.service.js';
 import { PeriodService } from '../settings/period.service.js';
 
@@ -328,35 +329,18 @@ export class DashboardController {
   }
 
   private async supplierTile(): Promise<DashboardTile[]> {
-    const { rows } = await this.database.query<{
-      iqd: string;
-      usd_cents: string;
-      companies: string;
-    }>(
-      // Only the companies we owe — a positive balance in their own currency — and only theirs:
-      // netting every account, credits included, and counting every company that ever had a
-      // row answered a different question from the tile's (review). Read from the maintained
-      // per-account sums of migration 0033 — one row per account, where summing the buying
-      // ledger of every account cost 845 ms at ten years (D-075).
-      `SELECT coalesce(sum(t.payable_iqd), 0)::text AS iqd,
-              coalesce(sum(t.payable_usd_cents), 0)::text AS usd_cents,
-              count(*)::text AS companies
-         FROM account_totals t
-         JOIN customers c ON c.id = t.account_id
-        WHERE NOT c.is_system AND t.payable_entries > 0
-          AND (CASE WHEN c.settlement_currency = 'IQD' THEN t.payable_iqd ELSE t.payable_usd_cents END) > 0`,
-    );
+    // The same figure as the Purchases page's (D-085): the active companies we owe, the dinar
+    // accounts in dinars and the dollar accounts in dollars — two figures, never one pair, so
+    // `owed` here is read by currency, not as a dinar-and-dollar pair of one amount.
+    const owed = await owedToCompanies(this.database);
     return [
       {
         key: 'we_owe_companies',
-        count: Number(rows[0]?.companies ?? 0),
+        count: owed.companies,
         // Under `owed`, not `cost`: what we owe a supplier is a balance, and hiding it from
         // somebody who may see supplier balances but not bought prices was the wrong flag
         // answering the wrong question (D-022).
-        owed: {
-          amount_iqd: Number(rows[0]?.iqd ?? 0),
-          amount_usd_cents: Number(rows[0]?.usd_cents ?? 0),
-        },
+        owed: { amount_iqd: owed.owed_iqd, amount_usd_cents: owed.owed_usd_cents },
       },
     ];
   }

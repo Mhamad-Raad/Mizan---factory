@@ -1,9 +1,8 @@
 import type { Currency, Measure } from '@mizan/money';
 
 /*
- * The shapes of a buy (a purchase) as the API sends them. The Purchases list itself gave its
- * place to the accountant page (D-062): buying is done in Materials now, and the buys of a
- * period are listed on /accounts.
+ * The shapes of a purchase as the API sends them: the Purchases page and form (D-085), a
+ * company's Purchases tab, the accountant page's buys, and the printed purchase receipt.
  */
 
 export interface PurchaseRow {

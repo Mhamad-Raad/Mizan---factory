@@ -30,3 +30,17 @@ export const rateString = z
   .string()
   .regex(/^\d{1,6}(\.\d{1,4})?$/)
   .refine((value) => Number(value) > 0, 'rate must be more than zero');
+
+/**
+ * "Paid now" on a buy (D-085): all of it, or a part typed in either currency, the other side
+ * filled at the buy's rate unless typed too.
+ */
+export const paidNow = z.union([
+  z.object({ in_full: z.literal(true), currency: z.enum(['IQD', 'USD']).nullish() }),
+  z.object({
+    in_full: z.literal(false).optional(),
+    amount: minorAmount.positive(),
+    currency: z.enum(['IQD', 'USD']),
+    other_amount: minorAmount.nonnegative().nullish(),
+  }),
+]);

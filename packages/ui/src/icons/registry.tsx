@@ -33,6 +33,7 @@ import {
   Settings,
   Shield,
   ShoppingCart,
+  Wallet,
   Sun,
   Trash2,
   Type,
@@ -85,6 +86,7 @@ export type IconName =
   | 'customers'
   | 'companies'
   | 'purchases'
+  | 'accounts'
   | 'more'
   | 'filter'
   | 'print'
@@ -133,6 +135,8 @@ const ICONS: Record<IconName, LucideIcon> = {
   customers: Contact,
   companies: Building2,
   purchases: ShoppingCart,
+  // The accountant's page (D-085): the cart belongs to Purchases now.
+  accounts: Wallet,
   more: Ellipsis,
   filter: Filter,
   print: Printer,

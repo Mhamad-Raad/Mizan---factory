@@ -6,6 +6,7 @@ import type { LedgerEntry, LedgerGroup } from '@mizan/ledger';
 import { AuditService, diffOf } from '../audit/audit.service.js';
 import { resolveActingUser } from '../common/acting-user.js';
 import { ApiError } from '../common/errors.js';
+import { documentNumbers } from '../common/document-numbers.js';
 import { assertMayReverse } from '../ledger/reversible.js';
 import { can } from '../common/request-context.js';
 import type { RequestContext } from '../common/request-context.js';
@@ -161,13 +162,21 @@ export class CustomersService {
     filters: CustomerFilters,
   ): Promise<{ items: CustomerDto[]; total: number }> {
     const sight = this.sightOf(context);
-    // The filter and the sort read the net balance (D-054), which needs both sides' flags. For
-    // anyone else they are ignored: a list filtered to "owes us" and ranked by it would tell
-    // them the very figure the response hides (review).
-    const seesNet = sight.selling && sight.buying;
-    const { rows, total } = await this.customers.list(
-      seesNet ? filters : { ...filters, balance: undefined, sort: filters.sort === 'balance' ? 'name' : filters.sort },
-    );
+    // Each filter needs the flag of the side it reads (D-085): "we owe them" the company-balances
+    // flag, the others and the sort the customer-balances flag. For anyone else they are ignored —
+    // a list filtered to "owes us" and ranked by it would tell them the very figure the response
+    // hides (review).
+    const filterAllowed =
+      filters.balance === 'we_owe'
+        ? sight.buying
+        : filters.balance === 'settled'
+          ? sight.selling && sight.buying
+          : sight.selling;
+    const { rows, total } = await this.customers.list({
+      ...filters,
+      balance: filterAllowed ? filters.balance : undefined,
+      sort: !sight.selling && filters.sort === 'balance' ? 'name' : filters.sort,
+    });
     // The list values balances at the global rate; a customer's own rate is applied on the
     // detail, where a single per-row lookup is not thousands of them.
     const globalRate = await this.rates.current();
@@ -627,7 +636,7 @@ export class CustomersService {
       balance_as_of: options.as_of
         ? balanceAsOf(entries, row.settlement_currency, options.as_of)
         : null,
-      items: page.map((group) => toGroupDto(group, names)),
+      items: await this.withOrderNumbers(page.map((group) => toGroupDto(group, names))),
       total: visible.length,
       page: paging.page,
       page_size: paging.page_size,
@@ -980,6 +989,12 @@ export class CustomersService {
     });
   }
 
+  /** Each row's order number, for the screen and the printed statement (D-086). */
+  private async withOrderNumbers(items: LedgerGroupDto[]): Promise<LedgerGroupDto[]> {
+    const numbers = await documentNumbers(this.database, 'orders', items.map((item) => item.order_id));
+    return items.map((item) => ({ ...item, order_number: item.order_id ? (numbers.get(item.order_id) ?? null) : null }));
+  }
+
   async historyOf(
     context: RequestContext,
     id: string,
@@ -1051,7 +1066,7 @@ export class CustomersService {
       closing_balance: closing,
       // The most recent rows, because a statement is read from its end: the older ones are
       // already in the opening balance, which is exact either way.
-      items: inRange.slice(-STATEMENT_ITEM_CAP).map((group) => toGroupDto(group, names)),
+      items: await this.withOrderNumbers(inRange.slice(-STATEMENT_ITEM_CAP).map((group) => toGroupDto(group, names))),
       item_count: inRange.length,
       has_more: inRange.length > STATEMENT_ITEM_CAP,
     };

@@ -99,7 +99,7 @@ function presetRange(preset: Exclude<Preset, 'custom'>, today: string): { from: 
 }
 
 /**
- * The accountant page (client review, D-062). It took the Purchases page's place: what the
+ * The accountant page (client review, D-062), beside the Purchases page (D-085): what the
  * factory sold in a period and what that cost us, the profit, what it bought and spent, the damage
  * that is still a loss — and what is left. The period is the first of this month to today unless
  * somebody moves it, and it lives in the address, so a reload or a shared link keeps it.

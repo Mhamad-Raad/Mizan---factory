@@ -16,6 +16,7 @@ import { RatesService } from '../rates/rates.service.js';
 import { PeriodService } from '../settings/period.service.js';
 import { StockService } from '../stock/stock.service.js';
 import { PurchasesService } from '../purchases/purchases.service.js';
+import type { PaidNowInput } from '../purchases/purchases.service.js';
 import { LotsService } from '../lots/lots.service.js';
 import type { Lot } from '../lots/lots.service.js';
 import { ItemsRepository } from './items.repository.js';
@@ -37,6 +38,9 @@ export interface CreateItemInput {
     unit_price: { amount: number; currency: 'IQD' | 'USD'; other_amount?: number | null };
     purchase_date: string;
     note?: string | null;
+    /** The company it was bought from (D-085); none for stock that owes nobody. */
+    company_id?: string | null;
+    paid?: PaidNowInput | null;
   } | null;
 }
 
@@ -226,7 +230,8 @@ export class ItemsService {
 
       if (input.buy) {
         await this.purchases.createWithin(tx, context, {
-          company_id: null,
+          company_id: input.buy.company_id ?? null,
+          paid: input.buy.paid ?? null,
           purchase_date: input.buy.purchase_date,
           notes: input.buy.note?.trim() || null,
           lines: [

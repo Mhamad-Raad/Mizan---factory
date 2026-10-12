@@ -55,7 +55,16 @@
   "link_purchase": "Link to a purchase",
   "no_link": "Not linked to a purchase",
   "sheet.payment": "Record a payment",
-  "sheet.credit": "Record a credit",
+  "sheet.credit": "Credit from them",
   "sheet.adjustment": "Adjust what we owe",
-  "sheet.opening": "Record the opening balance"
+  "sheet.opening": "Record the opening balance",
+  "pay_them": "Pay them",
+  "credit_from_them": "Credit from them",
+  "credit_hint": "Goods we sent back, or money they let us off — it lowers what we owe them.",
+  "adjust_delta_hint": "A plus figure adds to what we owe them, a minus figure takes off.",
+  "purchases_owed": "Purchases we still owe for",
+  "nothing_owed": "We owe them nothing",
+  "we_owe_nothing": "We owe them nothing",
+  "they_owe_nothing": "They owe us nothing",
+  "more_owed": "And {{count}} more — owed on all of them:"
 }

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   lastDays,
   lastMonth,
-  lastTwelveMonths,
   presetPeriod,
   shiftDays,
   thisMonth,
@@ -40,11 +39,6 @@ describe('the date presets (spec 3.3)', () => {
 
   it('starts the year on the first of January', () => {
     expect(thisYear('2026-09-21')).toEqual({ from: '2026-01-01', to: '2026-09-21' });
-  });
-
-  it('covers the twelve months to today for a statement', () => {
-    expect(lastTwelveMonths('2026-09-21')).toEqual({ from: '2025-09-21', to: '2026-09-21' });
-    expect(lastTwelveMonths('2028-02-29')).toEqual({ from: '2027-03-01', to: '2028-02-29' });
   });
 });
 

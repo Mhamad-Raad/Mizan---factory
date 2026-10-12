@@ -9,6 +9,14 @@ import { defineConfig, devices } from '@playwright/test';
  * The Definition of done still requires a check on a real phone: this catches regressions, it
  * does not replace a human looking at Kurdish type on a real screen.
  */
+/**
+ * The ports the suite starts its own API and web server on. Another project on this machine may
+ * hold 3000 or 5173 (its API answered the health check and the suite timed out waiting), so both
+ * can be moved: `E2E_API_PORT=3020 E2E_WEB_PORT=5190 npx playwright test`.
+ */
+const apiPort = process.env.E2E_API_PORT ?? '3000';
+const webPort = process.env.E2E_WEB_PORT ?? '5173';
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -21,7 +29,7 @@ export default defineConfig({
     toHaveScreenshot: { maxDiffPixelRatio: 0.02, animations: 'disabled' },
   },
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',
+    baseURL: process.env.E2E_BASE_URL ?? `http://localhost:${webPort}`,
     trace: 'on-first-retry',
     locale: 'en-GB',
     timezoneId: 'Asia/Baghdad',
@@ -50,7 +58,7 @@ export default defineConfig({
     : [
         {
           command: 'pnpm --filter @mizan/api start',
-          url: 'http://localhost:3000/api/v1/health',
+          url: `http://localhost:${apiPort}/api/v1/health`,
           reuseExistingServer: true,
           timeout: 60_000,
           env: {
@@ -59,7 +67,8 @@ export default defineConfig({
             DATABASE_MIGRATE_URL:
               process.env.TEST_MIGRATE_URL ?? 'postgresql://mizan_migrate:mizan_migrate@localhost:5432/mizan_test',
             SESSION_PEPPER: process.env.SESSION_PEPPER ?? 'e2e-pepper-not-a-secret-0123456789',
-            APP_BASE_URL: 'http://localhost:5173',
+            PORT: apiPort,
+            APP_BASE_URL: `http://localhost:${webPort}`,
             NODE_ENV: 'development',
             TZ: 'Asia/Baghdad',
             // The suite types wrong passwords on purpose, all from this machine.
@@ -68,9 +77,11 @@ export default defineConfig({
         },
         {
           command: 'pnpm --filter @mizan/web dev',
-          url: 'http://localhost:5173',
+          url: `http://localhost:${webPort}`,
           reuseExistingServer: true,
           timeout: 60_000,
+          // The web server proxies `/api` to the suite's API, not to the one in `.env`.
+          env: { PORT: apiPort, WEB_PORT: webPort },
         },
       ],
 });

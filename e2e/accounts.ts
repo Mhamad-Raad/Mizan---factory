@@ -10,4 +10,4 @@ export const WAREHOUSE = { username: 'e2e.hemin', password: 'mizan-e2e-2026-hemi
 export const ACCOUNTANT = { username: 'e2e.nazdar', password: 'mizan-e2e-2026-nazdar' } as const;
 
 /** Where the suite reaches the API directly (not through the web server): `E2E_API_URL`. */
-export const API_URL = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
+export const API_URL = process.env.E2E_API_URL ?? `http://localhost:${process.env.E2E_API_PORT ?? '3000'}/api/v1`;

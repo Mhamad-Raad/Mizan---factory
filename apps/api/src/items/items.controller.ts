@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
-import { isoDate, minorAmount } from '../common/schemas.js';
+import { isoDate, minorAmount, paidNow } from '../common/schemas.js';
 import { AdminOnly, RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
@@ -43,9 +43,10 @@ const baseSchema = z.object({
 });
 
 /**
- * Creating a material is buying it (D-062): the first buy — how much came in and what each one
- * cost — travels with the material and is written in the same transaction. Optional here only
- * because the go-live import creates materials by the hundred; the screen always sends it.
+ * A material and its first purchase (D-062, D-085): how much came in, what each one cost, who it
+ * was bought from and what was paid them — written in the same transaction as the material.
+ * Optional: the go-live import creates materials by the hundred, and a material can be named now
+ * and bought later on a purchase of several materials.
  */
 export const createSchema = baseSchema.extend({
   buy: z
@@ -55,6 +56,9 @@ export const createSchema = baseSchema.extend({
       unit_price: price,
       purchase_date: isoDate,
       note: z.string().max(500).nullish(),
+      /** Who it was bought from, and what was paid them on the spot (D-085). */
+      company_id: uuid.nullish(),
+      paid: paidNow.nullish(),
     })
     .nullish(),
 });

@@ -128,13 +128,16 @@ describe('one kind of account (D-054, D-055)', () => {
       expect(detail.body.payable.amount_iqd).toBe(140_000);
       expect(detail.body.net.amount_iqd).toBe(-55_000);
 
-      // The list carries the same net, and "we owe them" finds it.
+      // The list carries the same net, and "we owe them" finds it. The balance filters read the
+      // side their column shows (D-085): it owes us, so it is not "in credit" though the net is.
       const list = await as(ctx.http, admin)
         .get('/api/v1/customers')
-        .query({ balance: 'credit' })
+        .query({ balance: 'we_owe' })
         .expect(200);
       expect(list.body.items.map((row: { id: string }) => row.id)).toEqual([zagros]);
       expect(list.body.items[0].net.amount_iqd).toBe(-55_000);
+      const credit = await as(ctx.http, admin).get('/api/v1/customers').query({ balance: 'credit' }).expect(200);
+      expect(credit.body.items.map((row: { id: string }) => row.id)).not.toContain(zagros);
     });
 
     it('shows each side only to whoever may see it, and the net only to whoever may see both', async () => {

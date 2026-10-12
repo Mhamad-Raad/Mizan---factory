@@ -23,6 +23,11 @@ describe('record names and notes in the reader’s language', () => {
     expect(readNote('Damage #7 paid back', t, number)).toBe('damages:paid_back_note(history:entity.damage #<7>)');
   });
 
+  it('translates the note on money paid with a purchase (D-085)', () => {
+    expect(readNote('Paid with purchase #12', t, number)).toBe('purchases:paid_with_note(purchases:number)');
+    expect(readNote('Paid with purchase #12 in cash', t, number)).toBe('Paid with purchase #12 in cash');
+  });
+
   it('leaves what a person typed as it is', () => {
     expect(readNote('Broken #2 — the lid cracked', t, number)).toBe('Broken #2 — the lid cracked');
   });
