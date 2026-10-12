@@ -409,4 +409,69 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
       expect(credit.body.items.map((row: { id: string }) => row.id)).not.toContain(alNoor);
     });
   });
+
+  describe('what the second review found', () => {
+    it('lets only who may take a payment back void a purchase paid when it was entered', async () => {
+      const created = await buy(buyer, { paid: { in_full: true } }).expect(201);
+      // A colleague who may void purchases, but did not make this payment.
+      const voider = await signIn(
+        ctx.http,
+        await seedUser({ username: 'voider', permissions: ['purchases.view', 'purchases.void'] }),
+      );
+      const refused = await as(ctx.http, voider)
+        .post(`/api/v1/purchases/${created.body.id}/void`)
+        .send({ reason: 'goods went back' })
+        .expect(409);
+      expect(refused.body.error.code).toBe('PAID_WITH_PURCHASE');
+      // Nothing moved; an administrator may.
+      expect((await ledgerOf(alNoor)).map((row) => row.entry_type)).toEqual(['purchase', 'payment']);
+      await as(ctx.http, admin)
+        .post(`/api/v1/purchases/${created.body.id}/void`)
+        .send({ reason: 'goods went back' })
+        .expect(200);
+    });
+
+    it('still lets a purchase paid ahead have its date or notes put right, and be raised', async () => {
+      const created = await buy(buyer, { paid: { in_full: true } }).expect(201);
+      await as(ctx.http, buyer)
+        .post(`/api/v1/companies/${alNoor}/payments`)
+        .send({ amount: 10_000, currency: 'IQD', entry_date: today(), purchase_id: created.body.id })
+        .expect(201);
+      const lines = [{ item_id: bolts, qty_count: 100, unit_price: { amount: 1_500, currency: 'IQD' } }];
+      const edited = await as(ctx.http, admin)
+        .put(`/api/v1/purchases/${created.body.id}`)
+        .send({ company_id: alNoor, purchase_date: today(), version: created.body.version, notes: 'invoice 77', lines })
+        .expect(200);
+      // Lowering it further below what was paid is still refused.
+      await as(ctx.http, admin)
+        .put(`/api/v1/purchases/${created.body.id}`)
+        .send({
+          company_id: alNoor,
+          purchase_date: today(),
+          version: edited.body.version,
+          lines: [{ item_id: bolts, qty_count: 90, unit_price: { amount: 1_500, currency: 'IQD' } }],
+        })
+        .expect(422);
+    });
+
+    it('counts only the purchases with something left to pay as still owed', async () => {
+      const paidAhead = await buy(buyer, { paid: { in_full: true } }).expect(201);
+      await as(ctx.http, buyer)
+        .post(`/api/v1/companies/${alNoor}/payments`)
+        .send({ amount: 10_000, currency: 'IQD', entry_date: today(), purchase_id: paidAhead.body.id })
+        .expect(201);
+      await buy(buyer).expect(201);
+      const breakdown = await as(ctx.http, buyer).get(`/api/v1/companies/${alNoor}/purchase-breakdown`).expect(200);
+      expect(breakdown.body.owing_count).toBe(2);
+      expect(breakdown.body.still_owed_count).toBe(1);
+      expect(breakdown.body.still_owed_total).toBe(150_000);
+    });
+
+    it('does not call a supplier we owe "settled"', async () => {
+      await buy(buyer).expect(201);
+      const settled = await as(ctx.http, admin).get('/api/v1/customers?balance=settled').expect(200);
+      expect(settled.body.items.map((row: { id: string }) => row.id)).not.toContain(alNoor);
+      expect(settled.body.items.map((row: { id: string }) => row.id)).toContain(dollarCo);
+    });
+  });
 });

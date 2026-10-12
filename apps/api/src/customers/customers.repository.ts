@@ -138,7 +138,8 @@ export class CustomersRepository {
     const net = `(${receivable} - ${payable})`;
     if (filters.balance === 'owes') conditions.push(`${receivable} > 0`);
     if (filters.balance === 'credit') conditions.push(`${receivable} < 0`);
-    if (filters.balance === 'settled') conditions.push(`${receivable} = 0`);
+    // "Settled" is nothing owed either way: a supplier we owe millions is not settled (second review).
+    if (filters.balance === 'settled') conditions.push(`${receivable} = 0 AND ${payable} = 0`);
     if (filters.balance === 'we_owe') conditions.push(`${payable} > 0`);
 
     const where = `WHERE ${conditions.join(' AND ')}`;

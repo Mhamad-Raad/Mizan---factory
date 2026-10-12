@@ -5,6 +5,7 @@ import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import { pagingOf } from '../common/paging.js';
 import { containing } from '../common/like.js';
+import { owedToCompanies } from '../common/owed-to-companies.js';
 
 export type PriceSource = 'month' | 'override';
 
@@ -295,33 +296,9 @@ export class PurchasesRepository {
     };
   }
 
-  /**
-   * What we still owe the companies (D-085), from the maintained per-account sums of migration
-   * 0033 — one row per account, never a ledger sum — over the companies the Companies list's "We
-   * owe them" filter shows (active ones), so the figure and the list it opens agree.
-   *
-   * Each account is read in its own currency only: the dinar accounts' dinar balances and the
-   * dollar accounts' dollar balances, as two figures. The other column of an account is a sum of
-   * conversions at many rates — a dollar account paid at a higher rate than it bought at has a
-   * *negative* dinar column while we owe it dollars — so adding it in would let one account's
-   * drift lower what we owe another (review, lesson 4).
-   */
+  /** What we still owe the companies (D-085); shared with Today's tile. */
   async owedToCompanies(): Promise<{ companies: number; owed_iqd: number; owed_usd_cents: number }> {
-    const { rows } = await this.database.query<{ companies: string; owed_iqd: string; owed_usd_cents: string }>(
-      `SELECT count(*)::text AS companies,
-              coalesce(sum(t.payable_iqd) FILTER (WHERE c.settlement_currency = 'IQD'), 0)::text AS owed_iqd,
-              coalesce(sum(t.payable_usd_cents) FILTER (WHERE c.settlement_currency = 'USD'), 0)::text AS owed_usd_cents
-         FROM account_totals t
-         JOIN customers c ON c.id = t.account_id
-        WHERE c.deleted_at IS NULL AND c.is_active
-          AND CASE WHEN c.settlement_currency = 'IQD' THEN t.payable_iqd ELSE t.payable_usd_cents END > 0`,
-    );
-    const row = rows[0];
-    return {
-      companies: Number(row?.companies ?? 0),
-      owed_iqd: Number(row?.owed_iqd ?? 0),
-      owed_usd_cents: Number(row?.owed_usd_cents ?? 0),
-    };
+    return owedToCompanies(this.database);
   }
 
   async linesOf(purchaseId: string, tx?: Db): Promise<PurchaseLineRow[]> {

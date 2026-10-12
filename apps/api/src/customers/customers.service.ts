@@ -166,7 +166,12 @@ export class CustomersService {
     // flag, the others and the sort the customer-balances flag. For anyone else they are ignored —
     // a list filtered to "owes us" and ranked by it would tell them the very figure the response
     // hides (review).
-    const filterAllowed = filters.balance === 'we_owe' ? sight.buying : sight.selling;
+    const filterAllowed =
+      filters.balance === 'we_owe'
+        ? sight.buying
+        : filters.balance === 'settled'
+          ? sight.selling && sight.buying
+          : sight.selling;
     const { rows, total } = await this.customers.list({
       ...filters,
       balance: filterAllowed ? filters.balance : undefined,

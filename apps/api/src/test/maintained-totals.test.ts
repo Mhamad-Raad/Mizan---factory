@@ -320,10 +320,11 @@ describe('maintained totals and the ten-year review (D-075)', () => {
       .expect(201);
     const dashboard = (await as(ctx.http, admin).get('/api/v1/dashboard').expect(200)).body;
     const tile = dashboard.tiles.find((one: { key: string }) => one.key === 'we_owe_companies');
-    // Only what we owe, in each currency's own column: $150 and its dinars at the entry's rate.
+    // Only what we owe, each account in its own currency (D-085): a dollar account's $150 is
+    // dollars, and its dinar column — a conversion — is not added to the dinars we owe.
     expect(tile.count).toBe(1);
     expect(tile.owed.amount_usd_cents).toBe(15_000);
-    expect(tile.owed.amount_iqd).toBe(196_500);
+    expect(tile.owed.amount_iqd).toBe(0);
     expect(dashboard.debtors.map((row: { name: string }) => row.name)).toEqual(['Kawa Trading']);
   });
 

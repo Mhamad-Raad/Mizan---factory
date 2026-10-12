@@ -11,6 +11,7 @@ import {
 } from '@mizan/money';
 import type { Currency, Measure, Rate, RateSource } from '@mizan/money';
 import { liveEntries } from '@mizan/ledger';
+import { mayReversePayment } from '../ledger/reversible.js';
 import { AuditService } from '../audit/audit.service.js';
 import { resolveActingUser } from '../common/acting-user.js';
 import { ApiError } from '../common/errors.js';
@@ -516,7 +517,10 @@ export class PurchasesService {
           rate,
           rateSource,
         });
-        await this.assertNotBelowPaid(tx, account, id, totals);
+        await this.assertNotBelowPaid(tx, account, id, totals, {
+          total_iqd: Number(purchase.total_iqd),
+          total_usd_cents: Number(purchase.total_usd_cents),
+        });
       }
 
       await this.audit.record(
@@ -596,7 +600,13 @@ export class PurchasesService {
           related: { purchase_id: id, company_id: account.id },
         });
         // The money paid with it goes back too; later payments stay (D-085).
-        for (const entry of await this.paidNowEntries(tx, account, id, purchase.number)) {
+        for (const entry of await this.paidNowEntries(tx, account, id)) {
+          // Taking money back is the ledger's rule, not the void's: an administrator, or the one
+          // who recorded it on the day — the undo, or a same-day mistake (second review).
+          // Anyone else is told who may, rather than reversing a payment they could not.
+          if (!mayReversePayment(entry, context, this.period.today())) {
+            throw new ApiError('PAID_WITH_PURCHASE', { purchase_id: id });
+          }
           await this.ledger.reverse(context, tx, account, entry.id, {
             note: input.reason,
             entry_date: purchase.purchase_date,
@@ -1126,28 +1136,24 @@ export class PurchasesService {
   }
 
   /**
-   * The live "paid now" payment of a purchase: the payment that names it, carries its note, and
-   * was written in the same transaction as its first company entry (one transaction, one
-   * `created_at`). Both are asked for, so a later payment that happens to carry the same words is
-   * never taken back.
+   * The live "paid now" payment of a purchase: the payment that names it and was written in the
+   * same transaction as its first company entry — one transaction, one `created_at` — which no
+   * payment made afterwards can share. The note (`paidNowNote`) is for the reader, not the match,
+   * so a change to its wording can never orphan an older row (second review).
    */
-  private async paidNowEntries(tx: Db, account: LedgerAccount, purchaseId: string, number: string) {
+  private async paidNowEntries(tx: Db, account: LedgerAccount, purchaseId: string) {
     const entries = await this.ledger.entriesOfDocument(tx, account.id, purchaseId);
     const first = entries
       .filter((entry) => entry.entry_type === 'purchase' && entry.reverses_entry_id === null)
       .sort((a, b) => a.posting_seq - b.posting_seq)[0];
     if (!first) return [];
-    const note = paidNowNote(number);
     return liveEntries(entries).filter(
-      (entry) =>
-        entry.entry_type === 'payment' &&
-        entry.note === note &&
-        entry.created_at.getTime() === first.created_at.getTime(),
+      (entry) => entry.entry_type === 'payment' && entry.created_at.getTime() === first.created_at.getTime(),
     );
   }
 
   /**
-   * An edit may lower a purchase, but not below what has been paid against it (D-085): the
+   * An edit may not lower a purchase below what has been paid against it (D-085): the
    * "never more than the purchase" rule of paying now would otherwise be undone by editing the
    * purchase down afterwards. A payment made in error is reversed on the company's page first.
    */
@@ -1156,6 +1162,7 @@ export class PurchasesService {
     account: LedgerAccount,
     purchaseId: string,
     totals: { total_iqd: number; total_usd_cents: number },
+    before: { total_iqd: number; total_usd_cents: number },
   ): Promise<void> {
     // The live rows that name the purchase other than its own charge: payments, credits and
     // adjustments still standing. Not `purchase_linked_totals`, which also counts the reversal
@@ -1166,8 +1173,13 @@ export class PurchasesService {
     const paid = -liveEntries(entries)
       .filter((entry) => entry.entry_type !== 'purchase')
       .reduce((sum, entry) => sum + settled(entry), 0);
-    const total = account.settlement_currency === 'IQD' ? totals.total_iqd : totals.total_usd_cents;
-    if (paid > total) {
+    const inSettlement = (pair: { total_iqd: number; total_usd_cents: number }) =>
+      account.settlement_currency === 'IQD' ? pair.total_iqd : pair.total_usd_cents;
+    const total = inSettlement(totals);
+    // Only an edit that *lowers* the purchase below what was paid is refused: one already paid
+    // ahead (a later payment named it) can still have its date, notes or lines put right, and
+    // may be raised (second review).
+    if (paid > total && total < inSettlement(before)) {
       throw ApiError.validation([
         { path: 'lines', code: 'BELOW_PAID', message_key: 'errors:purchase_below_paid', params: {} },
       ]);

@@ -287,6 +287,9 @@ export class CompaniesService {
     /** How many still owe something, and their total — so the identity is checkable as sent. */
     owing_count: number;
     owing_total: number;
+    /** Only the purchases with something left to pay — an overpaid one is not a debt (D-085). */
+    still_owed_count: number;
+    still_owed_total: number;
     page: number;
     page_size: number;
   }> {
@@ -318,6 +321,8 @@ export class CompaniesService {
       settled_count: allocation.purchases.length - owing.length,
       owing_count: owing.length,
       owing_total: owingTotal,
+      still_owed_count: owing.filter((purchase) => purchase.remaining > 0).length,
+      still_owed_total: owing.reduce((total, purchase) => total + Math.max(purchase.remaining, 0), 0),
       page: paging.page,
       page_size: paging.page_size,
     };
