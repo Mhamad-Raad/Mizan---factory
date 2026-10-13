@@ -113,5 +113,10 @@
   "owes_nobody": "قەرزی کەس نییە",
   "new_material_from": "وەک ڕیزێکی نوێ دەچێتە سەر ئەم کڕینە، کە لە {{name}} کڕدراوە.",
   "new_material_hint": "وەک ڕیزێکی نوێ دەچێتە سەر ئەم کڕینە.",
-  "add_to_purchase": "زیادکردن بۆ کڕین"
+  "add_to_purchase": "زیادکردن بۆ کڕین",
+  "rate_badge_company": "نرخی کۆمپانیا",
+  "rate_badge_system": "نرخی سیستەم",
+  "rate_badge_changed": "گۆڕدراو",
+  "rate_was_company": "نرخی کۆمپانیا: {{rate}}",
+  "rate_was_system": "نرخی سیستەم: {{rate}}"
 }

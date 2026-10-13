@@ -41,6 +41,8 @@ export interface CreateItemInput {
     /** The company it was bought from (D-085); none for stock that owes nobody. */
     company_id?: string | null;
     paid?: PaidNowInput | null;
+    /** The rate changed for this buy (D-092); the company's rate, or the system's, when absent. */
+    rate_iqd_per_usd?: string | null;
   } | null;
 }
 
@@ -242,6 +244,7 @@ export class ItemsService {
           paid: input.buy.paid ?? null,
           purchase_date: input.buy.purchase_date,
           notes: input.buy.note?.trim() || null,
+          rate_iqd_per_usd: input.buy.rate_iqd_per_usd ?? null,
           lines: [
             {
               item_id: row.id,

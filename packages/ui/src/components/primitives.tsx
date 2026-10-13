@@ -57,16 +57,28 @@ export interface FieldProps {
   label: string;
   hint?: string;
   error?: string;
+  /** A small tag at the end of the label's line — where a pre-filled value came from (D-092). */
+  badge?: ReactNode;
   children: (id: string) => ReactNode;
 }
 
-export function Field({ label, hint, error, children }: FieldProps) {
+export function Field({ label, hint, error, badge, children }: FieldProps) {
   const id = useId();
+  const labelled = (
+    <label className="mz-field__label" htmlFor={id}>
+      {label}
+    </label>
+  );
   return (
     <div className={`mz-field${error ? ' mz-field--invalid' : ''}`}>
-      <label className="mz-field__label" htmlFor={id}>
-        {label}
-      </label>
+      {badge ? (
+        <span className="mz-field__head">
+          {labelled}
+          {badge}
+        </span>
+      ) : (
+        labelled
+      )}
       {children(id)}
       {hint && !error ? <span className="mz-field__hint">{hint}</span> : null}
       {error ? (
@@ -672,6 +684,8 @@ export interface NumberFieldProps extends Omit<InputHTMLAttributes<HTMLInputElem
   unit?: string;
   /** Kilograms take three decimals; counts and minor units take none. */
   decimals?: number;
+  /** A small tag beside the label — where a pre-filled value came from (D-092). */
+  badge?: ReactNode;
   /**
    * Thousands separators while typing — `1,250,000` on screen, `1250000` to the form. On by
    * default; off for a figure that is not a quantity, such as a year or a reference number.
@@ -694,6 +708,7 @@ export function NumberField({
   unit,
   decimals = 0,
   grouped = true,
+  badge,
   onChange,
   value,
   ...rest
@@ -720,7 +735,7 @@ export function NumberField({
   });
 
   return (
-    <Field label={label} hint={hint} error={error}>
+    <Field label={label} hint={hint} error={error} badge={badge}>
       {(id) => (
         // Numbers read left-to-right in every language, so the field is an LTR island: the digits
         // run left to right and the unit sits at the right, even on an Arabic or Kurdish page.

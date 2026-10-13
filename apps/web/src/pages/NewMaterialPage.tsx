@@ -15,9 +15,18 @@ import { useFormatter, usePermission } from '../lib/store.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { useGlobalRate } from '../lib/rates.js';
-import { CompanyField, NOTHING_PAID, PaidNowField, companyIdOf, paidNowBody, paidNowValid } from '../components/BuyFields.js';
+import {
+  BuyRateField,
+  CompanyField,
+  NOTHING_PAID,
+  PaidNowField,
+  companyIdOf,
+  paidNowBody,
+  paidNowValid,
+  useBuyRate,
+} from '../components/BuyFields.js';
 import type { CompanyChoice, PaidNow } from '../components/BuyFields.js';
-import { useAccount, useDocumentRate } from '../lib/accounts.js';
+import { useAccount } from '../lib/accounts.js';
 
 const emptyMoney = (): MoneyValue => ({ amount: null, currency: 'IQD', other_amount: null });
 
@@ -49,7 +58,8 @@ export function NewMaterialPage() {
   const mayPay = usePermission('companies.record_payment');
   const companyId = companyIdOf(company);
   const companyAccount = useAccount(companyId);
-  const buyDocumentRate = useDocumentRate(companyAccount.data);
+  // The first buy's rate (D-092): the company's own, else the system's, and may be changed.
+  const buyRate = useBuyRate(companyAccount.data, t('purchases:rate_source_purchase'));
   const [sale, setSale] = useState<MoneyValue>(emptyMoney);
   const [bought, setBought] = useState<MoneyValue>(emptyMoney);
   // The material and its prices are two writes, each with its own key held across retries.
@@ -81,6 +91,7 @@ export function NewMaterialPage() {
                 purchase_date: boughtOn,
                 note: buyNote.trim() === '' ? null : buyNote.trim(),
                 company_id: companyId,
+                rate_iqd_per_usd: buyRate.body,
                 paid: company.kind === 'company' && mayPay ? paidNowBody(paid, company.settlement_currency) : null,
               }
             : null,
@@ -119,8 +130,8 @@ export function NewMaterialPage() {
     quantityValid &&
     costValid &&
     boughtOn !== '' &&
+    !buyRate.invalid &&
     paidNowValid(paid);
-  const buyRate = companyId ? buyDocumentRate.rate : rate;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -198,12 +209,13 @@ export function NewMaterialPage() {
                   max={formatter.today()}
                   onChange={(event) => setBoughtOn(event.target.value)}
                 />
+                <BuyRateField state={buyRate} label={t('purchases:rate_for_purchase')} />
               </div>
               <MoneyInput
                 label={t('materials:cost_per_unit')}
                 value={unitCost}
-                rate={buyRate}
-                sourceLabel={buyDocumentRate.label}
+                rate={buyRate.rate}
+                sourceLabel={buyRate.label}
                 onChange={setUnitCost}
               />
               <TextAreaField
@@ -216,7 +228,7 @@ export function NewMaterialPage() {
               {company.kind === 'company' && mayPay ? (
                 <PaidNowField
                   value={paid}
-                  rate={buyRate}
+                  rate={buyRate.rate}
                   accountCurrency={company.settlement_currency}
                   onChange={setPaid}
                 />

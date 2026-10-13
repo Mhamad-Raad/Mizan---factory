@@ -490,6 +490,32 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
     await as(ctx.http, buyer).post('/api/v1/items').send({ name: 'Nuts M8', pricing_unit: 'per_piece' }).expect(201);
   });
 
+  it('values a new material’s first purchase at a rate changed for it, else the company’s or the system’s (D-092)', async () => {
+    const first = (name: string, rate?: string) =>
+      as(ctx.http, buyer)
+        .post('/api/v1/items')
+        .send({
+          name,
+          pricing_unit: 'per_piece',
+          buy: {
+            qty_count: 10,
+            unit_price: { amount: 100, currency: 'IQD' },
+            purchase_date: today(),
+            company_id: alNoor,
+            ...(rate ? { rate_iqd_per_usd: rate } : {}),
+          },
+        })
+        .expect(201);
+    await first('Rivets 4 mm', '1400');
+    await first('Rivets 5 mm');
+    const list = await as(ctx.http, buyer).get(`/api/v1/purchases?company_id=${alNoor}`).expect(200);
+    const rates = list.body.items.map((row: { rate_iqd_per_usd: string; rate_source: string }) => [
+      Number(row.rate_iqd_per_usd),
+      row.rate_source,
+    ]);
+    expect(rates).toEqual(expect.arrayContaining([[1400, 'manual'], [1300, 'global']]));
+  });
+
   it('says on the list whether each purchase is paid, partly paid or unpaid, oldest-first', async () => {
     const paid = await buy(buyer, { paid: { in_full: true } }).expect(201);
     const part = await buy(buyer, { paid: { amount: 50_000, currency: 'IQD' } }).expect(201);

@@ -113,5 +113,10 @@
   "owes_nobody": "لا دين لأحد",
   "new_material_from": "تُضاف إلى هذا الشراء سطرًا جديدًا، مشتراة من {{name}}.",
   "new_material_hint": "تُضاف إلى هذا الشراء سطرًا جديدًا.",
-  "add_to_purchase": "إضافة إلى الشراء"
+  "add_to_purchase": "إضافة إلى الشراء",
+  "rate_badge_company": "سعر الشركة",
+  "rate_badge_system": "سعر النظام",
+  "rate_badge_changed": "معدَّل",
+  "rate_was_company": "سعر الشركة: {{rate}}",
+  "rate_was_system": "سعر النظام: {{rate}}"
 }

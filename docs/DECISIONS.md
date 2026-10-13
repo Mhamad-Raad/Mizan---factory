@@ -1913,3 +1913,19 @@ be description inputs with fixed heights but bigger than normal inputs."
 - **Notes are boxes.** Every note and reason — on documents, payments, rates, prices, damages,
   companies and materials — is a `TextAreaField`: three lines tall (6.5rem, twice a one-line
   field), never growing or resizable, a long note scrolling inside it.
+
+## D-092 · 2026-10-13 · business request · A buy's rate box opens filled, and says from where
+
+The business: "on adding or creating materials the rate input should automatically be filled with
+the company's rate, if the company did not have it then the system's rate … both can be changed …
+with a small badge showcasing if the rate is from the system or the company's rate."
+
+New purchase, New material (its first buy) and Buy more each have one **Rate for this purchase**
+box (`useBuyRate` / `BuyRateField`). It opens with the company's own rate, or the system's when
+the company has none — following the company as it is chosen or changed — and carries a tag:
+**Company rate**, **System rate**, or **Changed** once a different figure is typed, with what it
+would otherwise be under the box. Typing the default back, or emptying the box and leaving it, is
+the default again. The request sends a rate only when it was changed, so a purchase at the
+company's or the system's rate is still recorded as such (`rate_source` company / global, 2.3.3)
+and only a changed one as `manual`. A new material's first buy now accepts that rate
+(`buy.rate_iqd_per_usd`), as a purchase always has; tested in `buying-from-companies.test.ts`.

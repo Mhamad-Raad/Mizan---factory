@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
-import { isoDate, minorAmount, paidNow } from '../common/schemas.js';
+import { isoDate, minorAmount, paidNow, rateString } from '../common/schemas.js';
 import { AdminOnly, RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
@@ -59,6 +59,8 @@ export const createSchema = baseSchema.extend({
       /** Who it was bought from, and what was paid them on the spot (D-085). */
       company_id: uuid.nullish(),
       paid: paidNow.nullish(),
+      /** The rate changed for this buy (D-092); absent, the company's or the system's applies. */
+      rate_iqd_per_usd: rateString.nullish(),
     })
     .nullish(),
 });

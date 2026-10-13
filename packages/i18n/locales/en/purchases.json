@@ -113,5 +113,10 @@
   "owes_nobody": "Owes nobody",
   "new_material_from": "It goes on this purchase as a new line, bought from {{name}}.",
   "new_material_hint": "It goes on this purchase as a new line.",
-  "add_to_purchase": "Add to purchase"
+  "add_to_purchase": "Add to purchase",
+  "rate_badge_company": "Company rate",
+  "rate_badge_system": "System rate",
+  "rate_badge_changed": "Changed",
+  "rate_was_company": "The company rate is {{rate}}",
+  "rate_was_system": "The system rate is {{rate}}"
 }

@@ -2,14 +2,13 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, Chip, DateField, EmptyState, Icon, IconButton, NumberField, TextAreaField } from '@mizan/ui';
+import { Button, Card, Chip, DateField, EmptyState, Icon, IconButton, TextAreaField } from '@mizan/ui';
 import { computeLineTotals, convert, documentTotals } from '@mizan/money';
 import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
 import { usePageTitle } from '../lib/page-title.js';
-import { useAccount, useDocumentRate } from '../lib/accounts.js';
-import { usableRate } from '../lib/money.js';
+import { useAccount } from '../lib/accounts.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { useFormatter, usePermission } from '../lib/store.js';
@@ -20,7 +19,16 @@ import { PickerSheet } from '../components/PickerSheet.js';
 import { NewMaterialSheet } from '../components/NewMaterialSheet.js';
 import { TotalsFooter } from '../components/TotalsFooter.js';
 import { DualAmount } from '../components/DualAmount.js';
-import { CompanyField, NOTHING_PAID, PaidNowField, companyIdOf, paidNowBody, paidNowValid } from '../components/BuyFields.js';
+import {
+  BuyRateField,
+  CompanyField,
+  NOTHING_PAID,
+  PaidNowField,
+  companyIdOf,
+  paidNowBody,
+  paidNowValid,
+  useBuyRate,
+} from '../components/BuyFields.js';
 import type { CompanyChoice, PaidNow } from '../components/BuyFields.js';
 import type { ItemRow } from './MaterialsPage.js';
 import type { PurchaseDetail } from '../lib/purchases.js';
@@ -67,7 +75,6 @@ export function PurchaseFormPage() {
 
   const [date, setDate] = useState(() => formatter.today());
   const [notes, setNotes] = useState('');
-  const [rateText, setRateText] = useState('');
   const [lines, setLines] = useState<FormLine[]>([]);
   const [paid, setPaid] = useState<PaidNow>(NOTHING_PAID);
   const [picking, setPicking] = useState(false);
@@ -79,15 +86,10 @@ export function PurchaseFormPage() {
   const details = useAccount(companyId);
   const settlement: Currency = chosen.kind === 'company' ? chosen.settlement_currency : 'IQD';
 
-  // The rate of this purchase (2.3.3): typed for this deal, else the company's own, else the
-  // system's — the precedence the server applies.
-  const typedRate = usableRate(rateText);
-  const rateTypedBadly = rateText.trim() !== '' && typedRate === null;
-  const {
-    rate,
-    source: rateSource,
-    label: rateSourceLabel,
-  } = useDocumentRate(details.data, { rate: typedRate, label: t('purchases:rate_source_purchase') });
+  // The rate of this purchase (2.3.3, D-092): its box opens with the company's own rate, else the
+  // system's, and may be changed for this deal — the precedence the server applies.
+  const buyRate = useBuyRate(details.data, t('purchases:rate_source_purchase'));
+  const { rate, source: rateSource, label: rateSourceLabel } = buyRate;
 
   const totals = useMemo(() => {
     const perLine = lines.map((line) => {
@@ -120,7 +122,7 @@ export function PurchaseFormPage() {
           company_id: companyId,
           purchase_date: date,
           notes: notes.trim() === '' ? null : notes.trim(),
-          rate_iqd_per_usd: typedRate,
+          rate_iqd_per_usd: buyRate.body,
           lines: lines.map((line) => ({
             item_id: line.item_id,
             qty_count: line.priced_measure === 'count' ? line.qty_count : null,
@@ -163,7 +165,7 @@ export function PurchaseFormPage() {
         (line.priced_measure === 'kg' ? line.qty_kg !== null : line.qty_count !== null && line.qty_count > 0) &&
         line.cost.amount !== null,
     ) &&
-    !rateTypedBadly &&
+    !buyRate.invalid &&
     paidNowValid(paid);
 
   const addLine = (item: ItemRow) => {
@@ -241,18 +243,7 @@ export function PurchaseFormPage() {
                 setDate(event.target.value);
               }}
             />
-            <NumberField
-              label={t('purchases:rate_for_purchase')}
-              hint={
-                rate === null
-                  ? t('common:no_rate_set')
-                  : t('common:rate_at_source', { source: rateSourceLabel, rate: formatter.rate(rate) })
-              }
-              decimals={4}
-              error={rateTypedBadly ? t('common:rate_invalid') : undefined}
-              value={rateText}
-              onChange={(event) => setRateText(event.target.value)}
-            />
+            <BuyRateField state={buyRate} label={t('purchases:rate_for_purchase')} />
             <div className="mz-form-grid__wide">
               <TextAreaField
                 label={t('glossary:notes')}
