@@ -110,5 +110,8 @@
   "rate_source_purchase": "this purchase's rate",
   "paid_with_note": "Paid with {{name}}",
   "paid_in": "Paid in",
-  "owes_nobody": "Owes nobody"
+  "owes_nobody": "Owes nobody",
+  "new_material_from": "It goes on this purchase as a new line, bought from {{name}}.",
+  "new_material_hint": "It goes on this purchase as a new line.",
+  "add_to_purchase": "Add to purchase"
 }

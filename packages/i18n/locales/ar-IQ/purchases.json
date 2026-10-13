@@ -110,5 +110,8 @@
   "rate_source_purchase": "سعر هذا الشراء",
   "paid_with_note": "دُفع مع {{name}}",
   "paid_in": "دُفع بـ",
-  "owes_nobody": "لا دين لأحد"
+  "owes_nobody": "لا دين لأحد",
+  "new_material_from": "تُضاف إلى هذا الشراء سطرًا جديدًا، مشتراة من {{name}}.",
+  "new_material_hint": "تُضاف إلى هذا الشراء سطرًا جديدًا.",
+  "add_to_purchase": "إضافة إلى الشراء"
 }

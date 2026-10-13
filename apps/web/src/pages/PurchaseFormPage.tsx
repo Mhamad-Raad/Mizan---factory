@@ -17,6 +17,7 @@ import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { QuantityInput } from '../components/QuantityInput.js';
 import { PickerSheet } from '../components/PickerSheet.js';
+import { NewMaterialSheet } from '../components/NewMaterialSheet.js';
 import { TotalsFooter } from '../components/TotalsFooter.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { CompanyField, NOTHING_PAID, PaidNowField, companyIdOf, paidNowBody, paidNowValid } from '../components/BuyFields.js';
@@ -70,6 +71,9 @@ export function PurchaseFormPage() {
   const [lines, setLines] = useState<FormLine[]>([]);
   const [paid, setPaid] = useState<PaidNow>(NOTHING_PAID);
   const [picking, setPicking] = useState(false);
+  // A material named on the spot from the picker (D-090): what was typed there, while its sheet is open.
+  const [naming, setNaming] = useState<string | null>(null);
+  const mayCreateMaterial = usePermission('materials.create');
   const saveKey = useIdempotencyKey();
 
   const details = useAccount(companyId);
@@ -407,6 +411,35 @@ export function PurchaseFormPage() {
             };
           }}
           onPick={(_id, row) => addLine(row as unknown as ItemRow)}
+          footer={
+            mayCreateMaterial
+              ? (typed) => (
+                  <Button
+                    variant="secondary"
+                    icon="plus"
+                    block
+                    onClick={() => {
+                      setPicking(false);
+                      setNaming(typed);
+                    }}
+                  >
+                    {t('materials:new_material')}
+                  </Button>
+                )
+              : undefined
+          }
+        />
+      ) : null}
+
+      {naming !== null ? (
+        <NewMaterialSheet
+          initialName={naming}
+          companyName={chosen.kind === 'company' ? chosen.name : null}
+          onClose={() => setNaming(null)}
+          onCreated={(item) => {
+            setNaming(null);
+            addLine(item);
+          }}
         />
       ) : null}
     </div>

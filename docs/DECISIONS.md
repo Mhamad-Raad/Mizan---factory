@@ -1879,3 +1879,21 @@ The panel now uses the Accounts period row's rule — every select, date box and
 3.25rem, following the text size — and the company button fills its field like the boxes beside
 it, a long name ending in "…". `responsive.spec.ts` checks one height and no sideways scroll at
 360 px in all three languages.
+
+## D-090 · 2026-10-13 · business request · A new material named from inside a purchase
+
+The business: "on new purchases, click add material you should have the option to create material
+on the spot like a sticky option at the bottom says add material … then you can add a new material
+that belongs to the company you have chosen above." The material picker on New purchase now ends
+in a **New material** row that stays at the bottom of the sheet however far the list scrolls
+(offered to whoever holds `materials.create`). It opens a short sheet — the name, carried over
+from what was typed into the search, and an optional code — that says the material goes on this
+purchase, bought from the company chosen above; **Add to purchase** creates it and adds it as a
+new line, ready for its count and its cost.
+
+A material is not given an owner. In the model a material is bought from any number of companies
+(spec 1.1: the purchase carries the counterparty, the material does not), and the business's own
+words are met by the purchase it is created on: it is bought from that company, its cost is on
+that company's account, and its history says so. Created without a first buy, as the go-live
+import does; the buy is the purchase being written. A duplicate name is refused under the name
+field, as on the New material page.

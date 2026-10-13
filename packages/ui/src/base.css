@@ -4444,6 +4444,19 @@ html[data-mirroring='true'] body {
   background: var(--color-primary-soft);
 }
 
+/*
+ * A picker's last row that never scrolls away — "New material" on a purchase (D-090): it sticks to
+ * the bottom of the sheet, over the sheet's own bottom padding, on a band of the sheet's colour.
+ */
+.mz-picker__footer {
+  position: sticky;
+  inset-block-end: calc(-1 * var(--space-4));
+  margin-block-end: calc(-1 * var(--space-4));
+  border-block-start: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding-block: var(--space-3) var(--space-4);
+}
+
 /* ─────────────── Buying & selling (D-089) ───────────────
  *
  * The filter panel opens under the search: every filter in a grid that is one column on a phone

@@ -110,5 +110,8 @@
   "rate_source_purchase": "نرخی ئەم کڕینە",
   "paid_with_note": "لەگەڵ {{name}} دراوە",
   "paid_in": "دراوە بە",
-  "owes_nobody": "قەرزی کەس نییە"
+  "owes_nobody": "قەرزی کەس نییە",
+  "new_material_from": "وەک ڕیزێکی نوێ دەچێتە سەر ئەم کڕینە، کە لە {{name}} کڕدراوە.",
+  "new_material_hint": "وەک ڕیزێکی نوێ دەچێتە سەر ئەم کڕینە.",
+  "add_to_purchase": "زیادکردن بۆ کڕین"
 }
