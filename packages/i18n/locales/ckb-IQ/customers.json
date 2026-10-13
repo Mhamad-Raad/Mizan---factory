@@ -90,5 +90,6 @@
   "rate_changed": "نرخ {{old}} ← {{new}}",
   "rate_set": "نرخ دانرا بە {{new}}",
   "entry.damage": "تەلەف",
-  "filter_we_owe": "قەرزی ئێمە بۆ ئەوان"
+  "filter_we_owe": "قەرزی ئێمە بۆ ئەوان",
+  "no_unpaid_orders": "هیچ فرۆشتنێکی نەدراو نییە"
 }

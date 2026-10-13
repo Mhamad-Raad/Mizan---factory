@@ -4475,6 +4475,24 @@ html[data-mirroring='true'] body {
   padding-block: var(--space-3) var(--space-4);
 }
 
+/* The net of a company's two balances (D-093), set apart from them by a rule: above it on a phone,
+   where the figures stack, and at its start from a tablet up, where they stand in a row. */
+.mz-net-figure {
+  inline-size: 100%;
+  border-block-start: 1px solid var(--color-border);
+  padding-block-start: var(--space-3);
+}
+
+@media (width >= 48rem) {
+  .mz-net-figure {
+    inline-size: auto;
+    border-block-start: 0;
+    border-inline-start: 1px solid var(--color-border);
+    padding-block-start: 0;
+    padding-inline-start: var(--space-6);
+  }
+}
+
 /* ─────────────── Buying & selling (D-089) ───────────────
  *
  * The filter panel opens under the search: every filter in a grid that is one column on a phone

@@ -516,6 +516,32 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
     expect(rates).toEqual(expect.arrayContaining([[1400, 'manual'], [1300, 'global']]));
   });
 
+  it('pages the unpaid purchases alone, oldest first, with the total of them all (D-093)', async () => {
+    // Three purchases of 150,000; a payment of 200,000 pays the first and a third of the second.
+    const first = await buy(buyer).expect(201);
+    const second = await buy(buyer).expect(201);
+    const third = await buy(buyer).expect(201);
+    await as(ctx.http, admin)
+      .post(`/api/v1/companies/${alNoor}/payments`)
+      .send({ amount: 200_000, currency: 'IQD', entry_date: today() })
+      .expect(201);
+    const page = (n: number) =>
+      as(ctx.http, buyer).get(`/api/v1/companies/${alNoor}/purchase-breakdown?still_owed=true&page=${n}&page_size=1`).expect(200);
+
+    const one = await page(1);
+    const two = await page(2);
+    const three = await page(3);
+    const ids = [one, two, three].flatMap((response) =>
+      response.body.allocation.purchases.map((row: { purchase_id: string }) => row.purchase_id),
+    );
+    expect(ids).toEqual([second.body.id, third.body.id]);
+    expect(ids).not.toContain(first.body.id);
+    expect(one.body.allocation.purchases[0].remaining).toBe(100_000);
+    expect(one.body.purchases.map((row: { id: string }) => row.id)).toEqual([second.body.id]);
+    expect(one.body.still_owed_count).toBe(2);
+    expect(one.body.still_owed_total).toBe(250_000);
+  });
+
   it('says on the list whether each purchase is paid, partly paid or unpaid, oldest-first', async () => {
     const paid = await buy(buyer, { paid: { in_full: true } }).expect(201);
     const part = await buy(buyer, { paid: { amount: 50_000, currency: 'IQD' } }).expect(201);

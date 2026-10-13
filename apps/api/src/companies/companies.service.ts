@@ -277,7 +277,7 @@ export class CompaniesService {
    */
   async purchaseBreakdown(
     id: string,
-    options: { page?: number; page_size?: number } = {},
+    options: { page?: number; page_size?: number; still_owed?: boolean } = {},
   ): Promise<{
     settlement_currency: Currency;
     allocation: AllocationResult;
@@ -304,7 +304,8 @@ export class CompaniesService {
     const owing = allocation.purchases.filter((purchase) => purchase.remaining !== 0);
     const owingTotal = owing.reduce((total, purchase) => total + purchase.remaining, 0);
     const paging = pagingOf(options);
-    const page = pageOfArray(owing, paging);
+    // "Unpaid purchases" pages over what is still to pay alone; a purchase paid ahead is not one.
+    const page = pageOfArray(options.still_owed ? owing.filter((purchase) => purchase.remaining > 0) : owing, paging);
     const pageIds = new Set(page.map((purchase) => purchase.purchase_id));
 
     return {

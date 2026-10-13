@@ -90,5 +90,6 @@
   "rate_changed": "Rate {{old}} → {{new}}",
   "rate_set": "Rate set to {{new}}",
   "entry.damage": "Broken goods",
-  "filter_we_owe": "We owe them"
+  "filter_we_owe": "We owe them",
+  "no_unpaid_orders": "No unpaid orders"
 }

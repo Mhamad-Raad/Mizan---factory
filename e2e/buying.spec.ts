@@ -94,7 +94,7 @@ test.describe('the buying screens', () => {
     await page.goto('/customers?side=supplier');
     await page.getByRole('link').filter({ hasText: 'Al-Noor' }).first().click();
     // The overview names the purchases still owed (D-085).
-    await expect(page.getByText('Purchases we still owe for')).toBeVisible();
+    await expect(page.getByText('Unpaid purchases')).toBeVisible();
     await page.getByRole('button', { name: 'We owe them' }).click();
 
     // The purchase by its number and the payment, with the running balance in posting order.
@@ -175,7 +175,7 @@ test.describe('the buying screens', () => {
     const sheet = page.locator('.mz-sheet, .mz-bottom-sheet').first();
     await expect(sheet).toBeVisible();
     await expect(sheet).toContainText('2,950,000');
-    await shot(page, 'company-payment-ar-light.png');
+    await shot(page, 'company-payment-ar-light.png', { fullPage: false });
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

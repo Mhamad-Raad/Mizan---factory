@@ -10,6 +10,12 @@ import { zodBody } from '../common/zod.pipe.js';
 import { CompaniesService } from './companies.service.js';
 import { cursorField, limitField, pageFields, pageSchema } from '../common/paging.js';
 
+/**
+ * The breakdown's page: every purchase not yet settled, or — `still_owed=true`, the company page's
+ * "Unpaid purchases" (D-093) — only those with something left to pay, a page at a time.
+ */
+const breakdownSchema = pageSchema.extend({ still_owed: z.enum(['true', 'false']).optional() });
+
 const money = z.object({
   amount: minorAmount,
   currency: z.enum(['IQD', 'USD']),
@@ -154,9 +160,13 @@ export class CompaniesController {
   @RequirePermission('companies.view', 'fields.see_company_balances')
   async breakdown(
     @Param('id') id: string,
-    @Query(zodBody(pageSchema)) query: z.infer<typeof pageSchema>,
+    @Query(zodBody(breakdownSchema)) query: z.infer<typeof breakdownSchema>,
   ) {
-    return this.companies.purchaseBreakdown(id, query);
+    return this.companies.purchaseBreakdown(id, {
+      page: query.page,
+      page_size: query.page_size,
+      still_owed: query.still_owed === 'true',
+    });
   }
 
   @Post('companies/:id/payments')

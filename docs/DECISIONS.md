@@ -1929,3 +1929,29 @@ the default again. The request sends a rate only when it was changed, so a purch
 company's or the system's rate is still recorded as such (`rate_source` company / global, 2.3.3)
 and only a changed one as `manual`. A new material's first buy now accepts that rate
 (`buy.rate_iqd_per_usd`), as a purchase always has; tested in `buying-from-companies.test.ts`.
+
+## D-093 · 2026-10-13 · business request · A company's net figure, and both unpaid lists paged
+
+The business, on the company page: "in total it should count what is the money remaining", and
+"just like how we have unpaid orders we should have unpaid purchases, both with their own
+pagination … this system will be used for multiple years without any updates so paginations are
+crucial."
+
+- **The net figure.** Beside "They owe us" and "We owe them" stands **Altogether, they owe us …**
+  (or **we owe them …**, or **nothing is owed either way**): the one less the other. Both balances
+  are kept in the company's account currency, each with its other side at its own entries' rates,
+  so the two pairs are subtracted as they stand and nothing is converted again (rule 1). Shown only
+  to a reader who sees both balances; under a rule on a phone, at the end of the row from a
+  tablet up.
+- **Unpaid orders** on the overview, which showed the first five, are paged like every list (their
+  own `owing_page` in the address), with what all of them still owe at the card's head.
+- **Unpaid purchases** (the card was "Purchases we still owe for") are paged the same way
+  (`owed_page`), oldest first — the order the money goes out in — with the total of all of them at
+  its head. `GET /companies/:id/purchase-breakdown?still_owed=true` pages over the purchases with
+  something left to pay alone; a purchase paid ahead is not one. The allocation behind it is
+  worked out per company over its own purchases and entries; only a page travels.
+- The two cards keep a gap between their heading, their rows and their pager.
+
+Tests: `buying-from-companies.test.ts` (still-owed paging). The payment sheet's screenshot is now
+taken at the phone's own size: its taller note box (D-091) brings the sheet to its 90% limit, and a
+whole-page shot resizes the window while it is taken.

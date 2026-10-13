@@ -90,5 +90,6 @@
   "rate_changed": "السعر {{old}} ← {{new}}",
   "rate_set": "تم تعيين السعر {{new}}",
   "entry.damage": "بضاعة مكسورة",
-  "filter_we_owe": "علينا لهم"
+  "filter_we_owe": "علينا لهم",
+  "no_unpaid_orders": "لا توجد طلبات غير مدفوعة"
 }
