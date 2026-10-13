@@ -102,7 +102,7 @@ test.describe('the buying screens', () => {
     // A tick box on every row, and one Print button: the account, or what is ticked (D-086).
     await expect(page.getByRole('button', { name: 'Print account' })).toBeVisible();
     await page.getByRole('checkbox', { name: /^Select (?!everything)/ }).first().check();
-    await expect(page.getByRole('button', { name: 'Print selected (1)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Print (1)' })).toBeVisible();
     await shot(page, 'company-accounting-en-light.png');
   });
 

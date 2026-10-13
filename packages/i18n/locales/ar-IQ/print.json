@@ -37,6 +37,6 @@
   "section_buying": "المشتريات — ما علينا لهم",
   "net_they_owe_us": "بالمجمل، لنا عليهم",
   "net_we_owe_them": "بالمجمل، علينا لهم",
-  "print_selected": "طباعة المحدد ({{count}})",
+  "print_selected": "طباعة ({{count}})",
   "select_all_page": "تحديد كل ما في هذه الصفحة"
 }

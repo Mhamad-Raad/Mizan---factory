@@ -37,6 +37,6 @@
   "section_buying": "Purchases — what we owe them",
   "net_they_owe_us": "Altogether, they owe us",
   "net_we_owe_them": "Altogether, we owe them",
-  "print_selected": "Print selected ({{count}})",
+  "print_selected": "Print ({{count}})",
   "select_all_page": "Select everything on this page"
 }

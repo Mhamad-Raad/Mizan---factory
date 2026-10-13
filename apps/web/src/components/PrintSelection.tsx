@@ -63,7 +63,7 @@ export function usePrintSelection<Row>(documentOf: (row: Row) => PrintDocument, 
 }
 
 /**
- * A list's one Print button. With rows ticked it prints them — "Print selected (3)", a page each
+ * A list's one Print button. With rows ticked it prints them — "Print (3)", a page each
  * — and offers to clear the ticks. With none, a list's button waits, greyed out, for a tick (the
  * business: a list prints what is chosen, never the whole of it unasked); an account's prints
  * what printing it means there, its statement for the dates chosen.

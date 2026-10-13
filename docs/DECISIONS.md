@@ -1865,8 +1865,8 @@ off-screen frame or a background tab is never given.
 
 The business: "print list should be disabled until one or more rows are selected." On Buying &
 selling and on a company's Purchases tab, **Print list** is greyed out, with "Tick the rows to
-print" beside it, until a row is ticked; then it reads "Print selected (n)" and prints those
-receipts. The whole-list printouts it used to make (`trade_list`, `purchase_list`) had no other
+print" beside it, until a row is ticked; then it reads "Print (n)" ("the word selected … is not
+needed") and prints those receipts. The whole-list printouts it used to make (`trade_list`, `purchase_list`) had no other
 caller and are gone, with their loaders and their labels. An account's **Print account** is not
 a list button: it prints the account's statement for the dates chosen and stays as it was.
 
