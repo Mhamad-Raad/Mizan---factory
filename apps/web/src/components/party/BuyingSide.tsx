@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, DateField, IconButton, SegmentedControl, TextField } from '@mizan/ui';
+import { BottomSheet, Button, Card, DateField, SegmentedControl, TextField } from '@mizan/ui';
 import type { MenuItem } from '@mizan/ui';
 import type { Currency, Rate } from '@mizan/money';
 import { apiRequest } from '../../lib/api.js';
@@ -23,7 +23,7 @@ import { MoneyInput } from '../MoneyInput.js';
 import type { MoneyValue } from '../MoneyInput.js';
 import { Pager } from '../Pager.js';
 import { PaymentSheet } from '../PaymentSheet.js';
-import { PrintSelectionBar, usePrintSelection } from '../PrintSelection.js';
+import { PrintButton, usePrintSelection } from '../PrintSelection.js';
 import { PurchaseTable } from '../PurchaseTable.js';
 import { paymentReceipt } from '../SavedToast.js';
 import type { SavedNotice } from '../SavedToast.js';
@@ -61,6 +61,8 @@ export function useBuyingSide(input: {
   id: string;
   /** The company's name, for the payment sheet's "Money out — to …" (D-088). */
   name: string;
+  /** Opens the page's "Print account" sheet: what Print does on the account with nothing ticked. */
+  onPrintAccount: () => void;
   /** False for the walk-in customer, which nobody buys from: nothing here is fetched or shown. */
   enabled: boolean;
   tab: string;
@@ -247,9 +249,13 @@ export function useBuyingSide(input: {
 
   const purchasesTab: ReactNode = (
     <>
-      <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-        <PrintSelectionBar state={selectPurchases} />
-      </div>
+      {(purchases.data?.items.length ?? 0) > 0 ? (
+        <PrintButton
+          state={selectPurchases}
+          wholeLabel={t('print:print_list')}
+          onPrintWhole={() => print([{ kind: 'purchase_list', query: `company_id=${id}`, from: null, to: null }])}
+        />
+      ) : null}
       <QueryStates
         query={purchases}
         isEmpty={(purchases.data?.items.length ?? 0) === 0}
@@ -280,9 +286,7 @@ export function useBuyingSide(input: {
 
   const accountTab: ReactNode = (
     <>
-      <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-        <PrintSelectionBar state={selectEntries} />
-      </div>
+      <PrintButton state={selectEntries} wholeLabel={t('print:print_statement')} onPrintWhole={input.onPrintAccount} />
       <QueryStates
         query={ledger}
         isEmpty={(ledger.data?.items.length ?? 0) === 0}
@@ -295,13 +299,6 @@ export function useBuyingSide(input: {
             namespace="companies"
             landedVersion={landedVersion}
             selection={selectEntries.selection}
-            actions={(row) => (
-              <IconButton
-                icon="print"
-                label={t('print:print_receipt')}
-                onClick={() => print([documentOfLedgerRow('buying', id, row, maySeePurchases)])}
-              />
-            )}
           />
           <Pager
             page={ledgerPaging.page}

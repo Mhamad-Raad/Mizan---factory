@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Icon, TextField, Toast } from '@mizan/ui';
+import { Icon, TextField, Toast } from '@mizan/ui';
 import type { Currency, Rate, RateSource } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
@@ -23,7 +23,7 @@ import { useKeepPageInRange, usePaging } from '../lib/paging.js';
 import { useDebouncedValue } from '../lib/debounce.js';
 import { presetPeriod } from '../lib/periods.js';
 import { usePrint } from '../lib/print.js';
-import { PrintSelectionBar, usePrintSelection } from '../components/PrintSelection.js';
+import { PrintButton, usePrintSelection } from '../components/PrintSelection.js';
 
 export interface OrderRow {
   id: string;
@@ -274,20 +274,16 @@ export function OrdersPage() {
           </div>
         ) : null}
 
-        <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
-          {selecting.active || rows.length > 0 ? <PrintSelectionBar state={selecting} /> : null}
-          {!selecting.active && rows.length > 0 ? (
-            <Button
-              variant="secondary"
-              icon="print"
-              onClick={() =>
-                print([{ kind: 'order_list', query: filterQuery, from: range.from ?? null, to: range.to ?? null }])
-              }
-            >
-              {t('print:print_list')}
-            </Button>
-          ) : null}
-        </div>
+        {/* One Print button (D-086): what is ticked, or — with nothing ticked — the list as filtered. */}
+        {rows.length > 0 ? (
+          <PrintButton
+            state={selecting}
+            wholeLabel={t('print:print_list')}
+            onPrintWhole={() =>
+              print([{ kind: 'order_list', query: filterQuery, from: range.from ?? null, to: range.to ?? null }])
+            }
+          />
+        ) : null}
 
         <QueryStates
           query={orders}

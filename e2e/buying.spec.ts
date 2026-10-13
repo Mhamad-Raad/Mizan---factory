@@ -99,8 +99,10 @@ test.describe('the buying screens', () => {
 
     // The purchase by its number and the payment, with the running balance in posting order.
     await expect(page.getByText(/Purchase #/).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Select to print' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Print receipt' }).first()).toBeVisible();
+    // A tick box on every row, and one Print button: the account, or what is ticked (D-086).
+    await expect(page.getByRole('button', { name: 'Print account' })).toBeVisible();
+    await page.getByRole('checkbox', { name: /^Select (?!everything)/ }).first().check();
+    await expect(page.getByRole('button', { name: 'Print selected (1)' })).toBeVisible();
     await shot(page, 'company-accounting-en-light.png');
   });
 

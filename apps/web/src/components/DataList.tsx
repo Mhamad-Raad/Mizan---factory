@@ -43,7 +43,7 @@ export function DataList<Row>({
   href: (row: Row) => string;
   /** The phone layout, which is what the screenshot suite and the 360 px checks assert. */
   card: (row: Row) => ReactNode;
-  /** "Select to print" (D-086): a tick box at the start of every row while it is on. */
+  /** The print tick boxes (D-086): one at the start of every row, and one for the page. */
   selection?: RowSelection<Row>;
   /** What a row is called, for its tick box's label: "Purchase #12". */
   rowLabel?: (row: Row) => string;
@@ -82,7 +82,12 @@ export function DataList<Row>({
           <tr>
             {selection ? (
               <th scope="col" className="mz-table__tick">
-                <span className="mz-visually-hidden">{t('print:select')}</span>
+                <Checkbox
+                  labelHidden
+                  label={t('print:select_all_page')}
+                  checked={selection.allSelected(rows)}
+                  onChange={(on) => selection.onToggleAll(rows, on)}
+                />
               </th>
             ) : null}
             {columns.map((column) => (

@@ -2,12 +2,8 @@
   "preparing": "Getting it ready to print…",
   "failed": "Could not get this ready to print — try again",
   "print_receipt": "Print receipt",
-  "print_receipts": "Print receipts",
-  "select": "Select to print",
-  "select_done": "Done selecting",
   "select_row": "Select {{name}}",
-  "selected_count": "{{count}} selected",
-  "clear_selection": "Clear",
+  "clear_selection": "Clear selection",
   "limit_reached": "Up to {{count}} at a time — print these, then choose more",
   "print_list": "Print list",
   "print_statement": "Print account",
@@ -44,5 +40,7 @@
   "any_date": "Any date",
   "number": "No.",
   "status": "Status",
-  "list_capped": "Showing the first {{shown}} of {{total}}; the total is for all of them."
+  "list_capped": "Showing the first {{shown}} of {{total}}; the total is for all of them.",
+  "print_selected": "Print selected ({{count}})",
+  "select_all_page": "Select everything on this page"
 }

@@ -60,7 +60,7 @@ export interface LedgerListProps {
    * recorded a payment sees where it went instead of a blank success message.
    */
   landedVersion?: number;
-  /** "Select to print" (D-086): a tick box at the start of every row while it is on. */
+  /** The print tick boxes (D-086): one at the start of every row, and one for the page. */
   selection?: RowSelection<LedgerRow>;
 }
 
@@ -126,7 +126,12 @@ export function LedgerList({
               <tr>
                 {selection ? (
                   <th scope="col" className="mz-table__tick">
-                    <span className="mz-visually-hidden">{t('print:select')}</span>
+                    <Checkbox
+                      labelHidden
+                      label={t('print:select_all_page')}
+                      checked={selection.allSelected(items)}
+                      onChange={(on) => selection.onToggleAll(items, on)}
+                    />
                   </th>
                 ) : null}
                 <th scope="col">{t('common:date')}</th>

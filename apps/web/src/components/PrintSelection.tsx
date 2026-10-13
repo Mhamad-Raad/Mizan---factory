@@ -4,83 +4,88 @@ import { Button } from '@mizan/ui';
 import { PRINT_LIMIT, usePrint } from '../lib/print.js';
 import type { PrintDocument } from '../lib/print.js';
 
-/** What a list hands its rows for "select to print": whether a row is ticked, and how to tick it. */
+/** What a list hands its rows: whether each is ticked, how to tick it, and the whole page at once. */
 export interface RowSelection<Row> {
   isSelected: (row: Row) => boolean;
   onToggle: (row: Row) => void;
+  /** The heading's tick box: every row of this page on, or off. */
+  allSelected: (rows: readonly Row[]) => boolean;
+  onToggleAll: (rows: readonly Row[], on: boolean) => void;
 }
 
 /**
- * "Select to print" on a list (D-086): tick old records — purchases, orders, payments — and print
- * their receipts again, each on its own page. The ticks survive paging, so a selection can be
- * gathered across pages, up to what one print may carry.
+ * The tick boxes of a list (D-086): every row has one, always — ticking a row puts it on the
+ * print list, and the ticks survive paging, so receipts can be gathered across pages, up to what
+ * one print may carry. There is no "select" mode to switch on first, and no second button: the
+ * list's one Print button prints what is ticked, or — with nothing ticked — the whole of it.
  */
 export function usePrintSelection<Row>(documentOf: (row: Row) => PrintDocument, keyOf: (row: Row) => string) {
-  const [active, setActive] = useState(false);
   const [selected, setSelected] = useState<Map<string, PrintDocument>>(() => new Map());
   const print = usePrint();
 
-  const selection: RowSelection<Row> | undefined = active
-    ? {
-        isSelected: (row) => selected.has(keyOf(row)),
-        onToggle: (row) =>
-          setSelected((current) => {
-            const next = new Map(current);
-            const key = keyOf(row);
-            if (next.has(key)) next.delete(key);
-            else if (next.size < PRINT_LIMIT) next.set(key, documentOf(row));
-            return next;
-          }),
-      }
-    : undefined;
+  const selection: RowSelection<Row> = {
+    isSelected: (row) => selected.has(keyOf(row)),
+    onToggle: (row) =>
+      setSelected((current) => {
+        const next = new Map(current);
+        const key = keyOf(row);
+        if (next.has(key)) next.delete(key);
+        else if (next.size < PRINT_LIMIT) next.set(key, documentOf(row));
+        return next;
+      }),
+    allSelected: (rows) => rows.length > 0 && rows.every((row) => selected.has(keyOf(row))),
+    onToggleAll: (rows, on) =>
+      setSelected((current) => {
+        const next = new Map(current);
+        for (const row of rows) {
+          const key = keyOf(row);
+          if (!on) next.delete(key);
+          else if (!next.has(key) && next.size < PRINT_LIMIT) next.set(key, documentOf(row));
+        }
+        return next;
+      }),
+  };
 
   return {
-    active,
     count: selected.size,
     full: selected.size >= PRINT_LIMIT,
     selection,
-    start: () => setActive(true),
-    stop: () => {
-      setActive(false);
-      setSelected(new Map());
-    },
     clear: () => setSelected(new Map()),
     print: () => print([...selected.values()]),
   };
 }
 
 /**
- * The bar above a list while selecting: how many are ticked, print them, start again, or stop.
- * Outside selection it is one quiet button, so a list that is only being read stays calm.
+ * A list's one Print button. With rows ticked it prints them — "Print selected (3)", a page each
+ * — and offers to clear the ticks; with none it does what printing the list means there: the
+ * list as filtered, or a company's account for the dates chosen.
  */
-export function PrintSelectionBar({ state }: { state: ReturnType<typeof usePrintSelection<never>> }) {
+export function PrintButton({
+  state,
+  wholeLabel,
+  onPrintWhole,
+}: {
+  state: ReturnType<typeof usePrintSelection<never>>;
+  /** "Print list", "Print account" — what the button does with nothing ticked. */
+  wholeLabel: string;
+  onPrintWhole: () => void;
+}) {
   const { t } = useTranslation();
-  if (!state.active) {
-    return (
-      <Button variant="secondary" icon="print" onClick={state.start}>
-        {t('print:select')}
-      </Button>
-    );
-  }
   return (
-    <div className="mz-selection-bar" role="region" aria-label={t('print:select')}>
-      <span className="mz-selection-bar__count" aria-live="polite">
-        {t('print:selected_count', { count: state.count })}
-      </span>
-      {state.full ? <span className="mz-caption">{t('print:limit_reached', { count: PRINT_LIMIT })}</span> : null}
-      <span className="mz-selection-bar__actions">
-        <Button icon="print" disabled={state.count === 0} onClick={state.print}>
-          {t('print:print_receipts')}
+    <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+      <Button variant="secondary" icon="print" onClick={state.count > 0 ? state.print : onPrintWhole}>
+        {state.count > 0 ? t('print:print_selected', { count: state.count }) : wholeLabel}
+      </Button>
+      {state.count > 0 ? (
+        <Button variant="ghost" onClick={state.clear}>
+          {t('print:clear_selection')}
         </Button>
-        {state.count > 0 ? (
-          <Button variant="ghost" onClick={state.clear}>
-            {t('print:clear_selection')}
-          </Button>
-        ) : null}
-        <Button variant="secondary" onClick={state.stop}>
-          {t('print:select_done')}
-        </Button>
-      </span>
+      ) : null}
+      {state.full ? (
+        <span className="mz-caption" role="status">
+          {t('print:limit_reached', { count: PRINT_LIMIT })}
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -1778,3 +1778,13 @@ figures included, now sits at its reading side (left in English, right in Kurdis
 the heading over its figures. One rule of the library (`.mz-table [data-numeric]`), so every
 table follows; the digits stay tabular. Printed documents keep their figures at the end, as a
 receipt's totals are read.
+
+### D-086 addendum · 2026-10-13 · business review · A tick box on every row, and one Print button
+
+The business did not want two buttons for one job ("Select to print" and "Print list"). Every row
+of the Purchases, Orders and a company's lists now carries its tick box always — there is no mode
+to switch on — with one in the heading for the whole page. Each list has one Print button: with
+rows ticked it reads "Print selected (3)" and prints them, a page each, beside "Clear selection";
+with none it prints the whole — the list as filtered, or, on a company's account tabs, the
+account for the dates chosen ("Print account"). The print icon on each account row is gone: the
+tick box does its job. A purchase's or an order's own page keeps its "Print receipt".

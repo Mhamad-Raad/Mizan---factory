@@ -2,12 +2,8 @@
   "preparing": "جارٍ التجهيز للطباعة…",
   "failed": "تعذّر تجهيز هذا للطباعة — حاول مرة أخرى",
   "print_receipt": "طباعة الوصل",
-  "print_receipts": "طباعة الوصولات",
-  "select": "تحديد للطباعة",
-  "select_done": "إنهاء التحديد",
   "select_row": "تحديد {{name}}",
-  "selected_count": "تم تحديد {{count}}",
-  "clear_selection": "مسح",
+  "clear_selection": "إلغاء التحديد",
   "limit_reached": "حتى {{count}} في المرة الواحدة — اطبع هذه ثم اختر غيرها",
   "print_list": "طباعة القائمة",
   "print_statement": "طباعة الحساب",
@@ -44,5 +40,7 @@
   "any_date": "أي تاريخ",
   "number": "الرقم",
   "status": "الحالة",
-  "list_capped": "يُعرض أول {{shown}} من {{total}}؛ المجموع يشملها كلها."
+  "list_capped": "يُعرض أول {{shown}} من {{total}}؛ المجموع يشملها كلها.",
+  "print_selected": "طباعة المحدد ({{count}})",
+  "select_all_page": "تحديد كل ما في هذه الصفحة"
 }

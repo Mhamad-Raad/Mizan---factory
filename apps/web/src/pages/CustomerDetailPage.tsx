@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Checkbox, DateField, Icon, IconButton, Menu, SegmentedControl, TextField } from '@mizan/ui';
+import { BottomSheet, Button, Card, Checkbox, DateField, Icon, Menu, SegmentedControl, TextField } from '@mizan/ui';
 import type { IconName, MenuItem } from '@mizan/ui';
 import { useIsWide } from '../lib/wide.js';
 import type { Currency, Rate } from '@mizan/money';
@@ -32,7 +32,7 @@ import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { thisYear } from '../lib/periods.js';
 import { documentOfLedgerRow, usePrint } from '../lib/print.js';
 import type { AccountSide } from '../lib/print.js';
-import { PrintSelectionBar, usePrintSelection } from '../components/PrintSelection.js';
+import { PrintButton, usePrintSelection } from '../components/PrintSelection.js';
 import { SavedToast, paymentReceipt } from '../components/SavedToast.js';
 import type { SavedNotice } from '../components/SavedToast.js';
 import { useBuyingSide } from '../components/party/BuyingSide.js';
@@ -172,6 +172,7 @@ export function CustomerDetailPage() {
   const buying = useBuyingSide({
     id,
     name: data ? customerName(data, t) : '',
+    onPrintAccount: () => setSheet('print'),
     enabled: Boolean(data) && !walkIn,
     tab,
     settlement,
@@ -425,9 +426,12 @@ export function CustomerDetailPage() {
               {tab === 'buying' ? buying.accountTab : null}
 
               {tab === 'sales' ? (
-                <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                  <PrintSelectionBar state={selectSales} />
-                </div>
+                // What is ticked, or — with nothing ticked — the account for the dates chosen.
+                <PrintButton
+                  state={selectSales}
+                  wholeLabel={t('print:print_statement')}
+                  onPrintWhole={() => setSheet('print')}
+                />
               ) : null}
               {tab === 'sales' ? (
                 <QueryStates
@@ -441,13 +445,6 @@ export function CustomerDetailPage() {
                       settlement_currency={salesLedger.data?.customer.settlement_currency ?? settlement}
                       landedVersion={landedVersion}
                       selection={selectSales.selection}
-                      actions={(row) => (
-                        <IconButton
-                          icon="print"
-                          label={t('print:print_receipt')}
-                          onClick={() => print([documentOfLedgerRow('sales', id, row, mayViewOrders)])}
-                        />
-                      )}
                     />
                     <Pager
                       page={salesPaging.page}
