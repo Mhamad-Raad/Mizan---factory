@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, Icon, SegmentedControl, TextField } from '@mizan/ui';
+import { BottomSheet, Button, Card, Chip, Icon, SegmentedControl, TextAreaField } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
@@ -10,8 +10,8 @@ import { quantityText } from '../lib/quantity.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { usePageTitle } from '../lib/page-title.js';
+import { LinkedDamages } from '../components/LinkedDamages.js';
 import { DualAmount } from '../components/DualAmount.js';
-import { Can } from '../components/Can.js';
 import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
 import { useCursorPaging } from '../lib/paging.js';
@@ -276,7 +276,7 @@ export function PurchaseDetailPage() {
               <div className="mz-actions">
                 {active && companyId && mayPay && remaining !== null && remaining > 0 ? (
                   <div className="mz-actions__group mz-actions__group--primary">
-                    <Button icon="check" onClick={() => setPaying(true)}>
+                    <Button variant="money-out" icon="money-out" onClick={() => setPaying(true)}>
                       {t('purchases:make_payment')}
                     </Button>
                   </div>
@@ -285,13 +285,6 @@ export function PurchaseDetailPage() {
                   <Button variant="secondary" icon="print" onClick={() => print([{ kind: 'purchase', id }])}>
                     {t('print:print_receipt')}
                   </Button>
-                  {/* What arrived damaged in this delivery (FR-802, FR-805). */}
-                  <Can permission="damages.view">
-                    <Link to={`/damages?purchase=${id}`} className="mz-button mz-button--secondary">
-                      <Icon name="warning" />
-                      {t('glossary:damaged_items')}
-                    </Link>
-                  </Can>
                 </div>
 
                 {active && mayVoid ? (
@@ -367,6 +360,9 @@ export function PurchaseDetailPage() {
                 </ul>
               ) : null}
 
+              {/* Its broken goods, listed here rather than behind a link (D-094). */}
+              {tab === 'lines' ? <LinkedDamages link={{ purchase_id: id }} /> : null}
+
               {tab === 'history' ? (
                 <QueryStates
                   query={history}
@@ -423,7 +419,7 @@ export function PurchaseDetailPage() {
                   amount: data.cost ? formatter.money(data.cost.total_iqd, 'IQD') : '',
                 })}
               </p>
-              <TextField
+              <TextAreaField
                 label={t('glossary:reason')}
                 value={reason}
                 onChange={(event) => {
@@ -452,10 +448,10 @@ export function PurchaseDetailPage() {
         {paying && data && remaining !== null ? (
           <PaymentSheet
             open
+            direction="out"
+            counterparty={data.company_name ?? undefined}
             title={t('purchases:make_payment')}
-            amountLabel={t('companies:amount_paid')}
             remainingLabel={t('print:still_owed_on_purchase')}
-            saveLabel={t('purchases:make_payment')}
             settleHint={t('purchases:settle_in_full_hint')}
             remaining={remaining}
             settlement_currency={settlement}

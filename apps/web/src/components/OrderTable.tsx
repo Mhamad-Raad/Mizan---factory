@@ -7,7 +7,7 @@ import { DualAmount } from './DualAmount.js';
 import { OrderStatusChip, PaymentTypeChip } from './chips.js';
 import { customerName } from '../lib/customers.js';
 import { useFormatter } from '../lib/store.js';
-import type { OrderRow } from '../pages/OrdersPage.js';
+import type { OrderRow } from '../lib/orders.js';
 
 /**
  * Orders as the Orders page shows them — a table on a desktop, a card per order on a phone —

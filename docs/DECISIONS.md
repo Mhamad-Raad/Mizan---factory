@@ -1709,3 +1709,260 @@ account row prints as a voucher when its order or purchase is not the reader's t
 Tests: `print.test.ts` (10). Relied on: the business's request; FR-613 to FR-615 (proposed, now
 requested); rules 5–7 (each document in the page's direction, every string in three languages,
 every amount through `DualAmount`, a running balance in its account's currency as on screen).
+
+## D-087 · 2026-10-13 · business request · A material is always bought from a company
+
+The business: "choose who you bought it from must be required in add and increase materials."
+
+- **New material** records its first purchase again every time (D-085's "Record its first
+  purchase now" tick box is gone), and **"Buy more"** on a material asks the same: on both, "Bought
+  from" must be a company — "Not from a company" is not offered there.
+- **The server says so too:** `POST /items` refuses a first purchase without `company_id`
+  (`buy.company_id`, `REQUIRED`). A material created with no purchase at all — the go-live import —
+  is unaffected.
+- The Purchases form keeps "Not from a company" for now: the request named the material screens;
+  removing it there too is one line, and a server rule on every purchase would end FR-407 (a
+  purchase owing nobody), which the business has not asked for.
+- The demo seed creates its companies first and buys every material from one: the first purchases
+  from Erbil Metal House, paid on the spot; the later shipments from Baghdad Pipe Trading on credit.
+
+Tests: one API case; four existing tests that created a material's first purchase without a
+company now name one.
+
+## D-088 · 2026-10-13 · business request · Money in and money out look and read differently
+
+The business: "the ui for pay them and payment received should be different ui and the wording
+does not feel correct."
+
+- **The words are a pair, said from our side:** **They paid us** (money in) and **We paid them**
+  (money out) on the company page; **They paid for this order** on an order; **We paid for this
+  purchase** on a purchase. "Payment received" (a noun on a button) and "Pay them" (an order to
+  the reader) are gone. Kurdish پارەیان پێداین / پارەمان پێدان; Arabic دفعوا لنا / دفعنا لهم.
+- **They look different:** money in is green, money out is amber — a soft fill with the colour as
+  its edge and its icon (a banknote with an arrow in or out), the label in the body text colour
+  (`money-in` / `money-out` button variants of the library, measured by check-contrast in every
+  palette and both themes). Never red: paying a supplier is not a danger.
+- **The payment sheet says which way before anything else:** a strip in the same colour — "Money
+  in — from Kawa Trading" / "Money out — to Erbil Metal House" — with what stands on the account
+  on the same row, so the sheet is no taller than D-084 made it. Its amount reads "How much they
+  paid" / "How much we paid" (the split-currency fields too, which said "received" either way),
+  and its save button wears the same colour and words.
+- The account rows keep their names ("Payment received", "Payment made"), which describe a record
+  rather than ask for an action; the printed vouchers are unchanged.
+
+### D-084 addendum · 2026-10-13 · business review · A name in a table cell sits on the column's reading side
+
+In Kurdish, the Orders table showed each company's name ("Kawa Trading") at the far left of its
+column while the heading and the "recorded by" line under it sat on the right. A table cell lays
+its lines out as a stack; a name in its own script is isolated (`<bdi>`), and stretched to the
+column's width it began at its own (left) start. One rule in the library — such a name keeps its
+own width and sits on the column's reading side, or at its end in a column of figures — fixes it
+in every table. The other lists were measured in Kurdish for the same fault: none.
+
+### D-085 addendum · 2026-10-13 · business review · Every purchase on a list says where it stands
+
+The business asked why the Purchases list's Status column was empty: it named only a voided
+purchase. Each listed purchase now carries its payment state (`payment`: total, still owed,
+paid / partially paid / unpaid) — the oldest-first figure of its own page, allocated once per
+company on the page and in parallel — for a reader with the company-balances flag; the column
+shows the same chips as the Orders list, beside a "Still owed" column. A purchase from no company
+"owes nobody"; a voided one is "void". The company's Purchases tab reads the same field, so its own
+lookup over the breakdown is gone.
+
+### D-084 addendum · 2026-10-13 · business review · Figure columns sit where every other column does
+
+Money and counts in a table — Total, Still owed, Remaining, a ledger's amount and balance — were
+aligned to the column's far end, heading and figures both, so a figure column faced the opposite
+way from its neighbours in every language. The business asked for one alignment: every column,
+figures included, now sits at its reading side (left in English, right in Kurdish and Arabic),
+the heading over its figures. One rule of the library (`.mz-table [data-numeric]`), so every
+table follows; the digits stay tabular. Printed documents keep their figures at the end, as a
+receipt's totals are read.
+
+### D-086 addendum · 2026-10-13 · business review · A tick box on every row, and one Print button
+
+The business did not want two buttons for one job ("Select to print" and "Print list"). Every row
+of the Purchases, Orders and a company's lists now carries its tick box always — there is no mode
+to switch on — with one in the heading for the whole page. Each list has one Print button: with
+rows ticked it reads "Print selected (3)" and prints them, a page each, beside "Clear selection";
+with none it prints the whole — the list as filtered, or, on a company's account tabs, the
+account for the dates chosen ("Print account"). The print icon on each account row is gone: the
+tick box does its job. A purchase's or an order's own page keeps its "Print receipt".
+
+## D-089 · 2026-10-13 · business request · Buying & selling on one page
+
+The business: "both buys and sells be in one page … a button for filters … a filter container
+under the search which has it all, even custom date filters … four [cards] on top and 2 big ones
+under." Agreed with them: the page is called **Buying & selling** (کڕین و فرۆشتن / البيع والشراء) —
+"Orders" already means sales — and opens on **All**.
+
+- **One list** (`GET /trade`), newest first and paged as one: each side runs the very filter its
+  own list runs (`pageKeysSql`, extracted from the Orders and Purchases lists without changing
+  them), the two are put together as one list of ids sorted by date and entry time, and only the
+  page's ids are filled, each as its own list sends it. A reader sees the sides they may —
+  `orders.view`, `purchases.view`, or both; anyone with neither is refused. Rule 4 asks every
+  route for a decorator and `@RequirePermission` asks for *all* of its keys, so the route carries
+  the new `@RequireAnyPermission('orders.view', 'purchases.view')`, enforced by the same guard and
+  counted by the undecorated-route check (review; it was `@SessionOnly` at first).
+- **The filters** open under the search from one **Filters** button that counts what is set:
+  the period (presets, or From and To of one's own), the company, who recorded it, the status
+  and the payment type, with "Clear filters". A paid state or a payment type is a sale's question,
+  so while one is set the purchases leave the list, and the panel says so. **All · Sales ·
+  Purchases** switches the side (offered to whoever may see both); `/orders` and `/purchases`
+  open the page on theirs, and a saved order lands here with its undo and its receipt.
+- **The figures:** four over the filter — sales and what they came to, purchases and what they
+  came to, never added together — and two large ones for the business as it stands: **Companies
+  still owe us** and **We still owe companies**, each per currency (`common/owed-totals.ts`, the
+  query Today's tile also reads), each behind its balances flag, each opening the Companies list
+  on that side.
+- **The rows** say what they are first — a green **Sale** or an amber **Purchase**, the colours
+  of "They paid us" / "We paid them" — with **Recorded by: …** under the company (the business
+  asked what the bare name was); "Still owed" is red on a sale (to collect, as the Orders list
+  always showed it) and amber on a purchase (ours to pay). Tick boxes and one Print button as
+  on every list (see the D-086 addendum below: a list prints only what is ticked).
+- New sale (green) and New purchase (amber) sit at the top. The Orders and Purchases list pages
+  are gone; a company's own Orders and Purchases tabs stay.
+- **A purchase always names a company** on every screen now — "Not from a company" is gone from
+  the purchase form too (the business's answer to D-087's open question). The API still accepts
+  a purchase with no company: seventeen older tests use one as plain stock, and the purchases of
+  before D-085 are such; enforcing it there is a migration of those tests for no gain on screen.
+
+Tests: `trade.test.ts` (8). The old screenshot specs `polish.spec.ts` and `selling.spec.ts` still
+look for labels renamed before this work ("Customer", "Customers & companies", "6,483.500") and
+fail as they did on `main`.
+
+### D-089 addendum · 2026-10-13 · review · What the review of Buying & selling changed
+
+- **Paging reads the indexes, not the tables.** Each side takes only the rows a page can need,
+  newest first, from its own (date, number) index; the two are merged and sorted with the kind
+  and id as the last tiebreak, so two documents tied on date and number never swap places
+  between pages. The counts and totals come from each side's own list, not a second count.
+- **The side asked for narrows only a reader who may see both.** A buyer following an old
+  `/orders` link sees their purchases, not an empty page; a sale-only status is not offered to a
+  reader who sees purchases alone.
+- **The owed figures are the business's.** They are answered even when the filter leaves no side
+  to list, and include deactivated companies — a hidden company still owed is still owed (the
+  system accounts stay out). Today's tile reads the same query.
+- **The page opens on "Today and yesterday"** (FR-611's opening period), like the Orders list did.
+- The heading's tick box is part-ticked when part of the page is ticked; the two large cards link
+  to the Companies list on that side, deactivated companies included; the money strip reads
+  "Money in — from: …" / "Money out — to: …" in all three languages; saving anything refreshes
+  this page's figures.
+
+### D-086 addendum · 2026-10-13 · business request · Printing stays on the page
+
+The business: "make it like prints dont open another tab … something like [the] orders page …
+print in the dashboard project." That project prints with a hidden frame (`react-to-print`). Mizan
+now does the same without the library: the print host lays the documents out as before, copies
+them with the app's stylesheets and the page's language, direction, theme and text size into an
+off-screen frame, prints that frame, and removes it when the dialog closes. The browser's print
+dialog opens over the screen the reader is on, which stays exactly as it was underneath; the app's
+own page is never printed and never changes. The frame waits for its stylesheets (three seconds at
+most) and its fonts, and prints after a forced layout rather than on animation frames, which an
+off-screen frame or a background tab is never given.
+
+### D-086 addendum · 2026-10-13 · business request · A list prints what is ticked, nothing else
+
+The business: "print list should be disabled until one or more rows are selected." On Buying &
+selling and on a company's Purchases tab, **Print list** is greyed out, with "Tick the rows to
+print" beside it, until a row is ticked; then it reads "Print (n)" ("the word selected … is not
+needed") and prints those receipts. The whole-list printouts it used to make (`trade_list`, `purchase_list`) had no other
+caller and are gone, with their loaders and their labels. An account's **Print account** is not
+a list button: it prints the account's statement for the dates chosen and stays as it was.
+
+### D-089 addendum · 2026-10-13 · business review · The filter panel's boxes are one height
+
+The business: "filter container inputs should be all the same height and the gaps between them
+should be equal." The period select was 44 px, the date boxes 52 and the company button 50, so
+each row of the panel took its tallest box's height and the gaps under the others looked uneven.
+The panel now uses the Accounts period row's rule — every select, date box and button in it is
+3.25rem, following the text size — and the company button fills its field like the boxes beside
+it, a long name ending in "…". `responsive.spec.ts` checks one height and no sideways scroll at
+360 px in all three languages.
+
+## D-090 · 2026-10-13 · business request · A new material named from inside a purchase
+
+The business: "on new purchases, click add material you should have the option to create material
+on the spot like a sticky option at the bottom says add material … then you can add a new material
+that belongs to the company you have chosen above." The material picker on New purchase now ends
+in a **New material** row that stays at the bottom of the sheet however far the list scrolls
+(offered to whoever holds `materials.create`). It opens a short sheet — the name, carried over
+from what was typed into the search, and an optional code — that says the material goes on this
+purchase, bought from the company chosen above; **Add to purchase** creates it and adds it as a
+new line, ready for its count and its cost.
+
+A material is not given an owner. In the model a material is bought from any number of companies
+(spec 1.1: the purchase carries the counterparty, the material does not), and the business's own
+words are met by the purchase it is created on: it is bought from that company, its cost is on
+that company's account, and its history says so. Created without a first buy, as the go-live
+import does; the buy is the purchase being written. A duplicate name is refused under the name
+field, as on the New material page.
+
+## D-091 · 2026-10-13 · business request · Number fields take numbers only; notes are boxes
+
+The business: "quantity input should accept only numbers in the system" and "note inputs should
+be description inputs with fixed heights but bigger than normal inputs."
+
+- **Numbers only.** Every quantity, amount and rate is typed into the one `NumberField`; it now
+  drops any keystroke or paste that would not leave a number — digits, and where the field takes
+  decimals (kilograms 3, dollars 2, rates 4) one point with no more than that many after it.
+  Letters, signs and a second point never appear; a dinar or a piece count takes no point at all.
+  Eastern Arabic digits and the Arabic decimal sign are still read as before. No field in the
+  system takes a negative number, so a minus sign is not taken either. (`isNumberText`, tested in
+  `@mizan/text`.)
+- **Notes are boxes.** Every note and reason — on documents, payments, rates, prices, damages,
+  companies and materials — is a `TextAreaField`: three lines tall (6.5rem, twice a one-line
+  field), never growing or resizable, a long note scrolling inside it.
+
+## D-092 · 2026-10-13 · business request · A buy's rate box opens filled, and says from where
+
+The business: "on adding or creating materials the rate input should automatically be filled with
+the company's rate, if the company did not have it then the system's rate … both can be changed …
+with a small badge showcasing if the rate is from the system or the company's rate."
+
+New purchase, New material (its first buy) and Buy more each have one **Rate for this purchase**
+box (`useBuyRate` / `BuyRateField`). It opens with the company's own rate, or the system's when
+the company has none — following the company as it is chosen or changed — and carries a tag:
+**Company rate**, **System rate**, or **Changed** once a different figure is typed, with what it
+would otherwise be under the box. Typing the default back, or emptying the box and leaving it, is
+the default again. The request sends a rate only when it was changed, so a purchase at the
+company's or the system's rate is still recorded as such (`rate_source` company / global, 2.3.3)
+and only a changed one as `manual`. A new material's first buy now accepts that rate
+(`buy.rate_iqd_per_usd`), as a purchase always has; tested in `buying-from-companies.test.ts`.
+
+## D-093 · 2026-10-13 · business request · A company's net figure, and both unpaid lists paged
+
+The business, on the company page: "in total it should count what is the money remaining", and
+"just like how we have unpaid orders we should have unpaid purchases, both with their own
+pagination … this system will be used for multiple years without any updates so paginations are
+crucial."
+
+- **The net figure.** Beside "They owe us" and "We owe them" stands **Altogether, they owe us …**
+  (or **we owe them …**, or **nothing is owed either way**): the one less the other. Both balances
+  are kept in the company's account currency, each with its other side at its own entries' rates,
+  so the two pairs are subtracted as they stand and nothing is converted again (rule 1). Shown only
+  to a reader who sees both balances; under a rule on a phone, at the end of the row from a
+  tablet up.
+- **Unpaid orders** on the overview, which showed the first five, are paged like every list (their
+  own `owing_page` in the address), with what all of them still owe at the card's head.
+- **Unpaid purchases** (the card was "Purchases we still owe for") are paged the same way
+  (`owed_page`), oldest first — the order the money goes out in — with the total of all of them at
+  its head. `GET /companies/:id/purchase-breakdown?still_owed=true` pages over the purchases with
+  something left to pay alone; a purchase paid ahead is not one. The allocation behind it is
+  worked out per company over its own purchases and entries; only a page travels.
+- The two cards keep a gap between their heading, their rows and their pager.
+
+Tests: `buying-from-companies.test.ts` (still-owed paging). The payment sheet's screenshot is now
+taken at the phone's own size: its taller note box (D-091) brings the sheet to its 90% limit, and a
+whole-page shot resizes the window while it is taken.
+
+## D-094 · 2026-10-13 · business request · An order's and a purchase's broken goods, listed on its page
+
+The business: the "Broken goods" button on an order and on a purchase should be a list inside
+the page, not a link to another one. Both pages now show a **Broken goods** card under the lines:
+every record linked to that order or purchase, voided ones included and marked, as the Broken
+goods page draws them (one `DamageTable` for both) and paged on its own (`damages_page`), with
+"No broken goods recorded for this order / purchase" when there are none. The Broken goods page
+itself is unchanged. What a record does to stock and money is unchanged too (D-062): the list
+shows the records that name the order or purchase, which the record form does not offer to set
+since D-062 — older records and those linked through the API appear.

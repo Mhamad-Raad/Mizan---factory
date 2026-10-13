@@ -406,6 +406,85 @@ html[dir='ltr'] input[type='tel'] {
   inline-size: 100%;
 }
 
+/*
+ * Money in and money out (D-088). Two actions that sit side by side and do opposite things wear
+ * opposite colours: green for money coming to us, amber for money leaving — each a soft fill with
+ * its colour as the edge and the icon, the label in the body text colour so it reads in both
+ * themes (the pairs are measured by check-contrast). Never red: paying a supplier is not a danger.
+ */
+.mz-button--money-in {
+  border-color: var(--color-success);
+  background: var(--color-success-soft);
+  color: var(--color-text);
+}
+
+.mz-button--money-out {
+  border-color: var(--color-warning);
+  background: var(--color-warning-soft);
+  color: var(--color-text);
+}
+
+.mz-button--money-in svg {
+  color: var(--color-success);
+}
+
+.mz-button--money-out svg {
+  color: var(--color-warning);
+}
+
+.mz-button--money-in:hover:not([disabled]),
+.mz-button--money-out:hover:not([disabled]) {
+  filter: brightness(0.97);
+}
+
+/* The strip a payment sheet opens with: which way the money is going, and with whom. */
+.mz-money-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* The words keep a readable width; on a phone the figure moves to a line of its own rather than
+   squeezing them to a word a line. */
+.mz-money-strip__who {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+}
+
+.mz-money-strip__owed {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-weight: 400;
+}
+
+.mz-money-strip--in {
+  border-color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.mz-money-strip--out {
+  border-color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
+
+.mz-money-strip--in svg {
+  color: var(--color-success);
+}
+
+.mz-money-strip--out svg {
+  color: var(--color-warning);
+}
+
 /* A link may wear the button's clothes; it must not lose the underline reset. */
 a.mz-button {
   text-decoration: none;
@@ -436,6 +515,15 @@ a.mz-button {
   font-size: 0.875rem;
 }
 
+/* A label with a tag at the end of its line: the label at the start, the tag at the end. */
+.mz-field__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
 .mz-field__control {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
@@ -444,6 +532,15 @@ a.mz-button {
   padding-inline: var(--space-3);
   min-block-size: var(--tap-target);
   inline-size: 100%;
+}
+
+/* A note's box: taller than a one-line field, one fixed height, its text scrolling inside. */
+.mz-field__control--area {
+  display: block;
+  block-size: 6.5rem;
+  resize: none;
+  overflow-y: auto;
+  line-height: 1.5;
 }
 
 .mz-field__control:disabled {
@@ -1563,9 +1660,9 @@ a.mz-button {
 }
 
 /*
- * Where printed documents live (D-086). Never on screen; on paper, only while a print the app
- * asked for is under way (`body.mz-printing`) — then the app itself is taken off the paper and
- * the documents flow a page each. Nothing is positioned absolutely, so a statement longer than a
+ * Where printed documents live (D-086). Never on screen; on paper, only in the hidden frame the
+ * print host prints from (`body.mz-printing`), where the documents flow a page each — the app's
+ * own page is never printed and never changes while the dialog is open. Nothing is positioned absolutely, so a statement longer than a
  * page breaks across pages instead of being cut at the first.
  */
 .mz-print-host {
@@ -2239,6 +2336,18 @@ html[data-mirroring='true'] body {
   display: block;
 }
 
+/*
+ * A name in its own script inside a cell — "Kawa Trading" in a Kurdish table. As a line of the
+ * cell it stretched to the column's full width, and being left-to-right it began at the far left
+ * while the column's heading and the line under it sat on the right (business review, 2026-10-13;
+ * D-084's fault in another place). It keeps its own width and sits on the column's reading side,
+ * like every other line of the cell.
+ */
+.mz-cell__body > bdi {
+  align-self: flex-start;
+  max-inline-size: 100%;
+}
+
 /* ─────────────── the list's toolbar ───────────────
  *
  * Search, the filters and the page's own action, every control the same 44 px tall so they
@@ -2869,9 +2978,15 @@ html[data-mirroring='true'] body {
   pointer-events: none;
 }
 
+/*
+ * Money and counts sit where every other column does — at the column's reading side, the heading
+ * over its figures (business review, 2026-10-13). They were pushed to the column's far end, so a
+ * figure column and its neighbours faced opposite ways in every language. The digits stay tabular,
+ * so a column of figures still reads down cleanly.
+ */
 .mz-table th[data-numeric],
 .mz-table td[data-numeric] {
-  text-align: end;
+  text-align: start;
 }
 
 .mz-table tbody tr:last-child th,
@@ -3806,10 +3921,14 @@ html[data-mirroring='true'] body {
   font-size: 1rem;
 }
 
-/* The date boxes carry the browser's own height, which is not the select's: the period row
-   sets one height for all three (in rem, so it follows the text size). */
+/* The date boxes carry the browser's own height, which is not the select's: the period row —
+   and the filter panel, where a button sits among them too — sets one height for all of them (in
+   rem, so it follows the text size), and its rows then sit equally far apart. */
 .mz-accounts__period .mz-field__control,
-.mz-accounts__period .mz-select--field {
+.mz-accounts__period .mz-select--field,
+.mz-filter-panel .mz-field__control,
+.mz-filter-panel .mz-select--field,
+.mz-filter-panel .mz-field .mz-button {
   block-size: 3.25rem;
 }
 
@@ -4313,11 +4432,11 @@ html[data-mirroring='true'] body {
   text-align: end;
 }
 
-/* ─────────────── "select to print" on a list (D-086) ───────────────
+/* ─────────────── the print tick boxes of a list (D-086) ───────────────
  *
- * While selecting, every row carries a tick box at its start: a column of its own on a desktop
- * table, beside the card on a phone — never inside the row's link, so ticking a row does not
- * open it. The bar above the list says how many are ticked and prints them.
+ * Every row carries a tick box at its start: a column of its own on a desktop table, beside the
+ * card on a phone — never inside the row's link, so ticking a row does not open it. The list's
+ * one Print button prints what is ticked.
  */
 .mz-selectable {
   display: flex;
@@ -4343,25 +4462,150 @@ html[data-mirroring='true'] body {
   background: var(--color-primary-soft);
 }
 
-.mz-selection-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  border: 1px solid var(--color-primary);
-  border-radius: var(--radius-md);
-  background: var(--color-primary-soft);
-  padding: var(--space-2) var(--space-3);
+/*
+ * A picker's last row that never scrolls away — "New material" on a purchase (D-090): it sticks to
+ * the bottom of the sheet, over the sheet's own bottom padding, on a band of the sheet's colour.
+ */
+.mz-picker__footer {
+  position: sticky;
+  inset-block-end: calc(-1 * var(--space-4));
+  margin-block-end: calc(-1 * var(--space-4));
+  border-block-start: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding-block: var(--space-3) var(--space-4);
 }
 
-.mz-selection-bar__count {
-  color: var(--color-on-primary-soft);
+/* The net of a company's two balances (D-093), set apart from them by a rule: above it on a phone,
+   where the figures stack, and at its start from a tablet up, where they stand in a row. */
+.mz-net-figure {
+  inline-size: 100%;
+  border-block-start: 1px solid var(--color-border);
+  padding-block-start: var(--space-3);
+}
+
+@media (width >= 48rem) {
+  .mz-net-figure {
+    inline-size: auto;
+    border-block-start: 0;
+    border-inline-start: 1px solid var(--color-border);
+    padding-block-start: 0;
+    padding-inline-start: var(--space-6);
+  }
+}
+
+/* ─────────────── Buying & selling (D-089) ───────────────
+ *
+ * The filter panel opens under the search: every filter in a grid that is one column on a phone
+ * and as many as fit on a desktop, with "Clear filters" at its foot.
+ */
+.mz-filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-4);
+}
+
+.mz-filter-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+
+/* The company's button fills its field like the boxes beside it; a long name ends in "…". */
+.mz-filter-panel__company {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.mz-filter-panel__company > .mz-button:first-child {
+  flex: 1;
+  min-inline-size: 0;
+  justify-content: flex-start;
+}
+
+.mz-filter-panel__company > .mz-button:first-child bdi {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mz-filter-panel__foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Two large figures under the four: one column on a phone, two side by side from a tablet up. */
+.mz-kpis--two {
+  grid-template-columns: 1fr;
+}
+
+@media (width >= 48rem) {
+  .mz-kpis--two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.mz-kpi--big {
+  padding: var(--space-5);
+}
+
+/* Money owed to us and money we owe: the edges of "They paid us" and "We paid them" (D-088). */
+.mz-kpi--in {
+  border-inline-start: 4px solid var(--color-success);
+}
+
+.mz-kpi--out {
+  border-inline-start: 4px solid var(--color-warning);
+}
+
+/* Which kind a row is, before anything else: a sale (money in) or a purchase (money out). */
+.mz-trade-kind {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 0 var(--space-2);
+  color: var(--color-text);
+  font-size: 0.75rem;
   font-weight: 600;
 }
 
-.mz-selection-bar__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-inline-start: auto;
+.mz-trade-kind--sale {
+  border-color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.mz-trade-kind--purchase {
+  border-color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
+
+.mz-trade-kind--sale svg {
+  color: var(--color-success);
+}
+
+.mz-trade-kind--purchase svg {
+  color: var(--color-warning);
+}
+
+/* Still owed: to us on a sale — red, as the Orders list has always shown money still to collect —
+   and by us on a purchase, in the amber of money going out. Green would read as "paid". */
+.mz-owed-in,
+.mz-owed-in .mz-dual {
+  color: var(--color-danger);
+}
+
+.mz-owed-out,
+.mz-owed-out .mz-dual {
+  color: var(--color-warning);
 }

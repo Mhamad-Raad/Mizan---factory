@@ -17,11 +17,7 @@ export type PrintDocument =
    * An account's transactions over a period, a section per side the reader may see — what they
    * owe us (sales) and what we owe them (buying).
    */
-  | { kind: 'statement'; accountId: string; from: string; to: string; sides: AccountSide[] }
-  /** The purchases list as filtered on screen: its query string (without paging) and its period. */
-  | { kind: 'purchase_list'; query: string; from: string | null; to: string | null }
-  /** The orders list as filtered on screen. */
-  | { kind: 'order_list'; query: string; from: string | null; to: string | null };
+  | { kind: 'statement'; accountId: string; from: string; to: string; sides: AccountSide[] };
 
 /** `sales`: the customer ledger, what they owe us. `buying`: the company ledger, what we owe them. */
 export type AccountSide = 'sales' | 'buying';
@@ -31,9 +27,6 @@ export type AccountSide = 'sales' | 'buying';
  * stack of paper nobody checks; more than that is a statement, which prints as one document.
  */
 export const PRINT_LIMIT = 50;
-
-/** A list printout reads at most this many rows (ten pages of the API's largest page, D-058). */
-export const PRINT_LIST_ROWS = 1000;
 
 export interface PrintJob {
   id: number;
@@ -68,10 +61,8 @@ export function usePrint(): (documents: PrintDocument[]) => void {
 export function requiredFor(document: PrintDocument): string[] {
   switch (document.kind) {
     case 'order':
-    case 'order_list':
       return ['orders.view'];
     case 'purchase':
-    case 'purchase_list':
       return ['purchases.view'];
     case 'voucher':
       return document.side === 'sales'

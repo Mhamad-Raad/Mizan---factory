@@ -20,11 +20,9 @@
   "tab_overview": "Overview",
   "tab_purchases": "Purchases",
   "tab_accounting": "Accounting",
-  "record_payment": "Record payment",
   "payment_recorded": "Payment recorded",
   "entry_recorded": "Recorded",
   "amount": "Amount",
-  "amount_paid": "Amount paid",
   "settle_in_full_hint": "Closes the account exactly, even when the last payment is in the other currency",
   "adjust_owed": "Adjust what we owe",
   "adjust_new_balance": "New balance",
@@ -58,13 +56,12 @@
   "sheet.credit": "Credit from them",
   "sheet.adjustment": "Adjust what we owe",
   "sheet.opening": "Record the opening balance",
-  "pay_them": "Pay them",
   "credit_from_them": "Credit from them",
   "credit_hint": "Goods we sent back, or money they let us off — it lowers what we owe them.",
   "adjust_delta_hint": "A plus figure adds to what we owe them, a minus figure takes off.",
-  "purchases_owed": "Purchases we still owe for",
+  "purchases_owed": "Unpaid purchases",
   "nothing_owed": "We owe them nothing",
   "we_owe_nothing": "We owe them nothing",
   "they_owe_nothing": "They owe us nothing",
-  "more_owed": "And {{count}} more — owed on all of them:"
+  "net_settled": "Altogether, nothing is owed either way"
 }

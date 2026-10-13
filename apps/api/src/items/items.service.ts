@@ -41,6 +41,8 @@ export interface CreateItemInput {
     /** The company it was bought from (D-085); none for stock that owes nobody. */
     company_id?: string | null;
     paid?: PaidNowInput | null;
+    /** The rate changed for this buy (D-092); the company's rate, or the system's, when absent. */
+    rate_iqd_per_usd?: string | null;
   } | null;
 }
 
@@ -184,6 +186,14 @@ export class ItemsService {
   async create(context: RequestContext, input: CreateItemInput): Promise<ItemDto> {
     // The first buy is a buy: it needs the key that buying needs.
     if (input.buy && !can(context, 'purchases.create')) throw ApiError.permissionDenied('purchases.create');
+    // A material is bought from a company (D-087): its first purchase names one, so what we owe
+    // for it is on that company's account from the start. The go-live import, which creates
+    // materials without a purchase, is not affected.
+    if (input.buy && !input.buy.company_id) {
+      throw ApiError.validation([
+        { path: 'buy.company_id', code: 'REQUIRED', message_key: 'errors:company_required', params: {} },
+      ]);
+    }
     const name = input.name.trim();
     const existing = await this.items.findByNormalizedName(normalizeForSearch(name));
     if (existing) {
@@ -234,6 +244,7 @@ export class ItemsService {
           paid: input.buy.paid ?? null,
           purchase_date: input.buy.purchase_date,
           notes: input.buy.note?.trim() || null,
+          rate_iqd_per_usd: input.buy.rate_iqd_per_usd ?? null,
           lines: [
             {
               item_id: row.id,

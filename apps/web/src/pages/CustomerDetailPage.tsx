@@ -2,7 +2,17 @@ import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Checkbox, DateField, Icon, IconButton, Menu, SegmentedControl, TextField } from '@mizan/ui';
+import {
+  BottomSheet,
+  Button,
+  Card,
+  Checkbox,
+  DateField,
+  Icon,
+  Menu,
+  SegmentedControl,
+  TextAreaField,
+} from '@mizan/ui';
 import type { IconName, MenuItem } from '@mizan/ui';
 import { useIsWide } from '../lib/wide.js';
 import type { Currency, Rate } from '@mizan/money';
@@ -32,13 +42,13 @@ import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { thisYear } from '../lib/periods.js';
 import { documentOfLedgerRow, usePrint } from '../lib/print.js';
 import type { AccountSide } from '../lib/print.js';
-import { PrintSelectionBar, usePrintSelection } from '../components/PrintSelection.js';
+import { PrintButton, usePrintSelection } from '../components/PrintSelection.js';
 import { SavedToast, paymentReceipt } from '../components/SavedToast.js';
 import type { SavedNotice } from '../components/SavedToast.js';
 import { useBuyingSide } from '../components/party/BuyingSide.js';
 import { payableAmount, payableLabel } from '../lib/accounts.js';
 import type { BalanceValue, CustomerRow } from './CustomersPage.js';
-import type { OrderRow } from './OrdersPage.js';
+import type { OrderRow } from '../lib/orders.js';
 
 type Tab = 'overview' | 'orders' | 'purchases' | 'sales' | 'buying' | 'history';
 type EntryKind = 'credit' | 'refund' | 'adjustment';
@@ -119,19 +129,30 @@ export function CustomerDetailPage() {
   const orders = useQuery({
     queryKey: ['customers', id, 'orders', ordersPaging.page, ordersPaging.pageSize],
     queryFn: () =>
-      apiRequest<{ items: OrderRow[]; total: number }>(`/customers/${id}/orders?${ordersPaging.query}`),
+      apiRequest<{ items: OrderRow[]; total: number }>(
+        `/customers/${id}/orders?${ordersPaging.query}`,
+      ),
     enabled: selling && mayViewOrders && tab === 'orders',
     placeholderData: keepPreviousData,
   });
   useKeepPageInRange(ordersPaging, orders);
 
-  // The overview asks the server for what is still owed, rather than filtering a page of orders.
+  // The overview's "Unpaid orders": the server's own filter, a page at a time with its own place in
+  // the address (D-093) — a customer of many years has more than any one screen holds.
+  const owingPaging = usePaging({ storageKey: 'account-owing-orders', prefix: 'owing_' });
   const owing = useQuery({
-    queryKey: ['customers', id, 'orders', 'owing'],
+    queryKey: ['customers', id, 'orders', 'owing', owingPaging.page, owingPaging.pageSize],
     queryFn: () =>
-      apiRequest<{ items: OrderRow[]; total: number }>(`/customers/${id}/orders?status=owing&page_size=5`),
+      apiRequest<{
+        items: OrderRow[];
+        total: number;
+        /** What every unpaid order still owes, not this page's — behind the balances flag. */
+        totals?: { balance?: { owed_iqd: number; owed_usd_cents: number } };
+      }>(`/customers/${id}/orders?status=owing&${owingPaging.query}`),
     enabled: selling && mayViewOrders && tab === 'overview',
+    placeholderData: keepPreviousData,
   });
+  useKeepPageInRange(owingPaging, owing);
 
   const salesPaging = usePaging({ storageKey: 'account-ledger', prefix: 'sales_' });
   const salesLedger = useQuery({
@@ -151,7 +172,14 @@ export function CustomerDetailPage() {
   const [historyAction, setHistoryAction] = useState<HistoryAction>('all');
   const historyPaging = useCursorPaging({ storageKey: 'history', resetOn: [id, historyAction] });
   const history = useQuery({
-    queryKey: ['customers', id, 'history', historyAction, historyPaging.cursor, historyPaging.pageSize],
+    queryKey: [
+      'customers',
+      id,
+      'history',
+      historyAction,
+      historyPaging.cursor,
+      historyPaging.pageSize,
+    ],
     queryFn: () =>
       apiRequest<{ items: HistoryRow[]; next_cursor: string | null }>(
         `/customers/${id}/history?${historyPaging.query}${historyAction === 'all' ? '' : `&action=${historyAction}`}`,
@@ -171,6 +199,8 @@ export function CustomerDetailPage() {
 
   const buying = useBuyingSide({
     id,
+    name: data ? customerName(data, t) : '',
+    onPrintAccount: () => setSheet('print'),
     enabled: Boolean(data) && !walkIn,
     tab,
     settlement,
@@ -218,7 +248,8 @@ export function CustomerDetailPage() {
     },
   });
   const entry = useMutation({
-    mutationFn: (input: { kind: EntryKind; body: unknown }) => post(`/${pathOf(input.kind)}`, entryKey)(input.body),
+    mutationFn: (input: { kind: EntryKind; body: unknown }) =>
+      post(`/${pathOf(input.kind)}`, entryKey)(input.body),
     onSuccess: async (answer) => {
       await done(entryKey, t('customers:entry_recorded'), paymentReceipt('sales', id, answer));
       setLandedVersion((version) => version + 1);
@@ -253,8 +284,10 @@ export function CustomerDetailPage() {
 
   const errorOf = (error: unknown) => errorMessage(t, error) ?? undefined;
   const excessNeeded =
-    payment.error instanceof ApiError && payment.error.fieldError('amount')?.code === 'EXCEEDS_REMAINING';
-  const rebaseRateRequired = setCurrency.error instanceof ApiError && setCurrency.error.code === 'REBASE_RATE_REQUIRED';
+    payment.error instanceof ApiError &&
+    payment.error.fieldError('amount')?.code === 'EXCEEDS_REMAINING';
+  const rebaseRateRequired =
+    setCurrency.error instanceof ApiError && setCurrency.error.code === 'REBASE_RATE_REQUIRED';
 
   const mayRate = maySetCustomerRate || maySetCompanyRate;
   const mayEdit = !walkIn && (mayEditCustomer || mayEditCompany);
@@ -267,7 +300,9 @@ export function CustomerDetailPage() {
           { label: t('glossary:refund'), onSelect: () => setEntrySheet('refund') },
         ]
       : []),
-    ...(mayRate && !walkIn ? [{ label: t('customers:set_rate'), onSelect: () => setSheet('rate') }] : []),
+    ...(mayRate && !walkIn
+      ? [{ label: t('customers:set_rate'), onSelect: () => setSheet('rate') }]
+      : []),
     ...(isAdmin && !walkIn
       ? [{ label: t('companies:settlement_currency_change'), onSelect: () => setSheet('currency') }]
       : []),
@@ -286,7 +321,10 @@ export function CustomerDetailPage() {
           {data ? (
             <>
               <Card>
-                <div className="mz-row mz-row--between" style={{ alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                <div
+                  className="mz-row mz-row--between"
+                  style={{ alignItems: 'flex-start', gap: 'var(--space-3)' }}
+                >
                   <div className="mz-stack" style={{ gap: '2px' }}>
                     <h2 className="mz-title">
                       <bdi>{customerName(data, t)}</bdi>
@@ -310,17 +348,25 @@ export function CustomerDetailPage() {
                 <hr className="mz-divider" />
 
                 <div className="mz-detail-summary">
-                  <div className="mz-row" style={{ gap: 'var(--space-6)', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  <div
+                    className="mz-row"
+                    style={{ gap: 'var(--space-6)', flexWrap: 'wrap', alignItems: 'flex-start' }}
+                  >
                     <PartyFigure party={data} />
                     <PayableFigure party={data} />
+                    <NetFigure party={data} />
                   </div>
                   <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
                     {/* The rate every amount for this business is filled at, on both sides (2.3.3). */}
                     <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)' }}>
                       <span className="mz-caption">
-                        {data.rate?.is_customer_rate ? t('customers:rate_own') : t('customers:rate_is_global')}
+                        {data.rate?.is_customer_rate
+                          ? t('customers:rate_own')
+                          : t('customers:rate_is_global')}
                       </span>
-                      <span data-tabular>{rate === null ? t('settings:no_rate_yet') : formatter.rate(rate)}</span>
+                      <span data-tabular>
+                        {rate === null ? t('settings:no_rate_yet') : formatter.rate(rate)}
+                      </span>
                     </div>
                     <div className="mz-row mz-row--between" style={{ gap: 'var(--space-3)' }}>
                       <span className="mz-caption">{t('glossary:settlement_currency')}</span>
@@ -336,8 +382,9 @@ export function CustomerDetailPage() {
               <div className="mz-actions">
                 <div className="mz-actions__group mz-actions__group--primary">
                   {selling && !walkIn && mayRecordPayment ? (
-                    <Button icon="check" onClick={() => setSheet('payment')}>
-                      {t('customers:receive_payment')}
+                    // Money in and money out look different and read as a pair (D-088).
+                    <Button variant="money-in" icon="money-in" onClick={() => setSheet('payment')}>
+                      {t('common:they_paid_us')}
                     </Button>
                   ) : null}
                   {buying.primaryActions}
@@ -369,12 +416,18 @@ export function CustomerDetailPage() {
                 onChange={setTab}
                 options={[
                   { value: 'overview', label: t('materials:tab_overview') },
-                  ...(selling && mayViewOrders ? [{ value: 'orders' as Tab, label: t('orders:title') }] : []),
-                  ...(buying.maySeePurchases ? [{ value: 'purchases' as Tab, label: t('purchases:title') }] : []),
+                  ...(selling && mayViewOrders
+                    ? [{ value: 'orders' as Tab, label: t('orders:title') }]
+                    : []),
+                  ...(buying.maySeePurchases
+                    ? [{ value: 'purchases' as Tab, label: t('purchases:title') }]
+                    : []),
                   ...(selling && maySeeSelling && !walkIn
                     ? [{ value: 'sales' as Tab, label: t('print:side_sales') }]
                     : []),
-                  ...(buying.maySeeOwed ? [{ value: 'buying' as Tab, label: t('print:side_buying') }] : []),
+                  ...(buying.maySeeOwed
+                    ? [{ value: 'buying' as Tab, label: t('print:side_buying') }]
+                    : []),
                   { value: 'history', label: t('glossary:history') },
                 ]}
               />
@@ -383,15 +436,41 @@ export function CustomerDetailPage() {
 
               {tab === 'overview' && selling && mayViewOrders ? (
                 <Card>
-                  <h3 className="mz-heading">{t('customers:unpaid_first')}</h3>
-                  <QueryStates
-                    query={owing}
-                    isEmpty={(owing.data?.items.length ?? 0) === 0}
-                    emptyTitle={t('customers:no_orders')}
-                    skeletonLines={3}
-                  >
-                    <OrderTable rows={owing.data?.items ?? []} showCustomer={false} />
-                  </QueryStates>
+                  <div className="mz-stack">
+                    <div
+                      className="mz-row mz-row--between"
+                      style={{ gap: 'var(--space-3)', flexWrap: 'wrap' }}
+                    >
+                      <h3 className="mz-heading">{t('customers:unpaid_first')}</h3>
+                      {owing.data?.totals?.balance && owing.data.total > 0 ? (
+                        <span className="mz-owed">
+                          <DualAmount
+                            amount_iqd={owing.data.totals.balance.owed_iqd}
+                            amount_usd_cents={owing.data.totals.balance.owed_usd_cents}
+                            primary={settlement}
+                            kind="derived"
+                          />
+                        </span>
+                      ) : null}
+                    </div>
+                    <QueryStates
+                      query={owing}
+                      isEmpty={(owing.data?.items.length ?? 0) === 0}
+                      emptyTitle={t('customers:no_unpaid_orders')}
+                      skeletonLines={3}
+                    >
+                      <div className="mz-stack">
+                        <OrderTable rows={owing.data?.items ?? []} showCustomer={false} />
+                        <Pager
+                          page={owingPaging.page}
+                          pageSize={owingPaging.pageSize}
+                          total={owing.data?.total ?? 0}
+                          onPage={owingPaging.setPage}
+                          onPageSize={owingPaging.setPageSize}
+                        />
+                      </div>
+                    </QueryStates>
+                  </div>
                 </Card>
               ) : null}
 
@@ -402,7 +481,10 @@ export function CustomerDetailPage() {
                   emptyTitle={t('customers:no_orders')}
                   emptyAction={
                     <Can permission="orders.create">
-                      <Link to={`/orders/new?customer=${id}`} className="mz-button mz-button--primary">
+                      <Link
+                        to={`/orders/new?customer=${id}`}
+                        className="mz-button mz-button--primary"
+                      >
                         {t('orders:new_order')}
                       </Link>
                     </Can>
@@ -423,9 +505,12 @@ export function CustomerDetailPage() {
               {tab === 'buying' ? buying.accountTab : null}
 
               {tab === 'sales' ? (
-                <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                  <PrintSelectionBar state={selectSales} />
-                </div>
+                // What is ticked, or — with nothing ticked — the account for the dates chosen.
+                <PrintButton
+                  state={selectSales}
+                  wholeLabel={t('print:print_statement')}
+                  onPrintWhole={() => setSheet('print')}
+                />
               ) : null}
               {tab === 'sales' ? (
                 <QueryStates
@@ -436,16 +521,11 @@ export function CustomerDetailPage() {
                   <Card>
                     <LedgerList
                       items={salesLedger.data?.items ?? []}
-                      settlement_currency={salesLedger.data?.customer.settlement_currency ?? settlement}
+                      settlement_currency={
+                        salesLedger.data?.customer.settlement_currency ?? settlement
+                      }
                       landedVersion={landedVersion}
                       selection={selectSales.selection}
-                      actions={(row) => (
-                        <IconButton
-                          icon="print"
-                          label={t('print:print_receipt')}
-                          onClick={() => print([documentOfLedgerRow('sales', id, row, mayViewOrders)])}
-                        />
-                      )}
                     />
                     <Pager
                       page={salesPaging.page}
@@ -509,6 +589,10 @@ export function CustomerDetailPage() {
         {sheet === 'payment' && data ? (
           <PaymentSheet
             open
+            direction="in"
+            counterparty={customerName(data, t)}
+            remainingLabel={t('companies:they_owe_us')}
+            settleHint={t('companies:settle_in_full_hint')}
             remaining={Math.max(owedToUs, 0)}
             settlement_currency={settlement}
             rate={rate}
@@ -628,11 +712,49 @@ function PayableFigure({ party }: { party: CustomerRow }) {
   const label = payableLabel(amount);
   return (
     <div className="mz-stack" style={{ gap: 'var(--space-2)' }}>
-      <span className={amount > 0 ? 'mz-figure__label mz-owed' : 'mz-figure__label'}>{t(label)}</span>
+      <span className={amount > 0 ? 'mz-figure__label mz-owed' : 'mz-figure__label'}>
+        {t(label)}
+      </span>
       <DualAmount
         amount_iqd={Math.abs(payable.amount_iqd)}
         amount_usd_cents={Math.abs(payable.amount_usd_cents)}
         primary={payable.currency}
+        kind="derived"
+        size="large"
+      />
+    </div>
+  );
+}
+
+/**
+ * What is left between us once both sides are set against each other — what they owe us less what
+ * we owe them — in the account's currency (D-093). Both figures are kept in that currency, each
+ * with its other side at the rates of its own entries, so the two pairs are subtracted as they
+ * stand and nothing is converted again (rule 1). Only for a reader who sees both balances, and
+ * never for the walk-in.
+ */
+function NetFigure({ party }: { party: CustomerRow }) {
+  const { t } = useTranslation();
+  const { balance, payable } = party;
+  if (!balance || !payable || party.is_system) return null;
+  const net = {
+    amount_iqd: balance.amount_iqd - payable.amount_iqd,
+    amount_usd_cents: balance.amount_usd_cents - payable.amount_usd_cents,
+  };
+  const inAccount = party.settlement_currency === 'USD' ? net.amount_usd_cents : net.amount_iqd;
+  const label =
+    inAccount > 0
+      ? 'print:net_they_owe_us'
+      : inAccount < 0
+        ? 'print:net_we_owe_them'
+        : 'companies:net_settled';
+  return (
+    <div className="mz-stack mz-net-figure" style={{ gap: 'var(--space-2)' }}>
+      <span className="mz-figure__label">{t(label)}</span>
+      <DualAmount
+        amount_iqd={Math.abs(net.amount_iqd)}
+        amount_usd_cents={Math.abs(net.amount_usd_cents)}
+        primary={party.settlement_currency}
         kind="derived"
         size="large"
       />
@@ -664,7 +786,10 @@ function HistoryItem({ row, settlement }: { row: HistoryRow; settlement: Currenc
     ? t(`${namespace}:entry.${money.type}`)
     : rate
       ? rate.old
-        ? t('customers:rate_changed', { old: formatter.rate(rate.old), new: formatter.rate(rate.new) })
+        ? t('customers:rate_changed', {
+            old: formatter.rate(rate.old),
+            new: formatter.rate(rate.new),
+          })
         : t('customers:rate_set', { new: formatter.rate(rate.new) })
       : t(`history:action.${row.action}`);
   return (
@@ -724,7 +849,12 @@ function PrintAccountSheet({
   const valid = range.from !== '' && range.to !== '' && range.from <= range.to && chosen.length > 0;
 
   return (
-    <BottomSheet title={t('print:statement_title')} open onClose={onClose} closeLabel={t('common:close')}>
+    <BottomSheet
+      title={t('print:statement_title')}
+      open
+      onClose={onClose}
+      closeLabel={t('common:close')}
+    >
       <div className="mz-stack">
         <p className="mz-muted">{t('print:statement_hint')}</p>
         <div className="mz-grid-2">
@@ -750,7 +880,11 @@ function PrintAccountSheet({
                 label={t(side === 'sales' ? 'print:side_sales' : 'print:side_buying')}
                 checked={chosen.includes(side)}
                 onChange={(checked) =>
-                  setChosen(checked ? sides.filter((one) => one === side || chosen.includes(one)) : chosen.filter((one) => one !== side))
+                  setChosen(
+                    checked
+                      ? sides.filter((one) => one === side || chosen.includes(one))
+                      : chosen.filter((one) => one !== side),
+                  )
                 }
               />
             ))}
@@ -789,7 +923,11 @@ function LedgerEntrySheet({
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const [amount, setAmount] = useState<MoneyValue>({ amount: null, currency: 'IQD', other_amount: null });
+  const [amount, setAmount] = useState<MoneyValue>({
+    amount: null,
+    currency: 'IQD',
+    other_amount: null,
+  });
   const [date, setDate] = useState(formatter.today());
   const [note, setNote] = useState('');
   const edit =
@@ -800,22 +938,35 @@ function LedgerEntrySheet({
     };
 
   return (
-    <BottomSheet title={t(`customers:sheet.${kind}`)} open onClose={onClose} closeLabel={t('common:close')}>
+    <BottomSheet
+      title={t(`customers:sheet.${kind}`)}
+      open
+      onClose={onClose}
+      closeLabel={t('common:close')}
+    >
       <div className="mz-stack">
-        <MoneyInput label={t('customers:amount')} value={amount} rate={rate} onChange={edit(setAmount)} error={error} />
+        <MoneyInput
+          label={t('customers:amount')}
+          value={amount}
+          rate={rate}
+          onChange={edit(setAmount)}
+          error={error}
+        />
         <DateField
           label={t('common:date')}
           value={date}
           max={formatter.today()}
           onChange={(event) => edit(setDate)(event.target.value)}
         />
-        <TextField
+        <TextAreaField
           label={t('common:note')}
           value={note}
           hint={t('materials:note_required')}
           onChange={(event) => edit(setNote)(event.target.value)}
         />
-        {kind === 'adjustment' ? <p className="mz-caption">{t('customers:adjustment_hint')}</p> : null}
+        {kind === 'adjustment' ? (
+          <p className="mz-caption">{t('customers:adjustment_hint')}</p>
+        ) : null}
         <Button
           block
           loading={saving}

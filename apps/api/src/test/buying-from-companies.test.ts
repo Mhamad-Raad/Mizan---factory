@@ -366,7 +366,7 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
       expect(entered).toBe('USD');
     });
 
-    it('sums what we owe each company in its own currency only, and leaves hidden companies out', async () => {
+    it('sums what we owe each company in its own currency only, hidden companies included', async () => {
       // A dollar company bought from at 1,300 and paid at 1,500: we still owe it $100, while its
       // dinar column has gone negative.
       await buy(buyer, {
@@ -389,8 +389,9 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
         .post(`/api/v1/customers/${alNoor}/deactivate`)
         .send({ version: hidden.body.version })
         .expect(200);
+      // Hiding a company does not settle what we owe it.
       const after = await as(ctx.http, buyer).get('/api/v1/purchases').expect(200);
-      expect(after.body.totals.owed_by_us).toEqual({ companies: 1, owed_iqd: 0, owed_usd_cents: 10_000 });
+      expect(after.body.totals.owed_by_us).toEqual({ companies: 2, owed_iqd: 150_000, owed_usd_cents: 10_000 });
       // A company's own Purchases tab does not pay for the figure it never shows.
       const tab = await as(ctx.http, buyer).get(`/api/v1/companies/${dollarCo}/purchases`).expect(200);
       expect(tab.body.totals.owed_by_us).toBeUndefined();
@@ -473,5 +474,89 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
       expect(settled.body.items.map((row: { id: string }) => row.id)).not.toContain(alNoor);
       expect(settled.body.items.map((row: { id: string }) => row.id)).toContain(dollarCo);
     });
+  });
+
+  it('refuses a new material’s first purchase that names no company (D-087)', async () => {
+    const refused = await as(ctx.http, buyer)
+      .post('/api/v1/items')
+      .send({
+        name: 'Nuts M8',
+        pricing_unit: 'per_piece',
+        buy: { qty_count: 10, unit_price: { amount: 100, currency: 'IQD' }, purchase_date: today() },
+      })
+      .expect(422);
+    expect(refused.body.error.fields[0].path).toBe('buy.company_id');
+    // A material with no purchase yet — the go-live import — is still fine.
+    await as(ctx.http, buyer).post('/api/v1/items').send({ name: 'Nuts M8', pricing_unit: 'per_piece' }).expect(201);
+  });
+
+  it('values a new material’s first purchase at a rate changed for it, else the company’s or the system’s (D-092)', async () => {
+    const first = (name: string, rate?: string) =>
+      as(ctx.http, buyer)
+        .post('/api/v1/items')
+        .send({
+          name,
+          pricing_unit: 'per_piece',
+          buy: {
+            qty_count: 10,
+            unit_price: { amount: 100, currency: 'IQD' },
+            purchase_date: today(),
+            company_id: alNoor,
+            ...(rate ? { rate_iqd_per_usd: rate } : {}),
+          },
+        })
+        .expect(201);
+    await first('Rivets 4 mm', '1400');
+    await first('Rivets 5 mm');
+    const list = await as(ctx.http, buyer).get(`/api/v1/purchases?company_id=${alNoor}`).expect(200);
+    const rates = list.body.items.map((row: { rate_iqd_per_usd: string; rate_source: string }) => [
+      Number(row.rate_iqd_per_usd),
+      row.rate_source,
+    ]);
+    expect(rates).toEqual(expect.arrayContaining([[1400, 'manual'], [1300, 'global']]));
+  });
+
+  it('pages the unpaid purchases alone, oldest first, with the total of them all (D-093)', async () => {
+    // Three purchases of 150,000; a payment of 200,000 pays the first and a third of the second.
+    const first = await buy(buyer).expect(201);
+    const second = await buy(buyer).expect(201);
+    const third = await buy(buyer).expect(201);
+    await as(ctx.http, admin)
+      .post(`/api/v1/companies/${alNoor}/payments`)
+      .send({ amount: 200_000, currency: 'IQD', entry_date: today() })
+      .expect(201);
+    const page = (n: number) =>
+      as(ctx.http, buyer).get(`/api/v1/companies/${alNoor}/purchase-breakdown?still_owed=true&page=${n}&page_size=1`).expect(200);
+
+    const one = await page(1);
+    const two = await page(2);
+    const three = await page(3);
+    const ids = [one, two, three].flatMap((response) =>
+      response.body.allocation.purchases.map((row: { purchase_id: string }) => row.purchase_id),
+    );
+    expect(ids).toEqual([second.body.id, third.body.id]);
+    expect(ids).not.toContain(first.body.id);
+    expect(one.body.allocation.purchases[0].remaining).toBe(100_000);
+    expect(one.body.purchases.map((row: { id: string }) => row.id)).toEqual([second.body.id]);
+    expect(one.body.still_owed_count).toBe(2);
+    expect(one.body.still_owed_total).toBe(250_000);
+  });
+
+  it('says on the list whether each purchase is paid, partly paid or unpaid, oldest-first', async () => {
+    const paid = await buy(buyer, { paid: { in_full: true } }).expect(201);
+    const part = await buy(buyer, { paid: { amount: 50_000, currency: 'IQD' } }).expect(201);
+    const unpaid = await buy(buyer).expect(201);
+    const stockOnly = await buy(buyer, { company_id: null }).expect(201);
+
+    const list = await as(ctx.http, buyer).get('/api/v1/purchases').expect(200);
+    const byId = new Map(list.body.items.map((row: { id: string; payment?: unknown }) => [row.id, row.payment]));
+    expect(byId.get(paid.body.id)).toEqual({ remaining: 0, status: 'paid' });
+    expect(byId.get(part.body.id)).toEqual({ remaining: 100_000, status: 'partially_paid' });
+    expect(byId.get(unpaid.body.id)).toEqual({ remaining: 150_000, status: 'unpaid' });
+    expect(byId.get(stockOnly.body.id)).toBeUndefined();
+
+    // What we owe is the company-balances flag's, so the list says nothing about it to others.
+    const plain = await as(ctx.http, looker).get('/api/v1/purchases').expect(200);
+    expect(plain.body.items.every((row: { payment?: unknown }) => row.payment === undefined)).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { groupDigits, ungroupDigits } from '@mizan/text';
+import { groupDigits, isNumberText, ungroupDigits } from '@mizan/text';
 import { Icon } from '../icons/registry.js';
 import type { IconName } from '../icons/registry.js';
 
@@ -11,7 +11,11 @@ import type { IconName } from '../icons/registry.js';
  * real package is an import change and no screen is touched (decision D-001).
  */
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+/**
+ * `money-in` and `money-out` are the two directions money moves on an account (D-088): a company
+ * paying us and us paying a company look different at a glance, not only in their words.
+ */
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'money-in' | 'money-out';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -53,16 +57,28 @@ export interface FieldProps {
   label: string;
   hint?: string;
   error?: string;
+  /** A small tag at the end of the label's line — where a pre-filled value came from (D-092). */
+  badge?: ReactNode;
   children: (id: string) => ReactNode;
 }
 
-export function Field({ label, hint, error, children }: FieldProps) {
+export function Field({ label, hint, error, badge, children }: FieldProps) {
   const id = useId();
+  const labelled = (
+    <label className="mz-field__label" htmlFor={id}>
+      {label}
+    </label>
+  );
   return (
     <div className={`mz-field${error ? ' mz-field--invalid' : ''}`}>
-      <label className="mz-field__label" htmlFor={id}>
-        {label}
-      </label>
+      {badge ? (
+        <span className="mz-field__head">
+          {labelled}
+          {badge}
+        </span>
+      ) : (
+        labelled
+      )}
       {children(id)}
       {hint && !error ? <span className="mz-field__hint">{hint}</span> : null}
       {error ? (
@@ -88,6 +104,33 @@ export function TextField({ label, hint, error, ...rest }: TextFieldProps) {
           id={id}
           className="mz-field__control"
           aria-invalid={error ? true : undefined}
+          {...rest}
+        />
+      )}
+    </Field>
+  );
+}
+
+export interface TextAreaFieldProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label: string;
+  hint?: string;
+  error?: string;
+}
+
+/**
+ * A note, a reason, a description: free text of a sentence or more, in a box taller than a
+ * one-line field and always the same height — it never grows with what is typed or is dragged
+ * bigger, so a form keeps its shape; a long note scrolls inside the box (the business).
+ */
+export function TextAreaField({ label, hint, error, rows = 3, ...rest }: TextAreaFieldProps) {
+  return (
+    <Field label={label} hint={hint} error={error}>
+      {(id) => (
+        <textarea
+          id={id}
+          className="mz-field__control mz-field__control--area"
+          aria-invalid={error ? true : undefined}
+          rows={rows}
           {...rest}
         />
       )}
@@ -641,6 +684,8 @@ export interface NumberFieldProps extends Omit<InputHTMLAttributes<HTMLInputElem
   unit?: string;
   /** Kilograms take three decimals; counts and minor units take none. */
   decimals?: number;
+  /** A small tag beside the label — where a pre-filled value came from (D-092). */
+  badge?: ReactNode;
   /**
    * Thousands separators while typing — `1,250,000` on screen, `1250000` to the form. On by
    * default; off for a figure that is not a quantity, such as a year or a reference number.
@@ -663,6 +708,7 @@ export function NumberField({
   unit,
   decimals = 0,
   grouped = true,
+  badge,
   onChange,
   value,
   ...rest
@@ -689,7 +735,7 @@ export function NumberField({
   });
 
   return (
-    <Field label={label} hint={hint} error={error}>
+    <Field label={label} hint={hint} error={error} badge={badge}>
       {(id) => (
         // Numbers read left-to-right in every language, so the field is an LTR island: the digits
         // run left to right and the unit sits at the right, even on an Arabic or Kurdish page.
@@ -707,8 +753,11 @@ export function NumberField({
               // nothing downstream has to know which keyboard was used (spec 2.10.4); the
               // separators are presentation, so the form only ever sees the bare number.
               const typed = event.target.value;
-              const normalized = normalizeDigits(typed);
+              const normalized = normalizeDigits(typed).replace(/٫/g, '.');
               const raw = grouped ? ungroupDigits(normalized) : normalized;
+              // Numbers only (the business): a letter, a sign or a second point is not taken —
+              // the keystroke is dropped and React puts the field back as it was.
+              if (!isNumberText(raw, decimals)) return;
               if (grouped) {
                 const before = typed.slice(0, event.target.selectionStart ?? typed.length);
                 caret.current = ungroupDigits(normalizeDigits(before)).length;

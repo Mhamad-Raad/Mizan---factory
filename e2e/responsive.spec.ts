@@ -17,6 +17,7 @@ const LANGUAGES = ['ckb-IQ', 'ar-IQ', 'en'] as const;
 
 /** The routes that need no id. The detail routes are resolved from the fixture below. */
 const STATIC_ROUTES = [
+  '/trade',
   '/orders',
   '/orders/new',
   '/materials',
@@ -102,5 +103,25 @@ for (const lang of LANGUAGES) {
     }
 
     expect(sideways, `${routes.length} screens checked`).toEqual([]);
+  });
+}
+
+for (const lang of LANGUAGES) {
+  test(`the filter panel at 360 px in ${lang}: one height for every control, nothing sideways`, async ({ page }) => {
+    await signIn(page, lang);
+    await page.goto('/trade');
+    await page.locator('[aria-controls="trade-filters"]').click();
+    const panel = page.locator('#trade-filters');
+    // The custom period brings its two date boxes, so every kind of control is on the panel.
+    await panel.locator('select').first().selectOption('custom');
+    const heights = await panel
+      .locator('.mz-field select, .mz-field input, .mz-field .mz-button')
+      .evaluateAll((controls) => controls.map((control) => Math.round(control.getBoundingClientRect().height)));
+    expect(heights.length).toBeGreaterThan(5);
+    expect(new Set(heights).size, `heights: ${heights.join(', ')}`).toBe(1);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBe(0);
   });
 }

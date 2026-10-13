@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, Checkbox, DateField, NumberField, StickyFooter, TextField } from '@mizan/ui';
+import { Button, Card, DateField, NumberField, StickyFooter, TextAreaField, TextField } from '@mizan/ui';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
 import { toMoneyBody } from '../lib/money.js';
@@ -15,19 +15,28 @@ import { useFormatter, usePermission } from '../lib/store.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { useGlobalRate } from '../lib/rates.js';
-import { CompanyField, NOTHING_PAID, PaidNowField, companyIdOf, paidNowBody, paidNowValid } from '../components/BuyFields.js';
+import {
+  BuyRateField,
+  CompanyField,
+  NOTHING_PAID,
+  PaidNowField,
+  companyIdOf,
+  paidNowBody,
+  paidNowValid,
+  useBuyRate,
+} from '../components/BuyFields.js';
 import type { CompanyChoice, PaidNow } from '../components/BuyFields.js';
-import { useAccount, useDocumentRate } from '../lib/accounts.js';
+import { useAccount } from '../lib/accounts.js';
 
 const emptyMoney = (): MoneyValue => ({ amount: null, currency: 'IQD', other_amount: null });
 
 /**
- * "New material" (FR-301, FR-302, D-062, D-085): the form names the material, records its first
- * purchase — who it was bought from, how many came in, what each one cost, what was paid now —
- * and, for those who set prices, this month's prices. The material and its first purchase are one
- * request, written together or not at all. The first purchase can be left for later, when the
- * material arrives with others on one purchase from the Purchases page. A material is counted, so
- * there is no per-piece / per-kg choice.
+ * "New material" (FR-301, FR-302, D-062, D-085, D-087): creating a material is buying it. The form
+ * names the material and records its first purchase — the company it was bought from (always a
+ * company: the business buys from companies), how many came in, what each one cost and what was
+ * paid now — and, for those who set prices, this month's prices. The material and its first
+ * purchase are one request, written together or not at all. A material is counted, so there is no
+ * per-piece / per-kg choice.
  */
 export function NewMaterialPage() {
   const { t } = useTranslation();
@@ -44,13 +53,13 @@ export function NewMaterialPage() {
   const [unitCost, setUnitCost] = useState<MoneyValue>(emptyMoney);
   const [boughtOn, setBoughtOn] = useState(() => formatter.today());
   const [buyNote, setBuyNote] = useState('');
-  const [buyingNow, setBuyingNow] = useState(true);
   const [company, setCompany] = useState<CompanyChoice>({ kind: 'unset' });
   const [paid, setPaid] = useState<PaidNow>(NOTHING_PAID);
   const mayPay = usePermission('companies.record_payment');
   const companyId = companyIdOf(company);
   const companyAccount = useAccount(companyId);
-  const buyDocumentRate = useDocumentRate(companyAccount.data);
+  // The first buy's rate (D-092): the company's own, else the system's, and may be changed.
+  const buyRate = useBuyRate(companyAccount.data, t('purchases:rate_source_purchase'));
   const [sale, setSale] = useState<MoneyValue>(emptyMoney);
   const [bought, setBought] = useState<MoneyValue>(emptyMoney);
   // The material and its prices are two writes, each with its own key held across retries.
@@ -74,7 +83,7 @@ export function NewMaterialPage() {
           name: name.trim(),
           pricing_unit: 'per_piece',
           code: code.trim() === '' ? null : code.trim(),
-          buy: buyingNow && mayBuy
+          buy: mayBuy
             ? {
                 qty_count: count.kind === 'count' ? count.value : null,
                 qty_kg: null,
@@ -82,6 +91,7 @@ export function NewMaterialPage() {
                 purchase_date: boughtOn,
                 note: buyNote.trim() === '' ? null : buyNote.trim(),
                 company_id: companyId,
+                rate_iqd_per_usd: buyRate.body,
                 paid: company.kind === 'company' && mayPay ? paidNowBody(paid, company.settlement_currency) : null,
               }
             : null,
@@ -111,12 +121,17 @@ export function NewMaterialPage() {
 
   const quantityValid = count.kind === 'count' && count.value > 0;
   const costValid = unitCost.amount !== null && unitCost.amount >= 0;
-  const buyReady =
-    !buyingNow ||
-    !mayBuy ||
-    (company.kind !== 'unset' && quantityValid && costValid && boughtOn !== '' && paidNowValid(paid));
-  const ready = name.trim() !== '' && buyReady;
-  const buyRate = companyId ? buyDocumentRate.rate : rate;
+  // A material comes in by being bought from a company (D-062, D-087): the first purchase, and who
+  // it was from, are part of creating it.
+  const ready =
+    mayBuy &&
+    name.trim() !== '' &&
+    company.kind === 'company' &&
+    quantityValid &&
+    costValid &&
+    boughtOn !== '' &&
+    !buyRate.invalid &&
+    paidNowValid(paid);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -172,9 +187,6 @@ export function NewMaterialPage() {
             <p className="mz-muted">{t('materials:first_buy_hint')}</p>
           </div>
           {mayBuy ? (
-            <Checkbox label={t('materials:buying_now')} checked={buyingNow} onChange={setBuyingNow} />
-          ) : null}
-          {mayBuy && buyingNow ? (
             <>
               <CompanyField
                 value={company}
@@ -197,15 +209,16 @@ export function NewMaterialPage() {
                   max={formatter.today()}
                   onChange={(event) => setBoughtOn(event.target.value)}
                 />
+                <BuyRateField state={buyRate} label={t('purchases:rate_for_purchase')} />
               </div>
               <MoneyInput
                 label={t('materials:cost_per_unit')}
                 value={unitCost}
-                rate={buyRate}
-                sourceLabel={buyDocumentRate.label}
+                rate={buyRate.rate}
+                sourceLabel={buyRate.label}
                 onChange={setUnitCost}
               />
-              <TextField
+              <TextAreaField
                 label={t('materials:buy_note')}
                 hint={t('common:optional')}
                 value={buyNote}
@@ -215,14 +228,12 @@ export function NewMaterialPage() {
               {company.kind === 'company' && mayPay ? (
                 <PaidNowField
                   value={paid}
-                  rate={buyRate}
+                  rate={buyRate.rate}
                   accountCurrency={company.settlement_currency}
                   onChange={setPaid}
                 />
               ) : null}
             </>
-          ) : mayBuy ? (
-            <p className="mz-muted">{t('materials:buy_later_hint')}</p>
           ) : (
             <p className="mz-warning" role="status">
               {t('materials:needs_buy_permission')}

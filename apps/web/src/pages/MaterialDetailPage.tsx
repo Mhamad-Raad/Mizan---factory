@@ -3,16 +3,7 @@ import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  BottomSheet,
-  Button,
-  Card,
-  Chip,
-  DateField,
-  NumberField,
-  Tabs,
-  TextField,
-} from '@mizan/ui';
+import { BottomSheet, Button, Card, Chip, DateField, NumberField, Tabs, TextAreaField } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
 import { toMoneyBody } from '../lib/money.js';
@@ -32,8 +23,17 @@ import { errorMessage } from '../lib/errors.js';
 import { invalidateHistory, invalidateMoneyViews } from '../lib/invalidate.js';
 import { useGlobalRate } from '../lib/rates.js';
 import type { ItemRow } from './MaterialsPage.js';
-import { useAccount, useDocumentRate } from '../lib/accounts.js';
-import { CompanyField, NOTHING_PAID, PaidNowField, companyIdOf, paidNowBody, paidNowValid } from '../components/BuyFields.js';
+import { useAccount } from '../lib/accounts.js';
+import {
+  BuyRateField,
+  CompanyField,
+  NOTHING_PAID,
+  PaidNowField,
+  companyIdOf,
+  paidNowBody,
+  paidNowValid,
+  useBuyRate,
+} from '../components/BuyFields.js';
 import type { CompanyChoice, PaidNow } from '../components/BuyFields.js';
 import { SavedToast } from '../components/SavedToast.js';
 import type { SavedNotice } from '../components/SavedToast.js';
@@ -216,6 +216,7 @@ export function MaterialDetailPage() {
         idempotencyKey: addStockKey.key,
         body: {
           company_id: input.company_id,
+          rate_iqd_per_usd: input.rate_iqd_per_usd,
           paid: input.paid,
           purchase_date: input.purchase_date,
           notes: input.note,
@@ -724,7 +725,6 @@ export function MaterialDetailPage() {
         {adding && item.data ? (
           <AddStockSheet
             pricedMeasure={item.data.stock.priced_measure}
-            rate={currentRate}
             latest={lots.data?.latest ?? null}
             saving={addStock.isPending}
             error={errorMessage(t, addStock.error) ?? undefined}
@@ -932,6 +932,8 @@ interface BuyMoreInput {
   qty_count: number | null;
   qty_kg: string | null;
   unit_price: { amount: number; currency: 'IQD' | 'USD'; other_amount: number | null };
+  /** A rate changed for this buy (D-092); null — the company's or the system's applies. */
+  rate_iqd_per_usd: string | null;
 }
 
 /**
@@ -942,7 +944,6 @@ interface BuyMoreInput {
  */
 function AddStockSheet({
   pricedMeasure,
-  rate,
   latest,
   saving,
   error,
@@ -951,7 +952,6 @@ function AddStockSheet({
   onEdit,
 }: {
   pricedMeasure: 'count' | 'kg';
-  rate: string | null;
   latest: Lot | null;
   saving: boolean;
   error?: string;
@@ -969,10 +969,10 @@ function AddStockSheet({
   const [paid, setPaid] = useState<PaidNow>(NOTHING_PAID);
   const mayPay = usePermission('companies.record_payment');
   const companyId = companyIdOf(company);
-  // The company's own rate fills the other currency, as the server will (2.3.3), and says so.
+  // The rate of this buy (D-092): its box opens with the company's own, else the system's, and
+  // may be changed for this buy alone; the other currency is filled at it, as the server will.
   const account = useAccount(companyId);
-  const documentRate = useDocumentRate(account.data);
-  const buyRate = companyId ? documentRate.rate : rate;
+  const buyRate = useBuyRate(account.data, t('purchases:rate_source_purchase'));
   const edit =
     <T,>(set: (value: T) => void) =>
     (value: T) => {
@@ -996,7 +996,12 @@ function AddStockSheet({
   const quantityValid =
     pricedMeasure === 'count' ? count.kind === 'count' && count.value > 0 : quantity.trim() !== '' && Number(quantity) > 0;
   const valid =
-    company.kind !== 'unset' && quantityValid && cost.amount !== null && cost.amount >= 0 && paidNowValid(paid);
+    company.kind === 'company' &&
+    quantityValid &&
+    cost.amount !== null &&
+    cost.amount >= 0 &&
+    !buyRate.invalid &&
+    paidNowValid(paid);
 
   return (
     <BottomSheet title={t('materials:add_stock')} open onClose={onClose} closeLabel={t('common:close')}>
@@ -1026,14 +1031,15 @@ function AddStockSheet({
             onChange={(event) => edit(setDate)(event.target.value)}
           />
         </div>
+        <BuyRateField state={buyRate} label={t('purchases:rate_for_purchase')} />
         <MoneyInput
           label={t('materials:cost_per_unit')}
           value={cost}
-          rate={buyRate}
-          sourceLabel={documentRate.label}
+          rate={buyRate.rate}
+          sourceLabel={buyRate.label}
           onChange={edit(setCost)}
         />
-        <TextField
+        <TextAreaField
           label={t('materials:buy_note')}
           hint={t('common:optional')}
           value={note}
@@ -1044,7 +1050,7 @@ function AddStockSheet({
         {company.kind === 'company' && mayPay ? (
           <PaidNowField
             value={paid}
-            rate={buyRate}
+            rate={buyRate.rate}
             accountCurrency={company.settlement_currency}
             onChange={edit(setPaid)}
           />
@@ -1057,6 +1063,7 @@ function AddStockSheet({
             cost.amount !== null &&
             onSave({
               company_id: companyId,
+              rate_iqd_per_usd: buyRate.body,
               paid: company.kind === 'company' && mayPay ? paidNowBody(paid, company.settlement_currency) : null,
               purchase_date: date,
               note: note.trim() === '' ? null : note.trim(),

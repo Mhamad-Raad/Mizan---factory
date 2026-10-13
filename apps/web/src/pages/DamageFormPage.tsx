@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, DateField, Icon, StickyFooter, TextField } from '@mizan/ui';
+import { Button, Card, DateField, Icon, StickyFooter, TextAreaField } from '@mizan/ui';
 import { Decimal, roundHalfAwayFromZero } from '@mizan/money';
 import type { Currency, Measure } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
@@ -413,7 +413,7 @@ function DamageForm({ initial }: { initial: FormState }) {
           <h2 className="mz-heading">{t('damages:details')}</h2>
           <div className="mz-form-grid">
             <div className="mz-form-grid__wide">
-              <TextField
+              <TextAreaField
                 label={t('damages:reason')}
                 hint={t('damages:reason_hint')}
                 value={form.reason}
@@ -423,7 +423,7 @@ function DamageForm({ initial }: { initial: FormState }) {
             </div>
             {/* Beside "Done by" for an admin; the full width for everyone else. */}
             <div className={isAdmin ? undefined : 'mz-form-grid__wide'}>
-              <TextField
+              <TextAreaField
                 label={t('glossary:notes')}
                 hint={t('common:optional')}
                 value={form.notes}
@@ -618,7 +618,7 @@ function DamageTextsForm({ damage }: { damage: DamageDetail }) {
           <h2 className="mz-heading">{t('damages:details')}</h2>
           <div className="mz-form-grid">
             <div className="mz-form-grid__wide">
-              <TextField
+              <TextAreaField
                 label={t('damages:reason')}
                 hint={t('damages:reason_hint')}
                 value={reason}
@@ -627,7 +627,7 @@ function DamageTextsForm({ damage }: { damage: DamageDetail }) {
               />
             </div>
             <div className="mz-form-grid__wide">
-              <TextField
+              <TextAreaField
                 label={t('glossary:notes')}
                 hint={t('common:optional')}
                 value={notes}

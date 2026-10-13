@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, SegmentedControl } from '@mizan/ui';
-import type { Currency, Rate } from '@mizan/money';
+import { Button, Chip, NumberField, SegmentedControl } from '@mizan/ui';
+import type { Currency, Rate, RateSource } from '@mizan/money';
 import { DualAmount } from './DualAmount.js';
 import { MoneyInput } from './MoneyInput.js';
 import type { MoneyValue } from './MoneyInput.js';
 import { PickerSheet } from './PickerSheet.js';
 import type { CustomerRow } from '../pages/CustomersPage.js';
+import { useDocumentRate } from '../lib/accounts.js';
+import { usableRate } from '../lib/money.js';
+import { useFormatter } from '../lib/store.js';
 
 /*
  * The two questions every buy asks (D-085) — who did we buy it from, and did we pay them now —
@@ -14,22 +17,19 @@ import type { CustomerRow } from '../pages/CustomersPage.js';
  * new material's first purchase.
  */
 
-/** Who a purchase is from: not chosen yet, nobody (stock that owes nobody), or a company. */
+/** Who a purchase is from: not chosen yet, or a company — always a company (D-087). */
 export type CompanyChoice =
   | { kind: 'unset' }
-  | { kind: 'none' }
   | { kind: 'company'; id: string; name: string; settlement_currency: Currency };
 
 export function companyIdOf(choice: CompanyChoice): string | null {
   return choice.kind === 'company' ? choice.id : null;
 }
 
-const NO_COMPANY = '__no_company__';
-
 /**
- * "Bought from": a button that opens the company picker. "Not from a company" is the first row
- * of the picker, so a purchase is never left without an answer by accident — a purchase from
- * nobody owes nobody, and the business wants to know what it owes (D-085).
+ * "Bought from": a button that opens the company picker. The business buys from companies
+ * (D-085, D-087), so a purchase names one before it can be saved — on the purchase form, on a new
+ * material and on "Buy more" alike — and what it cost goes on that company's account.
  */
 export function CompanyField({
   value,
@@ -43,7 +43,7 @@ export function CompanyField({
   const { t } = useTranslation();
   const [picking, setPicking] = useState(false);
   const label =
-    value.kind === 'company' ? value.name : value.kind === 'none' ? t('purchases:no_company') : t('purchases:pick_company');
+    value.kind === 'company' ? value.name : t('purchases:pick_company');
 
   return (
     <div className="mz-field">
@@ -51,7 +51,6 @@ export function CompanyField({
       <Button variant="secondary" block icon="companies" onClick={() => setPicking(true)}>
         <bdi>{label}</bdi>
       </Button>
-      {value.kind === 'none' ? <span className="mz-field__hint">{t('purchases:no_company_hint')}</span> : null}
       {error ? (
         <span className="mz-field__error" role="alert">
           {error}
@@ -68,12 +67,6 @@ export function CompanyField({
           emptyTitle={t('customers:empty')}
           // The walk-in customer is a till, never a supplier.
           exclude={(row: never) => (row as unknown as CustomerRow).is_system}
-          pinned={{
-            id: NO_COMPANY,
-            title: t('purchases:no_company'),
-            subtitle: t('purchases:no_company_hint'),
-            row: null as never,
-          }}
           toItem={(row: never) => {
             const company = row as unknown as CustomerRow;
             return {
@@ -97,10 +90,6 @@ export function CompanyField({
           }}
           onPick={(id, row) => {
             setPicking(false);
-            if (id === NO_COMPANY) {
-              onChange({ kind: 'none' });
-              return;
-            }
             const company = row as unknown as CustomerRow;
             onChange({ kind: 'company', id: company.id, name: company.name, settlement_currency: company.settlement_currency });
           }}
@@ -207,5 +196,93 @@ export function PaidNowField({
         {t(value.mode === 'none' ? 'purchases:paid_now_none_hint' : 'purchases:paid_now_hint')}
       </span>
     </div>
+  );
+}
+
+/** A stored rate as a field shows it: "1312.0000" → "1312", "1305.5000" → "1305.5". */
+export function rateInputText(rate: Rate): string {
+  return rate.includes('.') ? rate.replace(/\.?0+$/, '') : rate;
+}
+
+export interface BuyRate {
+  /** The rate the buy is valued at: one typed for it, else the company's own, else the system's. */
+  rate: Rate | null;
+  source: RateSource;
+  /** What the money fields say under their conversion. */
+  label: string;
+  /**
+   * What the request sends: a rate typed for this buy that differs from the default, else null —
+   * the server then applies the company's or the system's rate itself and records it as such.
+   */
+  body: Rate | null;
+  invalid: boolean;
+  /** The rate the box opens with, and where it is from. */
+  fallback: { rate: Rate | null; source: RateSource };
+  text: string;
+  setText: (text: string) => void;
+  restore: () => void;
+}
+
+/**
+ * The rate of a buy (D-092): its box opens filled with the company's own rate, or the system's
+ * when the company has none, and may be changed for this buy alone. Typing the default back, or
+ * clearing the box, is the default again — never a "typed" rate that happens to match.
+ */
+export function useBuyRate(account: CustomerRow | undefined, typedLabel: string): BuyRate {
+  const [edited, setEdited] = useState<string | null>(null);
+  const fallback = useDocumentRate(account);
+  const typed = edited === null ? null : usableRate(edited);
+  const differs = typed !== null && (fallback.rate === null || Number(typed) !== Number(fallback.rate));
+  const chosen = useDocumentRate(account, { rate: differs ? typed : null, label: typedLabel });
+  return {
+    rate: chosen.rate,
+    source: chosen.source,
+    label: chosen.label,
+    body: differs ? typed : null,
+    invalid: edited !== null && edited.trim() !== '' && typed === null,
+    fallback: { rate: fallback.rate, source: fallback.source },
+    text: edited ?? (fallback.rate === null ? '' : rateInputText(fallback.rate)),
+    setText: setEdited,
+    restore: () => setEdited(null),
+  };
+}
+
+/**
+ * The rate box of a buy (D-092), with a tag saying where its figure is from: the company's rate,
+ * the system's, or one changed for this buy — and, once changed, what it would otherwise be.
+ */
+export function BuyRateField({ state, label }: { state: BuyRate; label: string }) {
+  const { t } = useTranslation();
+  const formatter = useFormatter();
+  const changed = state.body !== null;
+  const badge = changed ? (
+    <Chip tone="warning">{t('purchases:rate_badge_changed')}</Chip>
+  ) : state.fallback.source === 'company' ? (
+    <Chip tone="primary">{t('purchases:rate_badge_company')}</Chip>
+  ) : state.fallback.rate !== null ? (
+    <Chip>{t('purchases:rate_badge_system')}</Chip>
+  ) : null;
+  const hint =
+    state.fallback.rate === null
+      ? t('common:no_rate_set')
+      : changed
+        ? t(state.fallback.source === 'company' ? 'purchases:rate_was_company' : 'purchases:rate_was_system', {
+            rate: formatter.rate(state.fallback.rate),
+          })
+        : undefined;
+  return (
+    <NumberField
+      label={label}
+      badge={badge}
+      hint={hint}
+      decimals={4}
+      error={state.invalid ? t('common:rate_invalid') : undefined}
+      value={state.text}
+      onChange={(event) => state.setText(event.target.value)}
+      // An emptied box goes back to the default rather than staying blank.
+      onBlur={() => {
+        if (state.text.trim() === '') state.restore();
+      }}
+    />
   );
 }

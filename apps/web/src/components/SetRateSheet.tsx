@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BottomSheet, Button, NumberField, TextField } from '@mizan/ui';
+import { BottomSheet, Button, NumberField, TextAreaField } from '@mizan/ui';
 
 /**
  * Set a counterparty's own IQD-per-USD rate (a company's or a customer's). Append-only on the
@@ -48,7 +48,7 @@ export function SetRateSheet({
           }}
         />
         {hint ? <p className="mz-caption">{hint}</p> : null}
-        <TextField
+        <TextAreaField
           label={t('common:note')}
           hint={t('common:optional')}
           value={note}

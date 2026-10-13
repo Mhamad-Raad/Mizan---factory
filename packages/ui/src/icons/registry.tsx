@@ -34,6 +34,8 @@ import {
   Shield,
   ShoppingCart,
   Wallet,
+  BanknoteArrowDown,
+  BanknoteArrowUp,
   Sun,
   Trash2,
   Type,
@@ -87,6 +89,8 @@ export type IconName =
   | 'companies'
   | 'purchases'
   | 'accounts'
+  | 'money-in'
+  | 'money-out'
   | 'more'
   | 'filter'
   | 'print'
@@ -137,6 +141,9 @@ const ICONS: Record<IconName, LucideIcon> = {
   purchases: ShoppingCart,
   // The accountant's page (D-085): the cart belongs to Purchases now.
   accounts: Wallet,
+  // Money coming to us and money leaving us (D-088); not mirrored — up and down are not sides.
+  'money-in': BanknoteArrowDown,
+  'money-out': BanknoteArrowUp,
   more: Ellipsis,
   filter: Filter,
   print: Printer,

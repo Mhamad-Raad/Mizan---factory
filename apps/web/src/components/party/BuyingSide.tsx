@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, DateField, IconButton, SegmentedControl, TextField } from '@mizan/ui';
+import { BottomSheet, Button, Card, DateField, SegmentedControl, TextAreaField } from '@mizan/ui';
 import type { MenuItem } from '@mizan/ui';
 import type { Currency, Rate } from '@mizan/money';
 import { apiRequest } from '../../lib/api.js';
@@ -12,7 +12,7 @@ import { usePaging, useKeepPageInRange } from '../../lib/paging.js';
 import { useFormatter, usePermission } from '../../lib/store.js';
 import { errorMessage } from '../../lib/errors.js';
 import { invalidateMoneyViews } from '../../lib/invalidate.js';
-import { documentOfLedgerRow, usePrint } from '../../lib/print.js';
+import { documentOfLedgerRow } from '../../lib/print.js';
 import type { PurchaseRow } from '../../lib/purchases.js';
 import { Can } from '../Can.js';
 import { DualAmount } from '../DualAmount.js';
@@ -23,7 +23,7 @@ import { MoneyInput } from '../MoneyInput.js';
 import type { MoneyValue } from '../MoneyInput.js';
 import { Pager } from '../Pager.js';
 import { PaymentSheet } from '../PaymentSheet.js';
-import { PrintSelectionBar, usePrintSelection } from '../PrintSelection.js';
+import { PrintButton, usePrintSelection } from '../PrintSelection.js';
 import { PurchaseTable } from '../PurchaseTable.js';
 import { paymentReceipt } from '../SavedToast.js';
 import type { SavedNotice } from '../SavedToast.js';
@@ -35,7 +35,13 @@ type Sheet = 'payment' | 'adjustment' | 'credit';
 interface Breakdown {
   settlement_currency: Currency;
   allocation: {
-    purchases: { purchase_id: string; total: number; linked: number; allocated: number; remaining: number }[];
+    purchases: {
+      purchase_id: string;
+      total: number;
+      linked: number;
+      allocated: number;
+      remaining: number;
+    }[];
     general: number;
     balance: number;
   };
@@ -59,6 +65,10 @@ interface Breakdown {
  */
 export function useBuyingSide(input: {
   id: string;
+  /** The company's name, for the payment sheet's "Money out — to …" (D-088). */
+  name: string;
+  /** Opens the page's "Print account" sheet: what Print does on the account with nothing ticked. */
+  onPrintAccount: () => void;
   /** False for the walk-in customer, which nobody buys from: nothing here is fetched or shown. */
   enabled: boolean;
   tab: string;
@@ -73,7 +83,6 @@ export function useBuyingSide(input: {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const queryClient = useQueryClient();
-  const print = usePrint();
   const maySeeOwed = usePermission('fields.see_company_balances');
   const maySeePurchases = usePermission('purchases.view');
   const mayPay = usePermission('companies.record_payment');
@@ -101,27 +110,39 @@ export function useBuyingSide(input: {
   const owing = useQuery({
     queryKey: ['companies', id, 'breakdown', 'owing'],
     queryFn: () => apiRequest<Breakdown>(`/companies/${id}/purchase-breakdown?page_size=100`),
-    enabled: enabled && maySeeOwed && (tab === 'overview' || tab === 'purchases' || tab === 'buying' || sheet === 'payment'),
+    enabled:
+      enabled && maySeeOwed && (tab === 'purchases' || tab === 'buying' || sheet === 'payment'),
   });
+
+  // The overview's "Unpaid purchases" (D-093): only those with something left to pay, oldest first,
+  // a page at a time with its own place in the address — a supplier of many years has hundreds.
+  const owedPaging = usePaging({ storageKey: 'account-owed-purchases', prefix: 'owed_' });
+  const owedPage = useQuery({
+    queryKey: ['companies', id, 'breakdown', 'still-owed', owedPaging.page, owedPaging.pageSize],
+    queryFn: async () => {
+      const page = await apiRequest<Breakdown>(
+        `/companies/${id}/purchase-breakdown?still_owed=true&${owedPaging.query}`,
+      );
+      return { ...page, total: page.still_owed_count };
+    },
+    enabled: enabled && maySeeOwed && tab === 'overview',
+    placeholderData: keepPreviousData,
+  });
+  useKeepPageInRange(owedPaging, owedPage);
 
   const purchasesPaging = usePaging({ storageKey: 'account-purchases', prefix: 'purchases_' });
   const purchases = useQuery({
     queryKey: ['companies', id, 'purchases', purchasesPaging.page, purchasesPaging.pageSize],
     queryFn: () =>
-      apiRequest<{ items: PurchaseRow[]; total: number }>(`/companies/${id}/purchases?${purchasesPaging.query}`),
+      apiRequest<{ items: PurchaseRow[]; total: number }>(
+        `/companies/${id}/purchases?${purchasesPaging.query}`,
+      ),
     enabled: enabled && maySeePurchases && tab === 'purchases',
     placeholderData: keepPreviousData,
   });
   useKeepPageInRange(purchasesPaging, purchases);
 
   const owingRows = owing.data?.allocation.purchases ?? [];
-  // What is actually still owed: a purchase overpaid through a payment that named it has a
-  // negative remainder, which is money paid ahead, not a debt (review).
-  const stillOwed = owingRows.filter((row) => row.remaining > 0);
-  // The count and the total are the server's, over every purchase — the page above holds at most
-  // a hundred, and a long-standing supplier has more (second review).
-  const stillOwedCount = owing.data?.still_owed_count ?? stillOwed.length;
-  const stillOwedTotal = owing.data?.still_owed_total ?? 0;
   /** A figure in the account's currency, with the other side at the account's rate (rule 7). */
   const owedAmount = (value: number) =>
     rate === null ? (
@@ -130,13 +151,6 @@ export function useBuyingSide(input: {
       <DualAmount {...bothOf(value, settlement, rate)} primary={settlement} kind="derived" />
     );
   const owingNumbers = new Map((owing.data?.purchases ?? []).map((row) => [row.id, row]));
-  /** A purchase not among the owing ones is paid — unless the owing list was cut short. */
-  const remainingOf = (row: PurchaseRow): number | null => {
-    if (!owing.data) return null;
-    const found = owingRows.find((candidate) => candidate.purchase_id === row.id);
-    if (found) return found.remaining;
-    return owing.data.owing_count > owingRows.length ? null : 0;
-  };
 
   const selectPurchases = usePrintSelection<PurchaseRow>(
     (row) => ({ kind: 'purchase', id: row.id }),
@@ -163,10 +177,17 @@ export function useBuyingSide(input: {
 
   const payment = useMutation({
     mutationFn: (body: unknown) =>
-      apiRequest<unknown>(`/companies/${id}/payments`, { method: 'POST', body, idempotencyKey: paymentKey.key }),
+      apiRequest<unknown>(`/companies/${id}/payments`, {
+        method: 'POST',
+        body,
+        idempotencyKey: paymentKey.key,
+      }),
     onSuccess: async (answer) => {
       paymentKey.renew();
-      await recorded({ message: t('companies:payment_recorded'), receipt: paymentReceipt('buying', id, answer) });
+      await recorded({
+        message: t('companies:payment_recorded'),
+        receipt: paymentReceipt('buying', id, answer),
+      });
     },
   });
   const entry = useMutation({
@@ -178,7 +199,10 @@ export function useBuyingSide(input: {
       }),
     onSuccess: async (answer) => {
       entryKey.renew();
-      await recorded({ message: t('companies:entry_recorded'), receipt: paymentReceipt('buying', id, answer) });
+      await recorded({
+        message: t('companies:entry_recorded'),
+        receipt: paymentReceipt('buying', id, answer),
+      });
     },
   });
 
@@ -192,8 +216,8 @@ export function useBuyingSide(input: {
   const primaryActions: ReactNode = enabled ? (
     <>
       {mayPay ? (
-        <Button icon="check" onClick={() => setSheet('payment')}>
-          {t('companies:pay_them')}
+        <Button variant="money-out" icon="money-out" onClick={() => setSheet('payment')}>
+          {t('common:we_paid_them')}
         </Button>
       ) : null}
       <Can permission="purchases.create">
@@ -206,55 +230,82 @@ export function useBuyingSide(input: {
 
   const menuItems: MenuItem[] = enabled
     ? [
-        ...(mayCredit ? [{ label: t('companies:credit_from_them'), onSelect: () => setSheet('credit') }] : []),
-        ...(mayAdjust ? [{ label: t('companies:adjust_owed'), onSelect: () => setSheet('adjustment') }] : []),
+        ...(mayCredit
+          ? [{ label: t('companies:credit_from_them'), onSelect: () => setSheet('credit') }]
+          : []),
+        ...(mayAdjust
+          ? [{ label: t('companies:adjust_owed'), onSelect: () => setSheet('adjustment') }]
+          : []),
       ]
     : [];
 
   /** The purchases still owed, on the overview — what an accountant chases first. */
+  const owedRows = owedPage.data?.allocation.purchases ?? [];
+  const owedNumbers = new Map((owedPage.data?.purchases ?? []).map((row) => [row.id, row]));
   const overviewCard: ReactNode =
     enabled && maySeeOwed ? (
       <Card>
-        <h3 className="mz-heading">{t('companies:purchases_owed')}</h3>
-        <QueryStates
-          query={owing}
-          isEmpty={stillOwedCount === 0}
-          emptyTitle={t('companies:nothing_owed')}
-          skeletonLines={3}
-        >
-          <ul className="mz-list">
-            {stillOwed.slice(0, 5).map((row) => {
-              const purchase = owingNumbers.get(row.purchase_id);
-              return (
-                <li key={row.purchase_id}>
-                  <Link to={`/purchases/${row.purchase_id}`} className="mz-list__item mz-list__item--interactive">
-                    <span className="mz-list__body">
-                      <span className="mz-list__title">
-                        {t('purchases:number', { number: formatter.identifier(purchase?.number ?? 0) })}
-                      </span>
-                      {purchase ? <span className="mz-caption">{formatter.date(purchase.purchase_date)}</span> : null}
-                    </span>
-                    <span className="mz-list__end mz-owed">{owedAmount(row.remaining)}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-          {stillOwedCount > 5 ? (
-            <p className="mz-caption mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-              <span>{t('companies:more_owed', { count: stillOwedCount - 5 })}</span>
-              {owedAmount(stillOwedTotal)}
-            </p>
-          ) : null}
-        </QueryStates>
+        <div className="mz-stack">
+          <div
+            className="mz-row mz-row--between"
+            style={{ gap: 'var(--space-3)', flexWrap: 'wrap' }}
+          >
+            <h3 className="mz-heading">{t('companies:purchases_owed')}</h3>
+            {/* The total is the server's, over every unpaid purchase, not this page's. */}
+            {owedPage.data && owedPage.data.still_owed_count > 0 ? (
+              <span className="mz-owed">{owedAmount(owedPage.data.still_owed_total)}</span>
+            ) : null}
+          </div>
+          <QueryStates
+            query={owedPage}
+            isEmpty={owedRows.length === 0}
+            emptyTitle={t('companies:nothing_owed')}
+            skeletonLines={3}
+          >
+            <div className="mz-stack">
+              <ul className="mz-list">
+                {owedRows.map((row) => {
+                  const purchase = owedNumbers.get(row.purchase_id);
+                  return (
+                    <li key={row.purchase_id}>
+                      <Link
+                        to={`/purchases/${row.purchase_id}`}
+                        className="mz-list__item mz-list__item--interactive"
+                      >
+                        <span className="mz-list__body">
+                          <span className="mz-list__title">
+                            {t('purchases:number', {
+                              number: formatter.identifier(purchase?.number ?? 0),
+                            })}
+                          </span>
+                          {purchase ? (
+                            <span className="mz-caption">
+                              {formatter.date(purchase.purchase_date)}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="mz-list__end mz-owed">{owedAmount(row.remaining)}</span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+              <Pager
+                page={owedPaging.page}
+                pageSize={owedPaging.pageSize}
+                total={owedPage.data?.total ?? 0}
+                onPage={owedPaging.setPage}
+                onPageSize={owedPaging.setPageSize}
+              />
+            </div>
+          </QueryStates>
+        </div>
       </Card>
     ) : null;
 
   const purchasesTab: ReactNode = (
     <>
-      <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-        <PrintSelectionBar state={selectPurchases} />
-      </div>
+      {(purchases.data?.items.length ?? 0) > 0 ? <PrintButton state={selectPurchases} /> : null}
       <QueryStates
         query={purchases}
         isEmpty={(purchases.data?.items.length ?? 0) === 0}
@@ -270,7 +321,6 @@ export function useBuyingSide(input: {
         <PurchaseTable
           rows={purchases.data?.items ?? []}
           showCompany={false}
-          remainingOf={maySeeOwed ? remainingOf : undefined}
           selection={selectPurchases.selection}
         />
         <Pager
@@ -286,9 +336,11 @@ export function useBuyingSide(input: {
 
   const accountTab: ReactNode = (
     <>
-      <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-        <PrintSelectionBar state={selectEntries} />
-      </div>
+      <PrintButton
+        state={selectEntries}
+        wholeLabel={t('print:print_statement')}
+        onPrintWhole={input.onPrintAccount}
+      />
       <QueryStates
         query={ledger}
         isEmpty={(ledger.data?.items.length ?? 0) === 0}
@@ -301,13 +353,6 @@ export function useBuyingSide(input: {
             namespace="companies"
             landedVersion={landedVersion}
             selection={selectEntries.selection}
-            actions={(row) => (
-              <IconButton
-                icon="print"
-                label={t('print:print_receipt')}
-                onClick={() => print([documentOfLedgerRow('buying', id, row, maySeePurchases)])}
-              />
-            )}
           />
           <Pager
             page={ledgerPaging.page}
@@ -326,10 +371,9 @@ export function useBuyingSide(input: {
       {sheet === 'payment' ? (
         <PaymentSheet
           open
-          title={t('companies:pay_them')}
-          amountLabel={t('companies:amount_paid')}
+          direction="out"
+          counterparty={input.name}
           remainingLabel={t('companies:we_owe_them')}
-          saveLabel={t('companies:pay_them')}
           settleHint={t('companies:settle_in_full_hint')}
           remaining={Math.max(owed, 0)}
           settlement_currency={settlement}
@@ -414,7 +458,11 @@ function AdjustOwedSheet({
   const { t } = useTranslation();
   const formatter = useFormatter();
   const [mode, setMode] = useState<'delta' | 'new_balance'>('delta');
-  const [amount, setAmount] = useState<MoneyValue>({ amount: null, currency: settlement, other_amount: null });
+  const [amount, setAmount] = useState<MoneyValue>({
+    amount: null,
+    currency: settlement,
+    other_amount: null,
+  });
   const [date, setDate] = useState(formatter.today());
   const [note, setNote] = useState('');
   const edit =
@@ -430,7 +478,12 @@ function AdjustOwedSheet({
   const after = typed === null ? null : mode === 'new_balance' ? typed : balance + typed;
 
   return (
-    <BottomSheet title={t('companies:sheet.adjustment')} open onClose={onClose} closeLabel={t('common:close')}>
+    <BottomSheet
+      title={t('companies:sheet.adjustment')}
+      open
+      onClose={onClose}
+      closeLabel={t('common:close')}
+    >
       <div className="mz-stack">
         <SegmentedControl
           label={t('companies:adjust_mode_hint')}
@@ -442,7 +495,9 @@ function AdjustOwedSheet({
           ]}
         />
         <MoneyInput
-          label={mode === 'new_balance' ? t('companies:adjust_new_balance') : t('companies:adjust_delta')}
+          label={
+            mode === 'new_balance' ? t('companies:adjust_new_balance') : t('companies:adjust_delta')
+          }
           hint={mode === 'delta' ? t('companies:adjust_delta_hint') : undefined}
           value={amount}
           rate={rate}
@@ -465,7 +520,7 @@ function AdjustOwedSheet({
           max={formatter.today()}
           onChange={(event) => edit(setDate)(event.target.value)}
         />
-        <TextField
+        <TextAreaField
           label={t('common:note')}
           value={note}
           hint={t('companies:note_required')}
@@ -477,7 +532,9 @@ function AdjustOwedSheet({
           disabled={amount.amount === null || note.trim().length < 3}
           onClick={() =>
             onSave({
-              ...(mode === 'new_balance' ? { new_balance: amount.amount } : { delta: amount.amount }),
+              ...(mode === 'new_balance'
+                ? { new_balance: amount.amount }
+                : { delta: amount.amount }),
               currency: amount.currency,
               other_amount: amount.other_amount ?? null,
               entry_date: date,
@@ -510,7 +567,11 @@ function CreditSheet({
 }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const [amount, setAmount] = useState<MoneyValue>({ amount: null, currency: 'IQD', other_amount: null });
+  const [amount, setAmount] = useState<MoneyValue>({
+    amount: null,
+    currency: 'IQD',
+    other_amount: null,
+  });
   const [date, setDate] = useState(formatter.today());
   const [note, setNote] = useState('');
   const edit =
@@ -521,17 +582,28 @@ function CreditSheet({
     };
 
   return (
-    <BottomSheet title={t('companies:sheet.credit')} open onClose={onClose} closeLabel={t('common:close')}>
+    <BottomSheet
+      title={t('companies:sheet.credit')}
+      open
+      onClose={onClose}
+      closeLabel={t('common:close')}
+    >
       <div className="mz-stack">
         <p className="mz-muted">{t('companies:credit_hint')}</p>
-        <MoneyInput label={t('companies:amount')} value={amount} rate={rate} onChange={edit(setAmount)} error={error} />
+        <MoneyInput
+          label={t('companies:amount')}
+          value={amount}
+          rate={rate}
+          onChange={edit(setAmount)}
+          error={error}
+        />
         <DateField
           label={t('common:date')}
           value={date}
           max={formatter.today()}
           onChange={(event) => edit(setDate)(event.target.value)}
         />
-        <TextField
+        <TextAreaField
           label={t('common:note')}
           value={note}
           hint={t('companies:note_required')}

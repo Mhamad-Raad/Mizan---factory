@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BottomSheet, Button, Icon, NumberField, TextField } from '@mizan/ui';
+import { BottomSheet, Button, Icon, NumberField, TextAreaField, TextField } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { useFormatter, usePermission } from '../../lib/store.js';
 import type { CustomerRow } from '../../pages/CustomersPage.js';
@@ -86,7 +86,7 @@ export function EditPartySheet({
           onChange={(event) => edit(setAddress, event.target.value)}
         />
         <div className="mz-form-grid__wide">
-          <TextField
+          <TextAreaField
             label={t('glossary:notes')}
             hint={t('common:optional')}
             value={notes}
@@ -211,7 +211,7 @@ export function SettlementCurrencySheet({
         ) : null}
         <p className="mz-caption">{t('companies:rebase_hint')}</p>
 
-        <TextField
+        <TextAreaField
           label={t('common:note')}
           value={note}
           onChange={(event) => {

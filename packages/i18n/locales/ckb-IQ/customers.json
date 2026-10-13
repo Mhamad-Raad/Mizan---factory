@@ -15,12 +15,10 @@
   "show_more": "زیاتر پیشان بدە",
   "statement_range": "لە {{from}} بۆ {{to}}",
   "unpaid_first": "فرۆشتنەکانی نەدراو",
-  "record_payment": "تۆمارکردنی پارەدان",
   "record_excess": "زیادەکە وەک باڵانس تۆمار بکە",
   "payment_recorded": "پارەدان تۆمارکرا",
   "entry_recorded": "تۆمارکرا",
   "amount": "بڕی پارە",
-  "amount_received": "بڕی وەرگیراو",
   "settle_in_full_hint": "فرۆشتنەکە بە تەواوی دادەخات، تەنانەت ئەگەر دوایین پارەدان بە دراوی تر بێت",
   "remaining_hint": "ماوە پێش ئەم پارەدانە: {{amount}}",
   "split_on": "بەشێک بە دینار، بەشێک بە دۆلار",
@@ -64,8 +62,6 @@
   "purchases_side_only": "تەنها کڕین — ناتوانیت لایەنی فرۆشتن ببینیت",
   "group_selling": "فرۆشتن",
   "group_buying": "کڕین",
-  "receive_payment": "وەرگرتنی پارە",
-  "make_payment": "پارەدان بەوان",
   "opening_ours": "باڵانسی سەرەتا: قەرزی ئێمە",
   "credit_from_them": "باڵانس لەوانەوە",
   "tab_sales_ledger": "حیسابی فرۆشتن",
@@ -94,5 +90,6 @@
   "rate_changed": "نرخ {{old}} ← {{new}}",
   "rate_set": "نرخ دانرا بە {{new}}",
   "entry.damage": "تەلەف",
-  "filter_we_owe": "قەرزی ئێمە بۆ ئەوان"
+  "filter_we_owe": "قەرزی ئێمە بۆ ئەوان",
+  "no_unpaid_orders": "هیچ فرۆشتنێکی نەدراو نییە"
 }

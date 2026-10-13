@@ -33,6 +33,12 @@ export interface PurchaseRow {
   } | null;
   version: number;
   created_at: string;
+  /**
+   * On a list, for a reader who may see what we owe companies: what is still owed on it, in the
+   * company's currency, oldest-first, and whether it is paid (D-085). Absent when void, from no
+   * company, or for anyone else.
+   */
+  payment?: { remaining: number; status: 'paid' | 'partially_paid' | 'unpaid' };
 }
 
 export interface PurchaseDetail extends PurchaseRow {

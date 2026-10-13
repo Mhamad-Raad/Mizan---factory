@@ -15,12 +15,10 @@
   "show_more": "عرض المزيد",
   "statement_range": "من {{from}} إلى {{to}}",
   "unpaid_first": "الطلبات غير المدفوعة",
-  "record_payment": "تسجيل دفعة",
   "record_excess": "تسجيل الزائد كرصيد دائن",
   "payment_recorded": "تم تسجيل الدفعة",
   "entry_recorded": "تم التسجيل",
   "amount": "المبلغ",
-  "amount_received": "المبلغ المستلم",
   "settle_in_full_hint": "يُغلق الطلب بالضبط حتى لو كانت الدفعة الأخيرة بعملة أخرى",
   "remaining_hint": "المتبقي قبل هذه الدفعة: {{amount}}",
   "split_on": "الدفع جزئياً بالدينار وجزئياً بالدولار",
@@ -64,8 +62,6 @@
   "purchases_side_only": "المشتريات فقط — لا يمكنك رؤية جانب المبيعات",
   "group_selling": "البيع",
   "group_buying": "الشراء",
-  "receive_payment": "استلام دفعة",
-  "make_payment": "دفع لهم",
   "opening_ours": "رصيد افتتاحي: علينا لهم",
   "credit_from_them": "رصيد منهم",
   "tab_sales_ledger": "حساب المبيعات",
@@ -94,5 +90,6 @@
   "rate_changed": "السعر {{old}} ← {{new}}",
   "rate_set": "تم تعيين السعر {{new}}",
   "entry.damage": "بضاعة مكسورة",
-  "filter_we_owe": "علينا لهم"
+  "filter_we_owe": "علينا لهم",
+  "no_unpaid_orders": "لا توجد طلبات غير مدفوعة"
 }

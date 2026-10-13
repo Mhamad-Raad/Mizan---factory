@@ -60,7 +60,7 @@ test.describe('the buying screens', () => {
       await expect(page.getByRole('link').filter({ hasText: 'Al-Noor' }).first()).toBeVisible();
       await shot(page, `companies-${testCase.name}.png`);
 
-      await page.goto('/purchases');
+      await page.goto('/trade?kind=purchase');
       await expect(page.getByRole('link', { name: /#/ }).first()).toBeVisible();
       await shot(page, `purchases-${testCase.name}.png`);
     });
@@ -94,13 +94,15 @@ test.describe('the buying screens', () => {
     await page.goto('/customers?side=supplier');
     await page.getByRole('link').filter({ hasText: 'Al-Noor' }).first().click();
     // The overview names the purchases still owed (D-085).
-    await expect(page.getByText('Purchases we still owe for')).toBeVisible();
+    await expect(page.getByText('Unpaid purchases')).toBeVisible();
     await page.getByRole('button', { name: 'We owe them' }).click();
 
     // The purchase by its number and the payment, with the running balance in posting order.
     await expect(page.getByText(/Purchase #/).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Select to print' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Print receipt' }).first()).toBeVisible();
+    // A tick box on every row, and one Print button: the account, or what is ticked (D-086).
+    await expect(page.getByRole('button', { name: 'Print account' })).toBeVisible();
+    await page.getByRole('checkbox', { name: /^Select (?!everything)/ }).first().check();
+    await expect(page.getByRole('button', { name: 'Print (1)' })).toBeVisible();
     await shot(page, 'company-accounting-en-light.png');
   });
 
@@ -110,7 +112,7 @@ test.describe('the buying screens', () => {
 
     await page.goto('/purchases');
     await page.getByRole('link', { name: /#/ }).first().click();
-    await expect(page.getByText('Copper wire 2 mm')).toBeVisible();
+    await expect(page.getByText('Copper wire 2 mm').first()).toBeVisible();
     await shot(page, 'purchase-detail-ckb-light.png');
   });
 
@@ -119,7 +121,7 @@ test.describe('the buying screens', () => {
     await signIn(page, WAREHOUSE);
 
     await page.goto('/purchases/new');
-    // The company picker, with "Not from a company" pinned at the top (FR-407, D-085).
+    // The company picker: a purchase is always from a company (D-085, D-087).
     await page.locator('.mz-button--secondary').first().click();
     await expect(page.locator('input[type="search"]')).toBeVisible();
     await page.getByRole('button').filter({ hasText: 'Al-Noor Steel Co.' }).first().click();
@@ -138,18 +140,17 @@ test.describe('the buying screens', () => {
     await shot(page, 'new-purchase-ckb-light.png');
   });
 
-  test('a stock-only purchase says so instead of naming a company', async ({ page }) => {
+  test('a purchase cannot be saved until a company is chosen, and "not from a company" is not offered', async ({
+    page,
+  }) => {
     await withPreferences(page, { lang: 'en', theme: 'light' });
     await signIn(page, WAREHOUSE);
 
     await page.goto('/purchases/new');
-    // "Bought from" is asked, never assumed; "Not from a company" is its first answer (D-085).
+    await expect(page.getByRole('button', { name: 'Save purchase' })).toBeDisabled();
     await page.locator('.mz-button--secondary').first().click();
-    await page.getByRole('button').filter({ hasText: 'Not from a company' }).first().click();
-    await expect(page.getByRole('button', { name: /Not from a company/ })).toBeVisible();
-    await expect(page.getByText(/Stock goes up and nobody is owed/)).toBeVisible();
-    // Paying now needs a company, so the question is not asked.
-    await expect(page.getByText('Did you pay them now?')).toHaveCount(0);
+    await expect(page.locator('input[type="search"]')).toBeVisible();
+    await expect(page.getByRole('button').filter({ hasText: 'Not from a company' })).toHaveCount(0);
   });
 
   test('the company payment sheet is usable one-handed and previews the new balance', async ({ page }) => {
@@ -163,8 +164,9 @@ test.describe('the buying screens', () => {
     // routes are split (I6) the list is still painted for a frame after the tap, and its own
     // primary button is "New company".
     await expect(page.getByRole('heading', { name: 'Al-Noor Steel Co.' }).first()).toBeVisible();
-    // "Pay them" — money out — beside "Payment received" (D-085).
-    await page.getByRole('button', { name: 'الدفع لهم' }).click();
+    // "We paid them" — money out, in its own colour — beside "They paid us" (D-085, D-088).
+    await page.getByRole('button', { name: 'دفعنا لهم' }).click();
+    await expect(page.locator('.mz-money-strip--out')).toContainText('Al-Noor Steel Co.');
 
     const iqd = page.locator('input[inputmode="numeric"]').first();
     await iqd.fill('100000');
@@ -173,7 +175,7 @@ test.describe('the buying screens', () => {
     const sheet = page.locator('.mz-sheet, .mz-bottom-sheet').first();
     await expect(sheet).toBeVisible();
     await expect(sheet).toContainText('2,950,000');
-    await shot(page, 'company-payment-ar-light.png');
+    await shot(page, 'company-payment-ar-light.png', { fullPage: false });
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

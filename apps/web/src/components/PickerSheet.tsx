@@ -31,6 +31,11 @@ export interface PickerSheetProps {
   pinned?: PickerItem & { row: never };
   /** Rows the search may return that cannot be picked here — the walk-in, when buying (D-085). */
   exclude?: (row: never) => boolean;
+  /**
+   * A row that stays at the bottom of the sheet however far the list scrolls — "New material"
+   * on a purchase (D-090) — handed what was typed into the search.
+   */
+  footer?: (query: string) => React.ReactNode;
 }
 
 /**
@@ -50,6 +55,7 @@ export function PickerSheet({
   icon,
   pinned,
   exclude,
+  footer,
 }: PickerSheetProps) {
   const { t } = useTranslation();
   // The sheet is mounted only while it is open, so the query starts empty on every visit
@@ -113,6 +119,7 @@ export function PickerSheet({
             })}
           </ul>
         </QueryStates>
+        {footer ? <div className="mz-picker__footer">{footer(query.trim())}</div> : null}
       </div>
     </BottomSheet>
   );

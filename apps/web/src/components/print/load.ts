@@ -1,10 +1,8 @@
 import type { Currency, Rate } from '@mizan/money';
 import { apiRequest } from '../../lib/api.js';
 import type { LedgerRow } from '../LedgerList.js';
-import type { PurchaseDetail, PurchaseRow } from '../../lib/purchases.js';
+import type { PurchaseDetail } from '../../lib/purchases.js';
 import type { OrderDetail } from '../../pages/OrderFormPage.js';
-import type { OrderRow } from '../../pages/OrdersPage.js';
-import { PRINT_LIST_ROWS } from '../../lib/print.js';
 import type { AccountSide, PrintDocument } from '../../lib/print.js';
 
 /*
@@ -63,31 +61,11 @@ export interface StatementData {
   sections: StatementSection[];
 }
 
-export interface PurchaseListData {
-  kind: 'purchase_list';
-  from: string | null;
-  to: string | null;
-  rows: PurchaseRow[];
-  total: number;
-  totals: { buys: number; cost?: { total_iqd: number; total_usd_cents: number } } | null;
-}
-
-export interface OrderListData {
-  kind: 'order_list';
-  from: string | null;
-  to: string | null;
-  rows: OrderRow[];
-  total: number;
-  totals: { orders: number; total_iqd: number; total_usd_cents: number } | null;
-}
-
 export type PrintData =
   | OrderReceiptData
   | PurchaseReceiptData
   | VoucherData
-  | StatementData
-  | PurchaseListData
-  | OrderListData;
+  | StatementData;
 
 /** The query key of one document, so two prints of the same thing never share stale data. */
 export function printKey(document: PrintDocument): unknown[] {
@@ -138,39 +116,6 @@ export async function loadDocument(document: PrintDocument, may: (permission: st
       );
       return { kind: 'statement', from: document.from, to: document.to, sections };
     }
-    case 'purchase_list': {
-      const { rows, total, totals } = await allPages<PurchaseRow, PurchaseListData['totals']>(
-        `/purchases?${document.query}`,
-      );
-      return { kind: 'purchase_list', from: document.from, to: document.to, rows, total, totals };
-    }
-    case 'order_list': {
-      const { rows, total, totals } = await allPages<OrderRow, OrderListData['totals']>(`/orders?${document.query}`);
-      return { kind: 'order_list', from: document.from, to: document.to, rows, total, totals };
-    }
   }
 }
 
-/**
- * A list read a page of 100 at a time — the API's largest (D-058) — up to `PRINT_LIST_ROWS`. The
- * totals come with the first page and cover the whole filter, so a capped printout still adds up.
- */
-async function allPages<Row, Totals>(path: string): Promise<{ rows: Row[]; total: number; totals: Totals | null }> {
-  const rows: Row[] = [];
-  let total = 0;
-  let totals: Totals | null = null;
-  for (let page = 1; rows.length < PRINT_LIST_ROWS; page += 1) {
-    const separator = path.includes('?') ? '&' : '?';
-    // Only the first page's figures are read, so the later pages do not ask for them.
-    const answer = await apiRequest<{ items: Row[]; total: number; totals?: Totals }>(
-      `${path}${separator}page=${page}&page_size=100${page > 1 ? '&totals=false' : ''}`,
-    );
-    if (page === 1) {
-      total = answer.total;
-      totals = answer.totals ?? null;
-    }
-    rows.push(...answer.items);
-    if (answer.items.length < 100 || rows.length >= total) break;
-  }
-  return { rows: rows.slice(0, PRINT_LIST_ROWS), total, totals };
-}

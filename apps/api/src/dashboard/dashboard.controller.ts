@@ -6,7 +6,7 @@ import { can, contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { Database } from '../database/pool.js';
-import { owedToCompanies } from '../common/owed-to-companies.js';
+import { owedToCompanies } from '../common/owed-totals.js';
 import { RatesService } from '../rates/rates.service.js';
 import { PeriodService } from '../settings/period.service.js';
 

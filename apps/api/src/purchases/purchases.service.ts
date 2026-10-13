@@ -41,6 +41,9 @@ import type {
 /** How long the creator may undo a purchase from the save toast (FR-405). */
 const UNDO_WINDOW_MS = 8_000;
 
+/** How many companies' accounts a list allocates at once for its rows' payment states. */
+const PAYMENT_CONCURRENCY = 4;
+
 export interface PurchaseLineInput {
   item_id: string;
   qty_count?: number | null;
@@ -147,6 +150,12 @@ export interface PurchaseDto {
   duplicate_item_warning?: { item_id: string; item_name: string }[];
   /** The payment written with the buy (D-085), so its receipt can be printed straight away. */
   paid_entry_id?: string | null;
+  /**
+   * On a list, for a reader who may see what we owe companies: what is still owed on it, in the
+   * company's currency, and whether it is paid (D-085). Absent for a void purchase, one from no
+   * company, and any other reader.
+   */
+  payment?: { remaining: number; status: 'paid' | 'partially_paid' | 'unpaid' };
 }
 
 interface PreparedLine extends NewPurchaseLine {
@@ -186,7 +195,11 @@ export class PurchasesService {
    * (under `owed_by_us`, the company-balances flag's) — the same for every filter, because it is
    * a fact about the accounts, not about the buys on the page.
    */
-  async list(filters: PurchaseFilters): Promise<{
+  async list(
+    filters: PurchaseFilters,
+    /** Whether the reader may see what we owe companies: only then is each row's payment read. */
+    seesOwed = false,
+  ): Promise<{
     items: PurchaseDto[];
     total: number;
     totals?: {
@@ -204,6 +217,7 @@ export class PurchasesService {
       wantsOwed ? this.purchases.owedToCompanies() : Promise.resolve(null),
     ]);
     const items = rows.map((row) => toPurchaseDto(row, []));
+    if (seesOwed) await this.withPayment(items);
     if (filters.totals === false) return { items, total };
     return {
       items,
@@ -214,6 +228,53 @@ export class PurchasesService {
         ...(owed ? { owed_by_us: owed } : {}),
       },
     };
+  }
+
+  /**
+   * Each listed purchase's payment state (D-085): what is still owed on it and whether it is
+   * paid, partly paid or unpaid — the oldest-first figure its own page shows (FR-712), so the
+   * list and the page never disagree. The allocation is per company, so it is made once for each
+   * company on the page (a page is 25 rows, rarely more than a handful of companies) and in
+   * parallel; a voided purchase, or one from no company, has no payment state.
+   */
+  private async withPayment(items: PurchaseDto[]): Promise<void> {
+    const companies = new Map<string, Currency>();
+    for (const item of items) {
+      if (item.doc_status === 'active' && item.company_id && item.settlement_currency) {
+        companies.set(item.company_id, item.settlement_currency);
+      }
+    }
+    // A few companies at a time, not one query pair per company at once: a page of twenty-five
+    // purchases from twenty-five suppliers must not take the whole connection pool (review).
+    const pending = [...companies];
+    const byPurchase = new Map<string, { remaining: number; total: number }>();
+    const worker = async () => {
+      for (let next = pending.shift(); next; next = pending.shift()) {
+        const [companyId, settlement] = next;
+        const { allocation } = await this.companiesService.allocationOf(this.database, companyId, settlement);
+        for (const row of allocation.purchases) byPurchase.set(row.purchase_id, row);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(PAYMENT_CONCURRENCY, pending.length) }, worker));
+    for (const item of items) {
+      const mine = item.doc_status === 'active' ? byPurchase.get(item.id) : undefined;
+      if (!mine) continue;
+      item.payment = {
+        remaining: mine.remaining,
+        status: mine.remaining <= 0 ? 'paid' : mine.remaining < mine.total ? 'partially_paid' : 'unpaid',
+      };
+    }
+  }
+
+  /**
+   * Purchases by id, as the Purchases list sends them — with their payment state for a reader
+   * who may see what we owe — in the order asked for (D-089).
+   */
+  async listItemsByIds(ids: readonly string[], seesOwed: boolean): Promise<PurchaseDto[]> {
+    const byId = new Map((await this.purchases.rowsByIds(ids)).map((row) => [row.id, toPurchaseDto(row, [])]));
+    const items = ids.map((id) => byId.get(id)).filter((dto): dto is PurchaseDto => dto !== undefined);
+    if (seesOwed) await this.withPayment(items);
+    return items;
   }
 
   async get(id: string): Promise<PurchaseDto> {

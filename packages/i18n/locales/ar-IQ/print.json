@@ -2,14 +2,11 @@
   "preparing": "جارٍ التجهيز للطباعة…",
   "failed": "تعذّر تجهيز هذا للطباعة — حاول مرة أخرى",
   "print_receipt": "طباعة الوصل",
-  "print_receipts": "طباعة الوصولات",
-  "select": "تحديد للطباعة",
-  "select_done": "إنهاء التحديد",
   "select_row": "تحديد {{name}}",
-  "selected_count": "تم تحديد {{count}}",
-  "clear_selection": "مسح",
+  "clear_selection": "إلغاء التحديد",
   "limit_reached": "حتى {{count}} في المرة الواحدة — اطبع هذه ثم اختر غيرها",
   "print_list": "طباعة القائمة",
+  "tick_to_print": "حدّد الصفوف التي تريد طباعتها",
   "print_statement": "طباعة الحساب",
   "statement_title": "طباعة حساب هذه الشركة",
   "statement_hint": "كل بيع وشراء ودفعة بين التاريخين، مع الرصيد بعد كل منها.",
@@ -40,9 +37,6 @@
   "section_buying": "المشتريات — ما علينا لهم",
   "net_they_owe_us": "بالمجمل، لنا عليهم",
   "net_we_owe_them": "بالمجمل، علينا لهم",
-  "list": "قائمة",
-  "any_date": "أي تاريخ",
-  "number": "الرقم",
-  "status": "الحالة",
-  "list_capped": "يُعرض أول {{shown}} من {{total}}؛ المجموع يشملها كلها."
+  "print_selected": "طباعة ({{count}})",
+  "select_all_page": "تحديد كل ما في هذه الصفحة"
 }

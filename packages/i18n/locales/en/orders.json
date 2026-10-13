@@ -52,13 +52,10 @@
   "choose_customer": "Choose a company",
   "credit_limit_warning": "This takes the company past its credit limit of {{limit}} to {{balance}}",
   "void_explanation": "Stock for {{count}} materials will be restored and {{amount}} will come off the company balance. Payments already received stay on its account.",
-  "search_hint": "Number, company or notes",
   "new_order_hint": "Record a sale — the company, what they bought, and how they paid.",
-  "tile_orders": "Orders",
-  "tile_sold": "Sold",
-  "tile_to_collect": "Still to collect",
   "rounded_up": "Rounded up by {{amount}} to a round {{step}}",
   "rounding": "Rounding",
   "save_order_one": "Save order ({{count}} line)",
-  "empty_search": "No match for '{{query}}'"
+  "empty_search": "No match for '{{query}}'",
+  "they_paid_for_order": "They paid for this order"
 }

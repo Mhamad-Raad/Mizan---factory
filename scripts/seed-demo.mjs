@@ -114,6 +114,25 @@ const hemin = await employee('Hemin Aziz', 'hemin', 'warehouse');
 await employee('Nazdar Karim', 'nazdar', 'accountant');
 console.log('✓ three employees');
 
+// ── the companies we buy from and sell to (D-085) — first, since every material is bought from one ─────────────────────────────────────────────────────────
+
+async function company(body, rate) {
+  // Its own conversion rate is typed on the same form (D-055); without one the system rate applies.
+  const created = await post(admin, '/customers', rate ? { ...body, rate_iqd_per_usd: rate } : body);
+  return created.id;
+}
+const kawa = await company({ name: 'Kawa Trading', phone: '0750 123 4567', address: 'Erbil, Industrial Area' }, '1315');
+const hawler = await company({ name: 'Hawler Construction', phone: '0751 987 6543', settlement_currency: 'USD' });
+const slemani = await company({ name: 'Slemani Build Co.', phone: '0770 222 1100' });
+const duhok = await company({ name: 'Duhok Fabrication', phone: '0750 444 7788' });
+const azadi = await company({ name: 'Azadi Workshop', phone: '0771 300 2020' });
+const erbilMetal = await company({ name: 'Erbil Metal House', contact_name: 'Dilshad', phone: '0750 909 8080' }, '1312');
+const baghdadPipe = await company(
+  { name: 'Baghdad Pipe Trading', contact_name: 'Haider', settlement_currency: 'USD' },
+  '1310',
+);
+console.log('✓ seven companies, three with their own rate');
+
 // ── the warehouse: materials, bought at more than one price ──────────────────────────────
 //
 // Creating a material *is* buying it (D-062): each one arrives with its first buy, and some get
@@ -139,7 +158,14 @@ for (const [name, unit, sale, first] of MATERIALS) {
   const created = await post(admin, '/items', {
     name,
     pricing_unit: unit,
-    buy: { ...quantity(unit, qty), unit_price: { amount: cost, currency: 'IQD' }, purchase_date: daysAgo(back) },
+    // Bought from Erbil Metal House and paid on the spot (D-085, D-087).
+    buy: {
+      ...quantity(unit, qty),
+      unit_price: { amount: cost, currency: 'IQD' },
+      purchase_date: daysAgo(back),
+      company_id: erbilMetal,
+      paid: { in_full: true },
+    },
   });
   item[name] = { id: created.id, unit };
   for (const month of months) {
@@ -154,8 +180,9 @@ let laterBuys = 0;
 for (const [name, unit, , , later] of MATERIALS) {
   if (!later) continue;
   const [qty, cost, back] = later;
+  // The later shipments come from Baghdad Pipe Trading on credit: what we owe them (D-085).
   await post(admin, '/purchases', {
-    company_id: null,
+    company_id: baghdadPipe,
     purchase_date: daysAgo(back),
     acting_user_id: hemin,
     notes: 'new shipment',
@@ -165,24 +192,7 @@ for (const [name, unit, , , later] of MATERIALS) {
 }
 console.log(`✓ ${MATERIALS.length} materials bought, ${laterBuys} of them bought again at a new price`);
 
-// ── the companies that buy from us ─────────────────────────────────────────────────────────
 
-async function company(body, rate) {
-  // Its own conversion rate is typed on the same form (D-055); without one the system rate applies.
-  const created = await post(admin, '/customers', rate ? { ...body, rate_iqd_per_usd: rate } : body);
-  return created.id;
-}
-const kawa = await company({ name: 'Kawa Trading', phone: '0750 123 4567', address: 'Erbil, Industrial Area' }, '1315');
-const hawler = await company({ name: 'Hawler Construction', phone: '0751 987 6543', settlement_currency: 'USD' });
-const slemani = await company({ name: 'Slemani Build Co.', phone: '0770 222 1100' });
-const duhok = await company({ name: 'Duhok Fabrication', phone: '0750 444 7788' });
-const azadi = await company({ name: 'Azadi Workshop', phone: '0771 300 2020' });
-const erbilMetal = await company({ name: 'Erbil Metal House', contact_name: 'Dilshad', phone: '0750 909 8080' }, '1312');
-const baghdadPipe = await company(
-  { name: 'Baghdad Pipe Trading', contact_name: 'Haider', settlement_currency: 'USD' },
-  '1310',
-);
-console.log('✓ seven companies, three with their own rate');
 
 // ── six weeks of selling ────────────────────────────────────────────────────────────────
 

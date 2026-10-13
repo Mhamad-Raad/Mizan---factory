@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, NumberField, SegmentedControl, StickyFooter, TextField } from '@mizan/ui';
+import { Button, Card, NumberField, SegmentedControl, StickyFooter, TextAreaField, TextField } from '@mizan/ui';
 import { apiRequest, newIdempotencyKey } from '../lib/api.js';
 import { errorMessage } from '../lib/errors.js';
 import { useGlobalRate } from '../lib/rates.js';
@@ -186,7 +186,7 @@ export function NewCustomerPage() {
             hint={t('customers:credit_limit_hint')}
           />
 
-          <TextField
+          <TextAreaField
             label={t('glossary:notes')}
             hint={t('common:optional')}
             value={notes}

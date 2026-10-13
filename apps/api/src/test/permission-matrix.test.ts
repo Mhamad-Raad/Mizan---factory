@@ -80,7 +80,10 @@ describe('permission matrix (FR-104, spec 2.12)', () => {
   describe('a user without the permission is refused', () => {
     it('403 on every permission-guarded and admin-only route', async () => {
       const guarded = routes.filter(
-        (route) => route.protection.kind === 'permission' || route.protection.kind === 'admin',
+        (route) =>
+          route.protection.kind === 'permission' ||
+          route.protection.kind === 'any-permission' ||
+          route.protection.kind === 'admin',
       );
       expect(guarded.length).toBeGreaterThan(0);
 
@@ -97,7 +100,10 @@ describe('permission matrix (FR-104, spec 2.12)', () => {
 
   it('an admin is never refused for want of a permission', async () => {
     const guarded = routes.filter(
-      (route) => route.protection.kind === 'permission' || route.protection.kind === 'admin',
+      (route) =>
+        route.protection.kind === 'permission' ||
+        route.protection.kind === 'any-permission' ||
+        route.protection.kind === 'admin',
     );
     for (const route of guarded) {
       const response = await send(ctx.http, route, adminSession);

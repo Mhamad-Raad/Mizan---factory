@@ -102,5 +102,13 @@
   "no_access_title": "You don't have access to this page",
   "go_home": "Go to my start page",
   "deactivate_material_body": "It is no longer offered for new orders and buys. Everything already recorded stays as it is, and it can be reactivated at any time.",
-  "earlier_attempt_saved": "An earlier attempt was already saved. The page has been refreshed; check it before saving again."
+  "earlier_attempt_saved": "An earlier attempt was already saved. The page has been refreshed; check it before saving again.",
+  "they_paid_us": "They paid us",
+  "we_paid_them": "We paid them",
+  "how_much_they_paid": "How much they paid",
+  "how_much_we_paid": "How much we paid",
+  "money_in": "Money in",
+  "money_out": "Money out",
+  "money_in_from": "Money in — from {{name}}",
+  "money_out_to": "Money out — to {{name}}"
 }

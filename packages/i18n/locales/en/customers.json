@@ -15,12 +15,10 @@
   "show_more": "Show more",
   "statement_range": "From {{from}} to {{to}}",
   "unpaid_first": "Unpaid orders",
-  "record_payment": "Record payment",
   "record_excess": "Record the excess as credit",
   "payment_recorded": "Payment recorded",
   "entry_recorded": "Recorded",
   "amount": "Amount",
-  "amount_received": "Amount received",
   "settle_in_full_hint": "Closes the order exactly, even when the last payment is in the other currency",
   "remaining_hint": "Remaining before this payment: {{amount}}",
   "split_on": "Pay part in dinars, part in dollars",
@@ -64,8 +62,6 @@
   "purchases_side_only": "Purchases only — you cannot see the sales side",
   "group_selling": "Selling",
   "group_buying": "Buying",
-  "receive_payment": "Payment received",
-  "make_payment": "Pay them",
   "opening_ours": "Opening: we owe them",
   "credit_from_them": "Credit from them",
   "tab_sales_ledger": "Sales account",
@@ -94,5 +90,6 @@
   "rate_changed": "Rate {{old}} → {{new}}",
   "rate_set": "Rate set to {{new}}",
   "entry.damage": "Broken goods",
-  "filter_we_owe": "We owe them"
+  "filter_we_owe": "We owe them",
+  "no_unpaid_orders": "No unpaid orders"
 }

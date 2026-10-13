@@ -81,6 +81,11 @@ const CHECKS: Check[] = [
   { foreground: '--color-sidebar-accent-text', background: '--color-sidebar-accent', minimum: 4.5, what: 'current page in the sidebar' },
   { foreground: '--color-neutral-chip-text', background: '--color-neutral-chip-bg', minimum: 4.5, what: 'neutral chip' },
   { foreground: '--color-text', background: '--color-table-stripe', minimum: 4.5, what: 'text on a striped row' },
+  // Money in and money out (D-088): the label on its fill, and the edge and icon on the card.
+  { foreground: '--color-text', background: '--color-success-soft', minimum: 4.5, what: 'money-in label on its fill' },
+  { foreground: '--color-text', background: '--color-warning-soft', minimum: 4.5, what: 'money-out label on its fill' },
+  { foreground: '--color-warning', background: '--color-warning-soft', minimum: 3, what: 'money-out icon on its fill' },
+  { foreground: '--color-success', background: '--color-success-soft', minimum: 3, what: 'money-in icon on its fill' },
 ];
 
 const themes: [string, Record<string, string>][] = [

@@ -46,6 +46,8 @@ declare module 'lucide-react' {
   export const Building2: LucideIcon;
   export const ShoppingCart: LucideIcon;
   export const Wallet: LucideIcon;
+  export const BanknoteArrowDown: LucideIcon;
+  export const BanknoteArrowUp: LucideIcon;
   export const Ellipsis: LucideIcon;
   export const Filter: LucideIcon;
   export const ChartColumn: LucideIcon;

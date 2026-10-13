@@ -12,7 +12,7 @@ import type { Page } from '@playwright/test';
  *
  * So every screenshot goes through here, and here waits for the skeletons to be gone first.
  */
-export async function shot(page: Page, name: string): Promise<void> {
+export async function shot(page: Page, name: string, options: { fullPage?: boolean } = {}): Promise<void> {
   const skeletons = page.locator('.mz-skeleton');
   // Twice, with a pause: the first check can pass in the gap between a tap and the frame in
   // which React swaps the old screen for the loading state, and a photograph taken in that gap
@@ -20,5 +20,7 @@ export async function shot(page: Page, name: string): Promise<void> {
   await expect(skeletons).toHaveCount(0);
   await page.waitForTimeout(250);
   await expect(skeletons).toHaveCount(0);
-  await expect(page).toHaveScreenshot(name, { fullPage: true });
+  // A sheet is photographed as the phone shows it: a whole-page shot resizes the window while it
+  // is taken, and a sheet as tall as its 90% limit then changes height between frames (D-091).
+  await expect(page).toHaveScreenshot(name, { fullPage: options.fullPage ?? true });
 }

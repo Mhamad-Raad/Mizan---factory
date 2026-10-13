@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextField } from '@mizan/ui';
+import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextAreaField } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import { ORDER_ROUNDING_IQD } from '@mizan/money';
 import type { Currency, Rate } from '@mizan/money';
@@ -11,6 +11,7 @@ import { useIdempotencyKey } from '../lib/idempotency.js';
 import { bothOf } from '../lib/money.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
+import { LinkedDamages } from '../components/LinkedDamages.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { PaymentSheet } from '../components/PaymentSheet.js';
 import { QueryStates } from '../components/states.js';
@@ -289,8 +290,8 @@ export function OrderDetailPage() {
                 ((mayRecordPayment && data.status !== 'paid') || mayChangeType) ? (
                   <div className="mz-actions__group mz-actions__group--primary">
                     {mayRecordPayment && data.status !== 'paid' ? (
-                      <Button icon="check" onClick={() => setPaying(true)}>
-                        {t('customers:record_payment')}
+                      <Button variant="money-in" icon="money-in" onClick={() => setPaying(true)}>
+                        {t('orders:they_paid_for_order')}
                       </Button>
                     ) : null}
                     {mayChangeType ? (
@@ -324,13 +325,6 @@ export function OrderDetailPage() {
                       </Link>
                     </Can>
                   ) : null}
-                  {/* What came back damaged from this order (FR-802, FR-806). */}
-                  <Can permission="damages.view">
-                    <Link to={`/damages?order=${id}`} className="mz-button mz-button--secondary">
-                      <Icon name="warning" />
-                      {t('glossary:damaged_items')}
-                    </Link>
-                  </Can>
                 </div>
 
                 {data.doc_status === 'active' && mayVoid ? (
@@ -393,6 +387,9 @@ export function OrderDetailPage() {
                 </ul>
               ) : null}
 
+              {/* Its broken goods, listed here rather than behind a link (D-094). */}
+              {tab === 'lines' ? <LinkedDamages link={{ order_id: id }} /> : null}
+
               {tab === 'payments' ? (
                 <QueryStates
                   query={history}
@@ -400,7 +397,9 @@ export function OrderDetailPage() {
                   emptyTitle={t('orders:no_payments')}
                   emptyAction={
                     mayRecordPayment && data.doc_status === 'active' ? (
-                      <Button onClick={() => setPaying(true)}>{t('customers:record_payment')}</Button>
+                      <Button variant="money-in" icon="money-in" onClick={() => setPaying(true)}>
+                        {t('orders:they_paid_for_order')}
+                      </Button>
                     ) : undefined
                   }
                 >
@@ -528,6 +527,9 @@ export function OrderDetailPage() {
         {paying && data ? (
           <PaymentSheet
             open
+            direction="in"
+            counterparty={customerName({ name: data.customer_name, is_system: data.customer_is_system }, t)}
+            title={t('orders:they_paid_for_order')}
             remaining={Math.max(data.remaining, 0)}
             settlement_currency={data.settlement_currency}
             rate={paymentRate}
@@ -669,7 +671,7 @@ function ChangePaymentTypeSheet({
           </>
         ) : null}
 
-        <TextField
+        <TextAreaField
           label={t('common:note')}
           value={note}
           error={error}
@@ -731,7 +733,7 @@ function VoidSheet({
             amount: formatter.money(remaining, settlementCurrency),
           })}
         </p>
-        <TextField
+        <TextAreaField
           label={t('glossary:reason')}
           value={reason}
           error={error}

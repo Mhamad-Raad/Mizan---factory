@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, DateField, SegmentedControl, TextField, Toast } from '@mizan/ui';
+import { BottomSheet, Button, DateField, SegmentedControl, TextAreaField, TextField, Toast } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
@@ -822,7 +822,7 @@ function AddExpenseSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
           max={formatter.today()}
           onChange={(event) => setDate(event.target.value)}
         />
-        <TextField
+        <TextAreaField
           label={t('purchases:expense_note')}
           value={note}
           maxLength={2000}
@@ -875,7 +875,7 @@ function VoidExpenseSheet({
           <DualAmount amount_iqd={expense.amount_iqd} amount_usd_cents={expense.amount_usd_cents} primary={expense.entered_currency} />
         </p>
         <p className="mz-muted">{t('purchases:void_expense_hint')}</p>
-        <TextField
+        <TextAreaField
           label={t('glossary:reason')}
           value={reason}
           maxLength={2000}

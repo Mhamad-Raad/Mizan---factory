@@ -4,6 +4,7 @@ import { DataList } from './DataList.js';
 import type { Column } from './DataList.js';
 import type { RowSelection } from './PrintSelection.js';
 import { DualAmount } from './DualAmount.js';
+import { OrderStatusChip } from './chips.js';
 import { useFormatter } from '../lib/store.js';
 import { bothOf } from '../lib/money.js';
 import type { PurchaseRow } from '../lib/purchases.js';
@@ -11,18 +12,17 @@ import type { PurchaseRow } from '../lib/purchases.js';
 /**
  * Purchases as the Purchases page lists them (D-085) — a table on a desktop, a card each on a
  * phone — and as a company's Purchases tab does, where every row is the same company and that
- * column gives its place to who recorded it. `remainingOf` is what is still owed on a row, which
- * only the company's page knows (it is an oldest-first share of the company's payments, FR-712).
+ * column gives its place to who recorded it. Each row's payment state — paid, partly paid or
+ * unpaid, and what is still owed — comes with it from the API, for readers who may see what we
+ * owe; for anyone else those columns are not drawn.
  */
 export function PurchaseTable({
   rows,
   showCompany = true,
-  remainingOf,
   selection,
 }: {
   rows: readonly PurchaseRow[];
   showCompany?: boolean;
-  remainingOf?: (row: PurchaseRow) => number | null;
   selection?: RowSelection<PurchaseRow>;
 }) {
   const { t } = useTranslation();
@@ -38,7 +38,7 @@ export function PurchaseTable({
     ) : null;
 
   const company = (row: PurchaseRow) =>
-    row.company_name ? <bdi>{row.company_name}</bdi> : <span className="mz-muted">{t('purchases:stock_only_badge')}</span>;
+    row.company_name ? <bdi>{row.company_name}</bdi> : <span className="mz-muted">{t('purchases:no_company')}</span>;
 
   const total = (row: PurchaseRow) =>
     row.cost ? (
@@ -51,10 +51,13 @@ export function PurchaseTable({
       <span className="mz-muted">—</span>
     );
 
+  // Drawn only when the API sent payment states — a reader who may see what we owe.
+  const seesPayment = rows.some((row) => row.payment !== undefined);
+
   const owed = (row: PurchaseRow) => {
-    const remaining = row.doc_status === 'void' ? null : (remainingOf?.(row) ?? null);
+    const remaining = row.payment?.remaining ?? null;
     if (remaining === null) return <span className="mz-muted">—</span>;
-    if (remaining <= 0) return <Chip tone="success">{t('glossary:paid')}</Chip>;
+    if (remaining <= 0) return <span className="mz-muted">—</span>;
     const currency = row.settlement_currency ?? 'IQD';
     // In both currencies, the other at the purchase's own rate (rule 7).
     return (
@@ -91,16 +94,9 @@ export function PurchaseTable({
       cell: (row) => <bdi>{row.item_names ?? ''}</bdi>,
     },
     { header: t('glossary:total'), numeric: true, cell: total },
-    ...(remainingOf ? [{ header: t('purchases:still_owed'), numeric: true, cell: owed }] : []),
-    {
-      header: t('common:status'),
-      cell: (row) =>
-        row.doc_status === 'void' ? (
-          <Chip tone="danger" icon="close">
-            {t('glossary:void')}
-          </Chip>
-        ) : null,
-    },
+    ...(seesPayment ? [{ header: t('purchases:still_owed'), numeric: true, cell: owed }] : []),
+    // Void, or paid / partly paid / unpaid — never an empty cell for a purchase that stands.
+    { header: t('common:status'), cell: (row) => <PurchaseStatus row={row} /> },
   ];
 
   return (
@@ -116,7 +112,7 @@ export function PurchaseTable({
           <span className="mz-rowcard__head">
             <span className="mz-list__title">{numberOf(row)}</span>
             <span className="mz-rowcard__chips">
-              {row.doc_status === 'void' ? <Chip tone="danger">{t('glossary:void')}</Chip> : null}
+              <PurchaseStatus row={row} />
             </span>
           </span>
           <span className="mz-caption">
@@ -135,10 +131,22 @@ export function PurchaseTable({
           ) : null}
           <span className="mz-rowcard__foot">
             {total(row)}
-            {remainingOf ? owed(row) : null}
+            {seesPayment ? owed(row) : null}
           </span>
         </span>
       )}
     />
   );
+}
+
+/**
+ * Where a purchase stands: void, or paid / partly paid / unpaid as its own page reads it. A
+ * purchase from no company owes nobody and says so; for a reader who may not see what we owe,
+ * a standing purchase shows nothing rather than a guess.
+ */
+function PurchaseStatus({ row }: { row: PurchaseRow }) {
+  const { t } = useTranslation();
+  if (row.doc_status === 'void') return <OrderStatusChip status="void" />;
+  if (!row.company_id) return <Chip>{t('purchases:owes_nobody')}</Chip>;
+  return row.payment ? <OrderStatusChip status={row.payment.status} /> : null;
 }
