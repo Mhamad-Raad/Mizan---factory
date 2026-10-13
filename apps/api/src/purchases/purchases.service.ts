@@ -147,6 +147,12 @@ export interface PurchaseDto {
   duplicate_item_warning?: { item_id: string; item_name: string }[];
   /** The payment written with the buy (D-085), so its receipt can be printed straight away. */
   paid_entry_id?: string | null;
+  /**
+   * On a list, for a reader who may see what we owe companies: what is still owed on it, in the
+   * company's currency, and whether it is paid (D-085). Absent for a void purchase, one from no
+   * company, and any other reader.
+   */
+  payment?: { total: number; remaining: number; status: 'paid' | 'partially_paid' | 'unpaid' };
 }
 
 interface PreparedLine extends NewPurchaseLine {
@@ -186,7 +192,11 @@ export class PurchasesService {
    * (under `owed_by_us`, the company-balances flag's) — the same for every filter, because it is
    * a fact about the accounts, not about the buys on the page.
    */
-  async list(filters: PurchaseFilters): Promise<{
+  async list(
+    filters: PurchaseFilters,
+    /** Whether the reader may see what we owe companies: only then is each row's payment read. */
+    seesOwed = false,
+  ): Promise<{
     items: PurchaseDto[];
     total: number;
     totals?: {
@@ -204,6 +214,7 @@ export class PurchasesService {
       wantsOwed ? this.purchases.owedToCompanies() : Promise.resolve(null),
     ]);
     const items = rows.map((row) => toPurchaseDto(row, []));
+    if (seesOwed) await this.withPayment(items);
     if (filters.totals === false) return { items, total };
     return {
       items,
@@ -214,6 +225,38 @@ export class PurchasesService {
         ...(owed ? { owed_by_us: owed } : {}),
       },
     };
+  }
+
+  /**
+   * Each listed purchase's payment state (D-085): what is still owed on it and whether it is
+   * paid, partly paid or unpaid — the oldest-first figure its own page shows (FR-712), so the
+   * list and the page never disagree. The allocation is per company, so it is made once for each
+   * company on the page (a page is 25 rows, rarely more than a handful of companies) and in
+   * parallel; a voided purchase, or one from no company, has no payment state.
+   */
+  private async withPayment(items: PurchaseDto[]): Promise<void> {
+    const companies = new Map<string, Currency>();
+    for (const item of items) {
+      if (item.doc_status === 'active' && item.company_id && item.settlement_currency) {
+        companies.set(item.company_id, item.settlement_currency);
+      }
+    }
+    const allocations = await Promise.all(
+      [...companies].map(async ([companyId, settlement]) => {
+        const { allocation } = await this.companiesService.allocationOf(this.database, companyId, settlement);
+        return allocation.purchases;
+      }),
+    );
+    const byPurchase = new Map(allocations.flat().map((row) => [row.purchase_id, row]));
+    for (const item of items) {
+      const mine = item.doc_status === 'active' ? byPurchase.get(item.id) : undefined;
+      if (!mine) continue;
+      item.payment = {
+        total: mine.total,
+        remaining: mine.remaining,
+        status: mine.remaining <= 0 ? 'paid' : mine.remaining < mine.total ? 'partially_paid' : 'unpaid',
+      };
+    }
   }
 
   async get(id: string): Promise<PurchaseDto> {

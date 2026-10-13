@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, Req } from '@
 import { z } from 'zod';
 import { isoDate, minorAmount, paidNow, rateString } from '../common/schemas.js';
 import { RequirePermission } from '../common/decorators.js';
-import { contextOf } from '../common/request-context.js';
+import { can, contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
@@ -86,42 +86,56 @@ const historySchema = z.object({
   unit_price: 'fields.see_bought_price',
   line_total: 'fields.see_bought_price',
   purchase_total: 'fields.see_bought_price',
-  // What we owe the companies altogether, on the Buys list (D-085).
+  // What we owe the companies altogether, and on each purchase, on the lists (D-085).
   owed_by_us: 'fields.see_company_balances',
+  payment: 'fields.see_company_balances',
 })
 export class PurchasesController {
   constructor(private readonly purchases: PurchasesService) {}
 
   @Get('purchases')
   @RequirePermission('purchases.view')
-  async list(@Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
-    return this.purchases.list({
-      ...query,
-      include_undone: query.include_undone === 'true',
-      totals: query.totals !== 'false',
-    });
+  async list(
+    @Req() request: RequestWithContext,
+    @Query(zodBody(listSchema)) query: z.infer<typeof listSchema>,
+  ) {
+    return this.purchases.list(
+      {
+        ...query,
+        include_undone: query.include_undone === 'true',
+        totals: query.totals !== 'false',
+      },
+      can(contextOf(request), 'fields.see_company_balances'),
+    );
   }
 
   /** The company's Purchases tab; the same list, filtered to one supplier (FR-709). */
   @Get('companies/:id/purchases')
   @RequirePermission('purchases.view')
   async ofCompany(
+    @Req() request: RequestWithContext,
     @Param('id') id: string,
     @Query(zodBody(listSchema.omit({ company_id: true, company: true })))
     query: Omit<z.infer<typeof listSchema>, 'company_id' | 'company'>,
   ) {
-    return this.purchases.list({
-      ...query,
-      company_id: id,
-      include_undone: query.include_undone === 'true',
-      totals: query.totals !== 'false',
-    });
+    return this.purchases.list(
+      {
+        ...query,
+        company_id: id,
+        include_undone: query.include_undone === 'true',
+        totals: query.totals !== 'false',
+      },
+      can(contextOf(request), 'fields.see_company_balances'),
+    );
   }
 
   @Post('purchases')
   @RequirePermission('purchases.create')
   @HttpCode(201)
-  async create(@Req() request: RequestWithContext, @Body(zodBody(createSchema)) body: z.infer<typeof createSchema>) {
+  async create(
+    @Req() request: RequestWithContext,
+    @Body(zodBody(createSchema)) body: z.infer<typeof createSchema>,
+  ) {
     return this.purchases.create(contextOf(request), toCreateInput(body));
   }
 
@@ -143,7 +157,10 @@ export class PurchasesController {
     @Param('id') id: string,
     @Body(zodBody(replaceSchema)) body: z.infer<typeof replaceSchema>,
   ) {
-    return this.purchases.replace(contextOf(request), id, { ...toCreateInput(body), version: body.version });
+    return this.purchases.replace(contextOf(request), id, {
+      ...toCreateInput(body),
+      version: body.version,
+    });
   }
 
   @Post('purchases/:id/void')
@@ -171,7 +188,10 @@ export class PurchasesController {
 
   @Get('purchases/:id/history')
   @RequirePermission('purchases.view')
-  async history(@Param('id') id: string, @Query(zodBody(historySchema)) query: z.infer<typeof historySchema>) {
+  async history(
+    @Param('id') id: string,
+    @Query(zodBody(historySchema)) query: z.infer<typeof historySchema>,
+  ) {
     return this.purchases.historyOf(id, query);
   }
 
@@ -183,7 +203,9 @@ export class PurchasesController {
   }
 }
 
-function toCreateInput(body: z.infer<typeof baseSchema> & { paid?: z.infer<typeof paidNow> | null }) {
+function toCreateInput(
+  body: z.infer<typeof baseSchema> & { paid?: z.infer<typeof paidNow> | null },
+) {
   return {
     company_id: body.company_id ?? null,
     purchase_date: body.purchase_date,

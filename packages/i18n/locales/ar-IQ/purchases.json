@@ -115,5 +115,6 @@
   "tile_we_owe_count": "الشركات: {{count}}",
   "rate_source_purchase": "سعر هذا الشراء",
   "paid_with_note": "دُفع مع {{name}}",
-  "paid_in": "دُفع بـ"
+  "paid_in": "دُفع بـ",
+  "owes_nobody": "لا دين لأحد"
 }

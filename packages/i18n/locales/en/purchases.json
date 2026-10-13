@@ -115,5 +115,6 @@
   "tile_we_owe_count": "Companies: {{count}}",
   "rate_source_purchase": "this purchase's rate",
   "paid_with_note": "Paid with {{name}}",
-  "paid_in": "Paid in"
+  "paid_in": "Paid in",
+  "owes_nobody": "Owes nobody"
 }

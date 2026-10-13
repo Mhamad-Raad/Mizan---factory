@@ -488,4 +488,22 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
     // A material with no purchase yet — the go-live import — is still fine.
     await as(ctx.http, buyer).post('/api/v1/items').send({ name: 'Nuts M8', pricing_unit: 'per_piece' }).expect(201);
   });
+
+  it('says on the list whether each purchase is paid, partly paid or unpaid, oldest-first', async () => {
+    const paid = await buy(buyer, { paid: { in_full: true } }).expect(201);
+    const part = await buy(buyer, { paid: { amount: 50_000, currency: 'IQD' } }).expect(201);
+    const unpaid = await buy(buyer).expect(201);
+    const stockOnly = await buy(buyer, { company_id: null }).expect(201);
+
+    const list = await as(ctx.http, buyer).get('/api/v1/purchases').expect(200);
+    const byId = new Map(list.body.items.map((row: { id: string; payment?: unknown }) => [row.id, row.payment]));
+    expect(byId.get(paid.body.id)).toEqual({ total: 150_000, remaining: 0, status: 'paid' });
+    expect(byId.get(part.body.id)).toEqual({ total: 150_000, remaining: 100_000, status: 'partially_paid' });
+    expect(byId.get(unpaid.body.id)).toEqual({ total: 150_000, remaining: 150_000, status: 'unpaid' });
+    expect(byId.get(stockOnly.body.id)).toBeUndefined();
+
+    // What we owe is the company-balances flag's, so the list says nothing about it to others.
+    const plain = await as(ctx.http, looker).get('/api/v1/purchases').expect(200);
+    expect(plain.body.items.every((row: { payment?: unknown }) => row.payment === undefined)).toBe(true);
+  });
 });

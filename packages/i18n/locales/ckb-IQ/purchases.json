@@ -115,5 +115,6 @@
   "tile_we_owe_count": "کۆمپانیاکان: {{count}}",
   "rate_source_purchase": "نرخی ئەم کڕینە",
   "paid_with_note": "لەگەڵ {{name}} دراوە",
-  "paid_in": "دراوە بە"
+  "paid_in": "دراوە بە",
+  "owes_nobody": "قەرزی کەس نییە"
 }

@@ -1758,3 +1758,13 @@ its lines out as a stack; a name in its own script is isolated (`<bdi>`), and st
 column's width it began at its own (left) start. One rule in the library — such a name keeps its
 own width and sits on the column's reading side, or at its end in a column of figures — fixes it
 in every table. The other lists were measured in Kurdish for the same fault: none.
+
+### D-085 addendum · 2026-10-13 · business review · Every purchase on a list says where it stands
+
+The business asked why the Purchases list's Status column was empty: it named only a voided
+purchase. Each listed purchase now carries its payment state (`payment`: total, still owed,
+paid / partially paid / unpaid) — the oldest-first figure of its own page, allocated once per
+company on the page and in parallel — for a reader with the company-balances flag; the column
+shows the same chips as the Orders list, beside a "Still owed" column. A purchase from no company
+"owes nobody"; a voided one is "void". The company's Purchases tab reads the same field, so its own
+lookup over the breakdown is gone.

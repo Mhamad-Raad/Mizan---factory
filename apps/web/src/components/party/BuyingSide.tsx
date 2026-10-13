@@ -132,13 +132,6 @@ export function useBuyingSide(input: {
       <DualAmount {...bothOf(value, settlement, rate)} primary={settlement} kind="derived" />
     );
   const owingNumbers = new Map((owing.data?.purchases ?? []).map((row) => [row.id, row]));
-  /** A purchase not among the owing ones is paid — unless the owing list was cut short. */
-  const remainingOf = (row: PurchaseRow): number | null => {
-    if (!owing.data) return null;
-    const found = owingRows.find((candidate) => candidate.purchase_id === row.id);
-    if (found) return found.remaining;
-    return owing.data.owing_count > owingRows.length ? null : 0;
-  };
 
   const selectPurchases = usePrintSelection<PurchaseRow>(
     (row) => ({ kind: 'purchase', id: row.id }),
@@ -272,7 +265,6 @@ export function useBuyingSide(input: {
         <PurchaseTable
           rows={purchases.data?.items ?? []}
           showCompany={false}
-          remainingOf={maySeeOwed ? remainingOf : undefined}
           selection={selectPurchases.selection}
         />
         <Pager
