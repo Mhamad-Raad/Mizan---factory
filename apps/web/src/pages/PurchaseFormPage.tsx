@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, Chip, DateField, EmptyState, Icon, IconButton, NumberField, TextField } from '@mizan/ui';
+import { Button, Card, Chip, DateField, EmptyState, Icon, IconButton, NumberField, TextAreaField } from '@mizan/ui';
 import { computeLineTotals, convert, documentTotals } from '@mizan/money';
 import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest } from '../lib/api.js';
@@ -254,7 +254,7 @@ export function PurchaseFormPage() {
               onChange={(event) => setRateText(event.target.value)}
             />
             <div className="mz-form-grid__wide">
-              <TextField
+              <TextAreaField
                 label={t('glossary:notes')}
                 hint={t('purchases:notes_hint')}
                 value={notes}
@@ -325,7 +325,7 @@ export function PurchaseFormPage() {
               error={error?.fieldError(`lines.${index}.unit_price`) ? t('errors:price_required') : undefined}
             />
           </div>
-          <TextField
+          <TextAreaField
             label={t('purchases:line_note')}
             hint={t('common:optional')}
             value={line.note}

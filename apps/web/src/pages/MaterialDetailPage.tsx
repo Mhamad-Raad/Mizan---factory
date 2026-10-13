@@ -3,16 +3,7 @@ import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  BottomSheet,
-  Button,
-  Card,
-  Chip,
-  DateField,
-  NumberField,
-  Tabs,
-  TextField,
-} from '@mizan/ui';
+import { BottomSheet, Button, Card, Chip, DateField, NumberField, Tabs, TextAreaField } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
 import { toMoneyBody } from '../lib/money.js';
@@ -1033,7 +1024,7 @@ function AddStockSheet({
           sourceLabel={documentRate.label}
           onChange={edit(setCost)}
         />
-        <TextField
+        <TextAreaField
           label={t('materials:buy_note')}
           hint={t('common:optional')}
           value={note}

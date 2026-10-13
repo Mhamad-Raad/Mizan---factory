@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextField } from '@mizan/ui';
+import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextAreaField } from '@mizan/ui';
 import type { IconName } from '@mizan/ui';
 import { ORDER_ROUNDING_IQD } from '@mizan/money';
 import type { Currency, Rate } from '@mizan/money';
@@ -674,7 +674,7 @@ function ChangePaymentTypeSheet({
           </>
         ) : null}
 
-        <TextField
+        <TextAreaField
           label={t('common:note')}
           value={note}
           error={error}
@@ -736,7 +736,7 @@ function VoidSheet({
             amount: formatter.money(remaining, settlementCurrency),
           })}
         </p>
-        <TextField
+        <TextAreaField
           label={t('glossary:reason')}
           value={reason}
           error={error}

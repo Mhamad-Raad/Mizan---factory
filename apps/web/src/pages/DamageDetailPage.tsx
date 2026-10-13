@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextField, Toast } from '@mizan/ui';
+import { BottomSheet, Button, Card, Chip, DateField, Icon, SegmentedControl, TextAreaField, Toast } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
 import { quantityText } from '../lib/quantity.js';
@@ -416,7 +416,7 @@ function PaidBackSheet({
             setDate(event.target.value);
           }}
         />
-        <TextField
+        <TextAreaField
           label={t('common:note')}
           hint={t('common:optional')}
           value={note}
@@ -461,7 +461,7 @@ function VoidSheet({
     <BottomSheet title={t('damages:void_record')} open onClose={onClose} closeLabel={t('common:close')}>
       <div className="mz-stack">
         <p>{t('damages:void_explanation')}</p>
-        <TextField
+        <TextAreaField
           label={t('glossary:reason')}
           hint={t('materials:note_required')}
           value={reason}

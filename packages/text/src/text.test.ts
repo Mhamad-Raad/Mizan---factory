@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   groupDigits,
+  isNumberText,
   ungroupDigits,
   normalizeForSearch,
   normalizeForSearchFuzzy,
@@ -148,5 +149,19 @@ describe('thousands separators in a number field (presentation only)', () => {
       expect(ungroupDigits(groupDigits(raw))).toBe(raw);
     }
     expect(ungroupDigits('1٬250٫5')).toBe('1250.5');
+  });
+});
+
+describe('isNumberText (numbers only in number fields)', () => {
+  it('takes digits, and a point with as many decimals as the field allows', () => {
+    for (const [text, decimals] of [['', 0], ['0', 0], ['1250000', 0], ['12.', 2], ['12.5', 2], ['.5', 3], ['1310.1234', 4]] as const) {
+      expect(isNumberText(text, decimals), text).toBe(true);
+    }
+  });
+
+  it('refuses letters, signs, a second point, a point in a whole number and too many decimals', () => {
+    for (const [text, decimals] of [['12a', 0], ['e5', 0], ['-5', 0], ['+5', 2], ['1.2.3', 3], ['2.5', 0], ['1.234', 2], [' 5', 0]] as const) {
+      expect(isNumberText(text, decimals), text).toBe(false);
+    }
   });
 });

@@ -2,19 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Button,
-  Card,
-  Chip,
-  DateField,
-  EmptyState,
-  Icon,
-  IconButton,
-  NumberField,
-  SegmentedControl,
-  TextField,
-  Toggle,
-} from '@mizan/ui';
+import { Button, Card, Chip, DateField, EmptyState, Icon, IconButton, NumberField, SegmentedControl, TextAreaField, Toggle } from '@mizan/ui';
 import { ORDER_ROUNDING_IQD, computeLineTotals, convert, documentTotals, roundOrderTotals } from '@mizan/money';
 import type { Currency, Measure, Rate, RateSource } from '@mizan/money';
 import { ApiError, apiRequest, newIdempotencyKey } from '../lib/api.js';
@@ -552,7 +540,7 @@ function OrderForm({
             />
 
             <div className="mz-form-grid__wide">
-              <TextField
+              <TextAreaField
                 label={t('glossary:notes')}
                 hint={t('common:optional')}
                 value={form.notes}

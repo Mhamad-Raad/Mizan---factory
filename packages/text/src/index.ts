@@ -135,3 +135,14 @@ export function groupDigits(raw: string): string {
 export function ungroupDigits(display: string): string {
   return display.replace(/[,٬\s]/g, '').replace(/٫/g, '.');
 }
+
+/**
+ * Whether a number field's text is a number as it is being typed — digits and, where the field
+ * takes decimals, one point with at most that many after it; empty is fine (the field cleared).
+ * The business: quantity and amount fields accept numbers only, so a letter, a minus sign or a
+ * second point is never taken. The text is already ungrouped and in ASCII digits.
+ */
+export function isNumberText(text: string, decimals: number): boolean {
+  const pattern = decimals > 0 ? new RegExp(`^\\d*(\\.\\d{0,${decimals}})?$`) : /^\d*$/;
+  return pattern.test(text);
+}

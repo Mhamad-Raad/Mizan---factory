@@ -525,6 +525,15 @@ a.mz-button {
   inline-size: 100%;
 }
 
+/* A note's box: taller than a one-line field, one fixed height, its text scrolling inside. */
+.mz-field__control--area {
+  display: block;
+  block-size: 6.5rem;
+  resize: none;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+
 .mz-field__control:disabled {
   background: var(--color-surface-2);
 }

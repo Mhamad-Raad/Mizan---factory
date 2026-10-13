@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, DateField, NumberField, StickyFooter, TextField } from '@mizan/ui';
+import { Button, Card, DateField, NumberField, StickyFooter, TextAreaField, TextField } from '@mizan/ui';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
 import { toMoneyBody } from '../lib/money.js';
@@ -206,7 +206,7 @@ export function NewMaterialPage() {
                 sourceLabel={buyDocumentRate.label}
                 onChange={setUnitCost}
               />
-              <TextField
+              <TextAreaField
                 label={t('materials:buy_note')}
                 hint={t('common:optional')}
                 value={buyNote}

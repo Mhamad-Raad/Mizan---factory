@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BottomSheet, Button, TextField } from '@mizan/ui';
+import { BottomSheet, Button, TextAreaField } from '@mizan/ui';
 import type { Rate } from '@mizan/money';
 import { MoneyInput } from './MoneyInput.js';
 import type { MoneyValue } from './MoneyInput.js';
@@ -66,7 +66,7 @@ export function MonthPriceEditor({
         {maySeeBought ? (
           <MoneyInput label={t('glossary:bought_price')} value={bought} rate={rate} onChange={setBought} />
         ) : null}
-        <TextField
+        <TextAreaField
           label={t('common:note')}
           value={note}
           onChange={(event) => setNote(event.target.value)}

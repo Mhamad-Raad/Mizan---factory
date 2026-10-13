@@ -1897,3 +1897,19 @@ words are met by the purchase it is created on: it is bought from that company, 
 that company's account, and its history says so. Created without a first buy, as the go-live
 import does; the buy is the purchase being written. A duplicate name is refused under the name
 field, as on the New material page.
+
+## D-091 · 2026-10-13 · business request · Number fields take numbers only; notes are boxes
+
+The business: "quantity input should accept only numbers in the system" and "note inputs should
+be description inputs with fixed heights but bigger than normal inputs."
+
+- **Numbers only.** Every quantity, amount and rate is typed into the one `NumberField`; it now
+  drops any keystroke or paste that would not leave a number — digits, and where the field takes
+  decimals (kilograms 3, dollars 2, rates 4) one point with no more than that many after it.
+  Letters, signs and a second point never appear; a dinar or a piece count takes no point at all.
+  Eastern Arabic digits and the Arabic decimal sign are still read as before. No field in the
+  system takes a negative number, so a minus sign is not taken either. (`isNumberText`, tested in
+  `@mizan/text`.)
+- **Notes are boxes.** Every note and reason — on documents, payments, rates, prices, damages,
+  companies and materials — is a `TextAreaField`: three lines tall (6.5rem, twice a one-line
+  field), never growing or resizable, a long note scrolling inside it.

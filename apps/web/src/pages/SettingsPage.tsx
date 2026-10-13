@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, NumberField, TextField } from '@mizan/ui';
+import { Button, Card, NumberField, TextAreaField } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
 import { errorMessage } from '../lib/errors.js';
@@ -152,7 +152,7 @@ function GlobalRateCard() {
             setValue(event.target.value);
           }}
         />
-        <TextField
+        <TextAreaField
           label={t('common:note')}
           value={note}
           onChange={(event) => {

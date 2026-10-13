@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, Icon, SegmentedControl, TextField } from '@mizan/ui';
+import { BottomSheet, Button, Card, Chip, Icon, SegmentedControl, TextAreaField } from '@mizan/ui';
 import type { Currency } from '@mizan/money';
 import { apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
@@ -423,7 +423,7 @@ export function PurchaseDetailPage() {
                   amount: data.cost ? formatter.money(data.cost.total_iqd, 'IQD') : '',
                 })}
               </p>
-              <TextField
+              <TextAreaField
                 label={t('glossary:reason')}
                 value={reason}
                 onChange={(event) => {

@@ -1,7 +1,7 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { groupDigits, ungroupDigits } from '@mizan/text';
+import { groupDigits, isNumberText, ungroupDigits } from '@mizan/text';
 import { Icon } from '../icons/registry.js';
 import type { IconName } from '../icons/registry.js';
 
@@ -92,6 +92,33 @@ export function TextField({ label, hint, error, ...rest }: TextFieldProps) {
           id={id}
           className="mz-field__control"
           aria-invalid={error ? true : undefined}
+          {...rest}
+        />
+      )}
+    </Field>
+  );
+}
+
+export interface TextAreaFieldProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label: string;
+  hint?: string;
+  error?: string;
+}
+
+/**
+ * A note, a reason, a description: free text of a sentence or more, in a box taller than a
+ * one-line field and always the same height — it never grows with what is typed or is dragged
+ * bigger, so a form keeps its shape; a long note scrolls inside the box (the business).
+ */
+export function TextAreaField({ label, hint, error, rows = 3, ...rest }: TextAreaFieldProps) {
+  return (
+    <Field label={label} hint={hint} error={error}>
+      {(id) => (
+        <textarea
+          id={id}
+          className="mz-field__control mz-field__control--area"
+          aria-invalid={error ? true : undefined}
+          rows={rows}
           {...rest}
         />
       )}
@@ -711,8 +738,11 @@ export function NumberField({
               // nothing downstream has to know which keyboard was used (spec 2.10.4); the
               // separators are presentation, so the form only ever sees the bare number.
               const typed = event.target.value;
-              const normalized = normalizeDigits(typed);
+              const normalized = normalizeDigits(typed).replace(/٫/g, '.');
               const raw = grouped ? ungroupDigits(normalized) : normalized;
+              // Numbers only (the business): a letter, a sign or a second point is not taken —
+              // the keystroke is dropped and React puts the field back as it was.
+              if (!isNumberText(raw, decimals)) return;
               if (grouped) {
                 const before = typed.slice(0, event.target.selectionStart ?? typed.length);
                 caret.current = ungroupDigits(normalizeDigits(before)).length;

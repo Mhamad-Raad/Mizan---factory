@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, DateField, SegmentedControl, TextField } from '@mizan/ui';
+import { BottomSheet, Button, Card, DateField, SegmentedControl, TextAreaField } from '@mizan/ui';
 import type { MenuItem } from '@mizan/ui';
 import type { Currency, Rate } from '@mizan/money';
 import { apiRequest } from '../../lib/api.js';
@@ -450,7 +450,7 @@ function AdjustOwedSheet({
           max={formatter.today()}
           onChange={(event) => edit(setDate)(event.target.value)}
         />
-        <TextField
+        <TextAreaField
           label={t('common:note')}
           value={note}
           hint={t('companies:note_required')}
@@ -516,7 +516,7 @@ function CreditSheet({
           max={formatter.today()}
           onChange={(event) => edit(setDate)(event.target.value)}
         />
-        <TextField
+        <TextAreaField
           label={t('common:note')}
           value={note}
           hint={t('companies:note_required')}
