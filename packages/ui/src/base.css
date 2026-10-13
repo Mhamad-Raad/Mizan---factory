@@ -2322,16 +2322,12 @@ html[data-mirroring='true'] body {
  * A name in its own script inside a cell — "Kawa Trading" in a Kurdish table. As a line of the
  * cell it stretched to the column's full width, and being left-to-right it began at the far left
  * while the column's heading and the line under it sat on the right (business review, 2026-10-13;
- * D-084's fault in another place). It keeps its own width and sits on the column's reading side —
- * or at its end, in a column of figures — like every other line of the cell.
+ * D-084's fault in another place). It keeps its own width and sits on the column's reading side,
+ * like every other line of the cell.
  */
 .mz-cell__body > bdi {
   align-self: flex-start;
   max-inline-size: 100%;
-}
-
-td[data-numeric='true'] .mz-cell__body > bdi {
-  align-self: flex-end;
 }
 
 /* ─────────────── the list's toolbar ───────────────
@@ -2964,9 +2960,15 @@ td[data-numeric='true'] .mz-cell__body > bdi {
   pointer-events: none;
 }
 
+/*
+ * Money and counts sit where every other column does — at the column's reading side, the heading
+ * over its figures (business review, 2026-10-13). They were pushed to the column's far end, so a
+ * figure column and its neighbours faced opposite ways in every language. The digits stay tabular,
+ * so a column of figures still reads down cleanly.
+ */
 .mz-table th[data-numeric],
 .mz-table td[data-numeric] {
-  text-align: end;
+  text-align: start;
 }
 
 .mz-table tbody tr:last-child th,

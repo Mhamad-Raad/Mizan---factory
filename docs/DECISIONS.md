@@ -1768,3 +1768,13 @@ company on the page and in parallel — for a reader with the company-balances f
 shows the same chips as the Orders list, beside a "Still owed" column. A purchase from no company
 "owes nobody"; a voided one is "void". The company's Purchases tab reads the same field, so its own
 lookup over the breakdown is gone.
+
+### D-084 addendum · 2026-10-13 · business review · Figure columns sit where every other column does
+
+Money and counts in a table — Total, Still owed, Remaining, a ledger's amount and balance — were
+aligned to the column's far end, heading and figures both, so a figure column faced the opposite
+way from its neighbours in every language. The business asked for one alignment: every column,
+figures included, now sits at its reading side (left in English, right in Kurdish and Arabic),
+the heading over its figures. One rule of the library (`.mz-table [data-numeric]`), so every
+table follows; the digits stay tabular. Printed documents keep their figures at the end, as a
+receipt's totals are read.
