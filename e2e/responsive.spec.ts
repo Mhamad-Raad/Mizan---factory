@@ -17,6 +17,7 @@ const LANGUAGES = ['ckb-IQ', 'ar-IQ', 'en'] as const;
 
 /** The routes that need no id. The detail routes are resolved from the fixture below. */
 const STATIC_ROUTES = [
+  '/trade',
   '/orders',
   '/orders/new',
   '/materials',

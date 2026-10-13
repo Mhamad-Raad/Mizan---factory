@@ -1788,3 +1788,44 @@ rows ticked it reads "Print selected (3)" and prints them, a page each, beside "
 with none it prints the whole — the list as filtered, or, on a company's account tabs, the
 account for the dates chosen ("Print account"). The print icon on each account row is gone: the
 tick box does its job. A purchase's or an order's own page keeps its "Print receipt".
+
+## D-089 · 2026-10-13 · business request · Buying & selling on one page
+
+The business: "both buys and sells be in one page … a button for filters … a filter container
+under the search which has it all, even custom date filters … four [cards] on top and 2 big ones
+under." Agreed with them: the page is called **Buying & selling** (کڕین و فرۆشتن / البيع والشراء) —
+"Orders" already means sales — and opens on **All**.
+
+- **One list** (`GET /trade`), newest first and paged as one: each side runs the very filter its
+  own list runs (`pageKeysSql`, extracted from the Orders and Purchases lists without changing
+  them), the two are put together as one list of ids sorted by date and entry time, and only the
+  page's ids are filled, each as its own list sends it. A reader sees the sides they may —
+  `orders.view`, `purchases.view`, or both; anyone with neither is refused. Rule 4 asks every
+  route for a decorator and `@RequirePermission` can only ask for *all* of its keys, so the route
+  is `@SessionOnly` and the service decides.
+- **The filters** open under the search from one **Filters** button that counts what is set:
+  the period (presets, or From and To of one's own), the company, who recorded it, the status
+  and the payment type, with "Clear filters". A paid state or a payment type is a sale's question,
+  so while one is set the purchases leave the list, and the panel says so. **All · Sales ·
+  Purchases** switches the side (offered to whoever may see both); `/orders` and `/purchases`
+  open the page on theirs, and a saved order lands here with its undo and its receipt.
+- **The figures:** four over the filter — sales and what they came to, purchases and what they
+  came to, never added together — and two large ones for the business as it stands: **Companies
+  still owe us** and **We still owe companies**, each per currency (`common/owed-totals.ts`, the
+  query Today's tile also reads), each behind its balances flag, each opening the Companies list
+  on that side.
+- **The rows** say what they are first — a green **Sale** or an amber **Purchase**, the colours
+  of "They paid us" / "We paid them" — with **Recorded by: …** under the company (the business
+  asked what the bare name was); "Still owed" is red on a sale (to collect, as the Orders list
+  always showed it) and amber on a purchase (ours to pay). Tick boxes and one Print button as
+  on every list; "Print list" prints both kinds, each side totalled on its own.
+- New sale (green) and New purchase (amber) sit at the top. The Orders and Purchases list pages
+  are gone; a company's own Orders and Purchases tabs stay.
+- **A purchase always names a company** on every screen now — "Not from a company" is gone from
+  the purchase form too (the business's answer to D-087's open question). The API still accepts
+  a purchase with no company: seventeen older tests use one as plain stock, and the purchases of
+  before D-085 are such; enforcing it there is a migration of those tests for no gain on screen.
+
+Tests: `trade.test.ts` (5). The old screenshot specs `polish.spec.ts` and `selling.spec.ts` still
+look for labels renamed before this work ("Customer", "Customers & companies", "6,483.500") and
+fail as they did on `main`.

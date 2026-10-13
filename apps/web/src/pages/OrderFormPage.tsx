@@ -398,7 +398,8 @@ function OrderForm({
       }
       // Back to the orders list, carrying the saved order so the list can raise the save toast
       // with its 8-second undo (FR-610, signature moment 3).
-      navigate('/orders', {
+      // Back to Buying & selling on its sales, carrying the saved order for its undo toast (D-089).
+      navigate('/trade?kind=sale', {
         replace: true,
         state: { savedOrder: { id: order.id, number: order.number, warnings } },
       });

@@ -21,7 +21,9 @@ export type PrintDocument =
   /** The purchases list as filtered on screen: its query string (without paging) and its period. */
   | { kind: 'purchase_list'; query: string; from: string | null; to: string | null }
   /** The orders list as filtered on screen. */
-  | { kind: 'order_list'; query: string; from: string | null; to: string | null };
+  | { kind: 'order_list'; query: string; from: string | null; to: string | null }
+  /** Buying & selling as filtered on screen: sales and purchases together (D-089). */
+  | { kind: 'trade_list'; query: string; from: string | null; to: string | null };
 
 /** `sales`: the customer ledger, what they owe us. `buying`: the company ledger, what we owe them. */
 export type AccountSide = 'sales' | 'buying';
@@ -77,6 +79,9 @@ export function requiredFor(document: PrintDocument): string[] {
       return document.side === 'sales'
         ? ['customers.view', 'fields.see_customer_balances']
         : ['companies.view', 'fields.see_company_balances'];
+    case 'trade_list':
+      // Either side's key opens the list; the API sends each reader the sides they may (D-089).
+      return [];
     case 'statement':
       return document.sides.flatMap((side) =>
         side === 'sales'

@@ -223,10 +223,13 @@ export class OrdersRepository {
     return rows[0] ?? null;
   }
 
-  async list(filters: OrderFilters): Promise<{ rows: OrderListRow[]; total: number; totals: OrderTotals | null }> {
+  /**
+   * The list's filter as SQL: its WHERE, and the narrowest FROM it needs (D-047), numbering its
+   * parameters after those already in `values` — so the Orders list and the Buying & selling list
+   * (D-089) ask the very same question of the same indexes.
+   */
+  private filterOf(filters: OrderFilters, values: unknown[]) {
     const conditions = ['o.deleted_at IS NULL'];
-    const values: unknown[] = [];
-
 
     if (filters.customer_id) {
       values.push(filters.customer_id);
@@ -323,6 +326,39 @@ export class OrdersRepository {
       { alias: 'c.', sql: customer },
       { alias: 'r.', sql: REMAINING_JOIN },
     ]);
+
+    return { conditions, baseConditions, baseValues, narrow, where, query, customer };
+  }
+
+  /** The ids of the orders the filter matches, with what the combined list sorts them by (D-089). */
+  pageKeysSql(filters: OrderFilters, values: unknown[]): { keys: string; count: string } {
+    const { narrow, where } = this.filterOf(filters, values);
+    return {
+      keys: `SELECT o.id, o.order_date AS day, o.number, o.created_at, 'sale'::text AS kind ${narrow} ${where}`,
+      count: `SELECT count(*) AS n ${narrow} ${where}`,
+    };
+  }
+
+  /** Orders by id, each as the Orders list sends it (D-089). */
+  async rowsByIds(ids: readonly string[]): Promise<OrderListRow[]> {
+    if (ids.length === 0) return [];
+    const { rows } = await this.database.query<OrderListRow>(
+      `SELECT ${orderColumns('o')}, ${LIST_COLUMNS}
+         FROM orders o
+         JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN users u ON u.id = o.acting_user_id
+         LEFT JOIN users v ON v.id = o.voided_by
+         ${REMAINING_JOIN}
+         ${RECEIVED_LATERAL}
+        WHERE o.id = ANY($1::uuid[])`,
+      [ids],
+    );
+    return rows;
+  }
+
+  async list(filters: OrderFilters): Promise<{ rows: OrderListRow[]; total: number; totals: OrderTotals | null }> {
+    const values: unknown[] = [];
+    const { baseConditions, baseValues, narrow, where, query, customer } = this.filterOf(filters, values);
 
     const countValues = [...values];
     const { page_size: pageSize, offset } = pagingOf(filters);

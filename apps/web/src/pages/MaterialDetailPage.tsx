@@ -1003,7 +1003,6 @@ function AddStockSheet({
       <div className="mz-stack">
         <p className="mz-muted">{t('materials:add_stock_hint')}</p>
         <CompanyField
-          allowNone={false}
           value={company}
           onChange={(choice) => {
             onEdit?.();

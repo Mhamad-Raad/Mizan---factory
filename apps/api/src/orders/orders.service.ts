@@ -113,6 +113,12 @@ export class OrdersService {
     return totals ? { items, total, totals } : { items, total };
   }
 
+  /** Orders by id, as the Orders list sends them, in the order asked for (D-089). */
+  async listItemsByIds(ids: readonly string[]): Promise<OrderDto[]> {
+    const byId = new Map((await this.orders.rowsByIds(ids)).map((row) => [row.id, toOrderDto(row, [])]));
+    return ids.map((id) => byId.get(id)).filter((dto): dto is OrderDto => dto !== undefined);
+  }
+
   async get(context: RequestContext, id: string): Promise<OrderDto> {
     const row = await this.requireOrder(context, id);
     const lines = await this.orders.linesOf(id);

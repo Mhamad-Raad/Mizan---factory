@@ -21,6 +21,8 @@ interface Destination {
   /** Which part of the work this belongs to; the sidebar groups by it, the phone bar ignores it. */
   group: NavGroup;
   permission?: string;
+  /** Any one of these opens it — Buying & selling is for whoever may see either side (D-089). */
+  permissions?: string[];
   adminOnly?: boolean;
 }
 
@@ -49,10 +51,9 @@ const DESTINATIONS: Destination[] = [
     group: 'home',
     permission: 'dashboard.view',
   },
-  // What we buy — most of what the business keeps the system for (D-085) — what we sell, and the
-  // accountant's page of what it all came to (D-062).
-  { to: '/purchases', labelKey: 'purchases:title', icon: 'purchases', group: 'trade', permission: 'purchases.view' },
-  { to: '/orders', labelKey: 'orders:title', icon: 'orders', group: 'trade', permission: 'orders.view' },
+  // What we buy and sell, on one page (D-089) — buying is most of what the business keeps the system
+  // for (D-085) — and the accountant's page of what it all came to (D-062).
+  { to: '/trade', labelKey: 'trade:title', icon: 'purchases', group: 'trade', permissions: ['orders.view', 'purchases.view'] },
   {
     to: '/accounts',
     labelKey: 'purchases:accounts_title',
@@ -106,6 +107,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const permitted = DESTINATIONS.filter((destination) => {
     if (destination.adminOnly) return user?.role === 'admin';
+    if (destination.permissions)
+      return user?.role === 'admin' || destination.permissions.some((key) => permissions.has(key));
     if (destination.permission)
       return user?.role === 'admin' || permissions.has(destination.permission);
     return true;

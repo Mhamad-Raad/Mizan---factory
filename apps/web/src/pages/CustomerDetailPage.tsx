@@ -38,7 +38,7 @@ import type { SavedNotice } from '../components/SavedToast.js';
 import { useBuyingSide } from '../components/party/BuyingSide.js';
 import { payableAmount, payableLabel } from '../lib/accounts.js';
 import type { BalanceValue, CustomerRow } from './CustomersPage.js';
-import type { OrderRow } from './OrdersPage.js';
+import type { OrderRow } from '../lib/orders.js';
 
 type Tab = 'overview' | 'orders' | 'purchases' | 'sales' | 'buying' | 'history';
 type EntryKind = 'credit' | 'refund' | 'adjustment';

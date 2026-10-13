@@ -3,7 +3,8 @@ import { apiRequest } from '../../lib/api.js';
 import type { LedgerRow } from '../LedgerList.js';
 import type { PurchaseDetail, PurchaseRow } from '../../lib/purchases.js';
 import type { OrderDetail } from '../../pages/OrderFormPage.js';
-import type { OrderRow } from '../../pages/OrdersPage.js';
+import type { OrderRow } from '../../lib/orders.js';
+import type { TradeRow } from '../TradeTable.js';
 import { PRINT_LIST_ROWS } from '../../lib/print.js';
 import type { AccountSide, PrintDocument } from '../../lib/print.js';
 
@@ -81,7 +82,20 @@ export interface OrderListData {
   totals: { orders: number; total_iqd: number; total_usd_cents: number } | null;
 }
 
+export interface TradeListData {
+  kind: 'trade_list';
+  from: string | null;
+  to: string | null;
+  rows: TradeRow[];
+  total: number;
+  totals: {
+    sales?: { count: number; total_iqd: number; total_usd_cents: number };
+    purchases?: { count: number; cost?: { total_iqd: number; total_usd_cents: number } };
+  } | null;
+}
+
 export type PrintData =
+  | TradeListData
   | OrderReceiptData
   | PurchaseReceiptData
   | VoucherData
@@ -143,6 +157,10 @@ export async function loadDocument(document: PrintDocument, may: (permission: st
         `/purchases?${document.query}`,
       );
       return { kind: 'purchase_list', from: document.from, to: document.to, rows, total, totals };
+    }
+    case 'trade_list': {
+      const { rows, total, totals } = await allPages<TradeRow, TradeListData['totals']>(`/trade?${document.query}`);
+      return { kind: 'trade_list', from: document.from, to: document.to, rows, total, totals };
     }
     case 'order_list': {
       const { rows, total, totals } = await allPages<OrderRow, OrderListData['totals']>(`/orders?${document.query}`);

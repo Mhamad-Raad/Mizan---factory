@@ -4439,3 +4439,105 @@ html[data-mirroring='true'] body {
 .mz-table tr[data-selected='true'] td {
   background: var(--color-primary-soft);
 }
+
+/* ─────────────── Buying & selling (D-089) ───────────────
+ *
+ * The filter panel opens under the search: every filter in a grid that is one column on a phone
+ * and as many as fit on a desktop, with "Clear filters" at its foot.
+ */
+.mz-filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-4);
+}
+
+.mz-filter-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.mz-filter-panel__foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Two large figures under the four: one column on a phone, two side by side from a tablet up. */
+.mz-kpis--two {
+  grid-template-columns: 1fr;
+}
+
+@media (width >= 48rem) {
+  .mz-kpis--two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.mz-kpi--big {
+  padding: var(--space-5);
+}
+
+.mz-kpi--big .mz-dual > bdi:first-child {
+  font-size: 1.5rem;
+}
+
+/* Money owed to us and money we owe: the edges of "They paid us" and "We paid them" (D-088). */
+.mz-kpi--in {
+  border-inline-start: 4px solid var(--color-success);
+}
+
+.mz-kpi--out {
+  border-inline-start: 4px solid var(--color-warning);
+}
+
+/* Which kind a row is, before anything else: a sale (money in) or a purchase (money out). */
+.mz-trade-kind {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 0 var(--space-2);
+  color: var(--color-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.mz-trade-kind--sale {
+  border-color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.mz-trade-kind--purchase {
+  border-color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
+
+.mz-trade-kind--sale svg {
+  color: var(--color-success);
+}
+
+.mz-trade-kind--purchase svg {
+  color: var(--color-warning);
+}
+
+/* Still owed: to us on a sale — red, as the Orders list has always shown money still to collect —
+   and by us on a purchase, in the amber of money going out. Green would read as "paid". */
+.mz-owed-in,
+.mz-owed-in .mz-dual {
+  color: var(--color-danger);
+}
+
+.mz-owed-out,
+.mz-owed-out .mz-dual {
+  color: var(--color-warning);
+}

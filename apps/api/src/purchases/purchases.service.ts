@@ -259,6 +259,17 @@ export class PurchasesService {
     }
   }
 
+  /**
+   * Purchases by id, as the Purchases list sends them — with their payment state for a reader
+   * who may see what we owe — in the order asked for (D-089).
+   */
+  async listItemsByIds(ids: readonly string[], seesOwed: boolean): Promise<PurchaseDto[]> {
+    const byId = new Map((await this.purchases.rowsByIds(ids)).map((row) => [row.id, toPurchaseDto(row, [])]));
+    const items = ids.map((id) => byId.get(id)).filter((dto): dto is PurchaseDto => dto !== undefined);
+    if (seesOwed) await this.withPayment(items);
+    return items;
+  }
+
   async get(id: string): Promise<PurchaseDto> {
     const row = await this.requirePurchase(id);
     const lines = await this.purchases.linesOf(id);

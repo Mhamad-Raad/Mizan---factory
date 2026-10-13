@@ -178,7 +178,6 @@ export function NewMaterialPage() {
           {mayBuy ? (
             <>
               <CompanyField
-                allowNone={false}
                 value={company}
                 onChange={(choice) => {
                   setCompany(choice);

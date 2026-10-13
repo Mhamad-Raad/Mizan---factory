@@ -57,7 +57,7 @@ const CustomerDetailPage = chunk(
 );
 const NewCustomerPage = chunk(() => import('./pages/NewCustomerPage.js'), 'NewCustomerPage');
 const AccountsPage = chunk(() => import('./pages/AccountsPage.js'), 'AccountsPage');
-const PurchasesPage = chunk(() => import('./pages/PurchasesPage.js'), 'PurchasesPage');
+const TradePage = chunk(() => import('./pages/TradePage.js'), 'TradePage');
 const PurchaseFormPage = chunk(() => import('./pages/PurchaseFormPage.js'), 'PurchaseFormPage');
 const PurchaseDetailPage = chunk(
   () => import('./pages/PurchaseDetailPage.js'),
@@ -66,7 +66,6 @@ const PurchaseDetailPage = chunk(
 const DamagesPage = chunk(() => import('./pages/DamagesPage.js'), 'DamagesPage');
 const DamageFormPage = chunk(() => import('./pages/DamageFormPage.js'), 'DamageFormPage');
 const DamageDetailPage = chunk(() => import('./pages/DamageDetailPage.js'), 'DamageDetailPage');
-const OrdersPage = chunk(() => import('./pages/OrdersPage.js'), 'OrdersPage');
 const OrderFormPage = chunk(() => import('./pages/OrderFormPage.js'), 'OrderFormPage');
 const OrderDetailPage = chunk(() => import('./pages/OrderDetailPage.js'), 'OrderDetailPage');
 const UsersPage = chunk(() => import('./pages/UsersPage.js'), 'UsersPage');
@@ -88,7 +87,7 @@ function landingFor(user: SessionUser | null, permissions: string[]): string {
   const may = (key: string) => user?.role === 'admin' || permissions.includes(key);
   // Today first: the dashboard is where the day starts (client review).
   if (may('dashboard.view')) return '/dashboard';
-  if (may('orders.view')) return '/orders';
+  if (may('orders.view') || may('purchases.view')) return '/trade';
   if (may('materials.view')) return '/materials';
   // Customers only for `customers.view`: the page and its API read with that key, so a user
   // holding only `companies.view` landed on "no access", and its "go to my start page" sent
@@ -286,7 +285,9 @@ export function App() {
         <Suspense key={routeKey(location.pathname)} fallback={<Skeleton lines={6} />}>
           <Routes>
             <Route path="/login" element={<Navigate to="/" replace />} />
-            <Route path="/orders" element={gate(may('orders.view'), <OrdersPage />)} />
+            {/* Buying & selling (D-089): sales and purchases on one page; the old lists open it on their side. */}
+            <Route path="/trade" element={gate(may('orders.view') || may('purchases.view'), <TradePage />)} />
+            <Route path="/orders" element={<Navigate to="/trade?kind=sale" replace />} />
             <Route path="/orders/new" element={gate(may('orders.create'), <OrderFormPage mode="create" />)} />
             <Route path="/orders/:id" element={gate(may('orders.view'), <OrderDetailPage />)} />
             <Route path="/orders/:id/edit" element={gate(may('orders.edit'), <OrderFormPage mode="edit" />)} />
@@ -305,7 +306,7 @@ export function App() {
             <Route path="/companies/:id" element={<CompanyRedirect />} />
             {/* Purchases and the purchase form are back (D-085), beside the accountant page. */}
             <Route path="/accounts" element={gate(may('accounts.view'), <AccountsPage />)} />
-            <Route path="/purchases" element={gate(may('purchases.view'), <PurchasesPage />)} />
+            <Route path="/purchases" element={<Navigate to="/trade?kind=purchase" replace />} />
             <Route path="/purchases/new" element={gate(may('purchases.create'), <PurchaseFormPage />)} />
             <Route path="/purchases/:id" element={gate(may('purchases.view'), <PurchaseDetailPage />)} />
             <Route path="/purchases/:id/edit" element={<Navigate to="/materials" replace />} />

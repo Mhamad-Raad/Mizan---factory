@@ -152,7 +152,7 @@ export function PurchaseFormPage() {
   const saveError = shownUnderInputs ? null : errorMessage(t, save.error);
 
   const ready =
-    chosen.kind !== 'unset' &&
+    chosen.kind === 'company' &&
     lines.length > 0 &&
     lines.every(
       (line) =>

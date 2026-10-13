@@ -5,7 +5,7 @@ import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
 import { pagingOf } from '../common/paging.js';
 import { containing } from '../common/like.js';
-import { owedToCompanies } from '../common/owed-to-companies.js';
+import { owedToCompanies } from '../common/owed-totals.js';
 
 export type PriceSource = 'month' | 'override';
 
@@ -182,13 +182,12 @@ export class PurchasesRepository {
     return rows[0] ?? null;
   }
 
-  async list(filters: PurchaseFilters): Promise<{
-    rows: PurchaseListRow[];
-    total: number;
-    totals: { buys: number; total_iqd: number; total_usd_cents: number };
-  }> {
+  /**
+   * The list's filter as SQL, numbering its parameters after those already in `values` — so the
+   * Purchases list and the Buying & selling list (D-089) ask the same question of the same indexes.
+   */
+  private whereOf(filters: PurchaseFilters, values: unknown[]): string {
     const conditions = ['p.deleted_at IS NULL'];
-    const values: unknown[] = [];
 
     if (filters.company_id) {
       values.push(filters.company_id);
@@ -245,7 +244,40 @@ export class PurchasesRepository {
       );
     }
 
-    const where = `WHERE ${conditions.join(' AND ')}`;
+    return `WHERE ${conditions.join(' AND ')}`;
+  }
+
+  /** The ids of the purchases the filter matches, with what the combined list sorts them by (D-089). */
+  pageKeysSql(filters: PurchaseFilters, values: unknown[]): { keys: string; count: string } {
+    const where = this.whereOf(filters, values);
+    return {
+      keys: `SELECT p.id, p.purchase_date AS day, p.number, p.created_at, 'purchase'::text AS kind FROM purchases p ${where}`,
+      count: `SELECT count(*) AS n FROM purchases p ${where}`,
+    };
+  }
+
+  /** Purchases by id, each as the Purchases list sends it (D-089). */
+  async rowsByIds(ids: readonly string[]): Promise<PurchaseListRow[]> {
+    if (ids.length === 0) return [];
+    const { rows } = await this.database.query<PurchaseListRow>(
+      `SELECT ${purchaseColumns('p')}, ${LIST_COLUMNS}
+         FROM purchases p
+         LEFT JOIN customers co ON co.id = p.company_id
+         LEFT JOIN users u ON u.id = p.acting_user_id
+         LEFT JOIN users v ON v.id = p.voided_by
+        WHERE p.id = ANY($1::uuid[])`,
+      [ids],
+    );
+    return rows;
+  }
+
+  async list(filters: PurchaseFilters): Promise<{
+    rows: PurchaseListRow[];
+    total: number;
+    totals: { buys: number; total_iqd: number; total_usd_cents: number };
+  }> {
+    const values: unknown[] = [];
+    const where = this.whereOf(filters, values);
 
     const countValues = [...values];
     const { page_size: pageSize, offset } = pagingOf(filters);

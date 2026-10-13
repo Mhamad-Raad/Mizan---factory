@@ -42,6 +42,8 @@ import { OrdersService } from './orders/orders.service.js';
 import { PurchasesController } from './purchases/purchases.controller.js';
 import { PurchasesRepository } from './purchases/purchases.repository.js';
 import { PurchasesService } from './purchases/purchases.service.js';
+import { TradeController } from './trade/trade.controller.js';
+import { TradeService } from './trade/trade.service.js';
 import { RatesService } from './rates/rates.service.js';
 import { ReportsController } from './reports/reports.controller.js';
 import { ReportsRepository } from './reports/reports.repository.js';
@@ -82,6 +84,7 @@ import { UsersService } from './users/users.service.js';
     ImportsController,
     AccountsController,
     HealthController,
+    TradeController,
   ],
   providers: [
     { provide: ENV, useFactory: (): Env => loadEnv() },
@@ -115,6 +118,7 @@ import { UsersService } from './users/users.service.js';
     CompaniesService,
     PurchasesRepository,
     PurchasesService,
+    TradeService,
     DamagesRepository,
     DamagesService,
     ReportsRepository,

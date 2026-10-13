@@ -9,7 +9,9 @@ import { quantityText } from '../../lib/quantity.js';
 import { readNote } from '../../lib/record-names.js';
 import { bothOf } from '../../lib/money.js';
 import { entryTitle } from '../../lib/entry-title.js';
+import { shownOf } from '../TradeTable.js';
 import type {
+  TradeListData,
   OrderListData,
   OrderReceiptData,
   PrintData,
@@ -40,6 +42,8 @@ export function PrintedDocument({ data }: { data: PrintData }) {
       return <PurchaseList data={data} />;
     case 'order_list':
       return <OrderList data={data} />;
+    case 'trade_list':
+      return <TradeList data={data} />;
   }
 }
 
@@ -719,6 +723,90 @@ function OrderList({ data }: { data: OrderListData }) {
           <TotalRow label={t('glossary:total')} grand>
             <DualAmount amount_iqd={data.totals.total_iqd} amount_usd_cents={data.totals.total_usd_cents} />
           </TotalRow>
+        </div>
+      ) : null}
+      <DocumentFoot />
+    </div>
+  );
+}
+
+/** Buying & selling as filtered on screen (D-089): each row says sale or purchase; each side totals on its own. */
+function TradeList({ data }: { data: TradeListData }) {
+  const { t } = useTranslation();
+  const formatter = useFormatter();
+  return (
+    <div className="mz-invoice">
+      <DocumentHead type={t('print:list')} title={t('trade:title')} date={null} />
+      <div className="mz-invoice__parties">
+        <Party label={t('print:period')} name={periodText(data.from, data.to, t, formatter.date)} />
+      </div>
+      <CappedNote shown={data.rows.length} total={data.total} />
+      <table className="mz-invoice__table">
+        <thead>
+          <tr>
+            <th>{t('common:date')}</th>
+            <th>{t('print:number')}</th>
+            <th>{t('glossary:company')}</th>
+            <th>{t('print:status')}</th>
+            <th className="mz-invoice__num">{t('glossary:total')}</th>
+            <th className="mz-invoice__num">{t('purchases:still_owed')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.rows.map((row) => {
+            const shown = shownOf(row, t, formatter.identifier);
+            return (
+              <tr key={`${row.kind}:${row.id}`} className={shown.status === 'void' ? 'mz-invoice__row--void' : undefined}>
+                <td data-tabular>{formatter.date(shown.date)}</td>
+                <td>
+                  {t(row.kind === 'sale' ? 'trade:kind_sale' : 'trade:kind_purchase')} · {shown.number}
+                </td>
+                <td>{shown.company ? <bdi>{shown.company}</bdi> : t('purchases:no_company')}</td>
+                <td>
+                  {shown.status === 'owes_nobody'
+                    ? t('purchases:owes_nobody')
+                    : shown.status
+                      ? t(`glossary:${shown.status}`)
+                      : ''}
+                </td>
+                <td className="mz-invoice__num">
+                  {shown.total ? (
+                    <DualAmount
+                      amount_iqd={shown.total.amount_iqd}
+                      amount_usd_cents={shown.total.amount_usd_cents}
+                      primary={shown.currency}
+                    />
+                  ) : (
+                    '—'
+                  )}
+                </td>
+                <td className="mz-invoice__num">
+                  {shown.owed !== null && shown.owed > 0 ? (
+                    <DualAmount {...bothOf(shown.owed, shown.currency, shown.rate)} primary={shown.currency} kind="derived" />
+                  ) : (
+                    '—'
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {data.totals ? (
+        <div className="mz-invoice__totals">
+          {data.totals.sales ? (
+            <TotalRow label={t('trade:tile_sold')}>
+              <DualAmount amount_iqd={data.totals.sales.total_iqd} amount_usd_cents={data.totals.sales.total_usd_cents} />
+            </TotalRow>
+          ) : null}
+          {data.totals.purchases?.cost ? (
+            <TotalRow label={t('trade:tile_bought')}>
+              <DualAmount
+                amount_iqd={data.totals.purchases.cost.total_iqd}
+                amount_usd_cents={data.totals.purchases.cost.total_usd_cents}
+              />
+            </TotalRow>
+          ) : null}
         </div>
       ) : null}
       <DocumentFoot />

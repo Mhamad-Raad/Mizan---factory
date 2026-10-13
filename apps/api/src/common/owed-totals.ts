@@ -15,14 +15,30 @@ import type { Db } from '../database/pool.js';
 export async function owedToCompanies(
   db: Db,
 ): Promise<{ companies: number; owed_iqd: number; owed_usd_cents: number }> {
+  return owedOn(db, 'payable');
+}
+
+/**
+ * What the companies owe us (D-089), read the same way: the active companies that owe us, the
+ * dinar accounts in dinars and the dollar accounts in dollars.
+ */
+export async function owedToUs(db: Db): Promise<{ companies: number; owed_iqd: number; owed_usd_cents: number }> {
+  return owedOn(db, 'receivable');
+}
+
+async function owedOn(
+  db: Db,
+  side: 'payable' | 'receivable',
+): Promise<{ companies: number; owed_iqd: number; owed_usd_cents: number }> {
+  // `side` is one of two column prefixes chosen here, never a value from a request.
   const { rows } = await db.query<{ companies: string; owed_iqd: string; owed_usd_cents: string }>(
     `SELECT count(*)::text AS companies,
-            coalesce(sum(t.payable_iqd) FILTER (WHERE c.settlement_currency = 'IQD'), 0)::text AS owed_iqd,
-            coalesce(sum(t.payable_usd_cents) FILTER (WHERE c.settlement_currency = 'USD'), 0)::text AS owed_usd_cents
+            coalesce(sum(t.${side}_iqd) FILTER (WHERE c.settlement_currency = 'IQD'), 0)::text AS owed_iqd,
+            coalesce(sum(t.${side}_usd_cents) FILTER (WHERE c.settlement_currency = 'USD'), 0)::text AS owed_usd_cents
        FROM account_totals t
        JOIN customers c ON c.id = t.account_id
       WHERE c.deleted_at IS NULL AND c.is_active AND NOT c.is_system
-        AND CASE WHEN c.settlement_currency = 'IQD' THEN t.payable_iqd ELSE t.payable_usd_cents END > 0`,
+        AND CASE WHEN c.settlement_currency = 'IQD' THEN t.${side}_iqd ELSE t.${side}_usd_cents END > 0`,
   );
   const row = rows[0];
   return {

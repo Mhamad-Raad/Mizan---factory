@@ -16,7 +16,7 @@ import { ColumnChart } from '../components/charts/ColumnChart.js';
 import type { ChartSeries } from '../components/charts/ColumnChart.js';
 import { BarList } from '../components/charts/BarList.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
-import type { OrderRow } from './OrdersPage.js';
+import type { OrderRow } from '../lib/orders.js';
 
 type Pair = { amount_iqd: number; amount_usd_cents: number };
 
