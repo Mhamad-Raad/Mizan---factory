@@ -163,8 +163,9 @@ test.describe('the buying screens', () => {
     // routes are split (I6) the list is still painted for a frame after the tap, and its own
     // primary button is "New company".
     await expect(page.getByRole('heading', { name: 'Al-Noor Steel Co.' }).first()).toBeVisible();
-    // "Pay them" — money out — beside "Payment received" (D-085).
-    await page.getByRole('button', { name: 'الدفع لهم' }).click();
+    // "We paid them" — money out, in its own colour — beside "They paid us" (D-085, D-088).
+    await page.getByRole('button', { name: 'دفعنا لهم' }).click();
+    await expect(page.locator('.mz-money-strip--out')).toContainText('Al-Noor Steel Co.');
 
     const iqd = page.locator('input[inputmode="numeric"]').first();
     await iqd.fill('100000');

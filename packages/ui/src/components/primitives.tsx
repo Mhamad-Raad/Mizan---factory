@@ -11,7 +11,11 @@ import type { IconName } from '../icons/registry.js';
  * real package is an import change and no screen is touched (decision D-001).
  */
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+/**
+ * `money-in` and `money-out` are the two directions money moves on an account (D-088): a company
+ * paying us and us paying a company look different at a glance, not only in their words.
+ */
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'money-in' | 'money-out';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;

@@ -60,5 +60,6 @@
   "rounded_up": "قُرِّب للأعلى بمقدار {{amount}} إلى أقرب {{step}}",
   "rounding": "التقريب",
   "save_order_one": "حفظ الطلب ({{count}} سطر)",
-  "empty_search": "لا نتائج لـ ‏«{{query}}»"
+  "empty_search": "لا نتائج لـ ‏«{{query}}»",
+  "they_paid_for_order": "دفعوا ثمن هذا الطلب"
 }

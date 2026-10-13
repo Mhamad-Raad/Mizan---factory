@@ -4,6 +4,7 @@ import {
   BottomSheet,
   Button,
   DateField,
+  Icon,
   NumberField,
   SegmentedControl,
   TextField,
@@ -33,6 +34,14 @@ export interface PaymentBody {
 
 export interface PaymentSheetProps {
   open: boolean;
+  /**
+   * Which way the money moves (D-088): `in` — a company paying us; `out` — us paying a company.
+   * The sheet says so in a coloured strip at its top, words its labels for that direction and
+   * colours its save button to match, so the two can never be mistaken for each other.
+   */
+  direction: 'in' | 'out';
+  /** Who the money comes from or goes to, named in the strip. */
+  counterparty?: string;
   onClose: () => void;
   /** What is still owed, in the settlement currency: the sheet pre-fills it (FR-606). */
   remaining: number;
@@ -76,6 +85,8 @@ export interface PaymentSheetProps {
  */
 export function PaymentSheet({
   open,
+  direction,
+  counterparty,
   onClose,
   remaining,
   settlement_currency,
@@ -157,30 +168,50 @@ export function PaymentSheet({
       : inSettlement(amount.amount, amount.currency, amount.other_amount);
   const afterPayment = settleInFull ? 0 : remaining - paidInSettlement;
 
+  const incoming = direction === 'in';
+  const defaultTitle = incoming ? t('common:they_paid_us') : t('common:we_paid_them');
+  const howMuch = amountLabel ?? (incoming ? t('common:how_much_they_paid') : t('common:how_much_we_paid'));
+
   return (
     <BottomSheet
-      title={title ?? t('customers:record_payment')}
+      title={title ?? defaultTitle}
       open={open}
       onClose={onClose}
       closeLabel={t('common:close')}
     >
       {/* Two columns from a tablet up, so a laptop shows the whole sheet without scrolling. */}
       <div className="mz-form-grid">
-        <div className="mz-row mz-row--between mz-form-grid__wide">
-          <span>{remainingLabel ?? t('orders:remaining')}</span>
-          {/*
-           * The counterpart is converted at this account's rate rather than left at zero:
-           * a remainder of 3,050,000 IQD is not "$0.00", and rule 7 asks for both currencies
-           * with ≈ on the figure that was derived rather than stored.
-           */}
-          <SettlementAmount amount={remaining} currency={settlement_currency} rate={rate} />
+        {/* Which way the money goes and with whom, and what stands on the account now — one
+            row, so the strip costs the sheet no height on a laptop (D-084, D-088). */}
+        <div className={`mz-money-strip mz-money-strip--${direction} mz-form-grid__wide`}>
+          <Icon name={incoming ? 'money-in' : 'money-out'} />
+          <span className="mz-money-strip__who">
+            {/* The name is isolated: a Latin name in Kurdish or Arabic text otherwise carries its
+                full stop to the wrong end (2.10.6). */}
+            {counterparty ? (
+              <>
+                {t(incoming ? 'common:money_in_from' : 'common:money_out_to')} <bdi>{counterparty}</bdi>
+              </>
+            ) : (
+              t(incoming ? 'common:money_in' : 'common:money_out')
+            )}
+          </span>
+          <span className="mz-money-strip__owed">
+            <span className="mz-caption">{remainingLabel ?? t('orders:remaining')}</span>
+            {/*
+             * The counterpart is converted at this account's rate rather than left at zero:
+             * a remainder of 3,050,000 IQD is not "$0.00", and rule 7 asks for both currencies
+             * with ≈ on the figure that was derived rather than stored.
+             */}
+            <SettlementAmount amount={remaining} currency={settlement_currency} rate={rate} />
+          </span>
         </div>
 
         {!splitting ? (
           <>
             <div className="mz-form-grid__wide">
               <MoneyInput
-                label={amountLabel ?? t('customers:amount_received')}
+                label={howMuch}
                 value={amount}
                 rate={rate}
                 onChange={setAmount}
@@ -197,13 +228,13 @@ export function PaymentSheet({
         ) : (
           <div className="mz-grid-2 mz-form-grid__wide">
             <NumberField
-              label={`${t('customers:amount_received')} · ${t('glossary:iqd')}`}
+              label={`${howMuch} · ${t('glossary:iqd')}`}
               unit={t('common:iqd_symbol')}
               value={splitIqd}
               onChange={(event) => setSplitIqd(event.target.value)}
             />
             <NumberField
-              label={`${t('customers:amount_received')} · ${t('glossary:usd')}`}
+              label={`${howMuch} · ${t('glossary:usd')}`}
               unit={t('common:usd_symbol')}
               decimals={2}
               value={splitUsd}
@@ -294,6 +325,8 @@ export function PaymentSheet({
         <div className="mz-form-grid__wide">
           <Button
             block
+            variant={incoming ? 'money-in' : 'money-out'}
+            icon={incoming ? 'money-in' : 'money-out'}
             loading={saving}
             disabled={!canSave}
             onClick={() =>
@@ -313,7 +346,7 @@ export function PaymentSheet({
           >
             {needsExcessConfirmation
               ? t('customers:record_excess')
-              : (saveLabel ?? t('customers:record_payment'))}
+              : (saveLabel ?? defaultTitle)}
           </Button>
         </div>
 

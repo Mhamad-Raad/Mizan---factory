@@ -60,5 +60,6 @@
   "rounded_up": "بە {{amount}} بەرزکرایەوە بۆ {{step}}ی تەواو",
   "rounding": "نزیککردنەوە",
   "save_order_one": "پاشەکەوتکردنی فرۆشتن ({{count}} هێڵ)",
-  "empty_search": "هیچ ئەنجامێک بۆ «{{query}}» نییە"
+  "empty_search": "هیچ ئەنجامێک بۆ «{{query}}» نییە",
+  "they_paid_for_order": "پارەی ئەم فرۆشتنەیان دا"
 }

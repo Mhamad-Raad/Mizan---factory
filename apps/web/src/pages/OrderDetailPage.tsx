@@ -289,8 +289,8 @@ export function OrderDetailPage() {
                 ((mayRecordPayment && data.status !== 'paid') || mayChangeType) ? (
                   <div className="mz-actions__group mz-actions__group--primary">
                     {mayRecordPayment && data.status !== 'paid' ? (
-                      <Button icon="check" onClick={() => setPaying(true)}>
-                        {t('customers:record_payment')}
+                      <Button variant="money-in" icon="money-in" onClick={() => setPaying(true)}>
+                        {t('orders:they_paid_for_order')}
                       </Button>
                     ) : null}
                     {mayChangeType ? (
@@ -400,7 +400,9 @@ export function OrderDetailPage() {
                   emptyTitle={t('orders:no_payments')}
                   emptyAction={
                     mayRecordPayment && data.doc_status === 'active' ? (
-                      <Button onClick={() => setPaying(true)}>{t('customers:record_payment')}</Button>
+                      <Button variant="money-in" icon="money-in" onClick={() => setPaying(true)}>
+                        {t('orders:they_paid_for_order')}
+                      </Button>
                     ) : undefined
                   }
                 >
@@ -528,6 +530,9 @@ export function OrderDetailPage() {
         {paying && data ? (
           <PaymentSheet
             open
+            direction="in"
+            counterparty={customerName({ name: data.customer_name, is_system: data.customer_is_system }, t)}
+            title={t('orders:they_paid_for_order')}
             remaining={Math.max(data.remaining, 0)}
             settlement_currency={data.settlement_currency}
             rate={paymentRate}

@@ -171,6 +171,7 @@ export function CustomerDetailPage() {
 
   const buying = useBuyingSide({
     id,
+    name: data ? customerName(data, t) : '',
     enabled: Boolean(data) && !walkIn,
     tab,
     settlement,
@@ -336,8 +337,9 @@ export function CustomerDetailPage() {
               <div className="mz-actions">
                 <div className="mz-actions__group mz-actions__group--primary">
                   {selling && !walkIn && mayRecordPayment ? (
-                    <Button icon="check" onClick={() => setSheet('payment')}>
-                      {t('customers:receive_payment')}
+                    // Money in and money out look different and read as a pair (D-088).
+                    <Button variant="money-in" icon="money-in" onClick={() => setSheet('payment')}>
+                      {t('common:they_paid_us')}
                     </Button>
                   ) : null}
                   {buying.primaryActions}
@@ -509,6 +511,10 @@ export function CustomerDetailPage() {
         {sheet === 'payment' && data ? (
           <PaymentSheet
             open
+            direction="in"
+            counterparty={customerName(data, t)}
+            remainingLabel={t('companies:they_owe_us')}
+            settleHint={t('companies:settle_in_full_hint')}
             remaining={Math.max(owedToUs, 0)}
             settlement_currency={settlement}
             rate={rate}

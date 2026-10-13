@@ -406,6 +406,85 @@ html[dir='ltr'] input[type='tel'] {
   inline-size: 100%;
 }
 
+/*
+ * Money in and money out (D-088). Two actions that sit side by side and do opposite things wear
+ * opposite colours: green for money coming to us, amber for money leaving — each a soft fill with
+ * its colour as the edge and the icon, the label in the body text colour so it reads in both
+ * themes (the pairs are measured by check-contrast). Never red: paying a supplier is not a danger.
+ */
+.mz-button--money-in {
+  border-color: var(--color-success);
+  background: var(--color-success-soft);
+  color: var(--color-text);
+}
+
+.mz-button--money-out {
+  border-color: var(--color-warning);
+  background: var(--color-warning-soft);
+  color: var(--color-text);
+}
+
+.mz-button--money-in svg {
+  color: var(--color-success);
+}
+
+.mz-button--money-out svg {
+  color: var(--color-warning);
+}
+
+.mz-button--money-in:hover:not([disabled]),
+.mz-button--money-out:hover:not([disabled]) {
+  filter: brightness(0.97);
+}
+
+/* The strip a payment sheet opens with: which way the money is going, and with whom. */
+.mz-money-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* The words keep a readable width; on a phone the figure moves to a line of its own rather than
+   squeezing them to a word a line. */
+.mz-money-strip__who {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+}
+
+.mz-money-strip__owed {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-weight: 400;
+}
+
+.mz-money-strip--in {
+  border-color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.mz-money-strip--out {
+  border-color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
+
+.mz-money-strip--in svg {
+  color: var(--color-success);
+}
+
+.mz-money-strip--out svg {
+  color: var(--color-warning);
+}
+
 /* A link may wear the button's clothes; it must not lose the underline reset. */
 a.mz-button {
   text-decoration: none;

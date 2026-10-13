@@ -1728,3 +1728,24 @@ The business: "choose who you bought it from must be required in add and increas
 
 Tests: one API case; four existing tests that created a material's first purchase without a
 company now name one.
+
+## D-088 · 2026-10-13 · business request · Money in and money out look and read differently
+
+The business: "the ui for pay them and payment received should be different ui and the wording
+does not feel correct."
+
+- **The words are a pair, said from our side:** **They paid us** (money in) and **We paid them**
+  (money out) on the company page; **They paid for this order** on an order; **We paid for this
+  purchase** on a purchase. "Payment received" (a noun on a button) and "Pay them" (an order to
+  the reader) are gone. Kurdish پارەیان پێداین / پارەمان پێدان; Arabic دفعوا لنا / دفعنا لهم.
+- **They look different:** money in is green, money out is amber — a soft fill with the colour as
+  its edge and its icon (a banknote with an arrow in or out), the label in the body text colour
+  (`money-in` / `money-out` button variants of the library, measured by check-contrast in every
+  palette and both themes). Never red: paying a supplier is not a danger.
+- **The payment sheet says which way before anything else:** a strip in the same colour — "Money
+  in — from Kawa Trading" / "Money out — to Erbil Metal House" — with what stands on the account
+  on the same row, so the sheet is no taller than D-084 made it. Its amount reads "How much they
+  paid" / "How much we paid" (the split-currency fields too, which said "received" either way),
+  and its save button wears the same colour and words.
+- The account rows keep their names ("Payment received", "Payment made"), which describe a record
+  rather than ask for an action; the printed vouchers are unchanged.

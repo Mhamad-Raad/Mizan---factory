@@ -34,7 +34,7 @@
   "lines_count": "Materials: {{count}}",
   "edit_window_closed": "This purchase can no longer be edited — void it and enter it again.",
   "materials_column": "Materials",
-  "make_payment": "Pay for this purchase",
+  "make_payment": "We paid for this purchase",
   "no_payments": "Nothing paid against this purchase yet",
   "settle_in_full_hint": "Closes this purchase exactly, even when the last payment is in the other currency",
   "accounts_title": "Accounts",

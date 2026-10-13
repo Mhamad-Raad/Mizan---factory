@@ -60,5 +60,6 @@
   "rounded_up": "Rounded up by {{amount}} to a round {{step}}",
   "rounding": "Rounding",
   "save_order_one": "Save order ({{count}} line)",
-  "empty_search": "No match for '{{query}}'"
+  "empty_search": "No match for '{{query}}'",
+  "they_paid_for_order": "They paid for this order"
 }

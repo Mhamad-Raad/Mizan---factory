@@ -276,7 +276,7 @@ export function PurchaseDetailPage() {
               <div className="mz-actions">
                 {active && companyId && mayPay && remaining !== null && remaining > 0 ? (
                   <div className="mz-actions__group mz-actions__group--primary">
-                    <Button icon="check" onClick={() => setPaying(true)}>
+                    <Button variant="money-out" icon="money-out" onClick={() => setPaying(true)}>
                       {t('purchases:make_payment')}
                     </Button>
                   </div>
@@ -452,10 +452,10 @@ export function PurchaseDetailPage() {
         {paying && data && remaining !== null ? (
           <PaymentSheet
             open
+            direction="out"
+            counterparty={data.company_name ?? undefined}
             title={t('purchases:make_payment')}
-            amountLabel={t('companies:amount_paid')}
             remainingLabel={t('print:still_owed_on_purchase')}
-            saveLabel={t('purchases:make_payment')}
             settleHint={t('purchases:settle_in_full_hint')}
             remaining={remaining}
             settlement_currency={settlement}

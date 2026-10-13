@@ -59,6 +59,8 @@ interface Breakdown {
  */
 export function useBuyingSide(input: {
   id: string;
+  /** The company's name, for the payment sheet's "Money out — to …" (D-088). */
+  name: string;
   /** False for the walk-in customer, which nobody buys from: nothing here is fetched or shown. */
   enabled: boolean;
   tab: string;
@@ -192,8 +194,8 @@ export function useBuyingSide(input: {
   const primaryActions: ReactNode = enabled ? (
     <>
       {mayPay ? (
-        <Button icon="check" onClick={() => setSheet('payment')}>
-          {t('companies:pay_them')}
+        <Button variant="money-out" icon="money-out" onClick={() => setSheet('payment')}>
+          {t('common:we_paid_them')}
         </Button>
       ) : null}
       <Can permission="purchases.create">
@@ -326,10 +328,9 @@ export function useBuyingSide(input: {
       {sheet === 'payment' ? (
         <PaymentSheet
           open
-          title={t('companies:pay_them')}
-          amountLabel={t('companies:amount_paid')}
+          direction="out"
+          counterparty={input.name}
           remainingLabel={t('companies:we_owe_them')}
-          saveLabel={t('companies:pay_them')}
           settleHint={t('companies:settle_in_full_hint')}
           remaining={Math.max(owed, 0)}
           settlement_currency={settlement}
