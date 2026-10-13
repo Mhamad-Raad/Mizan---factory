@@ -21,7 +21,7 @@ export interface RowSelection<Row> {
  * The tick boxes of a list (D-086): every row has one, always — ticking a row puts it on the
  * print list, and the ticks survive paging, so receipts can be gathered across pages, up to what
  * one print may carry. There is no "select" mode to switch on first, and no second button: the
- * list's one Print button prints what is ticked, or — with nothing ticked — the whole of it.
+ * list's one Print button prints what is ticked.
  */
 export function usePrintSelection<Row>(documentOf: (row: Row) => PrintDocument, keyOf: (row: Row) => string) {
   const [selected, setSelected] = useState<Map<string, PrintDocument>>(() => new Map());
@@ -64,8 +64,9 @@ export function usePrintSelection<Row>(documentOf: (row: Row) => PrintDocument, 
 
 /**
  * A list's one Print button. With rows ticked it prints them — "Print selected (3)", a page each
- * — and offers to clear the ticks; with none it does what printing the list means there: the
- * list as filtered, or a company's account for the dates chosen.
+ * — and offers to clear the ticks. With none, a list's button waits, greyed out, for a tick (the
+ * business: a list prints what is chosen, never the whole of it unasked); an account's prints
+ * what printing it means there, its statement for the dates chosen.
  */
 export function PrintButton({
   state,
@@ -73,20 +74,29 @@ export function PrintButton({
   onPrintWhole,
 }: {
   state: ReturnType<typeof usePrintSelection<never>>;
-  /** "Print list", "Print account" — what the button does with nothing ticked. */
-  wholeLabel: string;
-  onPrintWhole: () => void;
+  /** An account's "Print account": what the button does with nothing ticked. Absent on a list. */
+  wholeLabel?: string;
+  onPrintWhole?: () => void;
 }) {
   const { t } = useTranslation();
+  const ticked = state.count > 0;
+  const whole = wholeLabel !== undefined && onPrintWhole !== undefined;
   return (
     <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
-      <Button variant="secondary" icon="print" onClick={state.count > 0 ? state.print : onPrintWhole}>
-        {state.count > 0 ? t('print:print_selected', { count: state.count }) : wholeLabel}
+      <Button
+        variant="secondary"
+        icon="print"
+        disabled={!ticked && !whole}
+        onClick={ticked ? state.print : onPrintWhole}
+      >
+        {ticked ? t('print:print_selected', { count: state.count }) : whole ? wholeLabel : t('print:print_list')}
       </Button>
-      {state.count > 0 ? (
+      {ticked ? (
         <Button variant="ghost" onClick={state.clear}>
           {t('print:clear_selection')}
         </Button>
+      ) : !whole ? (
+        <span className="mz-caption">{t('print:tick_to_print')}</span>
       ) : null}
       {state.full ? (
         <span className="mz-caption" role="status">

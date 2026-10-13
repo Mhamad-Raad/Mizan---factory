@@ -17,11 +17,7 @@ export type PrintDocument =
    * An account's transactions over a period, a section per side the reader may see — what they
    * owe us (sales) and what we owe them (buying).
    */
-  | { kind: 'statement'; accountId: string; from: string; to: string; sides: AccountSide[] }
-  /** The purchases list as filtered on screen: its query string (without paging) and its period. */
-  | { kind: 'purchase_list'; query: string; from: string | null; to: string | null }
-  /** Buying & selling as filtered on screen: sales and purchases together (D-089). */
-  | { kind: 'trade_list'; query: string; from: string | null; to: string | null };
+  | { kind: 'statement'; accountId: string; from: string; to: string; sides: AccountSide[] };
 
 /** `sales`: the customer ledger, what they owe us. `buying`: the company ledger, what we owe them. */
 export type AccountSide = 'sales' | 'buying';
@@ -31,9 +27,6 @@ export type AccountSide = 'sales' | 'buying';
  * stack of paper nobody checks; more than that is a statement, which prints as one document.
  */
 export const PRINT_LIMIT = 50;
-
-/** A list printout reads at most this many rows (ten pages of the API's largest page, D-058). */
-export const PRINT_LIST_ROWS = 1000;
 
 export interface PrintJob {
   id: number;
@@ -70,15 +63,11 @@ export function requiredFor(document: PrintDocument): string[] {
     case 'order':
       return ['orders.view'];
     case 'purchase':
-    case 'purchase_list':
       return ['purchases.view'];
     case 'voucher':
       return document.side === 'sales'
         ? ['customers.view', 'fields.see_customer_balances']
         : ['companies.view', 'fields.see_company_balances'];
-    case 'trade_list':
-      // Either side's key opens the list; the API sends each reader the sides they may (D-089).
-      return [];
     case 'statement':
       return document.sides.flatMap((side) =>
         side === 'sales'

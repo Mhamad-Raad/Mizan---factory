@@ -265,7 +265,7 @@ export function TradePage() {
               <label className="mz-field">
                 <span className="mz-field__label">{t('trade:period')}</span>
                 <select
-                  className="mz-select"
+                  className="mz-select mz-select--field"
                   value={datePreset}
                   onChange={(event) => setDatePreset(event.target.value as DatePreset)}
                 >
@@ -297,23 +297,23 @@ export function TradePage() {
                 </>
               ) : null}
               {companiesPath ? (
-              <div className="mz-field">
-                <span className="mz-field__label">{t('glossary:company')}</span>
-                <span className="mz-row" style={{ gap: 'var(--space-2)' }}>
-                  <Button variant="secondary" icon="companies" onClick={() => setPickingCompany(true)}>
-                    {companyId ? <bdi>{companyName}</bdi> : t('trade:any_company')}
-                  </Button>
-                  {companyId ? (
-                    <Button variant="ghost" onClick={() => setCompanyId('')}>
-                      {t('trade:remove_company')}
+                <div className="mz-field">
+                  <span className="mz-field__label">{t('glossary:company')}</span>
+                  <span className="mz-filter-panel__company">
+                    <Button variant="secondary" icon="companies" onClick={() => setPickingCompany(true)}>
+                      <bdi>{companyId ? companyName : t('trade:any_company')}</bdi>
                     </Button>
+                    {companyId ? (
+                      <Button variant="ghost" onClick={() => setCompanyId('')}>
+                        {t('trade:remove_company')}
+                      </Button>
                   ) : null}
                 </span>
               </div>
               ) : null}
               <label className="mz-field">
                 <span className="mz-field__label">{t('trade:recorded_by')}</span>
-                <select className="mz-select" value={doneBy} onChange={(event) => setDoneBy(event.target.value)}>
+                <select className="mz-select mz-select--field" value={doneBy} onChange={(event) => setDoneBy(event.target.value)}>
                   <option value="">{t('orders:anyone')}</option>
                   {(directory.data ?? [])
                     .filter((user) => user.is_active)
@@ -326,7 +326,7 @@ export function TradePage() {
               </label>
               <label className="mz-field">
                 <span className="mz-field__label">{t('common:status')}</span>
-                <select className="mz-select" value={status} onChange={(event) => setStatus(event.target.value as Status)}>
+                <select className="mz-select mz-select--field" value={status} onChange={(event) => setStatus(event.target.value as Status)}>
                   <option value="">{t('trade:any_status')}</option>
                   {/* The paid states are a sale's: not offered to whoever cannot see sales. */}
                   {maySales ? (
@@ -344,7 +344,7 @@ export function TradePage() {
                 <label className="mz-field">
                   <span className="mz-field__label">{t('glossary:payment_type')}</span>
                   <select
-                    className="mz-select"
+                    className="mz-select mz-select--field"
                     value={paymentType}
                     onChange={(event) => setPaymentType(event.target.value as typeof paymentType)}
                   >
@@ -456,13 +456,7 @@ export function TradePage() {
         ) : null}
 
         {rows.length > 0 ? (
-          <PrintButton
-            state={selecting}
-            wholeLabel={t('print:print_list')}
-            onPrintWhole={() =>
-              print([{ kind: 'trade_list', query: filterQuery, from: range.from ?? null, to: range.to ?? null }])
-            }
-          />
+          <PrintButton state={selecting} />
         ) : null}
 
         <QueryStates

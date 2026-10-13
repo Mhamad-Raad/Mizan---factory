@@ -3903,10 +3903,14 @@ html[data-mirroring='true'] body {
   font-size: 1rem;
 }
 
-/* The date boxes carry the browser's own height, which is not the select's: the period row
-   sets one height for all three (in rem, so it follows the text size). */
+/* The date boxes carry the browser's own height, which is not the select's: the period row —
+   and the filter panel, where a button sits among them too — sets one height for all of them (in
+   rem, so it follows the text size), and its rows then sit equally far apart. */
 .mz-accounts__period .mz-field__control,
-.mz-accounts__period .mz-select--field {
+.mz-accounts__period .mz-select--field,
+.mz-filter-panel .mz-field__control,
+.mz-filter-panel .mz-select--field,
+.mz-filter-panel .mz-field .mz-button {
   block-size: 3.25rem;
 }
 
@@ -4460,6 +4464,25 @@ html[data-mirroring='true'] body {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
   gap: var(--space-3);
   align-items: start;
+}
+
+/* The company's button fills its field like the boxes beside it; a long name ends in "…". */
+.mz-filter-panel__company {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.mz-filter-panel__company > .mz-button:first-child {
+  flex: 1;
+  min-inline-size: 0;
+  justify-content: flex-start;
+}
+
+.mz-filter-panel__company > .mz-button:first-child bdi {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mz-filter-panel__foot {

@@ -12,7 +12,7 @@ import { usePaging, useKeepPageInRange } from '../../lib/paging.js';
 import { useFormatter, usePermission } from '../../lib/store.js';
 import { errorMessage } from '../../lib/errors.js';
 import { invalidateMoneyViews } from '../../lib/invalidate.js';
-import { documentOfLedgerRow, usePrint } from '../../lib/print.js';
+import { documentOfLedgerRow } from '../../lib/print.js';
 import type { PurchaseRow } from '../../lib/purchases.js';
 import { Can } from '../Can.js';
 import { DualAmount } from '../DualAmount.js';
@@ -77,7 +77,6 @@ export function useBuyingSide(input: {
   const { t } = useTranslation();
   const formatter = useFormatter();
   const queryClient = useQueryClient();
-  const print = usePrint();
   const maySeeOwed = usePermission('fields.see_company_balances');
   const maySeePurchases = usePermission('purchases.view');
   const mayPay = usePermission('companies.record_payment');
@@ -250,11 +249,7 @@ export function useBuyingSide(input: {
   const purchasesTab: ReactNode = (
     <>
       {(purchases.data?.items.length ?? 0) > 0 ? (
-        <PrintButton
-          state={selectPurchases}
-          wholeLabel={t('print:print_list')}
-          onPrintWhole={() => print([{ kind: 'purchase_list', query: `company_id=${id}`, from: null, to: null }])}
-        />
+        <PrintButton state={selectPurchases} />
       ) : null}
       <QueryStates
         query={purchases}

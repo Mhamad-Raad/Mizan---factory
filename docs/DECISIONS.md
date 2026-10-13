@@ -1819,7 +1819,7 @@ under." Agreed with them: the page is called **Buying & selling** (کڕین و �
   of "They paid us" / "We paid them" — with **Recorded by: …** under the company (the business
   asked what the bare name was); "Still owed" is red on a sale (to collect, as the Orders list
   always showed it) and amber on a purchase (ours to pay). Tick boxes and one Print button as
-  on every list; "Print list" prints both kinds, each side totalled on its own.
+  on every list (see the D-086 addendum below: a list prints only what is ticked).
 - New sale (green) and New purchase (amber) sit at the top. The Orders and Purchases list pages
   are gone; a company's own Orders and Purchases tabs stay.
 - **A purchase always names a company** on every screen now — "Not from a company" is gone from
@@ -1860,3 +1860,22 @@ dialog opens over the screen the reader is on, which stays exactly as it was und
 own page is never printed and never changes. The frame waits for its stylesheets (three seconds at
 most) and its fonts, and prints after a forced layout rather than on animation frames, which an
 off-screen frame or a background tab is never given.
+
+### D-086 addendum · 2026-10-13 · business request · A list prints what is ticked, nothing else
+
+The business: "print list should be disabled until one or more rows are selected." On Buying &
+selling and on a company's Purchases tab, **Print list** is greyed out, with "Tick the rows to
+print" beside it, until a row is ticked; then it reads "Print selected (n)" and prints those
+receipts. The whole-list printouts it used to make (`trade_list`, `purchase_list`) had no other
+caller and are gone, with their loaders and their labels. An account's **Print account** is not
+a list button: it prints the account's statement for the dates chosen and stays as it was.
+
+### D-089 addendum · 2026-10-13 · business review · The filter panel's boxes are one height
+
+The business: "filter container inputs should be all the same height and the gaps between them
+should be equal." The period select was 44 px, the date boxes 52 and the company button 50, so
+each row of the panel took its tallest box's height and the gaps under the others looked uneven.
+The panel now uses the Accounts period row's rule — every select, date box and button in it is
+3.25rem, following the text size — and the company button fills its field like the boxes beside
+it, a long name ending in "…". `responsive.spec.ts` checks one height and no sideways scroll at
+360 px in all three languages.
