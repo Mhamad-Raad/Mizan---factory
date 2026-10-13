@@ -57,7 +57,14 @@ describe('maintained totals and the ten-year review (D-075)', () => {
         .send({
           name: 'Glass bottle 1 L',
           pricing_unit: 'per_piece',
-          buy: { qty_count: 100, unit_price: { amount: 1_310, currency: 'IQD' }, purchase_date: today() },
+          buy: {
+            qty_count: 100,
+            unit_price: { amount: 1_310, currency: 'IQD' },
+            purchase_date: today(),
+            // Bought from a company and paid on the spot (D-087), so it owes nothing to the tiles.
+            company_id: (await as(ctx.http, admin).post('/api/v1/customers').send({ name: 'Bottle Co.' }).expect(201)).body.id,
+            paid: { in_full: true },
+          },
         })
         .expect(201)
     ).body.id;
@@ -514,15 +521,20 @@ describe('maintained totals and the ten-year review (D-075)', () => {
         await as(ctx.http, admin).get(`/api/v1/reports/payables?from=${today()}&to=${today()}&all=true`).expect(200)
       ).body;
       // 1,000,000 cents sorts above 900,000 dinars: compared as numbers, not as text ("9" > "1").
-      expect(report.groups.map((group: { label: string }) => group.label)).toEqual(['Zagros Metals', 'Kawa Trading']);
-      expect(report.totals.companies).toBe(2);
+      // The bottles' supplier was bought from and paid today (D-087), so it is in the period at zero.
+      expect(report.groups.map((group: { label: string }) => group.label)).toEqual([
+        'Zagros Metals',
+        'Kawa Trading',
+        'Bottle Co.',
+      ]);
+      expect(report.totals.companies).toBe(3);
       expect(report.totals.balance.amount_iqd).toBe(
         report.groups.reduce((sum: number, group: { balance: { amount_iqd: number } }) => sum + group.balance.amount_iqd, 0),
       );
       const firstPage = (
         await as(ctx.http, admin).get(`/api/v1/reports/payables?from=${today()}&to=${today()}&page_size=1`).expect(200)
       ).body;
-      expect(firstPage).toMatchObject({ group_count: 2, has_more: true });
+      expect(firstPage).toMatchObject({ group_count: 3, has_more: true });
       expect(firstPage.totals).toEqual(report.totals);
     });
   });

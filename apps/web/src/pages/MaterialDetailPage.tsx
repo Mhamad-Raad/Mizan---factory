@@ -996,13 +996,14 @@ function AddStockSheet({
   const quantityValid =
     pricedMeasure === 'count' ? count.kind === 'count' && count.value > 0 : quantity.trim() !== '' && Number(quantity) > 0;
   const valid =
-    company.kind !== 'unset' && quantityValid && cost.amount !== null && cost.amount >= 0 && paidNowValid(paid);
+    company.kind === 'company' && quantityValid && cost.amount !== null && cost.amount >= 0 && paidNowValid(paid);
 
   return (
     <BottomSheet title={t('materials:add_stock')} open onClose={onClose} closeLabel={t('common:close')}>
       <div className="mz-stack">
         <p className="mz-muted">{t('materials:add_stock_hint')}</p>
         <CompanyField
+          allowNone={false}
           value={company}
           onChange={(choice) => {
             onEdit?.();

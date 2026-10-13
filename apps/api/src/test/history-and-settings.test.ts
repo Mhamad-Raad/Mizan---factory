@@ -70,7 +70,14 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
         .send({
           name: 'Glass bottle 1 L',
           pricing_unit: 'per_piece',
-          buy: { qty_count: 100, unit_price: { amount: 1_310, currency: 'IQD' }, purchase_date: today },
+          buy: {
+            qty_count: 100,
+            unit_price: { amount: 1_310, currency: 'IQD' },
+            purchase_date: today,
+            // Bought from a company, paid on the spot (D-087).
+            company_id: (await as(ctx.http, adminSession).post('/api/v1/customers').send({ name: `Supplier ${Math.random()}` }).expect(201)).body.id,
+            paid: { in_full: true },
+          },
         })
         .expect(201);
       const kawa = (await as(ctx.http, adminSession).post('/api/v1/customers').send({ name: 'Kawa Trading' }).expect(201))
@@ -120,7 +127,14 @@ describe('history and settings (FR-901, FR-902, FR-1107)', () => {
         .send({
           name: 'Copper wire',
           pricing_unit: 'per_piece',
-          buy: { qty_count: 100, unit_price: { amount: 1_310, currency: 'IQD' }, purchase_date: today },
+          buy: {
+            qty_count: 100,
+            unit_price: { amount: 1_310, currency: 'IQD' },
+            purchase_date: today,
+            // Bought from a company, paid on the spot (D-087).
+            company_id: (await as(ctx.http, adminSession).post('/api/v1/customers').send({ name: `Supplier ${Math.random()}` }).expect(201)).body.id,
+            paid: { in_full: true },
+          },
         })
         .expect(201);
       const kawa = (await as(ctx.http, adminSession).post('/api/v1/customers').send({ name: 'Kawa Trading' }).expect(201))

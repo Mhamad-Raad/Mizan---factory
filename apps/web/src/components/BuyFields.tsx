@@ -27,18 +27,21 @@ export function companyIdOf(choice: CompanyChoice): string | null {
 const NO_COMPANY = '__no_company__';
 
 /**
- * "Bought from": a button that opens the company picker. "Not from a company" is the first row
- * of the picker, so a purchase is never left without an answer by accident — a purchase from
- * nobody owes nobody, and the business wants to know what it owes (D-085).
+ * "Bought from": a button that opens the company picker, so a purchase is never left without an
+ * answer by accident — the business wants to know what it owes (D-085). Where `allowNone` is on
+ * (the Purchases form) "Not from a company" is the picker's first row; on a material — a new one,
+ * or "Buy more" — a company must be chosen (D-087).
  */
 export function CompanyField({
   value,
   onChange,
   error,
+  allowNone = true,
 }: {
   value: CompanyChoice;
   onChange: (choice: CompanyChoice) => void;
   error?: string;
+  allowNone?: boolean;
 }) {
   const { t } = useTranslation();
   const [picking, setPicking] = useState(false);
@@ -68,12 +71,11 @@ export function CompanyField({
           emptyTitle={t('customers:empty')}
           // The walk-in customer is a till, never a supplier.
           exclude={(row: never) => (row as unknown as CustomerRow).is_system}
-          pinned={{
-            id: NO_COMPANY,
-            title: t('purchases:no_company'),
-            subtitle: t('purchases:no_company_hint'),
-            row: null as never,
-          }}
+          pinned={
+            allowNone
+              ? { id: NO_COMPANY, title: t('purchases:no_company'), subtitle: t('purchases:no_company_hint'), row: null as never }
+              : undefined
+          }
           toItem={(row: never) => {
             const company = row as unknown as CustomerRow;
             return {

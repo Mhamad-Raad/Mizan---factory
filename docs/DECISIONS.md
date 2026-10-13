@@ -1709,3 +1709,22 @@ account row prints as a voucher when its order or purchase is not the reader's t
 Tests: `print.test.ts` (10). Relied on: the business's request; FR-613 to FR-615 (proposed, now
 requested); rules 5–7 (each document in the page's direction, every string in three languages,
 every amount through `DualAmount`, a running balance in its account's currency as on screen).
+
+## D-087 · 2026-10-13 · business request · A material is always bought from a company
+
+The business: "choose who you bought it from must be required in add and increase materials."
+
+- **New material** records its first purchase again every time (D-085's "Record its first
+  purchase now" tick box is gone), and **"Buy more"** on a material asks the same: on both, "Bought
+  from" must be a company — "Not from a company" is not offered there.
+- **The server says so too:** `POST /items` refuses a first purchase without `company_id`
+  (`buy.company_id`, `REQUIRED`). A material created with no purchase at all — the go-live import —
+  is unaffected.
+- The Purchases form keeps "Not from a company" for now: the request named the material screens;
+  removing it there too is one line, and a server rule on every purchase would end FR-407 (a
+  purchase owing nobody), which the business has not asked for.
+- The demo seed creates its companies first and buys every material from one: the first purchases
+  from Erbil Metal House, paid on the spot; the later shipments from Baghdad Pipe Trading on credit.
+
+Tests: one API case; four existing tests that created a material's first purchase without a
+company now name one.

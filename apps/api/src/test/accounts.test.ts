@@ -47,13 +47,21 @@ describe('the warehouse and the accountant (D-062)', () => {
 
     await as(ctx.http, admin).post('/api/v1/settings/global-rates').send({ rate_iqd_per_usd: '1310' }).expect(201);
 
-    // Creating the material *is* buying it: 100 bottles at 1,310 د.ع ($1.00) each.
+    // Creating the material *is* buying it — from a company (D-087): 100 bottles at 1,310 د.ع
+    // ($1.00) each, paid on the spot, so nothing is owed to muddy the figures below.
+    const supplier = await as(ctx.http, admin).post('/api/v1/customers').send({ name: 'Bottle Co.' }).expect(201);
     const created = await as(ctx.http, admin)
       .post('/api/v1/items')
       .send({
         name: 'Glass bottle 1 L',
         pricing_unit: 'per_piece',
-        buy: { qty_count: 100, unit_price: { amount: 1_310, currency: 'IQD' }, purchase_date: today() },
+        buy: {
+          qty_count: 100,
+          unit_price: { amount: 1_310, currency: 'IQD' },
+          purchase_date: today(),
+          company_id: supplier.body.id,
+          paid: { in_full: true },
+        },
       })
       .expect(201);
     bottles = created.body.id;

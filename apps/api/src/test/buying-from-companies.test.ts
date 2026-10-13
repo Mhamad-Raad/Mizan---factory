@@ -474,4 +474,18 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
       expect(settled.body.items.map((row: { id: string }) => row.id)).toContain(dollarCo);
     });
   });
+
+  it('refuses a new material’s first purchase that names no company (D-087)', async () => {
+    const refused = await as(ctx.http, buyer)
+      .post('/api/v1/items')
+      .send({
+        name: 'Nuts M8',
+        pricing_unit: 'per_piece',
+        buy: { qty_count: 10, unit_price: { amount: 100, currency: 'IQD' }, purchase_date: today() },
+      })
+      .expect(422);
+    expect(refused.body.error.fields[0].path).toBe('buy.company_id');
+    // A material with no purchase yet — the go-live import — is still fine.
+    await as(ctx.http, buyer).post('/api/v1/items').send({ name: 'Nuts M8', pricing_unit: 'per_piece' }).expect(201);
+  });
 });

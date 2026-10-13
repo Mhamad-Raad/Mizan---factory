@@ -44,11 +44,11 @@
   "prices": "Prices",
   "prices_hint": "This month's prices — type in dinars or dollars.",
   "first_buy": "First purchase",
-  "first_buy_hint": "Who it was bought from, how many arrived and what each one cost.",
+  "first_buy_hint": "Which company it was bought from, how many arrived and what each one cost.",
   "bought_on": "Bought on",
   "cost_per_unit": "Cost per unit",
   "buy_note": "Note for this buy",
-  "needs_buy_permission": "You may add the material, but not record a purchase. Someone who buys stock records it from the Purchases page.",
+  "needs_buy_permission": "Creating a material records its first purchase, and you are not allowed to buy stock. Ask an administrator.",
   "add_stock": "Buy more",
   "add_stock_hint": "A new purchase of this material: who from, how many, what each cost. It keeps its own price, so stock bought at different prices stays apart.",
   "stock_added": "Purchase saved",
@@ -63,7 +63,5 @@
   "lot_at": "{{quantity}} at {{price}}",
   "stock_by_price_short": "In stock: {{lots}}",
   "stock_left_short": "Left in each buy: {{lots}}",
-  "used_up_heading": "Used-up buys, newest first",
-  "buying_now": "Record its first purchase now",
-  "buy_later_hint": "The material is added with no stock. Record what you bought from the Purchases page — several materials can go on one purchase."
+  "used_up_heading": "Used-up buys, newest first"
 }

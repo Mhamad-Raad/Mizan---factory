@@ -184,6 +184,14 @@ export class ItemsService {
   async create(context: RequestContext, input: CreateItemInput): Promise<ItemDto> {
     // The first buy is a buy: it needs the key that buying needs.
     if (input.buy && !can(context, 'purchases.create')) throw ApiError.permissionDenied('purchases.create');
+    // A material is bought from a company (D-087): its first purchase names one, so what we owe
+    // for it is on that company's account from the start. The go-live import, which creates
+    // materials without a purchase, is not affected.
+    if (input.buy && !input.buy.company_id) {
+      throw ApiError.validation([
+        { path: 'buy.company_id', code: 'REQUIRED', message_key: 'errors:company_required', params: {} },
+      ]);
+    }
     const name = input.name.trim();
     const existing = await this.items.findByNormalizedName(normalizeForSearch(name));
     if (existing) {
