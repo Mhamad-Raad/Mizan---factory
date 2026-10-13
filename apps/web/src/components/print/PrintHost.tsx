@@ -15,11 +15,11 @@ import { PrintedDocument } from './PrintedDocuments.js';
  * The one place the system prints from (D-086), mounted once beside the app.
  *
  * A screen hands it documents; it fetches them all, renders them into a block that only paper
- * ever sees — a page each — and opens the browser's print dialog once everything, fonts included,
- * is in place. Printing used to be an off-screen copy on each page, lifted to the top of the
- * sheet with `position: absolute`: one document, and never more than one page of it. Here the app
- * is taken off the paper instead, so documents flow page after page, and a long statement breaks
- * across pages like any other text.
+ * ever sees — a page each — and prints them from a hidden frame of their own once everything,
+ * fonts included, is in place: the browser's print dialog opens over the page the reader is on,
+ * which stays exactly as it was underneath, with no new tab or window (D-086 addendum). The
+ * documents flow page after page in that frame, so a long statement breaks across pages like any
+ * other text.
  */
 export function PrintHost() {
   const job = usePrintQueue((state) => state.job);
@@ -49,39 +49,19 @@ function PrintRun({ job }: { job: PrintJob }) {
   const failed = results.find((result) => result.isError);
   const ready = results.length > 0 && results.every((result) => result.isSuccess);
   const printed = useRef(false);
+  const host = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!ready || printed.current) return undefined;
+    if (!ready || printed.current || !host.current) return undefined;
     printed.current = true;
-    let cancelled = false;
-    const done = () => {
-      document.body.classList.remove('mz-printing');
-      finish(job.id);
-    };
-    // The browser says when the dialog has closed — printed, saved or cancelled alike.
-    window.addEventListener('afterprint', done, { once: true });
-    void document.fonts.ready.then(() => {
-      if (cancelled) return;
-      document.body.classList.add('mz-printing');
-      // Two frames: the documents are laid out before the dialog takes its snapshot.
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => {
-          if (!cancelled) window.print();
-        }),
-      );
-    });
-    return () => {
-      cancelled = true;
-      window.removeEventListener('afterprint', done);
-      document.body.classList.remove('mz-printing');
-    };
+    return printInFrame(host.current, () => finish(job.id));
   }, [ready, finish, job.id]);
 
   return (
     <>
       {ready
         ? createPortal(
-            <div className="mz-print-host" aria-hidden="true">
+            <div ref={host} className="mz-print-host" aria-hidden="true">
               {results.map((result, index) =>
                 result.data ? (
                   <div key={index} className="mz-print-page">
@@ -104,4 +84,89 @@ function PrintRun({ job }: { job: PrintJob }) {
       ) : null}
     </>
   );
+}
+
+/**
+ * Prints a block from a hidden frame — the way the dashboard's receipts print — and calls `done`
+ * when the dialog closes, printed, saved or cancelled alike. The frame carries the app's own
+ * stylesheets and the page's language, direction, theme and text size, so paper reads exactly as
+ * the reader set the app. Returns what removes the frame, should the job be replaced first.
+ */
+function printInFrame(source: HTMLElement, done: () => void): () => void {
+  const frame = document.createElement('iframe');
+  frame.setAttribute('aria-hidden', 'true');
+  frame.tabIndex = -1;
+  // Out of sight but laid out: a frame of no size, or `display: none`, prints blank in some browsers.
+  Object.assign(frame.style, {
+    position: 'fixed',
+    insetBlockStart: '-10000px',
+    insetInlineStart: '-10000px',
+    inlineSize: '210mm',
+    blockSize: '297mm',
+    border: '0',
+  });
+  document.body.appendChild(frame);
+
+  let finished = false;
+  const remove = () => {
+    if (finished) return;
+    finished = true;
+    frame.remove();
+  };
+  const frameWindow = frame.contentWindow;
+  const sheet = frame.contentDocument;
+  if (!frameWindow || !sheet) {
+    remove();
+    done();
+    return remove;
+  }
+
+  for (const { name, value } of Array.from(document.documentElement.attributes)) {
+    sheet.documentElement.setAttribute(name, value);
+  }
+  const base = sheet.createElement('base');
+  base.href = document.baseURI;
+  sheet.head.appendChild(base);
+  const loading: Promise<unknown>[] = [];
+  for (const style of Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))) {
+    const copy = sheet.importNode(style, true);
+    if (copy instanceof HTMLLinkElement) {
+      loading.push(
+        new Promise((resolve) => {
+          copy.addEventListener('load', resolve, { once: true });
+          copy.addEventListener('error', resolve, { once: true });
+        }),
+      );
+    }
+    sheet.head.appendChild(copy);
+  }
+  sheet.body.className = `${document.body.className} mz-printing`;
+  sheet.body.appendChild(sheet.importNode(source, true));
+
+  frameWindow.addEventListener(
+    'afterprint',
+    () => {
+      remove();
+      done();
+    },
+    { once: true },
+  );
+  // A stylesheet that never answers must not hold the print for ever.
+  const styled = Promise.race([Promise.all(loading), new Promise((resolve) => setTimeout(resolve, 3000))]);
+  void styled
+    .then(() => {
+      // Laid out first, so the fonts its text needs are asked for before they are waited on.
+      void sheet.body.offsetHeight;
+      return sheet.fonts.ready;
+    })
+    .then(() => {
+      if (finished) return;
+      // A layout forced in the frame lays the documents out before the dialog takes its
+      // snapshot — not animation frames, which an off-screen frame (or a tab in the background)
+      // is never given.
+      void sheet.body.offsetHeight;
+      frameWindow.focus();
+      frameWindow.print();
+    });
+  return remove;
 }
