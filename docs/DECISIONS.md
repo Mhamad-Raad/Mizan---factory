@@ -1749,3 +1749,12 @@ does not feel correct."
   and its save button wears the same colour and words.
 - The account rows keep their names ("Payment received", "Payment made"), which describe a record
   rather than ask for an action; the printed vouchers are unchanged.
+
+### D-084 addendum · 2026-10-13 · business review · A name in a table cell sits on the column's reading side
+
+In Kurdish, the Orders table showed each company's name ("Kawa Trading") at the far left of its
+column while the heading and the "recorded by" line under it sat on the right. A table cell lays
+its lines out as a stack; a name in its own script is isolated (`<bdi>`), and stretched to the
+column's width it began at its own (left) start. One rule in the library — such a name keeps its
+own width and sits on the column's reading side, or at its end in a column of figures — fixes it
+in every table. The other lists were measured in Kurdish for the same fault: none.

@@ -2318,6 +2318,22 @@ html[data-mirroring='true'] body {
   display: block;
 }
 
+/*
+ * A name in its own script inside a cell — "Kawa Trading" in a Kurdish table. As a line of the
+ * cell it stretched to the column's full width, and being left-to-right it began at the far left
+ * while the column's heading and the line under it sat on the right (business review, 2026-10-13;
+ * D-084's fault in another place). It keeps its own width and sits on the column's reading side —
+ * or at its end, in a column of figures — like every other line of the cell.
+ */
+.mz-cell__body > bdi {
+  align-self: flex-start;
+  max-inline-size: 100%;
+}
+
+td[data-numeric='true'] .mz-cell__body > bdi {
+  align-self: flex-end;
+}
+
 /* ─────────────── the list's toolbar ───────────────
  *
  * Search, the filters and the page's own action, every control the same 44 px tall so they
