@@ -15,6 +15,8 @@ for (const route of routes) {
   const label =
     route.protection.kind === 'permission'
       ? route.protection.keys.join(' + ')
+      : route.protection.kind === 'any-permission'
+        ? route.protection.keys.join(' | ')
       : route.protection.kind === 'admin'
         ? 'admin only'
         : route.protection.kind;

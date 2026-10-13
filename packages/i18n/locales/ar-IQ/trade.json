@@ -23,5 +23,7 @@
   "tile_purchases": "المشتريات",
   "tile_bought": "المشترى",
   "tile_owed_to_us": "ما زال لنا على الشركات",
-  "empty": "لا مبيعات ولا مشتريات في هذه الفترة"
+  "empty": "لا مبيعات ولا مشتريات في هذه الفترة",
+  "period_since_yesterday": "اليوم والأمس",
+  "remove_company": "إزالة"
 }

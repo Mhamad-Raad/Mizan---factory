@@ -41,6 +41,9 @@ import type {
 /** How long the creator may undo a purchase from the save toast (FR-405). */
 const UNDO_WINDOW_MS = 8_000;
 
+/** How many companies' accounts a list allocates at once for its rows' payment states. */
+const PAYMENT_CONCURRENCY = 4;
+
 export interface PurchaseLineInput {
   item_id: string;
   qty_count?: number | null;
@@ -152,7 +155,7 @@ export interface PurchaseDto {
    * company's currency, and whether it is paid (D-085). Absent for a void purchase, one from no
    * company, and any other reader.
    */
-  payment?: { total: number; remaining: number; status: 'paid' | 'partially_paid' | 'unpaid' };
+  payment?: { remaining: number; status: 'paid' | 'partially_paid' | 'unpaid' };
 }
 
 interface PreparedLine extends NewPurchaseLine {
@@ -241,18 +244,22 @@ export class PurchasesService {
         companies.set(item.company_id, item.settlement_currency);
       }
     }
-    const allocations = await Promise.all(
-      [...companies].map(async ([companyId, settlement]) => {
+    // A few companies at a time, not one query pair per company at once: a page of twenty-five
+    // purchases from twenty-five suppliers must not take the whole connection pool (review).
+    const pending = [...companies];
+    const byPurchase = new Map<string, { remaining: number; total: number }>();
+    const worker = async () => {
+      for (let next = pending.shift(); next; next = pending.shift()) {
+        const [companyId, settlement] = next;
         const { allocation } = await this.companiesService.allocationOf(this.database, companyId, settlement);
-        return allocation.purchases;
-      }),
-    );
-    const byPurchase = new Map(allocations.flat().map((row) => [row.purchase_id, row]));
+        for (const row of allocation.purchases) byPurchase.set(row.purchase_id, row);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(PAYMENT_CONCURRENCY, pending.length) }, worker));
     for (const item of items) {
       const mine = item.doc_status === 'active' ? byPurchase.get(item.id) : undefined;
       if (!mine) continue;
       item.payment = {
-        total: mine.total,
         remaining: mine.remaining,
         status: mine.remaining <= 0 ? 'paid' : mine.remaining < mine.total ? 'partially_paid' : 'unpaid',
       };

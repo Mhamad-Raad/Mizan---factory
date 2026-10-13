@@ -71,7 +71,8 @@ export function CustomersPage() {
   });
   const seesSelling = usePermission('fields.see_customer_balances');
   const seesBuying = usePermission('fields.see_company_balances');
-  const [includeInactive, setIncludeInactive] = useState(false);
+  // The owed figures count hidden companies too, so the list they open shows them (D-089).
+  const [includeInactive, setIncludeInactive] = useState(() => params.get('inactive') === '1');
   const [sort, setSort] = useState<'name' | 'balance'>('name');
 
   const paging = usePaging({ storageKey: 'companies', resetOn: [query, balance, includeInactive, sort] });

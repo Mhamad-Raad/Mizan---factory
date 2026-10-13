@@ -8,8 +8,12 @@ import type { PrintDocument } from '../lib/print.js';
 export interface RowSelection<Row> {
   isSelected: (row: Row) => boolean;
   onToggle: (row: Row) => void;
-  /** The heading's tick box: every row of this page on, or off. */
-  allSelected: (rows: readonly Row[]) => boolean;
+  /**
+   * The heading's tick box: how much of this page is ticked — all, some (the print limit can stop
+   * a "tick all" part way) or none. Pressed with anything ticked it clears the page; with nothing
+   * ticked it ticks it, as far as the limit allows (review).
+   */
+  pageState: (rows: readonly Row[]) => 'all' | 'some' | 'none';
   onToggleAll: (rows: readonly Row[], on: boolean) => void;
 }
 
@@ -33,7 +37,10 @@ export function usePrintSelection<Row>(documentOf: (row: Row) => PrintDocument, 
         else if (next.size < PRINT_LIMIT) next.set(key, documentOf(row));
         return next;
       }),
-    allSelected: (rows) => rows.length > 0 && rows.every((row) => selected.has(keyOf(row))),
+    pageState: (rows) => {
+      const ticked = rows.filter((row) => selected.has(keyOf(row))).length;
+      return ticked === 0 ? 'none' : ticked === rows.length ? 'all' : 'some';
+    },
     onToggleAll: (rows, on) =>
       setSelected((current) => {
         const next = new Map(current);

@@ -109,6 +109,6 @@
   "how_much_we_paid": "چەندمان دا",
   "money_in": "پارەی هاتوو",
   "money_out": "پارەی دەرچوو",
-  "money_in_from": "پارەی هاتوو — لە",
-  "money_out_to": "پارەی دەرچوو — بۆ"
+  "money_in_from": "پارەی هاتوو — نێردەر: {{name}}",
+  "money_out_to": "پارەی دەرچوو — وەرگر: {{name}}"
 }

@@ -61,7 +61,7 @@ const LINKS: Record<string, { to: string; permission: string }> = {
   sales_today: { to: '/orders', permission: 'orders.view' },
   unpaid_orders: { to: '/orders', permission: 'orders.view' },
   purchases_today: { to: '/accounts', permission: 'accounts.view' },
-  we_owe_companies: { to: '/customers?balance=we_owe', permission: 'customers.view' },
+  we_owe_companies: { to: '/customers?balance=we_owe&inactive=1', permission: 'customers.view' },
   low_stock: { to: '/materials', permission: 'materials.view' },
   pending_returns: { to: '/damages', permission: 'damages.view' },
   my_actions_today: { to: '/history', permission: 'history.view' },

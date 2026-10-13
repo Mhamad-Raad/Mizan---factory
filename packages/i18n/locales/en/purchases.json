@@ -5,7 +5,6 @@
   "number": "Purchase #{{number}}",
   "company": "Company",
   "no_company": "Not from a company",
-  "no_company_hint": "Stock goes up and nobody is owed — for something bought with cash from nobody in particular.",
   "purchase_date": "Purchase date",
   "pick_company": "Choose who you bought from",
   "pick_material": "Choose a material",

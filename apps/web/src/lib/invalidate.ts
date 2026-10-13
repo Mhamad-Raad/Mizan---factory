@@ -1,8 +1,8 @@
 import type { QueryClient } from '@tanstack/react-query';
 
 /**
- * The screens that sum money over many records — Today, Reports, Accounts and the expense
- * lists behind them. Any write that moves money or stock refreshes them too, or they go on
+ * The screens that sum money over many records — Today, Reports, Accounts, the expense lists and
+ * Buying & selling (D-089), whose list and figures every sale, purchase and payment moves. Any write that moves money or stock refreshes them too, or they go on
  * showing yesterday's figure until somebody reloads. History comes with them: every write is a
  * row there (rule 3).
  */
@@ -12,6 +12,7 @@ export async function invalidateMoneyViews(queryClient: QueryClient): Promise<vo
     queryClient.invalidateQueries({ queryKey: ['reports'] }),
     queryClient.invalidateQueries({ queryKey: ['accounts'] }),
     queryClient.invalidateQueries({ queryKey: ['expenses'] }),
+    queryClient.invalidateQueries({ queryKey: ['trade'] }),
     invalidateHistory(queryClient),
   ]);
 }

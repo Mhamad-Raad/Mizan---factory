@@ -12,7 +12,6 @@ import { entryTitle } from '../../lib/entry-title.js';
 import { shownOf } from '../TradeTable.js';
 import type {
   TradeListData,
-  OrderListData,
   OrderReceiptData,
   PrintData,
   PurchaseListData,
@@ -40,8 +39,6 @@ export function PrintedDocument({ data }: { data: PrintData }) {
       return <AccountStatement data={data} />;
     case 'purchase_list':
       return <PurchaseList data={data} />;
-    case 'order_list':
-      return <OrderList data={data} />;
     case 'trade_list':
       return <TradeList data={data} />;
   }
@@ -660,68 +657,6 @@ function PurchaseList({ data }: { data: PurchaseListData }) {
         <div className="mz-invoice__totals">
           <TotalRow label={t('glossary:total')} grand>
             <DualAmount amount_iqd={data.totals.cost.total_iqd} amount_usd_cents={data.totals.cost.total_usd_cents} />
-          </TotalRow>
-        </div>
-      ) : null}
-      <DocumentFoot />
-    </div>
-  );
-}
-
-/** The orders of a period, as filtered on screen (D-086). */
-function OrderList({ data }: { data: OrderListData }) {
-  const { t } = useTranslation();
-  const formatter = useFormatter();
-  return (
-    <div className="mz-invoice">
-      <DocumentHead type={t('print:list')} title={t('orders:title')} date={null} />
-      <div className="mz-invoice__parties">
-        <Party label={t('print:period')} name={periodText(data.from, data.to, t, formatter.date)} />
-        <Party end label={t('orders:title')} name={formatter.number(data.totals?.orders ?? data.total)} />
-      </div>
-      <CappedNote shown={data.rows.length} total={data.total} />
-      <table className="mz-invoice__table">
-        <thead>
-          <tr>
-            <th>{t('common:date')}</th>
-            <th>{t('print:number')}</th>
-            <th>{t('glossary:customer')}</th>
-            <th>{t('print:status')}</th>
-            <th className="mz-invoice__num">{t('glossary:total')}</th>
-            <th className="mz-invoice__num">{t('orders:remaining')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.rows.map((row) => (
-            <tr key={row.id} className={row.doc_status === 'void' ? 'mz-invoice__row--void' : undefined}>
-              <td data-tabular>{formatter.date(row.order_date)}</td>
-              <td data-tabular>{formatter.identifier(row.number)}</td>
-              <td>
-                <bdi>{customerName({ name: row.customer_name, is_system: row.customer_is_system }, t)}</bdi>
-              </td>
-              <td>{t(`glossary:${row.status}`)}</td>
-              <td className="mz-invoice__num">
-                <DualAmount amount_iqd={row.total_iqd} amount_usd_cents={row.total_usd_cents} primary={row.settlement_currency} />
-              </td>
-              <td className="mz-invoice__num">
-                {row.status === 'void' ? (
-                  '—'
-                ) : (
-                  <DualAmount
-                    {...bothOf(row.remaining, row.settlement_currency, row.rate_iqd_per_usd)}
-                    primary={row.settlement_currency}
-                    kind="derived"
-                  />
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {data.totals ? (
-        <div className="mz-invoice__totals">
-          <TotalRow label={t('glossary:total')} grand>
-            <DualAmount amount_iqd={data.totals.total_iqd} amount_usd_cents={data.totals.total_usd_cents} />
           </TotalRow>
         </div>
       ) : null}

@@ -85,8 +85,9 @@ export function DataList<Row>({
                 <Checkbox
                   labelHidden
                   label={t('print:select_all_page')}
-                  checked={selection.allSelected(rows)}
-                  onChange={(on) => selection.onToggleAll(rows, on)}
+                  checked={selection.pageState(rows) === 'all'}
+                  indeterminate={selection.pageState(rows) === 'some'}
+                  onChange={() => selection.onToggleAll(rows, selection.pageState(rows) === 'none')}
                 />
               </th>
             ) : null}

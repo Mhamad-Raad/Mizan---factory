@@ -7,6 +7,7 @@ import { SetMetadata, applyDecorators } from '@nestjs/common';
  * user may call (their own password, their own activity, the user directory — spec 2.7).
  */
 export const PERMISSION_KEY = 'mizan:permission';
+export const ANY_PERMISSION_KEY = 'mizan:any_permission';
 export const ADMIN_ONLY_KEY = 'mizan:admin_only';
 export const PUBLIC_KEY = 'mizan:public';
 export const SESSION_ONLY_KEY = 'mizan:session_only';
@@ -20,6 +21,14 @@ export const ALLOW_BEFORE_PASSWORD_CHANGE_KEY = 'mizan:allow_before_password_cha
  */
 export const RequirePermission = (...permissions: [string, ...string[]]) =>
   SetMetadata(PERMISSION_KEY, permissions);
+
+/**
+ * Any **one** of the keys opens the route (D-089): Buying & selling is for whoever may see sales
+ * or purchases. The guard refuses a reader with none of them, as it refuses a missing key; what
+ * the reader then sees of each side is the service's to decide.
+ */
+export const RequireAnyPermission = (...permissions: [string, string, ...string[]]) =>
+  SetMetadata(ANY_PERMISSION_KEY, permissions);
 
 export const AdminOnly = () => SetMetadata(ADMIN_ONLY_KEY, true);
 

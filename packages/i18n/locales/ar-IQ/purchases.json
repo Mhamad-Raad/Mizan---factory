@@ -5,7 +5,6 @@
   "number": "شراء رقم {{number}}",
   "company": "الشركة",
   "no_company": "ليس من شركة",
-  "no_company_hint": "يزيد المخزون ولا دين على أحد — لما اشتُري نقداً من جهة غير محددة.",
   "purchase_date": "تاريخ الشراء",
   "pick_company": "اختر ممن اشتريت",
   "pick_material": "اختر مادة",

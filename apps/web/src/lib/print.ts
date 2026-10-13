@@ -20,8 +20,6 @@ export type PrintDocument =
   | { kind: 'statement'; accountId: string; from: string; to: string; sides: AccountSide[] }
   /** The purchases list as filtered on screen: its query string (without paging) and its period. */
   | { kind: 'purchase_list'; query: string; from: string | null; to: string | null }
-  /** The orders list as filtered on screen. */
-  | { kind: 'order_list'; query: string; from: string | null; to: string | null }
   /** Buying & selling as filtered on screen: sales and purchases together (D-089). */
   | { kind: 'trade_list'; query: string; from: string | null; to: string | null };
 
@@ -70,7 +68,6 @@ export function usePrint(): (documents: PrintDocument[]) => void {
 export function requiredFor(document: PrintDocument): string[] {
   switch (document.kind) {
     case 'order':
-    case 'order_list':
       return ['orders.view'];
     case 'purchase':
     case 'purchase_list':

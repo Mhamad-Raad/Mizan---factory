@@ -6,12 +6,15 @@ import { AppModule } from '../app.module.js';
 import {
   ADMIN_ONLY_KEY,
   PERMISSION_KEY,
+  ANY_PERMISSION_KEY,
   PUBLIC_KEY,
   SESSION_ONLY_KEY,
 } from '../common/decorators.js';
 
 export type RouteProtection =
   | { kind: 'permission'; keys: readonly string[] }
+  /** Any one of the keys (D-089). */
+  | { kind: 'any-permission'; keys: readonly string[] }
   | { kind: 'admin' }
   | { kind: 'session' }
   | { kind: 'public' }
@@ -74,11 +77,14 @@ export async function collectRoutes(): Promise<RouteInfo[]> {
         const permission = declared === undefined ? undefined : typeof declared === 'string' ? [declared] : declared;
         const adminOnly = Reflect.getMetadata(ADMIN_ONLY_KEY, method) as boolean | undefined;
         const sessionOnly = Reflect.getMetadata(SESSION_ONLY_KEY, method) as boolean | undefined;
+        const anyOf = Reflect.getMetadata(ANY_PERMISSION_KEY, method) as string[] | undefined;
         const isPublic = Reflect.getMetadata(PUBLIC_KEY, method) as boolean | undefined;
 
         const protection: RouteProtection = permission?.length
           ? { kind: 'permission', keys: permission }
-          : adminOnly
+          : anyOf?.length
+            ? { kind: 'any-permission', keys: anyOf }
+            : adminOnly
             ? { kind: 'admin' }
             : sessionOnly
               ? { kind: 'session' }

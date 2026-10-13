@@ -366,7 +366,7 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
       expect(entered).toBe('USD');
     });
 
-    it('sums what we owe each company in its own currency only, and leaves hidden companies out', async () => {
+    it('sums what we owe each company in its own currency only, hidden companies included', async () => {
       // A dollar company bought from at 1,300 and paid at 1,500: we still owe it $100, while its
       // dinar column has gone negative.
       await buy(buyer, {
@@ -389,8 +389,9 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
         .post(`/api/v1/customers/${alNoor}/deactivate`)
         .send({ version: hidden.body.version })
         .expect(200);
+      // Hiding a company does not settle what we owe it.
       const after = await as(ctx.http, buyer).get('/api/v1/purchases').expect(200);
-      expect(after.body.totals.owed_by_us).toEqual({ companies: 1, owed_iqd: 0, owed_usd_cents: 10_000 });
+      expect(after.body.totals.owed_by_us).toEqual({ companies: 2, owed_iqd: 150_000, owed_usd_cents: 10_000 });
       // A company's own Purchases tab does not pay for the figure it never shows.
       const tab = await as(ctx.http, buyer).get(`/api/v1/companies/${dollarCo}/purchases`).expect(200);
       expect(tab.body.totals.owed_by_us).toBeUndefined();
@@ -497,9 +498,9 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
 
     const list = await as(ctx.http, buyer).get('/api/v1/purchases').expect(200);
     const byId = new Map(list.body.items.map((row: { id: string; payment?: unknown }) => [row.id, row.payment]));
-    expect(byId.get(paid.body.id)).toEqual({ total: 150_000, remaining: 0, status: 'paid' });
-    expect(byId.get(part.body.id)).toEqual({ total: 150_000, remaining: 100_000, status: 'partially_paid' });
-    expect(byId.get(unpaid.body.id)).toEqual({ total: 150_000, remaining: 150_000, status: 'unpaid' });
+    expect(byId.get(paid.body.id)).toEqual({ remaining: 0, status: 'paid' });
+    expect(byId.get(part.body.id)).toEqual({ remaining: 100_000, status: 'partially_paid' });
+    expect(byId.get(unpaid.body.id)).toEqual({ remaining: 150_000, status: 'unpaid' });
     expect(byId.get(stockOnly.body.id)).toBeUndefined();
 
     // What we owe is the company-balances flag's, so the list says nothing about it to others.

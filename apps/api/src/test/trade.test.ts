@@ -133,4 +133,36 @@ describe('buying and selling on one list (D-089)', () => {
     const search = await as(ctx.http, admin).get('/api/v1/trade?q=Al-Noor').expect(200);
     expect(search.body.items.map((row: { kind: string }) => row.kind)).toEqual(['purchase']);
   });
+
+  describe('what the review of D-089 found', () => {
+    it('ignores a side the reader cannot switch to, so an old /orders link still shows a buyer their side', async () => {
+      await buy(1);
+      await sell(0);
+      const asBuyer = await as(ctx.http, buyer).get('/api/v1/trade?kind=sale').expect(200);
+      expect(asBuyer.body.items.map((row: { kind: string }) => row.kind)).toEqual(['purchase']);
+    });
+
+    it('keeps the owed figures when the filter leaves no side to list', async () => {
+      await buy(1);
+      await sell(0);
+      const none = await as(ctx.http, admin).get('/api/v1/trade?kind=purchase&status=paid').expect(200);
+      expect(none.body.items).toEqual([]);
+      expect(none.body.totals.owed_by_us.owed_iqd).toBe(150_000);
+      expect(none.body.totals.owed_to_us.owed_iqd).toBe(20_000);
+    });
+
+    it('pages across both kinds without repeating or losing a row', async () => {
+      const ids: string[] = [];
+      for (let index = 0; index < 4; index += 1) {
+        ids.push((await buy(index % 2)).body.id, (await sell(index % 2)).body.id);
+      }
+      const seen: string[] = [];
+      for (let page = 1; page <= 3; page += 1) {
+        const response = await as(ctx.http, admin).get(`/api/v1/trade?page=${page}&page_size=3`).expect(200);
+        seen.push(...response.body.items.map((row: { id: string }) => row.id));
+      }
+      expect(seen).toHaveLength(8);
+      expect(new Set(seen)).toEqual(new Set(ids));
+    });
+  });
 });

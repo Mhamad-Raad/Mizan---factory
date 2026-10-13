@@ -1801,8 +1801,9 @@ under." Agreed with them: the page is called **Buying & selling** (کڕین و �
   them), the two are put together as one list of ids sorted by date and entry time, and only the
   page's ids are filled, each as its own list sends it. A reader sees the sides they may —
   `orders.view`, `purchases.view`, or both; anyone with neither is refused. Rule 4 asks every
-  route for a decorator and `@RequirePermission` can only ask for *all* of its keys, so the route
-  is `@SessionOnly` and the service decides.
+  route for a decorator and `@RequirePermission` asks for *all* of its keys, so the route carries
+  the new `@RequireAnyPermission('orders.view', 'purchases.view')`, enforced by the same guard and
+  counted by the undecorated-route check (review; it was `@SessionOnly` at first).
 - **The filters** open under the search from one **Filters** button that counts what is set:
   the period (presets, or From and To of one's own), the company, who recorded it, the status
   and the payment type, with "Clear filters". A paid state or a payment type is a sale's question,
@@ -1826,6 +1827,36 @@ under." Agreed with them: the page is called **Buying & selling** (کڕین و �
   a purchase with no company: seventeen older tests use one as plain stock, and the purchases of
   before D-085 are such; enforcing it there is a migration of those tests for no gain on screen.
 
-Tests: `trade.test.ts` (5). The old screenshot specs `polish.spec.ts` and `selling.spec.ts` still
+Tests: `trade.test.ts` (8). The old screenshot specs `polish.spec.ts` and `selling.spec.ts` still
 look for labels renamed before this work ("Customer", "Customers & companies", "6,483.500") and
 fail as they did on `main`.
+
+### D-089 addendum · 2026-10-13 · review · What the review of Buying & selling changed
+
+- **Paging reads the indexes, not the tables.** Each side takes only the rows a page can need,
+  newest first, from its own (date, number) index; the two are merged and sorted with the kind
+  and id as the last tiebreak, so two documents tied on date and number never swap places
+  between pages. The counts and totals come from each side's own list, not a second count.
+- **The side asked for narrows only a reader who may see both.** A buyer following an old
+  `/orders` link sees their purchases, not an empty page; a sale-only status is not offered to a
+  reader who sees purchases alone.
+- **The owed figures are the business's.** They are answered even when the filter leaves no side
+  to list, and include deactivated companies — a hidden company still owed is still owed (the
+  system accounts stay out). Today's tile reads the same query.
+- **The page opens on "Today and yesterday"** (FR-611's opening period), like the Orders list did.
+- The heading's tick box is part-ticked when part of the page is ticked; the two large cards link
+  to the Companies list on that side, deactivated companies included; the money strip reads
+  "Money in — from: …" / "Money out — to: …" in all three languages; saving anything refreshes
+  this page's figures.
+
+### D-086 addendum · 2026-10-13 · business request · Printing stays on the page
+
+The business: "make it like prints dont open another tab … something like [the] orders page …
+print in the dashboard project." That project prints with a hidden frame (`react-to-print`). Mizan
+now does the same without the library: the print host lays the documents out as before, copies
+them with the app's stylesheets and the page's language, direction, theme and text size into an
+off-screen frame, prints that frame, and removes it when the dialog closes. The browser's print
+dialog opens over the screen the reader is on, which stays exactly as it was underneath; the app's
+own page is never printed and never changes. The frame waits for its stylesheets (three seconds at
+most) and its fonts, and prints after a forced layout rather than on animation frames, which an
+off-screen frame or a background tab is never given.

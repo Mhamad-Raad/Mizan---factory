@@ -129,8 +129,9 @@ export function LedgerList({
                     <Checkbox
                       labelHidden
                       label={t('print:select_all_page')}
-                      checked={selection.allSelected(items)}
-                      onChange={(on) => selection.onToggleAll(items, on)}
+                      checked={selection.pageState(items) === 'all'}
+                      indeterminate={selection.pageState(items) === 'some'}
+                  onChange={() => selection.onToggleAll(items, selection.pageState(items) === 'none')}
                     />
                   </th>
                 ) : null}

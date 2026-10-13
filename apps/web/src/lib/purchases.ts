@@ -38,7 +38,7 @@ export interface PurchaseRow {
    * company's currency, oldest-first, and whether it is paid (D-085). Absent when void, from no
    * company, or for anyone else.
    */
-  payment?: { total: number; remaining: number; status: 'paid' | 'partially_paid' | 'unpaid' };
+  payment?: { remaining: number; status: 'paid' | 'partially_paid' | 'unpaid' };
 }
 
 export interface PurchaseDetail extends PurchaseRow {

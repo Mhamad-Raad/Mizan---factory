@@ -1642,9 +1642,9 @@ a.mz-button {
 }
 
 /*
- * Where printed documents live (D-086). Never on screen; on paper, only while a print the app
- * asked for is under way (`body.mz-printing`) — then the app itself is taken off the paper and
- * the documents flow a page each. Nothing is positioned absolutely, so a statement longer than a
+ * Where printed documents live (D-086). Never on screen; on paper, only in the hidden frame the
+ * print host prints from (`body.mz-printing`), where the documents flow a page each — the app's
+ * own page is never printed and never changes while the dialog is open. Nothing is positioned absolutely, so a statement longer than a
  * page breaks across pages instead of being cut at the first.
  */
 .mz-print-host {
@@ -4483,10 +4483,6 @@ html[data-mirroring='true'] body {
 
 .mz-kpi--big {
   padding: var(--space-5);
-}
-
-.mz-kpi--big .mz-dual > bdi:first-child {
-  font-size: 1.5rem;
 }
 
 /* Money owed to us and money we owe: the edges of "They paid us" and "We paid them" (D-088). */

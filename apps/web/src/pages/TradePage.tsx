@@ -14,7 +14,6 @@ import { useApp, useFormatter } from '../lib/store.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { useKeepPageInRange, usePaging } from '../lib/paging.js';
-import { useAccount } from '../lib/accounts.js';
 import { Can } from '../components/Can.js';
 import { QueryStates } from '../components/states.js';
 import { DualAmount } from '../components/DualAmount.js';
@@ -30,7 +29,10 @@ import type { OrderSaveWarnings } from '../components/OrderSaveWarnings.js';
 import type { CustomerRow } from './CustomersPage.js';
 
 type Kind = 'all' | 'sale' | 'purchase';
-type DatePreset = 'all' | 'today' | 'week' | 'month' | 'last_month' | 'year' | 'custom';
+type DatePreset = 'all' | 'since_yesterday' | 'today' | 'week' | 'month' | 'last_month' | 'year' | 'custom';
+
+/** Where the list opens: today and yesterday, as the orders list always has (FR-611). */
+const OPENING_PERIOD: DatePreset = 'since_yesterday';
 type Status = '' | 'owing' | 'unpaid' | 'partially_paid' | 'paid' | 'void';
 
 interface Owed {
@@ -70,6 +72,10 @@ export function TradePage() {
   const isAdmin = useApp((state) => state.user?.role === 'admin');
   const permissions = useApp((state) => state.permissions);
   const maySales = isAdmin || permissions.has('orders.view');
+  // The company filter's picker reads the accounts with whichever key the reader holds: the
+  // warehouse preset has `companies.view` and not `customers.view` (review).
+  const companiesPath =
+    isAdmin || permissions.has('customers.view') ? '/customers' : permissions.has('companies.view') ? '/companies' : null;
   const mayPurchases = isAdmin || permissions.has('purchases.view');
 
   // The side is in the address, so /orders and /purchases open this page on theirs.
@@ -124,15 +130,15 @@ export function TradePage() {
   const [search, setSearch] = useState('');
   const query = useDebouncedValue(search);
   const [open, setOpen] = useState(false);
-  const [datePreset, setDatePreset] = useState<DatePreset>('month');
+  const [datePreset, setDatePreset] = useState<DatePreset>(OPENING_PERIOD);
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [companyId, setCompanyId] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [pickingCompany, setPickingCompany] = useState(false);
   const [doneBy, setDoneBy] = useState('');
   const [status, setStatus] = useState<Status>('');
   const [paymentType, setPaymentType] = useState<'' | 'cash' | 'borrowed'>('');
-  const company = useAccount(companyId || null);
 
   const today = formatter.today();
   const range =
@@ -141,17 +147,18 @@ export function TradePage() {
       : presetPeriod(datePreset as PeriodPreset, today);
   // How many of the panel's filters are set, on its button, so a narrowed list says so.
   const activeFilters = [
-    datePreset !== 'month',
+    datePreset !== OPENING_PERIOD,
     companyId !== '',
     doneBy !== '',
     status !== '',
     paymentType !== '',
   ].filter(Boolean).length;
   const clearFilters = () => {
-    setDatePreset('month');
+    setDatePreset(OPENING_PERIOD);
     setCustomFrom('');
     setCustomTo('');
     setCompanyId('');
+    setCompanyName('');
     setDoneBy('');
     setStatus('');
     setPaymentType('');
@@ -262,6 +269,7 @@ export function TradePage() {
                   value={datePreset}
                   onChange={(event) => setDatePreset(event.target.value as DatePreset)}
                 >
+                  <option value="since_yesterday">{t('trade:period_since_yesterday')}</option>
                   <option value="today">{t('common:today')}</option>
                   <option value="week">{t('common:this_week')}</option>
                   <option value="month">{t('common:this_month')}</option>
@@ -288,19 +296,21 @@ export function TradePage() {
                   />
                 </>
               ) : null}
+              {companiesPath ? (
               <div className="mz-field">
                 <span className="mz-field__label">{t('glossary:company')}</span>
                 <span className="mz-row" style={{ gap: 'var(--space-2)' }}>
                   <Button variant="secondary" icon="companies" onClick={() => setPickingCompany(true)}>
-                    {companyId && company.data ? <bdi>{company.data.name}</bdi> : t('trade:any_company')}
+                    {companyId ? <bdi>{companyName}</bdi> : t('trade:any_company')}
                   </Button>
                   {companyId ? (
                     <Button variant="ghost" onClick={() => setCompanyId('')}>
-                      {t('print:clear_selection')}
+                      {t('trade:remove_company')}
                     </Button>
                   ) : null}
                 </span>
               </div>
+              ) : null}
               <label className="mz-field">
                 <span className="mz-field__label">{t('trade:recorded_by')}</span>
                 <select className="mz-select" value={doneBy} onChange={(event) => setDoneBy(event.target.value)}>
@@ -318,10 +328,15 @@ export function TradePage() {
                 <span className="mz-field__label">{t('common:status')}</span>
                 <select className="mz-select" value={status} onChange={(event) => setStatus(event.target.value as Status)}>
                   <option value="">{t('trade:any_status')}</option>
-                  <option value="owing">{t('trade:status_owing')}</option>
-                  <option value="unpaid">{t('glossary:unpaid')}</option>
-                  <option value="partially_paid">{t('glossary:partially_paid')}</option>
-                  <option value="paid">{t('glossary:paid')}</option>
+                  {/* The paid states are a sale's: not offered to whoever cannot see sales. */}
+                  {maySales ? (
+                    <>
+                      <option value="owing">{t('trade:status_owing')}</option>
+                      <option value="unpaid">{t('glossary:unpaid')}</option>
+                      <option value="partially_paid">{t('glossary:partially_paid')}</option>
+                      <option value="paid">{t('glossary:paid')}</option>
+                    </>
+                  ) : null}
                   <option value="void">{t('glossary:void')}</option>
                 </select>
               </label>
@@ -412,23 +427,25 @@ export function TradePage() {
             {totals.owed_to_us || totals.owed_by_us ? (
               <div className="mz-kpis mz-kpis--two">
                 {totals.owed_to_us ? (
-                  <Link to="/customers?balance=owes" className="mz-kpi mz-kpi--big mz-kpi--in mz-card-link">
+                  <Link to="/customers?balance=owes&inactive=1" className="mz-kpi mz-kpi--big mz-kpi--in mz-card-link">
                     <KpiHead icon="money-in" label={t('trade:tile_owed_to_us')} />
                     <span className="mz-caption">
                       {t('purchases:tile_we_owe_count', { count: totals.owed_to_us.companies })}
                     </span>
                     <OwedAmounts
+                      size="large"
                       owed={{ amount_iqd: totals.owed_to_us.owed_iqd, amount_usd_cents: totals.owed_to_us.owed_usd_cents }}
                     />
                   </Link>
                 ) : null}
                 {totals.owed_by_us ? (
-                  <Link to="/customers?balance=we_owe" className="mz-kpi mz-kpi--big mz-kpi--out mz-card-link">
+                  <Link to="/customers?balance=we_owe&inactive=1" className="mz-kpi mz-kpi--big mz-kpi--out mz-card-link">
                     <KpiHead icon="money-out" label={t('purchases:tile_we_owe')} />
                     <span className="mz-caption">
                       {t('purchases:tile_we_owe_count', { count: totals.owed_by_us.companies })}
                     </span>
                     <OwedAmounts
+                      size="large"
                       owed={{ amount_iqd: totals.owed_by_us.owed_iqd, amount_usd_cents: totals.owed_by_us.owed_usd_cents }}
                     />
                   </Link>
@@ -472,7 +489,7 @@ export function TradePage() {
           title={t('trade:choose_company')}
           open
           onClose={() => setPickingCompany(false)}
-          path="/customers"
+          path={companiesPath ?? '/customers'}
           icon="companies"
           searchLabel={t('customers:search_placeholder')}
           emptyTitle={t('customers:empty')}
@@ -480,9 +497,10 @@ export function TradePage() {
             const account = row as unknown as CustomerRow;
             return { id: account.id, title: account.name, subtitle: account.phone ?? undefined };
           }}
-          onPick={(id) => {
+          onPick={(id, row) => {
             setPickingCompany(false);
             setCompanyId(id);
+            setCompanyName((row as unknown as CustomerRow).name);
           }}
         />
       ) : null}

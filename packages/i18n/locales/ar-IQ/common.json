@@ -109,6 +109,6 @@
   "how_much_we_paid": "كم دفعنا",
   "money_in": "مبلغ وارد",
   "money_out": "مبلغ صادر",
-  "money_in_from": "مبلغ وارد — من",
-  "money_out_to": "مبلغ صادر — إلى"
+  "money_in_from": "مبلغ وارد — من {{name}}",
+  "money_out_to": "مبلغ صادر — إلى {{name}}"
 }

@@ -23,5 +23,7 @@
   "tile_purchases": "Purchases",
   "tile_bought": "Bought",
   "tile_owed_to_us": "Companies still owe us",
-  "empty": "No sales or purchases in this period"
+  "empty": "No sales or purchases in this period",
+  "period_since_yesterday": "Today and yesterday",
+  "remove_company": "Remove"
 }

@@ -6,6 +6,7 @@ import {
   ALLOW_BEFORE_PASSWORD_CHANGE_KEY,
   ALLOW_WHEN_LOCKED_KEY,
   PERMISSION_KEY,
+  ANY_PERMISSION_KEY,
   PUBLIC_KEY,
   SESSION_ONLY_KEY,
 } from '../common/decorators.js';
@@ -45,8 +46,9 @@ export class AuthGuard implements CanActivate {
     const permission = declared === undefined ? undefined : typeof declared === 'string' ? [declared] : declared;
     const adminOnly = this.reflector.getAllAndOverride<boolean>(ADMIN_ONLY_KEY, [handler, controller]);
     const sessionOnly = this.reflector.getAllAndOverride<boolean>(SESSION_ONLY_KEY, [handler, controller]);
+    const anyOf = this.reflector.getAllAndOverride<readonly string[]>(ANY_PERMISSION_KEY, [handler, controller]);
 
-    if (!permission?.length && !adminOnly && !sessionOnly) {
+    if (!permission?.length && !anyOf?.length && !adminOnly && !sessionOnly) {
       // Fail closed: an undecorated route is a mistake, not an open door.
       throw new ApiError('PERMISSION_DENIED', { required: 'undeclared' });
     }
@@ -96,6 +98,9 @@ export class AuthGuard implements CanActivate {
       // Every declared key is required: the route table's `+` is a conjunction (spec 2.9.3).
       const missing = permission.find((key) => !keys.has(key));
       if (missing) throw ApiError.permissionDenied(missing);
+    }
+    if (anyOf?.length && session.role !== 'admin' && !anyOf.some((key) => keys.has(key))) {
+      throw ApiError.permissionDenied(anyOf.join(' | '));
     }
     return true;
   }

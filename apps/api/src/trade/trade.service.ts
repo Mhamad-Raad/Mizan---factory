@@ -64,13 +64,18 @@ export class TradeService {
   async list(context: RequestContext, filters: TradeFilters) {
     const maySales = can(context, 'orders.view');
     const mayPurchases = can(context, 'purchases.view');
+    // The guard already refused a reader with neither key; this is the service saying it again
+    // for anyone who calls it from elsewhere.
     if (!maySales && !mayPurchases) throw ApiError.permissionDenied('orders.view');
 
+    // The side asked for narrows only a reader who may see both: one who may see one side sees
+    // it whatever the address says — /orders opening on sales must not show a buyer nothing.
+    const kind = maySales && mayPurchases ? filters.kind : undefined;
     // A paid state or a payment type is a sale's question: asked, the purchases leave the list.
     const saleOnly =
       filters.payment_type !== undefined || (filters.status !== undefined && filters.status !== 'void');
-    const sales = maySales && filters.kind !== 'purchase';
-    const buys = mayPurchases && filters.kind !== 'sale' && !saleOnly;
+    const sales = maySales && kind !== 'purchase';
+    const buys = mayPurchases && kind !== 'sale' && !saleOnly;
 
     const saleFilters: OrderFilters = {
       customer_id: filters.company_id,
@@ -90,43 +95,57 @@ export class TradeService {
       q: filters.q,
     };
 
+    const wantsTotals = filters.totals !== false;
+    const seesOwedToUs = can(context, 'fields.see_customer_balances');
+    const seesOwedByUs = can(context, 'fields.see_company_balances');
+    // What the companies owe us and what we owe them are the business's, not the filter's: they
+    // are answered even when the filter leaves no side to list (review).
+    const owedFigures = Promise.all([
+      wantsTotals && maySales && seesOwedToUs ? owedToUs(this.database) : Promise.resolve(null),
+      wantsTotals && mayPurchases && seesOwedByUs ? owedToCompanies(this.database) : Promise.resolve(null),
+    ]);
+
+    const { page_size: pageSize, offset } = pagingOf(filters);
     const values: unknown[] = [];
     const parts = [
       ...(sales ? [this.orders.pageKeysSql(saleFilters, values)] : []),
       ...(buys ? [this.purchases.pageKeysSql(purchaseFilters, values)] : []),
     ];
-    const { page_size: pageSize, offset } = pagingOf(filters);
-
-    const seesOwedToUs = can(context, 'fields.see_customer_balances');
-    const seesOwedByUs = can(context, 'fields.see_company_balances');
-
-    if (parts.length === 0) {
-      return { items: [] as TradeItem[], total: 0, totals: filters.totals === false ? undefined : {} };
-    }
-
     const countValues = [...values];
+    // Each side reads only the rows a page can need, newest first, straight from its (date,
+    // number) index; only those are put together and sorted (review: sorting every matching row
+    // of both tables was millions of rows a page at ten years). The final order adds the kind and
+    // the id, so two documents that tie on date and number keep one place between pages.
+    values.push(offset + pageSize);
+    const reach = values.length;
     values.push(pageSize, offset);
-    const [page, count, saleTotals, buyTotals, toUs, byUs] = await Promise.all([
-      this.database.query<{ id: string; kind: TradeKind }>(
-        `SELECT id, kind FROM (${parts.map((part) => part.keys).join('\nUNION ALL\n')}) t
-          ORDER BY day DESC, created_at DESC, number DESC
-          LIMIT $${values.length - 1} OFFSET $${values.length}`,
-        values,
-      ),
-      this.database.query<{ total: string }>(
-        `SELECT (${parts.map((part) => `(${part.count})`).join(' + ')})::text AS total`,
-        countValues,
-      ),
-      // What the filter's sales and purchases came to: each list's own figures, on its own.
-      filters.totals !== false && sales
-        ? this.orders.list({ ...saleFilters, page_size: 1 }).then((result) => result.totals)
-        : Promise.resolve(null),
-      filters.totals !== false && buys
-        ? this.purchases.list({ ...purchaseFilters, page_size: 1 }).then((result) => result.totals)
-        : Promise.resolve(null),
-      filters.totals !== false && maySales && seesOwedToUs ? owedToUs(this.database) : Promise.resolve(null),
-      filters.totals !== false && mayPurchases && seesOwedByUs ? owedToCompanies(this.database) : Promise.resolve(null),
+    const pageSql = parts
+      .map((part) => `(${part.keys} ORDER BY day DESC, number DESC LIMIT $${reach})`)
+      .join('\nUNION ALL\n');
+
+    const [page, saleList, buyList, count] = await Promise.all([
+      parts.length > 0
+        ? this.database.query<{ id: string; kind: TradeKind }>(
+            `SELECT id, kind FROM (${pageSql}) t
+              ORDER BY day DESC, number DESC, kind, id
+              LIMIT $${values.length - 1} OFFSET $${values.length}`,
+            values,
+          )
+        : Promise.resolve({ rows: [] as { id: string; kind: TradeKind }[] }),
+      // With the figures asked for, each side's own list answers its count and its totals in
+      // one go; the combined count is then their sum, with no separate count of its own.
+      wantsTotals && sales ? this.orders.list({ ...saleFilters, page_size: 1 }) : Promise.resolve(null),
+      wantsTotals && buys ? this.purchases.list({ ...purchaseFilters, page_size: 1 }) : Promise.resolve(null),
+      !wantsTotals && parts.length > 0
+        ? this.database
+            .query<{ total: string }>(
+              `SELECT (${parts.map((part) => `(${part.count})`).join(' + ')})::text AS total`,
+              countValues,
+            )
+            .then((result) => Number(result.rows[0]?.total ?? 0))
+        : Promise.resolve(0),
     ]);
+    const [toUs, byUs] = await owedFigures;
 
     const saleIds = page.rows.filter((row) => row.kind === 'sale').map((row) => row.id);
     const buyIds = page.rows.filter((row) => row.kind === 'purchase').map((row) => row.id);
@@ -140,33 +159,28 @@ export class TradeService {
     ]);
     const items = page.rows.map((row) => byId.get(row.id)).filter((item): item is TradeItem => item !== undefined);
 
+    const total = wantsTotals ? (saleList?.total ?? 0) + (buyList?.total ?? 0) : count;
+    if (!wantsTotals) return { items, total };
+    const saleTotals = saleList?.totals;
+    const buyTotals = buyList?.totals;
     return {
       items,
-      total: Number(count.rows[0]?.total ?? 0),
-      totals:
-        filters.totals === false
-          ? undefined
-          : {
-              ...(saleTotals
-                ? {
-                    sales: {
-                      count: saleTotals.orders,
-                      total_iqd: saleTotals.total_iqd,
-                      total_usd_cents: saleTotals.total_usd_cents,
-                    },
-                  }
-                : {}),
-              ...(buyTotals
-                ? {
-                    purchases: {
-                      count: buyTotals.buys,
-                      cost: { total_iqd: buyTotals.total_iqd, total_usd_cents: buyTotals.total_usd_cents },
-                    },
-                  }
-                : {}),
-              ...(toUs ? { owed_to_us: toUs as Owed } : {}),
-              ...(byUs ? { owed_by_us: byUs as Owed } : {}),
-            },
+      total,
+      totals: {
+        ...(saleTotals
+          ? { sales: { count: saleTotals.orders, total_iqd: saleTotals.total_iqd, total_usd_cents: saleTotals.total_usd_cents } }
+          : {}),
+        ...(buyTotals
+          ? {
+              purchases: {
+                count: buyTotals.buys,
+                cost: { total_iqd: buyTotals.total_iqd, total_usd_cents: buyTotals.total_usd_cents },
+              },
+            }
+          : {}),
+        ...(toUs ? { owed_to_us: toUs as Owed } : {}),
+        ...(byUs ? { owed_by_us: byUs as Owed } : {}),
+      },
     };
   }
 }

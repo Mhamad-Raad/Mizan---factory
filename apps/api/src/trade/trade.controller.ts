@@ -1,7 +1,7 @@
 import { Controller, Get, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
 import { isoDate } from '../common/schemas.js';
-import { SessionOnly } from '../common/decorators.js';
+import { RequireAnyPermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
@@ -23,11 +23,9 @@ const listSchema = z.object({
 });
 
 /**
- * Buying & selling (D-089): sales and purchases on one list. It needs either side's key — rule 4
- * asks every route for a decorator, and `@RequirePermission` can only ask for *all* of its keys —
- * so the route is any signed-in reader's, and the service shows each the sides they may and
- * refuses anyone with neither. The fields of both lists are stripped as their own routes strip
- * them.
+ * Buying & selling (D-089): sales and purchases on one list, for whoever may see either side —
+ * the guard refuses a reader with neither, and the service shows each reader the sides they may.
+ * The fields of both lists are stripped as their own routes strip them.
  */
 @Controller()
 @SensitiveFields({
@@ -44,7 +42,7 @@ export class TradeController {
   constructor(private readonly trade: TradeService) {}
 
   @Get('trade')
-  @SessionOnly()
+  @RequireAnyPermission('orders.view', 'purchases.view')
   async list(@Req() request: RequestWithContext, @Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
     return this.trade.list(contextOf(request), { ...query, totals: query.totals !== 'false' });
   }

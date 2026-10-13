@@ -109,6 +109,6 @@
   "how_much_we_paid": "How much we paid",
   "money_in": "Money in",
   "money_out": "Money out",
-  "money_in_from": "Money in — from",
-  "money_out_to": "Money out — to"
+  "money_in_from": "Money in — from {{name}}",
+  "money_out_to": "Money out — to {{name}}"
 }

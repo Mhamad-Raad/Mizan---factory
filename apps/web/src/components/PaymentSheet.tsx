@@ -186,15 +186,12 @@ export function PaymentSheet({
         <div className={`mz-money-strip mz-money-strip--${direction} mz-form-grid__wide`}>
           <Icon name={incoming ? 'money-in' : 'money-out'} />
           <span className="mz-money-strip__who">
-            {/* The name is isolated: a Latin name in Kurdish or Arabic text otherwise carries its
-                full stop to the wrong end (2.10.6). */}
-            {counterparty ? (
-              <>
-                {t(incoming ? 'common:money_in_from' : 'common:money_out_to')} <bdi>{counterparty}</bdi>
-              </>
-            ) : (
-              t(incoming ? 'common:money_in' : 'common:money_out')
-            )}
+            {/* One sentence per language, so each places the name as its grammar needs (review);
+                the name is isolated (FSI … PDI), or a Latin name in Kurdish or Arabic text carries
+                its full stop to the wrong end (2.10.6). */}
+            {counterparty
+              ? t(incoming ? 'common:money_in_from' : 'common:money_out_to', { name: `\u2068${counterparty}\u2069` })
+              : t(incoming ? 'common:money_in' : 'common:money_out')}
           </span>
           <span className="mz-money-strip__owed">
             <span className="mz-caption">{remainingLabel ?? t('orders:remaining')}</span>
