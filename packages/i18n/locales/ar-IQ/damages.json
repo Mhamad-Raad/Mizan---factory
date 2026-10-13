@@ -95,5 +95,7 @@
   "effect_us": "خسارة علينا بكلفة المخزون",
   "effect_company": "ستكون {{company}} مدينة لنا بكلفة المخزون",
   "details": "التفاصيل",
-  "paid_back_note": "تم تسديد {{name}}"
+  "paid_back_note": "تم تسديد {{name}}",
+  "none_on_order": "لا توجد بضاعة مكسورة مسجلة لهذا الطلب",
+  "none_on_purchase": "لا توجد بضاعة مكسورة مسجلة لهذا الشراء"
 }

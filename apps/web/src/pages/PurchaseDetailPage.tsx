@@ -10,8 +10,8 @@ import { quantityText } from '../lib/quantity.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
 import { usePageTitle } from '../lib/page-title.js';
+import { LinkedDamages } from '../components/LinkedDamages.js';
 import { DualAmount } from '../components/DualAmount.js';
-import { Can } from '../components/Can.js';
 import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
 import { useCursorPaging } from '../lib/paging.js';
@@ -285,13 +285,6 @@ export function PurchaseDetailPage() {
                   <Button variant="secondary" icon="print" onClick={() => print([{ kind: 'purchase', id }])}>
                     {t('print:print_receipt')}
                   </Button>
-                  {/* What arrived damaged in this delivery (FR-802, FR-805). */}
-                  <Can permission="damages.view">
-                    <Link to={`/damages?purchase=${id}`} className="mz-button mz-button--secondary">
-                      <Icon name="warning" />
-                      {t('glossary:damaged_items')}
-                    </Link>
-                  </Can>
                 </div>
 
                 {active && mayVoid ? (
@@ -366,6 +359,9 @@ export function PurchaseDetailPage() {
                   ))}
                 </ul>
               ) : null}
+
+              {/* Its broken goods, listed here rather than behind a link (D-094). */}
+              {tab === 'lines' ? <LinkedDamages link={{ purchase_id: id }} /> : null}
 
               {tab === 'history' ? (
                 <QueryStates

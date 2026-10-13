@@ -112,7 +112,7 @@ test.describe('the buying screens', () => {
 
     await page.goto('/purchases');
     await page.getByRole('link', { name: /#/ }).first().click();
-    await expect(page.getByText('Copper wire 2 mm')).toBeVisible();
+    await expect(page.getByText('Copper wire 2 mm').first()).toBeVisible();
     await shot(page, 'purchase-detail-ckb-light.png');
   });
 

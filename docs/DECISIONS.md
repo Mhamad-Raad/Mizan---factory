@@ -1955,3 +1955,14 @@ crucial."
 Tests: `buying-from-companies.test.ts` (still-owed paging). The payment sheet's screenshot is now
 taken at the phone's own size: its taller note box (D-091) brings the sheet to its 90% limit, and a
 whole-page shot resizes the window while it is taken.
+
+## D-094 · 2026-10-13 · business request · An order's and a purchase's broken goods, listed on its page
+
+The business: the "Broken goods" button on an order and on a purchase should be a list inside
+the page, not a link to another one. Both pages now show a **Broken goods** card under the lines:
+every record linked to that order or purchase, voided ones included and marked, as the Broken
+goods page draws them (one `DamageTable` for both) and paged on its own (`damages_page`), with
+"No broken goods recorded for this order / purchase" when there are none. The Broken goods page
+itself is unchanged. What a record does to stock and money is unchanged too (D-062): the list
+shows the records that name the order or purchase, which the record form does not offer to set
+since D-062 — older records and those linked through the API appear.

@@ -95,5 +95,7 @@
   "effect_us": "A loss for us, at what the stock cost",
   "effect_company": "{{company}} will owe us what the stock cost",
   "details": "Details",
-  "paid_back_note": "{{name}} paid back"
+  "paid_back_note": "{{name}} paid back",
+  "none_on_order": "No broken goods recorded for this order",
+  "none_on_purchase": "No broken goods recorded for this purchase"
 }

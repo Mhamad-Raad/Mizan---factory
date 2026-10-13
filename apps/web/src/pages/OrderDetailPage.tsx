@@ -11,6 +11,7 @@ import { useIdempotencyKey } from '../lib/idempotency.js';
 import { bothOf } from '../lib/money.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { Can } from '../components/Can.js';
+import { LinkedDamages } from '../components/LinkedDamages.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { PaymentSheet } from '../components/PaymentSheet.js';
 import { QueryStates } from '../components/states.js';
@@ -324,13 +325,6 @@ export function OrderDetailPage() {
                       </Link>
                     </Can>
                   ) : null}
-                  {/* What came back damaged from this order (FR-802, FR-806). */}
-                  <Can permission="damages.view">
-                    <Link to={`/damages?order=${id}`} className="mz-button mz-button--secondary">
-                      <Icon name="warning" />
-                      {t('glossary:damaged_items')}
-                    </Link>
-                  </Can>
                 </div>
 
                 {data.doc_status === 'active' && mayVoid ? (
@@ -392,6 +386,9 @@ export function OrderDetailPage() {
                   ))}
                 </ul>
               ) : null}
+
+              {/* Its broken goods, listed here rather than behind a link (D-094). */}
+              {tab === 'lines' ? <LinkedDamages link={{ order_id: id }} /> : null}
 
               {tab === 'payments' ? (
                 <QueryStates
