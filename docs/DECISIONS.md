@@ -2011,3 +2011,14 @@ name, code, low-stock level and notes. Prices stay on the Monthly prices tab and
 its purchase (the sheet says so); the unit is not offered, since a bought material keeps it
 (D-062). The API now clears a code, level or note sent as null — it used to read null as "leave
 it". Test: `materials.test.ts`.
+
+## D-100 · 2026-10-14 · business request · Edit material sets this month's prices too
+
+The business: a material named inside a purchase (D-090, D-097) has no sale or bought price, and
+it should be possible to set them where the material is edited. **Edit material** now has a
+"This month's prices" section — sale and, for who may see it, bought price, each in either
+currency at the system rate — for whoever holds `materials.set_prices`. The boxes open on this
+month's stored prices; a box left as it was is not sent, so it is not rewritten (the API keeps a
+side not sent). The prices are saved first through the same `PUT /items/:id/prices/:month` as
+the Monthly prices tab, then the details. Earlier months stay on that tab. The sheet lays its
+fields two to a row on a laptop so it fits one 1366×768 screen.

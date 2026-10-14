@@ -1,12 +1,38 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomSheet, Button, NumberField, TextAreaField, TextField } from '@mizan/ui';
+import type { Rate } from '@mizan/money';
 import { ApiError, apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
 import { errorMessage } from '../lib/errors.js';
-import { invalidateHistory } from '../lib/invalidate.js';
+import { invalidateHistory, invalidateMoneyViews } from '../lib/invalidate.js';
+import { toMoneyBody } from '../lib/money.js';
+import { useFormatter, usePermission } from '../lib/store.js';
+import { MoneyInput } from './MoneyInput.js';
+import type { MoneyValue } from './MoneyInput.js';
+
+type Pair = { amount_iqd: number; amount_usd_cents: number; entered_currency: 'IQD' | 'USD' };
+
+/** This month's row of the material's prices, when one is stored. */
+interface MonthRow {
+  month: string;
+  sale: Pair | null;
+  bought?: Pair | null;
+  version: number;
+}
+
+const EMPTY: MoneyValue = { amount: null, currency: 'IQD', other_amount: null };
+
+function valueOf(pair: Pair | null | undefined): MoneyValue {
+  if (!pair) return EMPTY;
+  return {
+    amount: pair.entered_currency === 'IQD' ? pair.amount_iqd : pair.amount_usd_cents,
+    currency: pair.entered_currency,
+    other_amount: null,
+  };
+}
 
 /** What the sheet edits of a material: its own details, never its stock, prices or unit. */
 export interface EditableMaterial {
@@ -20,17 +46,22 @@ export interface EditableMaterial {
 }
 
 /**
- * A material's own details — name, code, low-stock level, notes — changed from its page. Prices
- * are the Monthly prices tab's, what a buy cost is the purchase's, and the unit stays what it was
- * bought in (D-062), so none of those are here. A blank code, level or note clears it.
+ * A material's own details — name, code, low-stock level, notes — and this month's sale and bought
+ * prices, changed from its page (D-099, D-100): a material named inside a purchase has no prices
+ * until somebody sets them, and this is where they look. Earlier months stay on the Monthly prices
+ * tab, what a buy cost is the purchase's, and the unit stays what it was bought in (D-062). A blank
+ * code, level or note clears it; a price left as it was is not sent, so it is not rewritten.
  */
 export function EditMaterialSheet({
   material,
   measure,
+  rate,
   onClose,
   onSaved,
 }: {
   material: EditableMaterial;
+  /** Today's system rate, which fills a price's other currency; null when none is set. */
+  rate: Rate | null;
   /** The measure the material is stocked in: the low-stock level is in the same. */
   measure: 'count' | 'kg';
   onClose: () => void;
@@ -45,10 +76,36 @@ export function EditMaterialSheet({
     measure === 'kg' ? (material.min_stock_kg ?? '') : material.min_stock_count == null ? '' : String(material.min_stock_count),
   );
   const saveKey = useIdempotencyKey();
+  const pricesKey = useIdempotencyKey();
+  const formatter = useFormatter();
+  const maySetPrices = usePermission('materials.set_prices');
+  const maySeeBought = usePermission('fields.see_bought_price');
+  const thisMonth = formatter.today().slice(0, 7);
+
+  // This month's stored prices, if any: the boxes open on them, and the save names their version.
+  const monthRow = useQuery({
+    queryKey: ['items', material.id, 'prices', 'edit', thisMonth],
+    queryFn: () => apiRequest<{ items: MonthRow[] }>(`/items/${material.id}/prices?page_size=2`),
+    enabled: maySetPrices,
+  });
+  const stored = monthRow.data?.items.find((row) => row.month.slice(0, 7) === thisMonth) ?? null;
+  // Null until the user types: the box shows what is stored, and an untouched box is not sent.
+  const [sale, setSale] = useState<MoneyValue | null>(null);
+  const [bought, setBought] = useState<MoneyValue | null>(null);
 
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const level = minStock.trim();
+      const saleBody = sale ? toMoneyBody(sale) : null;
+      const boughtBody = maySeeBought && bought ? toMoneyBody(bought) : null;
+      // The prices first: a refused price leaves the details unsaved too, rather than half a save.
+      if (maySetPrices && (saleBody || boughtBody)) {
+        await apiRequest(`/items/${material.id}/prices/${thisMonth}`, {
+          method: 'PUT',
+          idempotencyKey: pricesKey.key,
+          body: { sale: saleBody, bought: boughtBody, version: stored?.version ?? null },
+        });
+      }
       return apiRequest(`/items/${material.id}`, {
         method: 'PATCH',
         idempotencyKey: saveKey.key,
@@ -65,7 +122,10 @@ export function EditMaterialSheet({
     },
     onSuccess: async () => {
       saveKey.renew();
+      pricesKey.renew();
       await queryClient.invalidateQueries({ queryKey: ['items'] });
+      // A month's price values the stock and the margin, which Today, Reports and Accounts sum.
+      await invalidateMoneyViews(queryClient);
       await queryClient.invalidateQueries({ queryKey: ['/items'] });
       await invalidateHistory(queryClient);
       onSaved();
@@ -82,7 +142,7 @@ export function EditMaterialSheet({
   };
 
   return (
-    <BottomSheet title={t('materials:edit_material')} open onClose={onClose} closeLabel={t('common:close')}>
+    <BottomSheet title={t('materials:edit_material')} open onClose={onClose} closeLabel={t('common:close')} wide>
       <form className="mz-stack" onSubmit={submit} noValidate>
         <div className="mz-form-grid">
           <TextField
@@ -110,7 +170,7 @@ export function EditMaterialSheet({
             value={minStock}
             onChange={(event) => setMinStock(event.target.value)}
           />
-          <div className="mz-form-grid__wide">
+          <div>
             <TextAreaField
               label={t('glossary:notes')}
               hint={t('common:optional')}
@@ -119,8 +179,35 @@ export function EditMaterialSheet({
               onChange={(event) => setNotes(event.target.value)}
             />
           </div>
+          {maySetPrices ? (
+            <>
+              <h3 className="mz-heading mz-form-grid__wide" style={{ marginBlockStart: 'var(--space-2)' }}>
+                {t('materials:this_month_prices')}
+              </h3>
+              <div className={maySeeBought ? undefined : 'mz-form-grid__wide'}>
+                <MoneyInput
+                  label={t('glossary:sale_price')}
+                  value={sale ?? valueOf(stored?.sale)}
+                  rate={rate}
+                  onChange={setSale}
+                />
+              </div>
+              {maySeeBought ? (
+                <div>
+                  <MoneyInput
+                    label={t('glossary:bought_price')}
+                    value={bought ?? valueOf(stored?.bought)}
+                    rate={rate}
+                    onChange={setBought}
+                  />
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </div>
-        <p className="mz-caption">{t('materials:edit_material_prices_hint')}</p>
+        <p className="mz-caption">
+          {maySetPrices ? t('materials:edit_material_prices_hint') : t('materials:edit_material_no_prices_hint')}
+        </p>
         {otherError ? (
           <p className="mz-warning" role="alert">
             {otherError}

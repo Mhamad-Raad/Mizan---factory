@@ -850,6 +850,7 @@ export function MaterialDetailPage() {
           <EditMaterialSheet
             material={item.data}
             measure={item.data.stock.priced_measure}
+            rate={currentRate}
             onClose={() => setEditing(false)}
             onSaved={() => setEditing(false)}
           />
