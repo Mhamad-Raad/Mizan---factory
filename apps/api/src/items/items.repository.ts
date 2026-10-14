@@ -61,6 +61,8 @@ export interface ItemFilters {
   include_inactive?: boolean;
   /** Only the deactivated ones; wins over `include_inactive`. */
   only_inactive?: boolean;
+  /** Only materials bought from this company on a purchase that still stands (D-096). */
+  company_id?: string;
   page?: number;
   page_size?: number;
 }
@@ -185,6 +187,17 @@ export class ItemsRepository {
     if (query) {
       values.push(containing(normalizeForSearch(query)));
       conditions.push(`(i.name_normalized LIKE $${values.length} OR i.code ILIKE $${values.length})`);
+    }
+    if (filters.company_id) {
+      values.push(filters.company_id);
+      conditions.push(`EXISTS (
+        SELECT 1
+          FROM purchases p
+          JOIN purchase_lines l ON l.purchase_id = p.id AND l.deleted_at IS NULL
+         WHERE p.company_id = $${values.length}
+           AND p.deleted_at IS NULL
+           AND p.status <> 'void'
+           AND l.item_id = i.id)`);
     }
     // The one filter whose cost grows with the number of movements: it has to know each
     // candidate's stock before it can page. The LATERAL keeps it to one index scan per

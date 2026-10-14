@@ -2,7 +2,8 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query
 import { z } from 'zod';
 import { isoDate, minorAmount, paidNow, rateString } from '../common/schemas.js';
 import { AdminOnly, RequirePermission } from '../common/decorators.js';
-import { contextOf } from '../common/request-context.js';
+import { can, contextOf } from '../common/request-context.js';
+import { ApiError } from '../common/errors.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { SensitiveFields } from '../common/sensitive-field.interceptor.js';
 import { zodBody } from '../common/zod.pipe.js';
@@ -30,6 +31,8 @@ const listSchema = z.object({
   include_inactive: z.enum(['true', 'false']).optional(),
   /** The Materials list's "Deactivated" filter: the deactivated ones alone. */
   only_inactive: z.enum(['true', 'false']).optional(),
+  /** Only what has been bought from this company — a purchase's material picker (D-096). */
+  company_id: uuid.optional(),
   ...pageFields,
 });
 
@@ -129,8 +132,14 @@ export class ItemsController {
 
   @Get('items')
   @RequirePermission('materials.view')
-  async list(@Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
+  async list(@Req() request: RequestWithContext, @Query(zodBody(listSchema)) query: z.infer<typeof listSchema>) {
+    // Who supplies what is buying information: the filter is for whoever may see or record a buy.
+    const context = contextOf(request);
+    if (query.company_id && !can(context, 'purchases.view') && !can(context, 'purchases.create')) {
+      throw ApiError.permissionDenied('purchases.view');
+    }
     return this.items.list({
+      company_id: query.company_id,
       q: query.q,
       pricing_unit: query.pricing_unit,
       stock: query.stock,
@@ -183,13 +192,8 @@ export class ItemsController {
     @Param('id') id: string,
     @Body(zodBody(updateSchema)) body: z.infer<typeof updateSchema>,
   ) {
-    return this.items.update(contextOf(request), id, {
-      ...body,
-      code: body.code ?? undefined,
-      min_stock_count: body.min_stock_count ?? undefined,
-      min_stock_kg: body.min_stock_kg ?? undefined,
-      notes: body.notes ?? undefined,
-    });
+    // A null clears the field (a code, a low-stock level or a note taken away); absent leaves it.
+    return this.items.update(contextOf(request), id, body);
   }
 
   @Post('items/:id/deactivate')

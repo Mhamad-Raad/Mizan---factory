@@ -36,6 +36,8 @@ export interface PickerSheetProps {
    * on a purchase (D-090) — handed what was typed into the search.
    */
   footer?: (query: string) => React.ReactNode;
+  /** Above the search: a choice that narrows the list, such as a purchase's "From this company" (D-096). */
+  header?: React.ReactNode;
 }
 
 /**
@@ -56,6 +58,7 @@ export function PickerSheet({
   pinned,
   exclude,
   footer,
+  header,
 }: PickerSheetProps) {
   const { t } = useTranslation();
   // The sheet is mounted only while it is open, so the query starts empty on every visit
@@ -100,6 +103,7 @@ export function PickerSheet({
   return (
     <BottomSheet title={title} open={open} onClose={onClose} closeLabel={t('common:close')}>
       <div className="mz-stack">
+        {header}
         <TextField
           label={searchLabel}
           type="search"

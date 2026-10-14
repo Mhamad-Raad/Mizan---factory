@@ -476,6 +476,43 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
     });
   });
 
+  it('lists only the materials bought from a company, for whoever may see or record a buy (D-096)', async () => {
+    const material = async (name: string) =>
+      (await as(ctx.http, admin).post('/api/v1/items').send({ name, pricing_unit: 'per_piece' }).expect(201)).body
+        .id as string;
+    const nuts = await material('Nuts M8');
+    const rivets = await material('Rivets 4mm');
+    await buy(buyer).expect(201);
+    await buy(buyer, {
+      company_id: dollarCo,
+      lines: [{ item_id: nuts, qty_count: 10, unit_price: { amount: 500, currency: 'IQD' } }],
+    }).expect(201);
+    // Bought from Al-Noor, then voided: a mistake, not something they supply.
+    const voidedBuy = await buy(buyer, {
+      lines: [{ item_id: rivets, qty_count: 10, unit_price: { amount: 100, currency: 'IQD' } }],
+    }).expect(201);
+    await as(ctx.http, admin)
+      .post(`/api/v1/purchases/${voidedBuy.body.id as string}/void`)
+      .send({ reason: 'wrong company' })
+      .expect(200);
+
+    const names = async (companyId: string, q = '') =>
+      (
+        await as(ctx.http, buyer).get(`/api/v1/items?company_id=${companyId}&q=${encodeURIComponent(q)}`).expect(200)
+      ).body.items.map((item: { name: string }) => item.name);
+    expect(await names(alNoor)).toEqual(['Bolts M8']);
+    expect(await names(dollarCo)).toEqual(['Nuts M8']);
+    expect(await names(alNoor, 'nuts')).toEqual([]);
+    const page = await as(ctx.http, buyer).get(`/api/v1/items?company_id=${alNoor}`).expect(200);
+    expect(page.body.total).toBe(1);
+
+    // May see materials but not purchases: who supplies what is not theirs to read.
+    const counterUser = await seedUser({ username: 'counter', displayName: 'Lana', permissions: ['materials.view'] });
+    const counter = await signIn(ctx.http, counterUser);
+    await as(ctx.http, counter).get(`/api/v1/items?company_id=${alNoor}`).expect(403);
+    await as(ctx.http, counter).get('/api/v1/items').expect(200);
+  });
+
   it('refuses a new material’s first purchase that names no company (D-087)', async () => {
     const refused = await as(ctx.http, buyer)
       .post('/api/v1/items')
