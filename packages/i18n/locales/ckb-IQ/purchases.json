@@ -121,6 +121,8 @@
   "rate_badge_company": "نرخی کۆمپانیا",
   "rate_badge_system": "نرخی سیستەم",
   "rate_badge_changed": "گۆڕدراو",
+  "rate_badge_saved": "نرخی تۆمارکراو",
+  "rate_was_saved": "نرخی تۆمارکراو: {{rate}}",
   "rate_was_company": "نرخی کۆمپانیا: {{rate}}",
   "rate_was_system": "نرخی سیستەم: {{rate}}"
 }

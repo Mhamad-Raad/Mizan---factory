@@ -2064,3 +2064,20 @@ instead, as a payment's voucher already did: the line reads **They owe us**, **I
 **Settled**, its figure always positive (`balanceLabel`). And on a printed account statement the
 two sections — what they owe us, what we owe them — are set apart (a wider space between them),
 as are the closing figures under them.
+
+## Review of D-095 – D-104 (2026-10-14)
+
+Read over the branch's changes after D-104; two defects found and fixed, nothing else.
+
+1. **An edited order opened on today's rate.** D-101 gave the order form the purchase's rate box,
+   which opens on the customer's or the system's rate *today*. Editing an old order then showed —
+   and previewed its totals at — a rate the order was never at (the server keeps the order's own
+   rate when none is sent, 2.3.3), and typing today's figure counted as "no change", so an old
+   order could not be moved to it. The box now opens on the edited order's own saved rate, tagged
+   **Saved rate**; a different figure, today's included, is a change and is sent. The rule is
+   `chooseRate`, tested in `BuyFields.test.ts`.
+2. **Edit material could not be saved twice after a half-save.** It saves this month's prices,
+   then the details; if the details were refused (a name already taken), the corrected second Save
+   sent the prices again under the same idempotency key with a different body — refused as
+   `IDEMPOTENCY_MISMATCH` — and with the version they had replaced. A saved price now renews its
+   key and reloads the month before the details are sent.

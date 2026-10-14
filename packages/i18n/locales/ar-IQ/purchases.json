@@ -121,6 +121,8 @@
   "rate_badge_company": "سعر الشركة",
   "rate_badge_system": "سعر النظام",
   "rate_badge_changed": "معدَّل",
+  "rate_badge_saved": "السعر المحفوظ",
+  "rate_was_saved": "السعر المحفوظ: {{rate}}",
   "rate_was_company": "سعر الشركة: {{rate}}",
   "rate_was_system": "سعر النظام: {{rate}}"
 }

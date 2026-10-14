@@ -55,6 +55,8 @@ interface FormState {
   received_currency: Currency;
   notes: string;
   rate_override: string;
+  /** An edited order's own rate and its source, which the rate box opens on (D-101); null when new. */
+  saved_rate?: { rate: string; source: RateSource } | null;
   /** Kept in state but always the current user now: "done by" is whoever creates the order. */
   acting_user_id: string;
   /** On by default: typing one currency fills the other at the rate. Off: they are independent. */
@@ -148,7 +150,9 @@ function fromOrder(order: OrderDetail): FormState {
     payment_type: order.payment_type,
     received_currency: order.received_currency ?? 'IQD',
     notes: order.notes ?? '',
-    rate_override: order.rate_source === 'manual' ? order.rate_iqd_per_usd : '',
+    // The box opens on the order's own rate (D-101): sent only when changed, else the server keeps it.
+    rate_override: '',
+    saved_rate: { rate: order.rate_iqd_per_usd, source: order.rate_source },
     acting_user_id: '',
     auto_convert: true,
     // Per-line discounts are new, so an existing order's single discount is carried on its first
@@ -232,7 +236,7 @@ function OrderForm({
   const orderRate = useBuyRate(customer.data, t('glossary:order_rate'), {
     text: form.rate_override,
     setText: (text) => setForm((current) => ({ ...current, rate_override: text })),
-  });
+  }, form.saved_rate ?? null);
   const rateTypedBadly = orderRate.invalid;
   const documentRate: Rate | null = orderRate.rate;
   const rateSource: RateSource = orderRate.source;

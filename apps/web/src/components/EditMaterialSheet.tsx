@@ -105,6 +105,12 @@ export function EditMaterialSheet({
           idempotencyKey: pricesKey.key,
           body: { sale: saleBody, bought: boughtBody, version: stored?.version ?? null },
         });
+        // Saved: should the details then be refused (a name already taken), the next Save must not
+        // send these prices again under the same key, or with the version they replaced (review).
+        pricesKey.renew();
+        setSale(null);
+        setBought(null);
+        await monthRow.refetch();
       }
       return apiRequest(`/items/${material.id}`, {
         method: 'PATCH',

@@ -121,6 +121,8 @@
   "rate_badge_company": "Company rate",
   "rate_badge_system": "System rate",
   "rate_badge_changed": "Changed",
+  "rate_badge_saved": "Saved rate",
+  "rate_was_saved": "The saved rate is {{rate}}",
   "rate_was_company": "The company rate is {{rate}}",
   "rate_was_system": "The system rate is {{rate}}"
 }

@@ -216,8 +216,8 @@ export interface BuyRate {
    */
   body: Rate | null;
   invalid: boolean;
-  /** The rate the box opens with, and where it is from. */
-  fallback: { rate: Rate | null; source: RateSource };
+  /** The rate the box opens with, and where it is from; `saved` when it is an edited document's own. */
+  fallback: { rate: Rate | null; source: RateSource; saved: boolean };
   text: string;
   setText: (text: string) => void;
   restore: () => void;
@@ -234,25 +234,65 @@ export function useBuyRate(
   account: CustomerRow | undefined,
   typedLabel: string,
   held?: { text: string; setText: (text: string) => void },
+  /**
+   * An edited document's own rate (an order being edited): the box opens on it rather than on
+   * today's, because the server keeps it when no rate is sent — an old order is never re-valued
+   * at a later rate (2.3.3) — and typing today's figure must count as a change.
+   */
+  saved?: { rate: Rate; source: RateSource } | null,
 ): BuyRate {
   const [own, setOwn] = useState<string | null>(null);
   const edited = held ? (held.text === '' ? null : held.text) : own;
   const setEdited = held ? (text: string | null) => held.setText(text ?? '') : setOwn;
-  const fallback = useDocumentRate(account);
-  const typed = edited === null ? null : usableRate(edited);
-  const differs = typed !== null && (fallback.rate === null || Number(typed) !== Number(fallback.rate));
-  const chosen = useDocumentRate(account, { rate: differs ? typed : null, label: typedLabel });
+  const { t } = useTranslation();
+  const today = useDocumentRate(account);
+  const { fallback, typed, differs, chosen } = chooseRate(today, saved ?? null, edited, typedLabel, t);
   return {
     rate: chosen.rate,
     source: chosen.source,
     label: chosen.label,
     body: differs ? typed : null,
     invalid: edited !== null && edited.trim() !== '' && typed === null,
-    fallback: { rate: fallback.rate, source: fallback.source },
+    fallback: { rate: fallback.rate, source: fallback.source, saved: Boolean(saved) },
     text: edited ?? (fallback.rate === null ? '' : rateInputText(fallback.rate)),
     setText: setEdited,
     restore: () => setEdited(null),
   };
+}
+
+/**
+ * The rule of `useBuyRate`, apart from where its inputs come from (and so testable): what the box
+ * falls back to — an edited document's own rate, else today's for the account — and whether what
+ * was typed is a change from it. Only a change is sent.
+ */
+export function chooseRate(
+  today: { rate: Rate | null; source: RateSource; label: string },
+  saved: { rate: Rate; source: RateSource } | null,
+  edited: string | null,
+  typedLabel: string,
+  t: (key: string) => string,
+): {
+  fallback: { rate: Rate | null; source: RateSource; label: string };
+  typed: Rate | null;
+  differs: boolean;
+  chosen: { rate: Rate | null; source: RateSource; label: string };
+} {
+  const fallback = saved
+    ? {
+        rate: saved.rate,
+        source: saved.source,
+        label:
+          saved.source === 'company'
+            ? t('glossary:customer_rate')
+            : saved.source === 'global'
+              ? t('glossary:system_rate')
+              : typedLabel,
+      }
+    : today;
+  const typed = edited === null ? null : usableRate(edited);
+  const differs = typed !== null && (fallback.rate === null || Number(typed) !== Number(fallback.rate));
+  const chosen = differs ? { rate: typed, source: 'manual' as RateSource, label: typedLabel } : fallback;
+  return { fallback, typed, differs, chosen };
 }
 
 /**
@@ -265,6 +305,8 @@ export function BuyRateField({ state, label }: { state: BuyRate; label: string }
   const changed = state.body !== null;
   const badge = changed ? (
     <Chip tone="warning">{t('purchases:rate_badge_changed')}</Chip>
+  ) : state.fallback.saved ? (
+    <Chip tone="primary">{t('purchases:rate_badge_saved')}</Chip>
   ) : state.fallback.source === 'company' ? (
     <Chip tone="primary">{t('purchases:rate_badge_company')}</Chip>
   ) : state.fallback.rate !== null ? (
@@ -274,9 +316,14 @@ export function BuyRateField({ state, label }: { state: BuyRate; label: string }
     state.fallback.rate === null
       ? t('common:no_rate_set')
       : changed
-        ? t(state.fallback.source === 'company' ? 'purchases:rate_was_company' : 'purchases:rate_was_system', {
-            rate: formatter.rate(state.fallback.rate),
-          })
+        ? t(
+            state.fallback.saved
+              ? 'purchases:rate_was_saved'
+              : state.fallback.source === 'company'
+                ? 'purchases:rate_was_company'
+                : 'purchases:rate_was_system',
+            { rate: formatter.rate(state.fallback.rate) },
+          )
         : undefined;
   return (
     <NumberField
