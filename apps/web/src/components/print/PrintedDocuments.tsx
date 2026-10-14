@@ -216,9 +216,15 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
         <TotalRow label={t('orders:remaining')}>
           <DualAmount {...bothOf(order.remaining, primary, order.rate_iqd_per_usd)} primary={primary} kind="derived" />
         </TotalRow>
+        {/* Their account after this order, said in words rather than by a sign (D-104): "They owe
+            us", "In credit" or "Settled", the figure always positive — as on a payment's voucher. */}
         {data.balance_after !== null ? (
-          <TotalRow label={t('glossary:balance')}>
-            <DualAmount {...bothOf(data.balance_after, primary, order.rate_iqd_per_usd)} primary={primary} kind="derived" />
+          <TotalRow label={balanceLabel('sales', data.balance_after, t)}>
+            <DualAmount
+              {...bothOf(Math.abs(data.balance_after), primary, order.rate_iqd_per_usd)}
+              primary={primary}
+              kind="derived"
+            />
           </TotalRow>
         ) : null}
       </div>
@@ -482,7 +488,7 @@ function AccountStatement({ data }: { data: StatementData }) {
 
       {/* Both sides at the period's end, and what they come to together (D-054). */}
       {sales && buying ? (
-        <div className="mz-invoice__totals">
+        <div className="mz-invoice__totals mz-invoice__totals--spaced">
           <TotalRow label={t('companies:they_owe_us')}>
             <span data-tabular>{formatter.money(sales.closing_balance, sales.account.settlement_currency)}</span>
           </TotalRow>

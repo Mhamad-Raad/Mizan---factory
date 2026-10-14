@@ -2055,3 +2055,12 @@ dialog (D-097), its note beside the date and method instead of under them, and a
 use up to 96% of the screen's height (50rem at most), so "They paid us" and "We paid them" fit
 whole in all three languages — Kurdish's taller line height included. One sheet serves every
 payment (a company's page, an order, a purchase), so all of them change.
+
+## D-104 · 2026-10-14 · business request · A receipt says who owes whom, and a statement's two sides stand apart
+
+The business: an order's receipt said "Balance 800,000" for a company that owes us — should it be
+negative? A sign is read differently by each side of the counter, so the receipt says it in words
+instead, as a payment's voucher already did: the line reads **They owe us**, **In credit** or
+**Settled**, its figure always positive (`balanceLabel`). And on a printed account statement the
+two sections — what they owe us, what we owe them — are set apart (a wider space between them),
+as are the closing figures under them.

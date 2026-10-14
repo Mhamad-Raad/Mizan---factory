@@ -1647,6 +1647,17 @@ a.mz-button {
   gap: var(--space-2);
 }
 
+/* A statement's two sides — what they owe us, what we owe them — stand clearly apart (D-104). */
+.mz-invoice__section + .mz-invoice__section {
+  margin-block-start: var(--space-6);
+}
+
+/* The statement's closing figures, a line of air between each. */
+.mz-invoice__totals--spaced {
+  gap: var(--space-3);
+  margin-block-start: var(--space-4);
+}
+
 .mz-invoice__section-title {
   margin: 0;
   font-size: 1rem;
