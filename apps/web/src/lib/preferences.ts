@@ -11,8 +11,9 @@ export const RECENT_USERS_KEY = 'mizan.recentUsers.v1';
 
 export type Theme = 'light' | 'dark' | 'auto';
 export type FontScale = 0.875 | 1 | 1.125 | 1.25;
-/** The colour the app wears (D-061): Jiyan's red by default (D-072); the rest are the same ramp turned. */
+/** The colour the app wears (D-061): Navy by default (D-095); the rest are the same ramp turned. */
 export type Palette =
+  | 'navy'
   | 'teal'
   | 'ocean'
   | 'sky'
@@ -44,8 +45,8 @@ export interface Preferences {
 export const DEFAULT_PREFERENCES: Preferences = {
   lang: 'ckb-IQ',
   theme: 'auto',
-  // Jiyan's own red is the colour the app opens in (D-072); teal and the rest stay a choice.
-  palette: 'jiyan',
+  // Navy is the colour the app opens in (D-095); Jiyan's red (D-072), teal and the rest stay a choice.
+  palette: 'navy',
   typeface: 'vazirmatn',
   fontScale: 1,
   numerals: 'latn',
@@ -64,7 +65,7 @@ const LOCALES: Locale[] = ['ckb-IQ', 'ar-IQ', 'en'];
 export const THEMES: readonly Theme[] = ['light', 'dark', 'auto'];
 export const FONT_SCALES: readonly FontScale[] = [0.875, 1, 1.125, 1.25];
 export const PALETTES: readonly Palette[] = [
-  'jiyan', 'teal', 'ocean', 'sky', 'indigo', 'plum', 'rose', 'crimson', 'clay', 'amber', 'forest', 'graphite',
+  'navy', 'jiyan', 'teal', 'ocean', 'sky', 'indigo', 'plum', 'rose', 'crimson', 'clay', 'amber', 'forest', 'graphite',
 ];
 export const TYPEFACES: readonly Typeface[] = ['vazirmatn', 'plex', 'noto', 'kufi', 'naskh'];
 
@@ -94,7 +95,7 @@ export function readPreferences(): Preferences {
       theme: ['light', 'dark', 'auto'].includes(parsed.theme as string)
         ? (parsed.theme as Theme)
         : DEFAULT_PREFERENCES.theme,
-      palette: PALETTES.includes(parsed.palette as Palette) ? (parsed.palette as Palette) : DEFAULT_PREFERENCES.palette,
+      palette: storedPalette(parsed),
       typeface: TYPEFACES.includes(parsed.typeface as Typeface)
         ? (parsed.typeface as Typeface)
         : DEFAULT_PREFERENCES.typeface,
@@ -114,9 +115,28 @@ export function readPreferences(): Preferences {
   }
 }
 
+/**
+ * Which palettes default this device was saved under. Jiyan's red was the default until D-095, and
+ * preferences are saved whole, so a device that never chose a colour still holds 'jiyan': saved
+ * before this mark, Jiyan is read as "the default" and opens in Navy; chosen after it, it stays.
+ * `index.html`'s pre-paint script applies the same rule.
+ */
+const PALETTE_DEFAULTS_VERSION = 2;
+
+function storedPalette(parsed: Partial<Preferences> & { paletteDefaults?: unknown }): Palette {
+  if (!PALETTES.includes(parsed.palette as Palette)) return DEFAULT_PREFERENCES.palette;
+  if (parsed.palette === 'jiyan' && parsed.paletteDefaults !== PALETTE_DEFAULTS_VERSION) {
+    return DEFAULT_PREFERENCES.palette;
+  }
+  return parsed.palette as Palette;
+}
+
 export function writePreferences(preferences: Preferences): void {
   try {
-    localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences));
+    localStorage.setItem(
+      PREFERENCES_KEY,
+      JSON.stringify({ ...preferences, paletteDefaults: PALETTE_DEFAULTS_VERSION }),
+    );
   } catch {
     // Kept in memory for this session; Settings shows the notice (FR-1103).
   }

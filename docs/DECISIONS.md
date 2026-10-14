@@ -1966,3 +1966,13 @@ goods page draws them (one `DamageTable` for both) and paged on its own (`damage
 itself is unchanged. What a record does to stock and money is unchanged too (D-062): the list
 shows the records that name the order or purchase, which the record form does not offer to set
 since D-062 — older records and those linked through the API appear.
+
+## D-095 · 2026-10-14 · business request · The app opens in Navy, not Jiyan red
+
+The business disliked the wine-red default of D-072. A new **Navy** palette (`#1f4f86` in light,
+`#7eaee8` in dark, with cool slate greys) is now the default and first in the Settings list; Jiyan
+red, teal and the others remain a choice. Preferences are saved whole per device, so a device
+holding 'jiyan' from before this change could not be told from one that chose it: such a device
+opens in Navy once (`paletteDefaults` mark in `preferences.ts` and the `index.html` pre-paint
+script), and Jiyan chosen after the change is kept. `check:contrast` measures Navy in both themes
+(676 pairs pass). Status colours and the chart series are unchanged.

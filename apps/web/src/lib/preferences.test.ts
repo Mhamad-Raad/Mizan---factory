@@ -45,6 +45,16 @@ describe('device preferences (FR-1103)', () => {
     expect(document.documentElement.getAttribute('data-font')).toBe('naskh');
   });
 
+  it('opens a device saved under the old Jiyan default in Navy, but keeps Jiyan chosen since (D-095)', () => {
+    // Saved before D-095: 'jiyan' was only the default, and the mark is missing.
+    localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ ...DEFAULT_PREFERENCES, palette: 'jiyan' }));
+    expect(readPreferences().palette).toBe('navy');
+
+    // Chosen in Settings now: written with the mark, so it stays.
+    writePreferences({ ...DEFAULT_PREFERENCES, palette: 'jiyan' });
+    expect(readPreferences().palette).toBe('jiyan');
+  });
+
   it('falls back to defaults on corrupted or hostile stored values', () => {
     localStorage.setItem(PREFERENCES_KEY, 'not json at all');
     expect(readPreferences()).toEqual(DEFAULT_PREFERENCES);

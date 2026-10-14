@@ -223,6 +223,62 @@
  * palette (a teal card in a plum app) is left to its own.
  */
 
+/* Navy: a deep ink blue with cool slate greys — calm and formal, the default since D-095. */
+[data-palette='navy'][data-theme='light'],
+[data-palette='navy'] [data-theme='light']:not([data-palette]) {
+  --color-bg: #f9fbfd;
+  --color-surface-2: #eef2f7;
+  --color-text: #111a26;
+  --color-text-muted: #586474;
+  --color-border: #d8dee6;
+  --color-border-strong: #7a8696;
+  --color-primary: #1f4f86;
+  --color-primary-hover: #173e6b;
+  --color-primary-soft: #dce8f7;
+  --color-on-primary-soft: #0f2643;
+  --color-sidebar: #f6f9fc;
+  --color-sidebar-text: #111a26;
+  --color-sidebar-accent: #dce8f7;
+  --color-sidebar-accent-text: #0f2643;
+  --color-sidebar-hover: #eef2f7;
+  --color-on-header: #111a26;
+  --color-table-head: #eef2f7;
+  --color-table-stripe: #f2f5f9;
+  --color-table-hover: #e4edf8;
+  --color-focus: #1f4f86;
+  --color-neutral-chip-bg: #eef2f7;
+  --color-neutral-chip-text: #586474;
+}
+
+[data-palette='navy'][data-theme='dark'],
+[data-palette='navy'] [data-theme='dark']:not([data-palette]) {
+  --color-bg: #0c1520;
+  --color-surface: #151f2b;
+  --color-surface-2: #232e3b;
+  --color-text: #e8eef6;
+  --color-text-muted: #98a5b4;
+  --color-border: #283340;
+  --color-border-strong: #67727f;
+  --color-primary: #7eaee8;
+  --color-primary-hover: #a0c5f2;
+  --color-on-primary: #08182b;
+  --color-primary-soft: #22385a;
+  --color-on-primary-soft: #d3e2f5;
+  --color-header: #151f2b;
+  --color-sidebar: #131c27;
+  --color-sidebar-text: #e8eef6;
+  --color-sidebar-accent: #22385a;
+  --color-sidebar-accent-text: #d3e2f5;
+  --color-sidebar-hover: #1e2935;
+  --color-on-header: #e8eef6;
+  --color-table-head: #1d2834;
+  --color-table-stripe: #1b2530;
+  --color-table-hover: #22344a;
+  --color-focus: #7eaee8;
+  --color-neutral-chip-bg: #232e3b;
+  --color-neutral-chip-text: #98a5b4;
+}
+
 /* Ocean: a steel blue. */
 [data-palette='ocean'][data-theme='light'],
 [data-palette='ocean'] [data-theme='light']:not([data-palette]) {
