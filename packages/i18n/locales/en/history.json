@@ -100,7 +100,7 @@
   "field.reason": "Reason",
   "field.other_sessions_signed_out": "Other devices signed out",
   "entity.expense": "Expense",
-  "all_actions": "Any action",
+  "all_actions": "All",
   "action_filter.create": "Created",
   "action_filter.update": "Changed",
   "action_filter.void": "Voided",

@@ -21,7 +21,6 @@ const STATIC_ROUTES = [
   '/orders',
   '/orders/new',
   '/materials',
-  '/materials/new',
   '/customers',
   '/customers/new',
   '/purchases',

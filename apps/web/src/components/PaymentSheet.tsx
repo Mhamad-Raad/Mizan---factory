@@ -169,8 +169,10 @@ export function PaymentSheet({
       open={open}
       onClose={onClose}
       closeLabel={t('common:close')}
+      wide
     >
-      {/* Two columns from a tablet up, so a laptop shows the whole sheet without scrolling. */}
+      {/* Two columns from a tablet up, in the wide dialog, so a laptop shows the whole sheet
+          without scrolling — the note beside the date and the method rather than under them. */}
       <div className="mz-form-grid">
         {/* Which way the money goes and with whom, and what stands on the account now — one
             row, so the strip costs the sheet no height on a laptop (D-084, D-088). */}
@@ -238,26 +240,28 @@ export function PaymentSheet({
           </Button>
         </div>
 
-        <DateField
-          label={t('glossary:date_paid')}
-          value={date}
-          max={formatter.today()}
-          onChange={(event) => setDate(event.target.value)}
-        />
+        <div className="mz-stack">
+          <DateField
+            label={t('glossary:date_paid')}
+            value={date}
+            max={formatter.today()}
+            onChange={(event) => setDate(event.target.value)}
+          />
 
-        {/* Proposed — not requested (FR-617). */}
-        <SegmentedControl
-          label={t('customers:method')}
-          value={method}
-          onChange={setMethod}
-          options={[
-            { value: 'cash', label: t('customers:method_cash') },
-            { value: 'transfer', label: t('customers:method_transfer') },
-            { value: 'other', label: t('customers:method_other') },
-          ]}
-        />
+          {/* Proposed — not requested (FR-617). */}
+          <SegmentedControl
+            label={t('customers:method')}
+            value={method}
+            onChange={setMethod}
+            options={[
+              { value: 'cash', label: t('customers:method_cash') },
+              { value: 'transfer', label: t('customers:method_transfer') },
+              { value: 'other', label: t('customers:method_other') },
+            ]}
+          />
+        </div>
 
-        <div className="mz-form-grid__wide">
+        <div>
           <TextAreaField
             label={t('common:note')}
             value={note}

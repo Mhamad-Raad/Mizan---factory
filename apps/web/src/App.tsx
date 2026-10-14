@@ -49,7 +49,6 @@ const MaterialDetailPage = chunk(
   () => import('./pages/MaterialDetailPage.js'),
   'MaterialDetailPage',
 );
-const NewMaterialPage = chunk(() => import('./pages/NewMaterialPage.js'), 'NewMaterialPage');
 const CustomersPage = chunk(() => import('./pages/CustomersPage.js'), 'CustomersPage');
 const CustomerDetailPage = chunk(
   () => import('./pages/CustomerDetailPage.js'),
@@ -292,7 +291,6 @@ export function App() {
             <Route path="/orders/:id" element={gate(may('orders.view'), <OrderDetailPage />)} />
             <Route path="/orders/:id/edit" element={gate(may('orders.edit'), <OrderFormPage mode="edit" />)} />
             <Route path="/materials" element={gate(may('materials.view'), <MaterialsPage />)} />
-            <Route path="/materials/new" element={gate(may('materials.create'), <NewMaterialPage />)} />
             <Route path="/materials/:id" element={gate(may('materials.view'), <MaterialDetailPage />)} />
             <Route path="/customers" element={gate(may('customers.view'), <CustomersPage />)} />
             <Route

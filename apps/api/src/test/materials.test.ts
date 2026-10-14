@@ -166,6 +166,21 @@ describe('materials, prices and stock (FR-301 to FR-309)', () => {
       expect(refused.body.error.message_key).toBe('errors:pricing_unit_bought');
     });
 
+    it('renames a material, and clears a code, a low-stock level and a note sent blank (null)', async () => {
+      const material = await createMaterial(warehouse, { code: 'CW-2', notes: 'from Erbil', min_stock_kg: '50' });
+      const renamed = await as(ctx.http, warehouse)
+        .patch(`/api/v1/items/${material.id}`)
+        .send({ name: 'Copper wire 2.5 mm', version: material.version })
+        .expect(200);
+      expect(renamed.body).toMatchObject({ name: 'Copper wire 2.5 mm', code: 'CW-2', notes: 'from Erbil' });
+
+      const cleared = await as(ctx.http, warehouse)
+        .patch(`/api/v1/items/${material.id}`)
+        .send({ code: null, notes: null, min_stock_kg: null, version: renamed.body.version })
+        .expect(200);
+      expect(cleared.body).toMatchObject({ name: 'Copper wire 2.5 mm', code: null, notes: null, min_stock_kg: null });
+    });
+
     it('refuses a stale version rather than overwriting another edit (spec 2.9.5)', async () => {
       const material = await createMaterial(warehouse);
       await as(ctx.http, warehouse)

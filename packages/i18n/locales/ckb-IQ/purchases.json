@@ -8,6 +8,10 @@
   "purchase_date": "بەرواری کڕین",
   "pick_company": "هەڵبژێرە لە کێت کڕیوە",
   "pick_material": "کەرەستەیەک هەڵبژێرە",
+  "materials_scope": "پیشاندان",
+  "scope_company": "لەم کۆمپانیایەوە",
+  "scope_all": "هەموو کەرەستەکان",
+  "scope_company_empty": "هێشتا هیچ لەم کۆمپانیایە نەکڕدراوە — هەموو کەرەستەکان هەڵبژێرە",
   "add_line": "زیادکردنی کەرەستە",
   "details": "وردەکاری",
   "add_material_hint": "تۆماری کەرەستەی هاتوو بکە — کەرەستەکە، چەندت زیادکرد، و نرخەکەی.",
@@ -117,6 +121,8 @@
   "rate_badge_company": "نرخی کۆمپانیا",
   "rate_badge_system": "نرخی سیستەم",
   "rate_badge_changed": "گۆڕدراو",
+  "rate_badge_saved": "نرخی تۆمارکراو",
+  "rate_was_saved": "نرخی تۆمارکراو: {{rate}}",
   "rate_was_company": "نرخی کۆمپانیا: {{rate}}",
   "rate_was_system": "نرخی سیستەم: {{rate}}"
 }

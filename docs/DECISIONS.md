@@ -1966,3 +1966,118 @@ goods page draws them (one `DamageTable` for both) and paged on its own (`damage
 itself is unchanged. What a record does to stock and money is unchanged too (D-062): the list
 shows the records that name the order or purchase, which the record form does not offer to set
 since D-062 — older records and those linked through the API appear.
+
+## D-095 · 2026-10-14 · business request · The app opens in Navy, not Jiyan red
+
+The business disliked the wine-red default of D-072. A new **Navy** palette (`#1f4f86` in light,
+`#7eaee8` in dark, with cool slate greys) is now the default and first in the Settings list; Jiyan
+red, teal and the others remain a choice. Preferences are saved whole per device, so a device
+holding 'jiyan' from before this change could not be told from one that chose it: such a device
+opens in Navy once (`paletteDefaults` mark in `preferences.ts` and the `index.html` pre-paint
+script), and Jiyan chosen after the change is kept. `check:contrast` measures Navy in both themes
+(676 pairs pass). Status colours and the chart series are unchanged.
+
+## D-096 · 2026-10-14 · business request · A purchase's material picker opens on what that company sold us
+
+Once a company is chosen on a purchase, the material picker shows **From this company / All
+materials**, opening on the first (and back to it when the company changes). A material is not
+one company's alone, so the link is what was bought: `GET /items?company_id=` returns materials on
+a purchase from that company that still stands (voided purchases and deleted lines left out).
+Who supplies what is buying information, so the filter needs `purchases.view` or
+`purchases.create` (403 otherwise). Materials imported at go-live, never bought from a company,
+are under "All materials". Test: `buying-from-companies.test.ts`.
+
+## D-097 · 2026-10-14 · business request · A new material is added in one place: a purchase
+
+The business: adding a material in two places did not make sense. The Materials page's "New
+material" and its page (`/materials/new`, which named a material and recorded its first buy) are
+gone; a new material is named from a purchase's material picker (D-090). The empty Materials list
+says so. "Buy more" on a material is a wide dialog from a laptop up (`BottomSheet wide`), its
+fields two to a row, so the whole buy fits on a 1366×768 screen; one column on a phone. A pair
+inside a two-column form (dinar and dollar) now keeps the form's gap, so its boxes line up.
+
+## D-098 · 2026-10-14 · business request · Monthly prices are a table, the price in use marked
+
+The Monthly prices tab is a table like the others from a laptop up (month, sale, bought — for who
+may see it — done by, note, Edit); cards on a phone. The month whose sale price orders use today —
+this month's, else the latest before it (FR-303, the detail's `sale.from_month`) — is tinted, with
+a bar at its start edge and an "In use now" tag.
+
+## D-099 · 2026-10-14 · business request · A material's details are edited from its page
+
+The business asked how to change a material's name. `PATCH /items/:id` existed but no screen used
+it: the material page now has **Edit material** beside Deactivate (`materials.edit`), for its
+name, code, low-stock level and notes. Prices stay on the Monthly prices tab and a buy's cost on
+its purchase (the sheet says so); the unit is not offered, since a bought material keeps it
+(D-062). The API now clears a code, level or note sent as null — it used to read null as "leave
+it". Test: `materials.test.ts`.
+
+## D-100 · 2026-10-14 · business request · Edit material sets this month's prices too
+
+The business: a material named inside a purchase (D-090, D-097) has no sale or bought price, and
+it should be possible to set them where the material is edited. **Edit material** now has a
+"This month's prices" section — sale and, for who may see it, bought price, each in either
+currency at the system rate — for whoever holds `materials.set_prices`. The boxes open on this
+month's stored prices; a box left as it was is not sent, so it is not rewritten (the API keeps a
+side not sent). The prices are saved first through the same `PUT /items/:id/prices/:month` as
+the Monthly prices tab, then the details. Earlier months stay on that tab. The sheet lays its
+fields two to a row on a laptop so it fits one 1366×768 screen.
+
+## D-101 · 2026-10-14 · business request · An order's rate box behaves as a purchase's
+
+The business: an order's rate should come from the company if it has one, else the system, be
+changeable, and carry the same badges as a purchase's (D-092). **Rate for this order** is now the
+same `BuyRateField` over `useBuyRate`: it opens filled with the customer's own rate or the
+system's, tagged **Company rate** / **System rate**, and **Changed** once a different figure is
+typed, with what it would otherwise be under the box; typing the default back or emptying the box
+is the default again. It used to open empty, the rate in force named only in a hint. The hook
+takes the typed text from the order form's own state (`held`), so the draft keeps it. As before,
+only a changed rate is sent, so an order at the customer's or the system's rate is recorded with
+that source and only a changed one as `manual`; the server's rule is unchanged.
+
+## D-102 · 2026-10-14 · business request · Reports open on the period at a glance, and list every broken item
+
+The business: purchases should count in the reports' total, and broken goods should have a list.
+Each report had only its own figures, so Reports now opens, above the tabs, on **The period at a
+glance**: Sold (the Sales report's revenue), Bought (the Bought report's total), Broken goods
+(their value) and **Sold minus bought**, each in both currencies, from the reports' own totals
+for the chosen period. The hint says plainly that sold minus bought is not the profit — the
+Profit tab counts what the sold goods cost. Bought and broken goods are bought prices, so a
+reader without `fields.see_bought_price` sees neither, nor the difference. The **Broken goods**
+tab now also lists **every record** of the period under its totals — the Broken goods page's own
+table (`DamageTable`, D-094), paged — for whoever may see broken goods.
+
+## D-103 · 2026-10-14 · business request · A payment's sheet shows everything on a laptop
+
+The business: "They paid us" should be wide and tall enough to show all of it. At 1366×768 the
+payment sheet ran 45 px past its frame and its last line had to be scrolled to. It is now the wide
+dialog (D-097), its note beside the date and method instead of under them, and a wide dialog may
+use up to 96% of the screen's height (50rem at most), so "They paid us" and "We paid them" fit
+whole in all three languages — Kurdish's taller line height included. One sheet serves every
+payment (a company's page, an order, a purchase), so all of them change.
+
+## D-104 · 2026-10-14 · business request · A receipt says who owes whom, and a statement's two sides stand apart
+
+The business: an order's receipt said "Balance 800,000" for a company that owes us — should it be
+negative? A sign is read differently by each side of the counter, so the receipt says it in words
+instead, as a payment's voucher already did: the line reads **They owe us**, **In credit** or
+**Settled**, its figure always positive (`balanceLabel`). And on a printed account statement the
+two sections — what they owe us, what we owe them — are set apart (a wider space between them),
+as are the closing figures under them.
+
+## Review of D-095 – D-104 (2026-10-14)
+
+Read over the branch's changes after D-104; two defects found and fixed, nothing else.
+
+1. **An edited order opened on today's rate.** D-101 gave the order form the purchase's rate box,
+   which opens on the customer's or the system's rate *today*. Editing an old order then showed —
+   and previewed its totals at — a rate the order was never at (the server keeps the order's own
+   rate when none is sent, 2.3.3), and typing today's figure counted as "no change", so an old
+   order could not be moved to it. The box now opens on the edited order's own saved rate, tagged
+   **Saved rate**; a different figure, today's included, is a change and is sent. The rule is
+   `chooseRate`, tested in `BuyFields.test.ts`.
+2. **Edit material could not be saved twice after a half-save.** It saves this month's prices,
+   then the details; if the details were refused (a name already taken), the corrected second Save
+   sent the prices again under the same idempotency key with a different body — refused as
+   `IDEMPOTENCY_MISMATCH` — and with the version they had replaced. A saved price now renews its
+   key and reloads the month before the details are sent.

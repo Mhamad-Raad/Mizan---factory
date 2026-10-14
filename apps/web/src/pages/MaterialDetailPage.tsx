@@ -36,6 +36,7 @@ import {
 } from '../components/BuyFields.js';
 import type { CompanyChoice, PaidNow } from '../components/BuyFields.js';
 import { SavedToast } from '../components/SavedToast.js';
+import { EditMaterialSheet } from '../components/EditMaterialSheet.js';
 import type { SavedNotice } from '../components/SavedToast.js';
 
 interface MonthPrice {
@@ -88,6 +89,8 @@ export interface Lot {
 
 interface ItemDetail extends ItemRow {
   notes: string | null;
+  min_stock_count?: number | null;
+  min_stock_kg?: string | null;
   first_bought_on: string | null;
   version: number;
 }
@@ -114,6 +117,7 @@ export function MaterialDetailPage() {
     null,
   );
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState(false);
   /** Deactivating asks first, like every other action that takes something out of use. */
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
   const [showUsedUp, setShowUsedUp] = useState(false);
@@ -272,6 +276,11 @@ export function MaterialDetailPage() {
 
   const setActiveError = errorMessage(t, setActive.error);
   const thisMonth = `${formatter.today().slice(0, 7)}-01`;
+  // The month whose sale price orders use today: this month's, else the latest before it (FR-303).
+  const priceInUse = item.data?.sale?.from_month.slice(0, 7) ?? null;
+  const inEffect = (row: MonthPrice) => row.month.slice(0, 7) === priceInUse;
+  // The bought column only for whoever may see bought prices: the API strips the key otherwise.
+  const showBought = (prices.data?.items ?? []).some((row) => 'bought' in row);
 
   // A movement can carry kg, a count, or both — the material's own measure first.
   const movementQty = (movement: Movement) =>
@@ -306,6 +315,9 @@ export function MaterialDetailPage() {
                       <Chip icon="close">{t('common:deactivated')}</Chip>
                     ) : null}
                     <Can permission="materials.edit">
+                      <Button variant="secondary" icon="edit" onClick={() => setEditing(true)}>
+                        {t('materials:edit_material')}
+                      </Button>
                       <Button
                         variant={item.data.is_active ? 'danger' : 'secondary'}
                         loading={setActive.isPending && !confirmingDeactivate}
@@ -486,50 +498,128 @@ export function MaterialDetailPage() {
                     ) : undefined
                   }
                 >
-                  <Card>
-                    {(prices.data?.items ?? []).map((row) => (
-                      <div
-                        key={row.id}
-                        className={`mz-price-month${row.month === thisMonth ? ' mz-price-month--current' : ''}`}
-                      >
-                        <strong>{formatter.month(row.month.slice(0, 7))}</strong>
-                        <span>
-                          {row.sale ? (
-                            <DualAmount
-                              amount_iqd={row.sale.amount_iqd}
-                              amount_usd_cents={row.sale.amount_usd_cents}
-                            />
-                          ) : (
-                            '—'
-                          )}
-                          <span className="mz-caption" style={{ display: 'block' }}>
-                            {t('glossary:sale_price')}
-                          </span>
-                        </span>
-                        <span>
-                          {row.bought ? (
-                            <DualAmount
-                              amount_iqd={row.bought.amount_iqd}
-                              amount_usd_cents={row.bought.amount_usd_cents}
-                            />
-                          ) : (
-                            '—'
-                          )}
-                          <span className="mz-caption" style={{ display: 'block' }}>
-                            {row.bought ? t('glossary:bought_price') : ''}
-                          </span>
-                          {maySetPrices ? (
-                            <Button
-                              variant="ghost"
-                              onClick={() => setPriceSheet({ month: row.month, existing: row })}
+                  {wide ? (
+                    <div className="mz-table-wrap">
+                      <table className="mz-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">{t('materials:price_month')}</th>
+                            <th scope="col" data-numeric="true">
+                              {t('glossary:sale_price')}
+                            </th>
+                            {showBought ? (
+                              <th scope="col" data-numeric="true">
+                                {t('glossary:bought_price')}
+                              </th>
+                            ) : null}
+                            <th scope="col" className="mz-table__secondary">
+                              {t('common:done_by')}
+                            </th>
+                            <th scope="col" className="mz-table__secondary">
+                              {t('common:note')}
+                            </th>
+                            {maySetPrices ? (
+                              <th scope="col">
+                                <span className="mz-visually-hidden">{t('common:edit')}</span>
+                              </th>
+                            ) : null}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(prices.data?.items ?? []).map((row) => (
+                            <tr
+                              key={row.id}
+                              className={inEffect(row) ? 'mz-table__row--current' : undefined}
+                              style={{ cursor: 'default' }}
                             >
-                              {t('common:edit')}
-                            </Button>
-                          ) : null}
-                        </span>
-                      </div>
-                    ))}
-                  </Card>
+                              <td>
+                                <span className="mz-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
+                                  <strong>{formatter.month(row.month.slice(0, 7))}</strong>
+                                  {inEffect(row) ? <Chip tone="primary">{t('materials:price_in_use')}</Chip> : null}
+                                </span>
+                              </td>
+                              <td data-numeric="true">
+                                {row.sale ? (
+                                  <DualAmount amount_iqd={row.sale.amount_iqd} amount_usd_cents={row.sale.amount_usd_cents} />
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                              {showBought ? (
+                                <td data-numeric="true">
+                                  {row.bought ? (
+                                    <DualAmount
+                                      amount_iqd={row.bought.amount_iqd}
+                                      amount_usd_cents={row.bought.amount_usd_cents}
+                                    />
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
+                              ) : null}
+                              <td className="mz-table__secondary">
+                                {row.updated_by_name ? <bdi>{row.updated_by_name}</bdi> : '—'}
+                              </td>
+                              <td className="mz-table__secondary">{row.note ? <bdi>{row.note}</bdi> : '—'}</td>
+                              {maySetPrices ? (
+                                <td>
+                                  <Button
+                                    variant="ghost"
+                                    onClick={() => setPriceSheet({ month: row.month, existing: row })}
+                                  >
+                                    {t('common:edit')}
+                                  </Button>
+                                </td>
+                              ) : null}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <Card>
+                      {(prices.data?.items ?? []).map((row) => (
+                        <div
+                          key={row.id}
+                          className={`mz-price-month${inEffect(row) ? ' mz-price-month--current' : ''}`}
+                        >
+                          <span>
+                            <strong>{formatter.month(row.month.slice(0, 7))}</strong>
+                            {inEffect(row) ? (
+                              <span className="mz-caption" style={{ display: 'block' }}>
+                                {t('materials:price_in_use')}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span>
+                            {row.sale ? (
+                              <DualAmount amount_iqd={row.sale.amount_iqd} amount_usd_cents={row.sale.amount_usd_cents} />
+                            ) : (
+                              '—'
+                            )}
+                            <span className="mz-caption" style={{ display: 'block' }}>
+                              {t('glossary:sale_price')}
+                            </span>
+                          </span>
+                          <span>
+                            {row.bought ? (
+                              <DualAmount amount_iqd={row.bought.amount_iqd} amount_usd_cents={row.bought.amount_usd_cents} />
+                            ) : (
+                              '—'
+                            )}
+                            <span className="mz-caption" style={{ display: 'block' }}>
+                              {row.bought ? t('glossary:bought_price') : ''}
+                            </span>
+                            {maySetPrices ? (
+                              <Button variant="ghost" onClick={() => setPriceSheet({ month: row.month, existing: row })}>
+                                {t('common:edit')}
+                              </Button>
+                            ) : null}
+                          </span>
+                        </div>
+                      ))}
+                    </Card>
+                  )}
                   <Pager
                     page={pricesPaging.page}
                     pageSize={pricesPaging.pageSize}
@@ -756,6 +846,15 @@ export function MaterialDetailPage() {
         ) : null}
 
         {notice ? <SavedToast notice={notice} onDone={dismissNotice} /> : null}
+        {editing && item.data ? (
+          <EditMaterialSheet
+            material={item.data}
+            measure={item.data.stock.priced_measure}
+            rate={currentRate}
+            onClose={() => setEditing(false)}
+            onSaved={() => setEditing(false)}
+          />
+        ) : null}
       </div>
     </>
   );
@@ -1004,18 +1103,25 @@ function AddStockSheet({
     paidNowValid(paid);
 
   return (
-    <BottomSheet title={t('materials:add_stock')} open onClose={onClose} closeLabel={t('common:close')}>
+    <BottomSheet title={t('materials:add_stock')} open onClose={onClose} closeLabel={t('common:close')} wide>
       <div className="mz-stack">
         <p className="mz-muted">{t('materials:add_stock_hint')}</p>
-        <CompanyField
-          value={company}
-          onChange={(choice) => {
-            onEdit?.();
-            setCompany(choice);
-            if (choice.kind !== 'company') setPaid(NOTHING_PAID);
-          }}
-        />
-        <div className="mz-grid-2">
+        {/* Two to a row from a laptop up, so the whole buy fits on one screen; one column on a phone. */}
+        <div className="mz-form-grid">
+          <CompanyField
+            value={company}
+            onChange={(choice) => {
+              onEdit?.();
+              setCompany(choice);
+              if (choice.kind !== 'company') setPaid(NOTHING_PAID);
+            }}
+          />
+          <DateField
+            label={t('materials:bought_on')}
+            value={date}
+            max={formatter.today()}
+            onChange={(event) => edit(setDate)(event.target.value)}
+          />
           <NumberField
             label={t('glossary:quantity')}
             unit={pricedMeasure === 'kg' ? t('common:kg_symbol') : t('common:count_symbol')}
@@ -1024,37 +1130,35 @@ function AddStockSheet({
             error={countInvalid ? t('common:count_whole') : undefined}
             onChange={(event) => edit(setQuantity)(event.target.value)}
           />
-          <DateField
-            label={t('materials:bought_on')}
-            value={date}
-            max={formatter.today()}
-            onChange={(event) => edit(setDate)(event.target.value)}
-          />
+          <BuyRateField state={buyRate} label={t('purchases:rate_for_purchase')} />
+          <div className="mz-form-grid__wide">
+            <MoneyInput
+              label={t('materials:cost_per_unit')}
+              value={cost}
+              rate={buyRate.rate}
+              sourceLabel={buyRate.label}
+              onChange={edit(setCost)}
+            />
+          </div>
+          <div className={company.kind === 'company' && mayPay ? undefined : 'mz-form-grid__wide'}>
+            <TextAreaField
+              label={t('materials:buy_note')}
+              hint={t('common:optional')}
+              value={note}
+              error={error}
+              maxLength={500}
+              onChange={(event) => edit(setNote)(event.target.value)}
+            />
+          </div>
+          {company.kind === 'company' && mayPay ? (
+            <PaidNowField
+              value={paid}
+              rate={buyRate.rate}
+              accountCurrency={company.settlement_currency}
+              onChange={edit(setPaid)}
+            />
+          ) : null}
         </div>
-        <BuyRateField state={buyRate} label={t('purchases:rate_for_purchase')} />
-        <MoneyInput
-          label={t('materials:cost_per_unit')}
-          value={cost}
-          rate={buyRate.rate}
-          sourceLabel={buyRate.label}
-          onChange={edit(setCost)}
-        />
-        <TextAreaField
-          label={t('materials:buy_note')}
-          hint={t('common:optional')}
-          value={note}
-          error={error}
-          maxLength={500}
-          onChange={(event) => edit(setNote)(event.target.value)}
-        />
-        {company.kind === 'company' && mayPay ? (
-          <PaidNowField
-            value={paid}
-            rate={buyRate.rate}
-            accountCurrency={company.settlement_currency}
-            onChange={edit(setPaid)}
-          />
-        ) : null}
         <Button
           block
           loading={saving}

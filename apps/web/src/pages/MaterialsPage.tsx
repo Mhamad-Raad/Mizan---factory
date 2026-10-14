@@ -1,11 +1,9 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Chip, Icon, Menu, TextField } from '@mizan/ui';
+import { Chip, Menu, TextField } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
-import { Can } from '../components/Can.js';
 import { DataList } from '../components/DataList.js';
 import type { Column } from '../components/DataList.js';
 import { DualAmount } from '../components/DualAmount.js';
@@ -188,17 +186,6 @@ export function MaterialsPage() {
                 },
               ]}
             />
-          </div>
-
-          {/* Buying happens here (D-062): a new material is its first buy, and more of one is
-              "Add stock" on its own page. */}
-          <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-            <Can permission="materials.create">
-              <Link to="/materials/new" className="mz-button mz-button--primary">
-                <Icon name="plus" />
-                {t('materials:new_material')}
-              </Link>
-            </Can>
           </div>
         </div>
 

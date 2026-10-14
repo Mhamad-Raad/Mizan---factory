@@ -12,6 +12,7 @@ import { DualAmount } from '../components/DualAmount.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { PickerSheet } from '../components/PickerSheet.js';
+import { BuyRateField, useBuyRate } from '../components/BuyFields.js';
 import { QuantityInput } from '../components/QuantityInput.js';
 import { FieldsSkeleton, QueryStates } from '../components/states.js';
 import { TotalsFooter } from '../components/TotalsFooter.js';
@@ -19,11 +20,9 @@ import { PriceFromMonth } from '../components/chips.js';
 import type { Lot } from './MaterialDetailPage.js';
 import { clearDraft, createDraftKeeper, readDraft } from '../lib/drafts.js';
 import { invalidateMoneyViews } from '../lib/invalidate.js';
-import { usableRate } from '../lib/money.js';
 import { customerName } from '../lib/customers.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import { errorMessage } from '../lib/errors.js';
-import { useGlobalRate } from '../lib/rates.js';
 import type { OrderSaveWarnings } from '../components/OrderSaveWarnings.js';
 import type { CustomerRow } from './CustomersPage.js';
 import type { ItemRow } from './MaterialsPage.js';
@@ -56,6 +55,8 @@ interface FormState {
   received_currency: Currency;
   notes: string;
   rate_override: string;
+  /** An edited order's own rate and its source, which the rate box opens on (D-101); null when new. */
+  saved_rate?: { rate: string; source: RateSource } | null;
   /** Kept in state but always the current user now: "done by" is whoever creates the order. */
   acting_user_id: string;
   /** On by default: typing one currency fills the other at the rate. Off: they are independent. */
@@ -149,7 +150,9 @@ function fromOrder(order: OrderDetail): FormState {
     payment_type: order.payment_type,
     received_currency: order.received_currency ?? 'IQD',
     notes: order.notes ?? '',
-    rate_override: order.rate_source === 'manual' ? order.rate_iqd_per_usd : '',
+    // The box opens on the order's own rate (D-101): sent only when changed, else the server keeps it.
+    rate_override: '',
+    saved_rate: { rate: order.rate_iqd_per_usd, source: order.rate_source },
     acting_user_id: '',
     auto_convert: true,
     // Per-line discounts are new, so an existing order's single discount is carried on its first
@@ -203,8 +206,6 @@ function OrderForm({
   const [form, setForm] = useState<FormState>(initial);
   const [picking, setPicking] = useState<'customer' | 'material' | null>(null);
 
-  const { rate: globalRate } = useGlobalRate();
-
   /**
    * The customer behind an id that came from a link or from the order being edited. What it
    * tells us is *derived* at render — the settlement currency, the label, whether borrowed is
@@ -226,30 +227,20 @@ function OrderForm({
   // The walk-in customer is a till, not a debtor (FR-501, A-33).
   const paymentType = isSystemCustomer ? 'cash' : form.payment_type;
 
-  // The rate for this order (2.3.3): the one typed here for this deal, else the customer's own
-  // rate, else today's global rate — the same precedence the server applies. With none of them
-  // there is no rate to preview with, and nothing is converted rather than a rate invented.
-  //
-  // A typed rate is used only once it is one: "0" or "." half-way through typing reached the
-  // conversion kernel, which throws on a rate that is not above zero, and the whole form was
-  // replaced by the error screen. Until then the field says so and the preview keeps the
-  // automatic rate.
-  const typedRate = usableRate(form.rate_override);
-  const rateTypedBadly = form.rate_override.trim() !== '' && typedRate === null;
-  const usingOverride = typedRate !== null;
-  const customerRate = customer.data?.rate;
-  const documentRate: Rate | null = typedRate ?? customerRate?.rate_iqd_per_usd ?? globalRate;
-  const rateSource: RateSource = usingOverride
-    ? 'manual'
-    : customerRate?.is_customer_rate
-      ? 'company'
-      : 'global';
-  const rateSourceLabel =
-    rateSource === 'manual'
-      ? t('glossary:order_rate')
-      : rateSource === 'company'
-        ? t('glossary:customer_rate')
-        : t('glossary:system_rate');
+  // The rate for this order (2.3.3, D-101), as a purchase's (D-092): the box opens with the
+  // customer's own rate, else the system's, tagged with where it is from, and may be changed for
+  // this order alone. Only a changed rate is sent, so an order at the customer's or the system's
+  // rate is recorded as such. A half-typed rate ("0", ".") is never used: the conversion kernel
+  // throws on a rate that is not above zero, so until it is one the box says so and the preview
+  // keeps the automatic rate.
+  const orderRate = useBuyRate(customer.data, t('glossary:order_rate'), {
+    text: form.rate_override,
+    setText: (text) => setForm((current) => ({ ...current, rate_override: text })),
+  }, form.saved_rate ?? null);
+  const rateTypedBadly = orderRate.invalid;
+  const documentRate: Rate | null = orderRate.rate;
+  const rateSource: RateSource = orderRate.source;
+  const rateSourceLabel = orderRate.label;
 
   /**
    * Every change is kept, so a dropped connection or a locked screen costs nothing (2.10.2) —
@@ -338,7 +329,7 @@ function OrderForm({
         payment_type: paymentType,
         received_currency: paymentType === 'cash' ? form.received_currency : null,
         notes: form.notes.trim() === '' ? null : form.notes.trim(),
-        rate_iqd_per_usd: typedRate,
+        rate_iqd_per_usd: orderRate.body,
         acting_user_id: form.acting_user_id === '' ? null : form.acting_user_id,
         // The discount goes as a flat IQD amount, whether it was typed as an amount or worked
         // out from a percentage; the server converts the other currency at the order's rate.
@@ -519,25 +510,9 @@ function OrderForm({
               </div>
             ) : null}
 
-            {/* The rate this order is valued at — the customer's or the system's by default, and
-                editable here for this one order only; the hint says which is in force. */}
-            <NumberField
-              label={t('orders:rate_for_order')}
-              hint={
-                documentRate === null
-                  ? t('common:no_rate_set')
-                  : t('common:rate_at_source', {
-                      source: rateSourceLabel,
-                      rate: formatter.rate(documentRate),
-                    })
-              }
-              decimals={4}
-              error={rateTypedBadly ? t('common:rate_invalid') : undefined}
-              value={form.rate_override}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, rate_override: event.target.value }))
-              }
-            />
+            {/* The rate this order is valued at — the customer's or the system's, tagged with
+                which, and changeable here for this one order (D-101, as a purchase's D-092). */}
+            <BuyRateField state={orderRate} label={t('orders:rate_for_order')} />
 
             <div className="mz-form-grid__wide">
               <TextAreaField

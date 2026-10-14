@@ -8,6 +8,10 @@
   "purchase_date": "Purchase date",
   "pick_company": "Choose who you bought from",
   "pick_material": "Choose a material",
+  "materials_scope": "Show",
+  "scope_company": "From this company",
+  "scope_all": "All materials",
+  "scope_company_empty": "Nothing bought from this company yet — choose All materials",
   "add_line": "Add a material",
   "details": "Details",
   "add_material_hint": "Record stock coming in — the material, how much you added, and what it cost.",
@@ -32,7 +36,7 @@
   "make_payment": "We paid for this purchase",
   "no_payments": "Nothing paid against this purchase yet",
   "settle_in_full_hint": "Closes this purchase exactly, even when the last payment is in the other currency",
-  "accounts_title": "Accounts",
+  "accounts_title": "Accountant",
   "accounts_hint": "What we sold, what it cost us, what we bought and spent — for the period you choose",
   "period": "Period",
   "period_this_month": "This month",
@@ -117,6 +121,8 @@
   "rate_badge_company": "Company rate",
   "rate_badge_system": "System rate",
   "rate_badge_changed": "Changed",
+  "rate_badge_saved": "Saved rate",
+  "rate_was_saved": "The saved rate is {{rate}}",
   "rate_was_company": "The company rate is {{rate}}",
   "rate_was_system": "The system rate is {{rate}}"
 }

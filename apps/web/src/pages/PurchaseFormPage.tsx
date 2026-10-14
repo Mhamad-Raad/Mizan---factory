@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, Chip, DateField, EmptyState, Icon, IconButton, TextAreaField } from '@mizan/ui';
+import { Button, Card, Chip, DateField, EmptyState, Icon, IconButton, SegmentedControl, TextAreaField } from '@mizan/ui';
 import { computeLineTotals, convert, documentTotals } from '@mizan/money';
 import type { Currency } from '@mizan/money';
 import { ApiError, apiRequest } from '../lib/api.js';
@@ -78,6 +78,9 @@ export function PurchaseFormPage() {
   const [lines, setLines] = useState<FormLine[]>([]);
   const [paid, setPaid] = useState<PaidNow>(NOTHING_PAID);
   const [picking, setPicking] = useState(false);
+  // The picker opens on what this company has sold us before; "All materials" is one tap away,
+  // for the first buy of something from them (D-096).
+  const [materialScope, setMaterialScope] = useState<'company' | 'all'>('company');
   // A material named on the spot from the picker (D-090): what was typed there, while its sheet is open.
   const [naming, setNaming] = useState<string | null>(null);
   const mayCreateMaterial = usePermission('materials.create');
@@ -218,6 +221,7 @@ export function PurchaseFormPage() {
                 onChange={(choice) => {
                   save.reset();
                   setCompany(choice);
+                  setMaterialScope('company');
                   // What was typed survives a change of company; "paid in" follows the new one.
                   if (choice.kind !== 'company') setPaid(NOTHING_PAID);
                 }}
@@ -296,26 +300,24 @@ export function PurchaseFormPage() {
               />
             </span>
           </div>
-          <div className="mz-form-grid">
-            <QuantityInput
-              priced_measure={line.priced_measure}
-              value={{ qty_count: line.qty_count, qty_kg: line.qty_kg }}
-              onChange={(value) => updateLine(line.key, value)}
-              error={
-                error?.fieldError(`lines.${index}.qty_kg`) || error?.fieldError(`lines.${index}.qty_count`)
-                  ? t('errors:field.required')
-                  : undefined
-              }
-            />
-            <MoneyInput
-              label={t('materials:cost_per_unit')}
-              value={line.cost}
-              rate={rate}
-              sourceLabel={rateSourceLabel}
-              onChange={(cost) => updateLine(line.key, { cost })}
-              error={error?.fieldError(`lines.${index}.unit_price`) ? t('errors:price_required') : undefined}
-            />
-          </div>
+          <QuantityInput
+            priced_measure={line.priced_measure}
+            value={{ qty_count: line.qty_count, qty_kg: line.qty_kg }}
+            onChange={(value) => updateLine(line.key, value)}
+            error={
+              error?.fieldError(`lines.${index}.qty_kg`) || error?.fieldError(`lines.${index}.qty_count`)
+                ? t('errors:field.required')
+                : undefined
+            }
+          />
+          <MoneyInput
+            label={t('materials:cost_per_unit')}
+            value={line.cost}
+            rate={rate}
+            sourceLabel={rateSourceLabel}
+            onChange={(cost) => updateLine(line.key, { cost })}
+            error={error?.fieldError(`lines.${index}.unit_price`) ? t('errors:price_required') : undefined}
+          />
           <TextAreaField
             label={t('purchases:line_note')}
             hint={t('common:optional')}
@@ -383,10 +385,25 @@ export function PurchaseFormPage() {
           title={t('purchases:pick_material')}
           open
           onClose={() => setPicking(false)}
-          path="/items"
+          path={companyId && materialScope === 'company' ? `/items?company_id=${companyId}` : '/items'}
           icon="materials"
           searchLabel={t('materials:search_placeholder')}
-          emptyTitle={t('materials:empty')}
+          emptyTitle={
+            companyId && materialScope === 'company' ? t('purchases:scope_company_empty') : t('materials:empty')
+          }
+          header={
+            companyId ? (
+              <SegmentedControl
+                label={t('purchases:materials_scope')}
+                value={materialScope}
+                onChange={setMaterialScope}
+                options={[
+                  { value: 'company', label: t('purchases:scope_company') },
+                  { value: 'all', label: t('purchases:scope_all') },
+                ]}
+              />
+            ) : undefined
+          }
           toItem={(row: never) => {
             const item = row as unknown as ItemRow;
             return {

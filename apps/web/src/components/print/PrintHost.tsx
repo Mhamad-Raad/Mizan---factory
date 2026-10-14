@@ -89,8 +89,9 @@ function PrintRun({ job }: { job: PrintJob }) {
 /**
  * Prints a block from a hidden frame — the way the dashboard's receipts print — and calls `done`
  * when the dialog closes, printed, saved or cancelled alike. The frame carries the app's own
- * stylesheets and the page's language, direction, theme and text size, so paper reads exactly as
- * the reader set the app. Returns what removes the frame, should the job be replaced first.
+ * stylesheets and the page's language, direction, palette and text size, so paper reads as the
+ * reader set the app — but always in the light theme: paper is white, and the dark theme's pale
+ * text printed on it barely shows. Returns what removes the frame, should the job be replaced first.
  */
 function printInFrame(source: HTMLElement, done: () => void): () => void {
   const frame = document.createElement('iframe');
@@ -124,6 +125,7 @@ function printInFrame(source: HTMLElement, done: () => void): () => void {
   for (const { name, value } of Array.from(document.documentElement.attributes)) {
     sheet.documentElement.setAttribute(name, value);
   }
+  sheet.documentElement.setAttribute('data-theme', 'light');
   const base = sheet.createElement('base');
   base.href = document.baseURI;
   sheet.head.appendChild(base);

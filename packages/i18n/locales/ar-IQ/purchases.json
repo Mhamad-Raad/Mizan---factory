@@ -8,6 +8,10 @@
   "purchase_date": "تاريخ الشراء",
   "pick_company": "اختر ممن اشتريت",
   "pick_material": "اختر مادة",
+  "materials_scope": "عرض",
+  "scope_company": "من هذه الشركة",
+  "scope_all": "كل المواد",
+  "scope_company_empty": "لم يُشترَ شيء من هذه الشركة بعد — اختر كل المواد",
   "add_line": "إضافة مادة",
   "details": "التفاصيل",
   "add_material_hint": "سجّل البضاعة الداخلة — المادة، الكمية التي أضفتها، وكلفتها.",
@@ -32,7 +36,7 @@
   "make_payment": "دفعنا ثمن هذا الشراء",
   "no_payments": "لم يُدفع شيء لهذه المشتريات بعد",
   "settle_in_full_hint": "يُغلق هذه المشتريات بالضبط حتى لو كانت الدفعة الأخيرة بعملة أخرى",
-  "accounts_title": "الحسابات",
+  "accounts_title": "المحاسبة",
   "accounts_hint": "ما بعناه وكم كلّفنا، وما اشتريناه وأنفقناه — للفترة التي تختارها",
   "period": "الفترة",
   "period_this_month": "هذا الشهر",
@@ -117,6 +121,8 @@
   "rate_badge_company": "سعر الشركة",
   "rate_badge_system": "سعر النظام",
   "rate_badge_changed": "معدَّل",
+  "rate_badge_saved": "السعر المحفوظ",
+  "rate_was_saved": "السعر المحفوظ: {{rate}}",
   "rate_was_company": "سعر الشركة: {{rate}}",
   "rate_was_system": "سعر النظام: {{rate}}"
 }

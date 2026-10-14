@@ -9,6 +9,8 @@ import { apiRequest } from '../lib/api.js';
 import { errorMessage } from '../lib/errors.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { DualAmount } from '../components/DualAmount.js';
+import { DamageTable } from '../components/DamageTable.js';
+import type { DamageRow } from './DamagesPage.js';
 import { KpiHead } from '../components/KpiHead.js';
 import { QueryStates } from '../components/states.js';
 import { Pager } from '../components/Pager.js';
@@ -331,6 +333,8 @@ export function ReportsPage() {
         />
       </div>
 
+      <PeriodSummary range={range} />
+
       <Tabs
         label={t('reports:title')}
         value={tab}
@@ -343,6 +347,7 @@ export function ReportsPage() {
       ) : (
         <ReportTab key={tab} reportKey={tab} shape={SHAPES[tab]} range={range} period={period} />
       )}
+      {tab === 'damage' ? <DamageRecords range={range} /> : null}
     </div>
   );
 }
@@ -834,6 +839,107 @@ function ReportTab({
         />
       </QueryStates>
     </div>
+  );
+}
+
+/** The money part of a report's totals: at the top level, or inside `cost` (D-022). */
+function pairOf(totals: Record<string, unknown> | undefined, field: string): { iqd: number; usd: number } | null {
+  if (!totals) return null;
+  const source = (field.startsWith('cost.') ? totals.cost : totals) as Record<string, unknown> | undefined;
+  const name = field.replace(/^cost\./, '');
+  const iqd = source?.[`${name}_iqd`];
+  const usd = source?.[`${name}_usd_cents`];
+  return typeof iqd === 'number' && typeof usd === 'number' ? { iqd, usd } : null;
+}
+
+/**
+ * The period at a glance, above the tabs (D-102): what was sold, what was bought, what broke, and
+ * sold minus bought — the figures each tab has on its own, side by side. A figure the reader's
+ * flags keep from them (what was bought and what broke are bought prices) is not shown, and the
+ * difference only when both of its sides are.
+ */
+function PeriodSummary({ range }: { range: { from: string; to: string } }) {
+  const { t } = useTranslation();
+  const totalsOf = (key: 'sales' | 'purchases' | 'damage') =>
+    // A report's totals cover the whole period whatever the page: one group is enough to ask for.
+    apiRequest<ReportResponse>(`/reports/${key}?from=${range.from}&to=${range.to}&group_by=month&page_size=1`).then(
+      (response) => response.totals,
+    );
+  const sales = useQuery({ queryKey: ['reports', 'summary', 'sales', range.from, range.to], queryFn: () => totalsOf('sales') });
+  const bought = useQuery({
+    queryKey: ['reports', 'summary', 'purchases', range.from, range.to],
+    queryFn: () => totalsOf('purchases'),
+  });
+  const broken = useQuery({ queryKey: ['reports', 'summary', 'damage', range.from, range.to], queryFn: () => totalsOf('damage') });
+
+  const sold = pairOf(sales.data, 'total');
+  const spent = pairOf(bought.data, 'cost.total');
+  const lost = pairOf(broken.data, 'cost.est_value');
+  const tiles: { icon: Parameters<typeof Icon>[0]['name']; label: string; pair: { iqd: number; usd: number } }[] = [];
+  if (sold) tiles.push({ icon: 'orders', label: t('reports:summary_sold'), pair: sold });
+  if (spent) tiles.push({ icon: 'purchases', label: t('reports:summary_bought'), pair: spent });
+  if (lost) tiles.push({ icon: 'warning', label: t('reports:summary_broken'), pair: lost });
+  if (sold && spent) {
+    tiles.push({
+      icon: 'chart',
+      label: t('reports:summary_difference'),
+      pair: { iqd: sold.iqd - spent.iqd, usd: sold.usd - spent.usd },
+    });
+  }
+
+  return (
+    <section className="mz-stack" style={{ gap: 'var(--space-2)' }} aria-label={t('reports:summary_title')}>
+      <div>
+        <h2 className="mz-heading">{t('reports:summary_title')}</h2>
+        <p className="mz-caption">{t('reports:summary_hint')}</p>
+      </div>
+      <QueryStates query={sales} skeletonLines={1}>
+        <div className="mz-kpis">
+          {tiles.map((tile) => (
+            <Tile key={tile.label} icon={tile.icon} label={tile.label}>
+              <DualAmount amount_iqd={tile.pair.iqd} amount_usd_cents={tile.pair.usd} />
+            </Tile>
+          ))}
+        </div>
+      </QueryStates>
+    </section>
+  );
+}
+
+/**
+ * Every broken-goods record of the period, under the Broken goods report's totals (D-102): the
+ * same table and order as the Broken goods page, a page at a time, each opening its record.
+ */
+function DamageRecords({ range }: { range: { from: string; to: string } }) {
+  const { t } = useTranslation();
+  const mayView = usePermission('damages.view');
+  const paging = usePaging({ storageKey: 'report-damages', prefix: 'rd_', resetOn: [range.from, range.to] });
+  const damages = useQuery({
+    queryKey: ['damages', 'report', range.from, range.to, paging.page, paging.pageSize],
+    queryFn: () =>
+      apiRequest<{ items: DamageRow[]; total: number }>(`/damages?from=${range.from}&to=${range.to}&${paging.query}`),
+    enabled: mayView,
+    placeholderData: keepPreviousData,
+  });
+  useKeepPageInRange(paging, damages);
+  if (!mayView) return null;
+  const rows = damages.data?.items ?? [];
+  return (
+    <section className="mz-stack" aria-label={t('reports:damage_records')}>
+      <h3 className="mz-heading">{t('reports:damage_records')}</h3>
+      <QueryStates query={damages} isEmpty={rows.length === 0} emptyTitle={t('reports:damage_records_empty')} skeletonLines={3}>
+        <div className="mz-stack">
+          <DamageTable rows={rows} />
+          <Pager
+            page={paging.page}
+            pageSize={paging.pageSize}
+            total={damages.data?.total ?? 0}
+            onPage={paging.setPage}
+            onPageSize={paging.setPageSize}
+          />
+        </div>
+      </QueryStates>
+    </section>
   );
 }
 

@@ -1153,6 +1153,12 @@ a.mz-button {
     padding-block-end: var(--space-4);
     animation-name: mz-pop;
   }
+
+  /* A form of many fields — "Buy more", a payment — fits on one laptop screen two to a row. */
+  .mz-sheet--wide {
+    inline-size: min(60rem, calc(100vw - 2 * var(--space-6)));
+    max-block-size: min(96dvh, 50rem);
+  }
 }
 
 @keyframes mz-pop {
@@ -1432,6 +1438,22 @@ a.mz-button {
   border-block-end: 1px solid var(--color-border);
 }
 
+/* The month whose price is in use, in a table: tinted, with a bar at its start edge. */
+.mz-table tr.mz-table__row--current > td {
+  background: var(--color-primary-soft);
+  color: var(--color-on-primary-soft);
+}
+
+.mz-table tr.mz-table__row--current > td:first-child {
+  box-shadow: inset calc(var(--dir, 1) * -3px) 0 0 var(--color-primary);
+}
+
+/* Its "In use now" tag is solid, so it reads on the tinted row. */
+.mz-table tr.mz-table__row--current .mz-chip {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
 .mz-price-month--current {
   background: var(--color-primary-soft);
   border-radius: var(--radius-sm);
@@ -1623,6 +1645,17 @@ a.mz-button {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+/* A statement's two sides — what they owe us, what we owe them — stand clearly apart (D-104). */
+.mz-invoice__section + .mz-invoice__section {
+  margin-block-start: var(--space-6);
+}
+
+/* The statement's closing figures, a line of air between each. */
+.mz-invoice__totals--spaced {
+  gap: var(--space-3);
+  margin-block-start: var(--space-4);
 }
 
 .mz-invoice__section-title {
@@ -2627,6 +2660,12 @@ html[data-mirroring='true'] body {
 
   .mz-form-grid__wide {
     grid-column: 1 / -1;
+  }
+
+  /* A pair inside a two-column form (dinar and dollar) keeps the form's own gap, so its boxes
+     line up with the fields above and below. */
+  .mz-form-grid .mz-grid-2 {
+    column-gap: var(--space-4);
   }
 }
 
