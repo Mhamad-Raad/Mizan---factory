@@ -447,6 +447,8 @@ export interface BottomSheetProps {
   onClose: () => void;
   closeLabel: string;
   children: ReactNode;
+  /** From a laptop up, a wider dialog for a form that lays its fields two to a row. */
+  wide?: boolean;
 }
 
 /**
@@ -458,7 +460,7 @@ export interface BottomSheetProps {
  * is what the I6 axe pass found, reporting the *dimmed* rows behind the sheet as unreadable
  * text, because to a machine they were still text somebody was expected to read (NFR-10).
  */
-export function BottomSheet({ title, open, onClose, closeLabel, children }: BottomSheetProps) {
+export function BottomSheet({ title, open, onClose, closeLabel, children, wide }: BottomSheetProps) {
   const sheet = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   useEffect(() => {
@@ -508,7 +510,7 @@ export function BottomSheet({ title, open, onClose, closeLabel, children }: Bott
   return createPortal(
     <>
       <div className="mz-backdrop" onClick={onClose} role="presentation" />
-      <div ref={sheet} className="mz-sheet" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
+      <div ref={sheet} className={wide ? 'mz-sheet mz-sheet--wide' : 'mz-sheet'} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
         <div className="mz-row mz-row--between" style={{ marginBlockEnd: 'var(--space-3)' }}>
           <h2 className="mz-heading">{title}</h2>
           <IconButton icon="close" label={closeLabel} onClick={onClose} />

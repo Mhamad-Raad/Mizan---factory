@@ -1976,3 +1976,38 @@ holding 'jiyan' from before this change could not be told from one that chose it
 opens in Navy once (`paletteDefaults` mark in `preferences.ts` and the `index.html` pre-paint
 script), and Jiyan chosen after the change is kept. `check:contrast` measures Navy in both themes
 (676 pairs pass). Status colours and the chart series are unchanged.
+
+## D-096 · 2026-10-14 · business request · A purchase's material picker opens on what that company sold us
+
+Once a company is chosen on a purchase, the material picker shows **From this company / All
+materials**, opening on the first (and back to it when the company changes). A material is not
+one company's alone, so the link is what was bought: `GET /items?company_id=` returns materials on
+a purchase from that company that still stands (voided purchases and deleted lines left out).
+Who supplies what is buying information, so the filter needs `purchases.view` or
+`purchases.create` (403 otherwise). Materials imported at go-live, never bought from a company,
+are under "All materials". Test: `buying-from-companies.test.ts`.
+
+## D-097 · 2026-10-14 · business request · A new material is added in one place: a purchase
+
+The business: adding a material in two places did not make sense. The Materials page's "New
+material" and its page (`/materials/new`, which named a material and recorded its first buy) are
+gone; a new material is named from a purchase's material picker (D-090). The empty Materials list
+says so. "Buy more" on a material is a wide dialog from a laptop up (`BottomSheet wide`), its
+fields two to a row, so the whole buy fits on a 1366×768 screen; one column on a phone. A pair
+inside a two-column form (dinar and dollar) now keeps the form's gap, so its boxes line up.
+
+## D-098 · 2026-10-14 · business request · Monthly prices are a table, the price in use marked
+
+The Monthly prices tab is a table like the others from a laptop up (month, sale, bought — for who
+may see it — done by, note, Edit); cards on a phone. The month whose sale price orders use today —
+this month's, else the latest before it (FR-303, the detail's `sale.from_month`) — is tinted, with
+a bar at its start edge and an "In use now" tag.
+
+## D-099 · 2026-10-14 · business request · A material's details are edited from its page
+
+The business asked how to change a material's name. `PATCH /items/:id` existed but no screen used
+it: the material page now has **Edit material** beside Deactivate (`materials.edit`), for its
+name, code, low-stock level and notes. Prices stay on the Monthly prices tab and a buy's cost on
+its purchase (the sheet says so); the unit is not offered, since a bought material keeps it
+(D-062). The API now clears a code, level or note sent as null — it used to read null as "leave
+it". Test: `materials.test.ts`.
