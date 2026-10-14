@@ -2046,3 +2046,12 @@ Profit tab counts what the sold goods cost. Bought and broken goods are bought p
 reader without `fields.see_bought_price` sees neither, nor the difference. The **Broken goods**
 tab now also lists **every record** of the period under its totals — the Broken goods page's own
 table (`DamageTable`, D-094), paged — for whoever may see broken goods.
+
+## D-103 · 2026-10-14 · business request · A payment's sheet shows everything on a laptop
+
+The business: "They paid us" should be wide and tall enough to show all of it. At 1366×768 the
+payment sheet ran 45 px past its frame and its last line had to be scrolled to. It is now the wide
+dialog (D-097), its note beside the date and method instead of under them, and a wide dialog may
+use up to 96% of the screen's height (50rem at most), so "They paid us" and "We paid them" fit
+whole in all three languages — Kurdish's taller line height included. One sheet serves every
+payment (a company's page, an order, a purchase), so all of them change.

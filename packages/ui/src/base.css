@@ -1154,9 +1154,10 @@ a.mz-button {
     animation-name: mz-pop;
   }
 
-  /* A form of many fields — "Buy more" — fits on one laptop screen two fields to a row. */
+  /* A form of many fields — "Buy more", a payment — fits on one laptop screen two to a row. */
   .mz-sheet--wide {
     inline-size: min(60rem, calc(100vw - 2 * var(--space-6)));
+    max-block-size: min(96dvh, 50rem);
   }
 }
 
