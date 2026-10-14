@@ -296,26 +296,24 @@ export function PurchaseFormPage() {
               />
             </span>
           </div>
-          <div className="mz-form-grid">
-            <QuantityInput
-              priced_measure={line.priced_measure}
-              value={{ qty_count: line.qty_count, qty_kg: line.qty_kg }}
-              onChange={(value) => updateLine(line.key, value)}
-              error={
-                error?.fieldError(`lines.${index}.qty_kg`) || error?.fieldError(`lines.${index}.qty_count`)
-                  ? t('errors:field.required')
-                  : undefined
-              }
-            />
-            <MoneyInput
-              label={t('materials:cost_per_unit')}
-              value={line.cost}
-              rate={rate}
-              sourceLabel={rateSourceLabel}
-              onChange={(cost) => updateLine(line.key, { cost })}
-              error={error?.fieldError(`lines.${index}.unit_price`) ? t('errors:price_required') : undefined}
-            />
-          </div>
+          <QuantityInput
+            priced_measure={line.priced_measure}
+            value={{ qty_count: line.qty_count, qty_kg: line.qty_kg }}
+            onChange={(value) => updateLine(line.key, value)}
+            error={
+              error?.fieldError(`lines.${index}.qty_kg`) || error?.fieldError(`lines.${index}.qty_count`)
+                ? t('errors:field.required')
+                : undefined
+            }
+          />
+          <MoneyInput
+            label={t('materials:cost_per_unit')}
+            value={line.cost}
+            rate={rate}
+            sourceLabel={rateSourceLabel}
+            onChange={(cost) => updateLine(line.key, { cost })}
+            error={error?.fieldError(`lines.${index}.unit_price`) ? t('errors:price_required') : undefined}
+          />
           <TextAreaField
             label={t('purchases:line_note')}
             hint={t('common:optional')}
