@@ -32,7 +32,7 @@
   "make_payment": "We paid for this purchase",
   "no_payments": "Nothing paid against this purchase yet",
   "settle_in_full_hint": "Closes this purchase exactly, even when the last payment is in the other currency",
-  "accounts_title": "Accounts",
+  "accounts_title": "Accountant",
   "accounts_hint": "What we sold, what it cost us, what we bought and spent — for the period you choose",
   "period": "Period",
   "period_this_month": "This month",
