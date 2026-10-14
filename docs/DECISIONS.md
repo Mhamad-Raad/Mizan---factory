@@ -2034,3 +2034,15 @@ is the default again. It used to open empty, the rate in force named only in a h
 takes the typed text from the order form's own state (`held`), so the draft keeps it. As before,
 only a changed rate is sent, so an order at the customer's or the system's rate is recorded with
 that source and only a changed one as `manual`; the server's rule is unchanged.
+
+## D-102 · 2026-10-14 · business request · Reports open on the period at a glance, and list every broken item
+
+The business: purchases should count in the reports' total, and broken goods should have a list.
+Each report had only its own figures, so Reports now opens, above the tabs, on **The period at a
+glance**: Sold (the Sales report's revenue), Bought (the Bought report's total), Broken goods
+(their value) and **Sold minus bought**, each in both currencies, from the reports' own totals
+for the chosen period. The hint says plainly that sold minus bought is not the profit — the
+Profit tab counts what the sold goods cost. Bought and broken goods are bought prices, so a
+reader without `fields.see_bought_price` sees neither, nor the difference. The **Broken goods**
+tab now also lists **every record** of the period under its totals — the Broken goods page's own
+table (`DamageTable`, D-094), paged — for whoever may see broken goods.
