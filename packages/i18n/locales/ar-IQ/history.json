@@ -100,7 +100,7 @@
   "field.reason": "السبب",
   "field.other_sessions_signed_out": "الأجهزة الأخرى التي سُجّل خروجها",
   "entity.expense": "مصروف",
-  "all_actions": "أي إجراء",
+  "all_actions": "الكل",
   "action_filter.create": "إنشاء",
   "action_filter.update": "تعديل",
   "action_filter.void": "إلغاء",
