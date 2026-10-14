@@ -224,12 +224,20 @@ export interface BuyRate {
 }
 
 /**
- * The rate of a buy (D-092): its box opens filled with the company's own rate, or the system's
- * when the company has none, and may be changed for this buy alone. Typing the default back, or
- * clearing the box, is the default again — never a "typed" rate that happens to match.
+ * The rate of a buy (D-092) or an order (D-101): its box opens filled with the company's own rate,
+ * or the system's when the company has none, and may be changed for this document alone. Typing
+ * the default back, or clearing the box, is the default again — never a "typed" rate that happens
+ * to match. `held` lets a form keep what was typed in its own state (the order form's draft):
+ * '' there is "not changed".
  */
-export function useBuyRate(account: CustomerRow | undefined, typedLabel: string): BuyRate {
-  const [edited, setEdited] = useState<string | null>(null);
+export function useBuyRate(
+  account: CustomerRow | undefined,
+  typedLabel: string,
+  held?: { text: string; setText: (text: string) => void },
+): BuyRate {
+  const [own, setOwn] = useState<string | null>(null);
+  const edited = held ? (held.text === '' ? null : held.text) : own;
+  const setEdited = held ? (text: string | null) => held.setText(text ?? '') : setOwn;
   const fallback = useDocumentRate(account);
   const typed = edited === null ? null : usableRate(edited);
   const differs = typed !== null && (fallback.rate === null || Number(typed) !== Number(fallback.rate));

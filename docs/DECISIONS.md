@@ -2022,3 +2022,15 @@ month's stored prices; a box left as it was is not sent, so it is not rewritten 
 side not sent). The prices are saved first through the same `PUT /items/:id/prices/:month` as
 the Monthly prices tab, then the details. Earlier months stay on that tab. The sheet lays its
 fields two to a row on a laptop so it fits one 1366×768 screen.
+
+## D-101 · 2026-10-14 · business request · An order's rate box behaves as a purchase's
+
+The business: an order's rate should come from the company if it has one, else the system, be
+changeable, and carry the same badges as a purchase's (D-092). **Rate for this order** is now the
+same `BuyRateField` over `useBuyRate`: it opens filled with the customer's own rate or the
+system's, tagged **Company rate** / **System rate**, and **Changed** once a different figure is
+typed, with what it would otherwise be under the box; typing the default back or emptying the box
+is the default again. It used to open empty, the rate in force named only in a hint. The hook
+takes the typed text from the order form's own state (`held`), so the draft keeps it. As before,
+only a changed rate is sent, so an order at the customer's or the system's rate is recorded with
+that source and only a changed one as `manual`; the server's rule is unchanged.
