@@ -100,6 +100,28 @@ function Party({ label, name, lines, end }: { label: string; name: ReactNode; li
   );
 }
 
+/** "Driver: Azad · 21 A 45871 · 0750 412 3344", the plate and the phone each in their own direction. */
+function DriverLine({ driver }: { driver: { name: string; phone: string | null; car_number: string | null } }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {t('glossary:driver')}: <bdi>{driver.name}</bdi>
+      {driver.car_number ? (
+        <>
+          {' · '}
+          <bdi>{driver.car_number}</bdi>
+        </>
+      ) : null}
+      {driver.phone ? (
+        <>
+          {' · '}
+          <bdi dir="ltr">{driver.phone}</bdi>
+        </>
+      ) : null}
+    </>
+  );
+}
+
 function TotalRow({ label, children, grand }: { label: string; children: ReactNode; grand?: boolean }) {
   return (
     <div className={grand ? 'mz-invoice__total-row mz-invoice__total-row--grand' : 'mz-invoice__total-row'}>
@@ -145,24 +167,8 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
           name={<bdi>{customerName({ name: customer.name, is_system: customer.is_system }, t)}</bdi>}
           lines={[
             customer.phone ? <bdi dir="ltr">{customer.phone}</bdi> : null,
-            // The driver beside the company, with the car the goods came in (D-105).
-            driver ? (
-              <>
-                {t('glossary:driver')}: <bdi>{driver.name}</bdi>
-                {driver.car_number ? (
-                  <>
-                    {' · '}
-                    <bdi>{driver.car_number}</bdi>
-                  </>
-                ) : null}
-                {driver.phone ? (
-                  <>
-                    {' · '}
-                    <bdi dir="ltr">{driver.phone}</bdi>
-                  </>
-                ) : null}
-              </>
-            ) : null,
+            // The driver beside the company, with the car the goods went in (D-105).
+            driver ? <DriverLine driver={driver} /> : null,
           ]}
         />
         <Party
@@ -285,6 +291,8 @@ function PurchaseReceipt({ data }: { data: PurchaseReceiptData }) {
         <Party
           label={t('print:bought_from')}
           name={purchase.company_name ? <bdi>{purchase.company_name}</bdi> : t('purchases:no_company')}
+          // Who brought it in, with the car (D-106).
+          lines={[purchase.driver ? <DriverLine driver={purchase.driver} /> : null]}
         />
         <Party
           end

@@ -98,7 +98,7 @@
   "save_purchase": "حفظ الشراء",
   "rate_for_purchase": "سعر الصرف لهذا الشراء",
   "owed_before": "علينا لهم مسبقاً",
-  "notes_hint": "اختياري — رقم فاتورتهم، السائق، أي شيء يستحق الحفظ",
+  "notes_hint": "اختياري — رقم فاتورتهم، أي شيء يستحق الحفظ",
   "add_first_line": "أضف أول مادة اشتريتها.",
   "choose_company_first": "اختر الجهة التي اشتريت منها للحفظ",
   "paid_now": "هل دفعت لهم الآن؟",
@@ -124,5 +124,6 @@
   "rate_badge_saved": "السعر المحفوظ",
   "rate_was_saved": "السعر المحفوظ: {{rate}}",
   "rate_was_company": "سعر الشركة: {{rate}}",
-  "rate_was_system": "سعر النظام: {{rate}}"
+  "rate_was_system": "سعر النظام: {{rate}}",
+  "driver_hint": "من جلبه إلينا. اختياري."
 }

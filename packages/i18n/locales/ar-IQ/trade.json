@@ -26,6 +26,5 @@
   "empty": "لا مبيعات ولا مشتريات في هذه الفترة",
   "period_since_yesterday": "اليوم والأمس",
   "remove_company": "إزالة",
-  "any_driver": "الكل",
-  "sales_only_driver_hint": "السائق ينقل المبيعات فقط، لذلك تُستبعد المشتريات."
+  "any_driver": "الكل"
 }

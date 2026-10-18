@@ -15,6 +15,9 @@ export interface PurchaseRow {
   acting_user_id: string;
   acting_user_name: string | null;
   notes: string | null;
+  /** Who brought it in (D-106). */
+  driver_id: string | null;
+  driver_name: string | null;
   rate_iqd_per_usd: string;
   rate_source: 'global' | 'manual' | 'company';
   doc_status: 'active' | 'void';
@@ -42,6 +45,8 @@ export interface PurchaseRow {
 }
 
 export interface PurchaseDetail extends PurchaseRow {
+  /** The driver as the receipt shows them (D-106). */
+  driver?: { name: string; phone: string | null; car_number: string | null } | null;
   lines: {
     id: string;
     line_no: number;

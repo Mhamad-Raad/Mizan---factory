@@ -17,6 +17,7 @@ import type { MoneyValue } from '../components/MoneyInput.js';
 import { QuantityInput } from '../components/QuantityInput.js';
 import { PickerSheet } from '../components/PickerSheet.js';
 import { NewMaterialSheet } from '../components/NewMaterialSheet.js';
+import { DriverField } from '../components/DriverPicker.js';
 import { TotalsFooter } from '../components/TotalsFooter.js';
 import { DualAmount } from '../components/DualAmount.js';
 import {
@@ -75,6 +76,11 @@ export function PurchaseFormPage() {
 
   const [date, setDate] = useState(() => formatter.today());
   const [notes, setNotes] = useState('');
+  // Who brought it in (D-106); a purchase opened from a driver's page starts with that driver.
+  const [driver, setDriver] = useState<{ id: string | null; name: string | null }>(() => ({
+    id: params.get('driver'),
+    name: null,
+  }));
   const [lines, setLines] = useState<FormLine[]>([]);
   const [paid, setPaid] = useState<PaidNow>(NOTHING_PAID);
   const [picking, setPicking] = useState(false);
@@ -125,6 +131,7 @@ export function PurchaseFormPage() {
           company_id: companyId,
           purchase_date: date,
           notes: notes.trim() === '' ? null : notes.trim(),
+          driver_id: driver.id,
           rate_iqd_per_usd: buyRate.body,
           lines: lines.map((line) => ({
             item_id: line.item_id,
@@ -248,6 +255,12 @@ export function PurchaseFormPage() {
               }}
             />
             <BuyRateField state={buyRate} label={t('purchases:rate_for_purchase')} />
+            <DriverField
+              driverId={driver.id}
+              driverName={driver.name}
+              hint={t('purchases:driver_hint')}
+              onChange={(picked) => setDriver({ id: picked?.id ?? null, name: picked?.name ?? null })}
+            />
             <div className="mz-form-grid__wide">
               <TextAreaField
                 label={t('glossary:notes')}

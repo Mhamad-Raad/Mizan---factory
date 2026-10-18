@@ -79,8 +79,8 @@ export function TradePage() {
   const companiesPath =
     isAdmin || permissions.has('customers.view') ? '/customers' : permissions.has('companies.view') ? '/companies' : null;
   const mayPurchases = isAdmin || permissions.has('purchases.view');
-  // The driver filter (D-105) asks about sales and picks from the drivers.
-  const mayDrivers = maySales && (isAdmin || permissions.has('drivers.view'));
+  // The driver filter (D-105, D-106): sales and purchases alike, picked from the drivers.
+  const mayDrivers = isAdmin || permissions.has('drivers.view');
 
   // The side is in the address, so /orders and /purchases open this page on theirs.
   const asked = params.get('kind') as Kind | null;
@@ -213,7 +213,6 @@ export function TradePage() {
   // A paid state or a payment type asks about sales alone (D-089): said, so an empty purchases
   // side does not read as "no purchases".
   const saleOnlyFilter = status !== '' && status !== 'void' ? true : paymentType !== '';
-  const driverOnly = driverId !== '' && !saleOnlyFilter;
 
   usePageTitle(t('trade:title'));
 
@@ -385,8 +384,6 @@ export function TradePage() {
             <div className="mz-filter-panel__foot">
               {saleOnlyFilter && kind !== 'sale' ? (
                 <span className="mz-caption">{t('trade:sales_only_hint')}</span>
-              ) : driverOnly && kind !== 'sale' && mayPurchases ? (
-                <span className="mz-caption">{t('trade:sales_only_driver_hint')}</span>
               ) : (
                 <span />
               )}

@@ -8,7 +8,7 @@ export interface DriverRow {
   is_active: boolean;
   version: number;
   created_at: string;
-  /** On the list only: the date of the driver's newest order. */
+  /** On the list only: the date of the driver's newest sale or purchase. */
   last_order_date?: string | null;
 }
 

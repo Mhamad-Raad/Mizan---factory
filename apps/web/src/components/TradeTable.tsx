@@ -87,9 +87,9 @@ export function TradeTable({ rows, selection }: { rows: readonly TradeRow[]; sel
     ) : null;
   };
 
-  // Who took a sale (D-105), under the company it went to.
+  // Who took a sale or brought a purchase in (D-105, D-106), under the company.
   const driven = (row: TradeRow) =>
-    row.kind === 'sale' && row.driver_name ? (
+    row.driver_name ? (
       <span className="mz-caption" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
         <Icon name="drivers" size={12} />
         <bdi>{row.driver_name}</bdi>

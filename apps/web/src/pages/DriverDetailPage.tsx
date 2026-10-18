@@ -12,14 +12,14 @@ import { useCursorPaging, useKeepPageInRange, usePaging } from '../lib/paging.js
 import { presetPeriod } from '../lib/periods.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import type { DriverRow } from '../lib/drivers.js';
-import type { OrderRow } from '../lib/orders.js';
 import { AuditDiff } from '../components/AuditDiff.js';
 import { Can } from '../components/Can.js';
 import { DriverSheet } from '../components/DriverSheet.js';
 import { DualAmount } from '../components/DualAmount.js';
 import { InactiveChip } from '../components/chips.js';
 import { KpiHead } from '../components/KpiHead.js';
-import { OrderTable } from '../components/OrderTable.js';
+import { TradeTable } from '../components/TradeTable.js';
+import type { TradeRow } from '../components/TradeTable.js';
 import { Pager } from '../components/Pager.js';
 import { PrintButton, usePrintSelection } from '../components/PrintSelection.js';
 import { QueryStates } from '../components/states.js';
@@ -39,9 +39,10 @@ interface HistoryRow {
 }
 
 /**
- * One driver (D-105): who they are — name, phone, car — with Edit and Deactivate beside the name,
- * and below it every order they took, newest first, for the period chosen, with how many and what
- * they came to. A History tab says who changed the driver and when (rule 3).
+ * One driver (D-105, D-106): who they are — name, phone, car — with Edit and Deactivate beside the
+ * name, and below it every sale they took and every purchase they brought in, newest first, for the
+ * period chosen — the Buying & selling list narrowed to them, with its figures, each side for whoever
+ * may see it. A History tab says who changed the driver and when (rule 3).
  */
 export function DriverDetailPage() {
   const { id = '' } = useParams();
@@ -49,7 +50,9 @@ export function DriverDetailPage() {
   const formatter = useFormatter();
   const queryClient = useQueryClient();
   const mayViewOrders = usePermission('orders.view');
-  const [tab, setTab] = useState<Tab>(mayViewOrders ? 'orders' : 'history');
+  const mayViewPurchases = usePermission('purchases.view');
+  const mayViewTrade = mayViewOrders || mayViewPurchases;
+  const [tab, setTab] = useState<Tab>(mayViewTrade ? 'orders' : 'history');
   const [period, setPeriod] = useState<Period>('all');
   const [editing, setEditing] = useState(false);
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
@@ -72,14 +75,17 @@ export function DriverDetailPage() {
     resetOn: [id, period],
   });
   const orders = useQuery({
-    queryKey: ['orders', 'driver', id, period, ordersPaging.page, ordersPaging.pageSize],
+    queryKey: ['trade', 'driver', id, period, ordersPaging.page, ordersPaging.pageSize],
     queryFn: () =>
       apiRequest<{
-        items: OrderRow[];
+        items: TradeRow[];
         total: number;
-        totals?: { orders: number; total_iqd: number; total_usd_cents: number };
-      }>(`/orders?${filter.toString()}&${ordersPaging.query}`),
-    enabled: mayViewOrders && tab === 'orders',
+        totals?: {
+          sales?: { count: number; total_iqd: number; total_usd_cents: number };
+          purchases?: { count: number; cost?: { total_iqd: number; total_usd_cents: number } };
+        };
+      }>(`/trade?${filter.toString()}&${ordersPaging.query}`),
+    enabled: mayViewTrade && tab === 'orders',
     placeholderData: keepPreviousData,
   });
   useKeepPageInRange(ordersPaging, orders);
@@ -96,10 +102,11 @@ export function DriverDetailPage() {
     placeholderData: keepPreviousData,
   });
 
-  // The orders ticked to print again — a delivery run's receipts in one go (D-086).
-  const selecting = usePrintSelection<OrderRow>(
-    (row) => ({ kind: 'order', id: row.id }),
-    (row) => row.id,
+  // The rows ticked to print again — a day's loads in one go (D-086).
+  const selecting = usePrintSelection<TradeRow>(
+    (row) =>
+      row.kind === 'sale' ? { kind: 'order', id: row.id } : { kind: 'purchase', id: row.id },
+    (row) => `${row.kind}:${row.id}`,
   );
 
   const activeKey = useIdempotencyKey(`driver-active:${id}`);
@@ -210,7 +217,7 @@ export function DriverDetailPage() {
               value={tab}
               onChange={setTab}
               options={[
-                ...(mayViewOrders ? [{ value: 'orders' as Tab, label: t('orders:title') }] : []),
+                ...(mayViewTrade ? [{ value: 'orders' as Tab, label: t('trade:title') }] : []),
                 { value: 'history', label: t('glossary:history') },
               ]}
             />
@@ -233,29 +240,67 @@ export function DriverDetailPage() {
                       <option value="year">{t('purchases:period_this_year')}</option>
                     </select>
                   </div>
-                  <Can permission="orders.create">
-                    <Link to={`/orders/new?driver=${id}`} className="mz-button mz-button--money-in">
-                      <Icon name="money-in" />
-                      {t('trade:new_sale')}
-                    </Link>
-                  </Can>
+                  <span className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                    <Can permission="purchases.create">
+                      <Link
+                        to={`/purchases/new?driver=${id}`}
+                        className="mz-button mz-button--money-out"
+                      >
+                        <Icon name="money-out" />
+                        {t('purchases:new_purchase')}
+                      </Link>
+                    </Can>
+                    <Can permission="orders.create">
+                      <Link
+                        to={`/orders/new?driver=${id}`}
+                        className="mz-button mz-button--money-in"
+                      >
+                        <Icon name="money-in" />
+                        {t('trade:new_sale')}
+                      </Link>
+                    </Can>
+                  </span>
                 </div>
 
-                {totals ? (
-                  <div className="mz-kpis mz-kpis--two">
-                    <div className="mz-kpi">
-                      <KpiHead icon="orders" label={t('drivers:tile_orders')} />
-                      <span className="mz-kpi__count" data-tabular>
-                        {formatter.number(totals.orders)}
-                      </span>
-                    </div>
-                    <div className="mz-kpi">
-                      <KpiHead icon="money-in" label={t('drivers:tile_total')} />
-                      <DualAmount
-                        amount_iqd={totals.total_iqd}
-                        amount_usd_cents={totals.total_usd_cents}
-                      />
-                    </div>
+                {/* Each side's own figures, never added together, as on Buying & selling. */}
+                {totals?.sales || totals?.purchases ? (
+                  <div className="mz-kpis">
+                    {totals.sales ? (
+                      <>
+                        <div className="mz-kpi">
+                          <KpiHead icon="orders" label={t('drivers:tile_orders')} />
+                          <span className="mz-kpi__count" data-tabular>
+                            {formatter.number(totals.sales.count)}
+                          </span>
+                        </div>
+                        <div className="mz-kpi">
+                          <KpiHead icon="money-in" label={t('trade:tile_sold')} />
+                          <DualAmount
+                            amount_iqd={totals.sales.total_iqd}
+                            amount_usd_cents={totals.sales.total_usd_cents}
+                          />
+                        </div>
+                      </>
+                    ) : null}
+                    {totals.purchases ? (
+                      <>
+                        <div className="mz-kpi">
+                          <KpiHead icon="purchases" label={t('drivers:tile_purchases')} />
+                          <span className="mz-kpi__count" data-tabular>
+                            {formatter.number(totals.purchases.count)}
+                          </span>
+                        </div>
+                        {totals.purchases.cost ? (
+                          <div className="mz-kpi">
+                            <KpiHead icon="money-out" label={t('trade:tile_bought')} />
+                            <DualAmount
+                              amount_iqd={totals.purchases.cost.total_iqd}
+                              amount_usd_cents={totals.purchases.cost.total_usd_cents}
+                            />
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -271,7 +316,7 @@ export function DriverDetailPage() {
                     data-busy={refreshing ? 'true' : undefined}
                     aria-busy={refreshing}
                   >
-                    <OrderTable rows={orders.data?.items ?? []} selection={selecting.selection} />
+                    <TradeTable rows={orders.data?.items ?? []} selection={selecting.selection} />
                   </div>
                   <Pager
                     page={ordersPaging.page}

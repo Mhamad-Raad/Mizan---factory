@@ -26,6 +26,5 @@
   "empty": "No sales or purchases in this period",
   "period_since_yesterday": "Today and yesterday",
   "remove_company": "Remove",
-  "any_driver": "All",
-  "sales_only_driver_hint": "A driver takes sales only, so purchases are left out."
+  "any_driver": "All"
 }

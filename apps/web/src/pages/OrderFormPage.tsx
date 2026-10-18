@@ -12,9 +12,7 @@ import { DualAmount } from '../components/DualAmount.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { PickerSheet } from '../components/PickerSheet.js';
-import { DriverSheet } from '../components/DriverSheet.js';
-import { driverCaption } from '../lib/drivers.js';
-import type { DriverRow } from '../lib/drivers.js';
+import { DriverField } from '../components/DriverPicker.js';
 import { BuyRateField, useBuyRate } from '../components/BuyFields.js';
 import { QuantityInput } from '../components/QuantityInput.js';
 import { FieldsSkeleton, QueryStates } from '../components/states.js';
@@ -215,11 +213,7 @@ function OrderForm({
   const [draftFound, setDraftFound] = useState(() => readDraft<FormState>('order', draftId));
 
   const [form, setForm] = useState<FormState>(initial);
-  const [picking, setPicking] = useState<'customer' | 'material' | 'driver' | null>(null);
-  /** "New driver" from the driver picker, with what was typed in its search (D-105). */
-  const [namingDriver, setNamingDriver] = useState<string | null>(null);
-  const mayPickDriver = usePermission('drivers.view');
-  const mayCreateDriver = usePermission('drivers.create');
+  const [picking, setPicking] = useState<'customer' | 'material' | null>(null);
 
   /**
    * The customer behind an id that came from a link or from the order being edited. What it
@@ -231,14 +225,6 @@ function OrderForm({
     queryFn: () => apiRequest<CustomerRow>(`/customers/${form.customer_id}`),
     enabled: Boolean(form.customer_id),
   });
-
-  // The driver behind an id that came from a driver's page, whose name the form does not have yet.
-  const linkedDriver = useQuery({
-    queryKey: ['drivers', form.driver_id],
-    queryFn: () => apiRequest<DriverRow>(`/drivers/${form.driver_id}`),
-    enabled: Boolean(form.driver_id) && form.driver_name === null && mayPickDriver,
-  });
-  const driverLabel = form.driver_name ?? linkedDriver.data?.name ?? null;
 
   const isSystemCustomer = customer.data?.is_system ?? form.customer_is_system;
   const settlementCurrency = customer.data?.settlement_currency ?? form.settlement_currency;
@@ -535,30 +521,14 @@ function OrderForm({
             ) : null}
 
             {/* Who takes it to the company (D-105): optional, chosen like the company. */}
-            {mayPickDriver || form.driver_id ? (
-              <div className="mz-field">
-                <span className="mz-field__label">{t('glossary:driver')}</span>
-                <span className="mz-filter-panel__company">
-                  <Button
-                    variant="secondary"
-                    icon="drivers"
-                    disabled={!mayPickDriver}
-                    onClick={() => setPicking('driver')}
-                  >
-                    <bdi>{form.driver_id ? (driverLabel ?? '…') : t('orders:choose_driver')}</bdi>
-                  </Button>
-                  {form.driver_id ? (
-                    <Button
-                      variant="ghost"
-                      onClick={() => setForm((current) => ({ ...current, driver_id: null, driver_name: null }))}
-                    >
-                      {t('orders:remove_driver')}
-                    </Button>
-                  ) : null}
-                </span>
-                <span className="mz-field__hint">{t('orders:driver_hint')}</span>
-              </div>
-            ) : null}
+            <DriverField
+              driverId={form.driver_id}
+              driverName={form.driver_name}
+              hint={t('orders:driver_hint')}
+              onChange={(driver) =>
+                setForm((current) => ({ ...current, driver_id: driver?.id ?? null, driver_name: driver?.name ?? null }))
+              }
+            />
 
             {/* The rate this order is valued at — the customer's or the system's, tagged with
                 which, and changeable here for this one order (D-101, as a purchase's D-092). */}
@@ -826,62 +796,6 @@ function OrderForm({
               settlement_currency: picked.settlement_currency,
               payment_type: picked.is_system ? 'cash' : current.payment_type,
             }));
-          }}
-        />
-      ) : null}
-
-      {picking === 'driver' ? (
-        <PickerSheet
-          title={t('orders:choose_driver')}
-          open
-          onClose={() => setPicking(null)}
-          path="/drivers"
-          icon="drivers"
-          searchLabel={t('drivers:search_placeholder')}
-          emptyTitle={t('drivers:empty')}
-          toItem={(row: never) => {
-            const driverRow = row as unknown as DriverRow;
-            return { id: driverRow.id, title: driverRow.name, subtitle: driverCaption(driverRow) };
-          }}
-          onPick={(pickedId, row) => {
-            setPicking(null);
-            setForm((current) => ({
-              ...current,
-              driver_id: pickedId,
-              driver_name: (row as unknown as DriverRow).name,
-            }));
-          }}
-          footer={
-            mayCreateDriver
-              ? (typed) => (
-                  <Button
-                    variant="secondary"
-                    icon="plus"
-                    block
-                    onClick={() => {
-                      setPicking(null);
-                      setNamingDriver(typed);
-                    }}
-                  >
-                    {t('drivers:new_driver')}
-                  </Button>
-                )
-              : undefined
-          }
-        />
-      ) : null}
-
-      {namingDriver !== null ? (
-        <DriverSheet
-          initialName={namingDriver}
-          onClose={() => setNamingDriver(null)}
-          onSaved={(driver) => {
-            setNamingDriver(null);
-            setForm((current) => ({ ...current, driver_id: driver.id, driver_name: driver.name }));
-          }}
-          onUseExisting={(driver) => {
-            setNamingDriver(null);
-            setForm((current) => ({ ...current, driver_id: driver.id, driver_name: driver.name }));
           }}
         />
       ) : null}

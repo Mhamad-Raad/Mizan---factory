@@ -60,5 +60,6 @@
   "they_paid_for_order": "دفعوا ثمن هذا الطلب",
   "choose_driver": "اختر سائقاً",
   "remove_driver": "إزالة",
-  "driver_hint": "من يوصله إلى الشركة. اختياري."
+  "driver_hint": "من يوصله إلى الشركة. اختياري.",
+  "change_driver": "تغيير"
 }
