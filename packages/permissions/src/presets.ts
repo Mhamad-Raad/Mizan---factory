@@ -17,7 +17,8 @@ export interface Preset {
 export const PRESETS: Readonly<Record<PresetKey, Preset>> = {
   sales: {
     key: 'sales',
-    version: 1,
+    // 2: the drivers an order is sent with (D-105).
+    version: 2,
     labelKey: 'permissions.preset.sales',
     keys: [
       'orders.view',
@@ -28,6 +29,9 @@ export const PRESETS: Readonly<Record<PresetKey, Preset>> = {
       'customers.view',
       'customers.create',
       'customers.edit',
+      'drivers.view',
+      'drivers.create',
+      'drivers.edit',
       'materials.view',
       'damages.view',
       'damages.create',
@@ -61,8 +65,8 @@ export const PRESETS: Readonly<Record<PresetKey, Preset>> = {
   },
   accountant: {
     key: 'accountant',
-    // 2: the accountant page and its expenses (D-062).
-    version: 2,
+    // 2: the accountant page and its expenses (D-062). 3: the drivers, to read (D-105).
+    version: 3,
     labelKey: 'permissions.preset.accountant',
     keys: [
       'companies.view',
@@ -83,6 +87,7 @@ export const PRESETS: Readonly<Record<PresetKey, Preset>> = {
       'customers.view',
       'customers.opening_balance',
       'customers.set_rate',
+      'drivers.view',
       'materials.view',
       'materials.set_prices',
       'damages.view',

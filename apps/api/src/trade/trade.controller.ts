@@ -15,6 +15,7 @@ const listSchema = z.object({
   to: isoDate.optional(),
   q: z.string().max(200).optional(),
   company_id: z.string().uuid().optional(),
+  driver_id: z.string().uuid().optional(),
   done_by: z.string().uuid().optional(),
   status: z.enum(['unpaid', 'partially_paid', 'paid', 'owing', 'void']).optional(),
   payment_type: z.enum(['cash', 'borrowed']).optional(),

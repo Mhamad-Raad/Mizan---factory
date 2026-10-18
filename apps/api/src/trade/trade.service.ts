@@ -24,6 +24,8 @@ export interface TradeFilters {
   q?: string;
   /** The company: the customer of a sale, the supplier of a purchase. */
   company_id?: string;
+  /** The driver who took a sale (D-105); a sale's alone, as a purchase has no driver. */
+  driver_id?: string;
   done_by?: string;
   /** Paid states are a sale's alone; `void` is either kind's. */
   status?: 'unpaid' | 'partially_paid' | 'paid' | 'owing' | 'void';
@@ -71,14 +73,18 @@ export class TradeService {
     // The side asked for narrows only a reader who may see both: one who may see one side sees
     // it whatever the address says — /orders opening on sales must not show a buyer nothing.
     const kind = maySales && mayPurchases ? filters.kind : undefined;
-    // A paid state or a payment type is a sale's question: asked, the purchases leave the list.
+    // A paid state, a payment type or a driver is a sale's question: asked, the purchases leave
+    // the list.
     const saleOnly =
-      filters.payment_type !== undefined || (filters.status !== undefined && filters.status !== 'void');
+      filters.payment_type !== undefined ||
+      filters.driver_id !== undefined ||
+      (filters.status !== undefined && filters.status !== 'void');
     const sales = maySales && kind !== 'purchase';
     const buys = mayPurchases && kind !== 'sale' && !saleOnly;
 
     const saleFilters: OrderFilters = {
       customer_id: filters.company_id,
+      driver_id: filters.driver_id,
       from: filters.from,
       to: filters.to,
       done_by: filters.done_by,
