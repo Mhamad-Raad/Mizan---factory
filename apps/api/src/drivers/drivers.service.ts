@@ -26,7 +26,7 @@ export interface DriverDto {
   is_active: boolean;
   version: number;
   created_at: string;
-  /** On the list only: the date of the driver's newest order. */
+  /** On the list only: the date of the driver's newest sale or purchase. */
   last_order_date?: string | null;
 }
 
@@ -175,11 +175,11 @@ export class DriversService {
   }
 
   /**
-   * The driver an order is being saved with, held for the transaction so a deactivation cannot
-   * slip in between the check and the save. A new choice must be an active driver; the driver an
-   * order already had may stay on it after being deactivated (`current`).
+   * The driver an order or a purchase is being saved with, held for the transaction so a deactivation cannot
+   * slip in between the check and the save. A new choice must be an active driver; the driver a
+   * document already had may stay on it after being deactivated (`current`).
    */
-  async requireForOrder(
+  async requireForDocument(
     tx: Db,
     id: string | null,
     current: string | null = null,

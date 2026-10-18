@@ -1,3 +1,4 @@
+import { DriversService } from '../drivers/drivers.service.js';
 import { Injectable } from '@nestjs/common';
 import {
   Decimal,
@@ -61,6 +62,8 @@ export interface CreatePurchaseInput {
   company_id?: string | null;
   purchase_date: string;
   notes?: string | null;
+  /** Who brought it in (D-106). Null names nobody; on an edit, left out keeps the purchase's driver. */
+  driver_id?: string | null;
   /** "Rate for this purchase" (2.3.3); the company's rate, or the global one, when absent. */
   rate_iqd_per_usd?: string | null;
   /** Proposed — not requested (FR-616). */
@@ -128,6 +131,11 @@ export interface PurchaseDto {
   acting_user_id: string;
   acting_user_name: string | null;
   notes: string | null;
+  /** Who brought it in (D-106). */
+  driver_id: string | null;
+  driver_name: string | null;
+  /** On the purchase's own page only: the driver as the receipt shows them. */
+  driver?: { name: string; phone: string | null; car_number: string | null } | null;
   rate_iqd_per_usd: Rate;
   rate_source: RateSource;
   doc_status: 'active' | 'void';
@@ -187,6 +195,7 @@ export class PurchasesService {
     private readonly audit: AuditService,
     private readonly history: HistoryRepository,
     private readonly lots: LotsService,
+    private readonly drivers: DriversService,
   ) {}
 
   /**
@@ -280,7 +289,12 @@ export class PurchasesService {
   async get(id: string): Promise<PurchaseDto> {
     const row = await this.requirePurchase(id);
     const lines = await this.purchases.linesOf(id);
-    return toPurchaseDto(row, lines);
+    // On the purchase's own page and receipt: the driver's car and phone, beside the name (D-106).
+    const driver = row.driver_id ? await this.drivers.get(row.driver_id) : null;
+    return {
+      ...toPurchaseDto(row, lines),
+      driver: driver ? { name: driver.name, phone: driver.phone, car_number: driver.car_number } : null,
+    };
   }
 
   private async requirePurchase(id: string): Promise<PurchaseListRow> {
@@ -378,6 +392,8 @@ export class PurchasesService {
     // no counterparty to lock.
     const account = company ? await this.ledger.lockOwner(tx, company.id) : null;
     if (company && !account) throw ApiError.notFound();
+    // The driver after the account and before the materials, as on an order (D-105, D-106).
+    const driver = await this.drivers.requireForDocument(tx, input.driver_id ?? null);
 
     const lines = await this.prepareLines(tx, input.lines, input.purchase_date, rate, rateSource);
     const discount = this.discountPair(input.discount, rate, rateSource, lines);
@@ -392,6 +408,7 @@ export class PurchasesService {
         purchase_date: input.purchase_date,
         acting_user_id: actingUserId,
         notes: input.notes?.trim() || null,
+        driver_id: driver?.id ?? null,
         rate_iqd_per_usd: rate,
         rate_source: rateSource,
         discount_iqd: discount.amount_iqd,
@@ -449,6 +466,7 @@ export class PurchasesService {
         changes: {
           company_id: { old: null, new: company?.id ?? null },
           purchase_date: { old: null, new: input.purchase_date },
+          ...(driver ? { driver: { old: null, new: driver.name } } : {}),
           rate_iqd_per_usd: { old: null, new: rate },
           lines: { old: null, new: lines.map(lineSummary) },
           purchase_total: {
@@ -460,6 +478,7 @@ export class PurchasesService {
         related: {
           purchase_id: purchase.id,
           company_id: company?.id ?? null,
+          ...(driver ? { driver_id: driver.id } : {}),
         },
       },
       tx,
@@ -515,6 +534,10 @@ export class PurchasesService {
         ? await this.ledger.lockOwner(tx, purchase.company_id)
         : null;
       if (purchase.company_id && !account) throw ApiError.notFound();
+      const driverId = input.driver_id === undefined ? purchase.driver_id : input.driver_id;
+      const driver = await this.drivers.requireForDocument(tx, driverId, purchase.driver_id);
+      const driverBefore =
+        purchase.driver_id === driver?.id ? (driver?.name ?? null) : await this.drivers.nameOf(purchase.driver_id, tx);
 
       const oldLines = await this.purchases.linesOf(id, tx);
       // The materials' locks, as a sale takes them, so no sale can be taking from this buy
@@ -557,6 +580,7 @@ export class PurchasesService {
         {
           purchase_date: input.purchase_date,
           notes: input.notes?.trim() || null,
+          driver_id: driver?.id ?? null,
           rate_iqd_per_usd: rate,
           rate_source: rateSource,
           discount_iqd: discount.amount_iqd,
@@ -593,6 +617,9 @@ export class PurchasesService {
           entity_label: `Purchase #${purchase.number}`,
           changes: {
             purchase_date: { old: purchase.purchase_date, new: input.purchase_date },
+            ...(purchase.driver_id !== (driver?.id ?? null)
+              ? { driver: { old: driverBefore, new: driver?.name ?? null } }
+              : {}),
             rate_iqd_per_usd: { old: purchase.rate_iqd_per_usd, new: rate },
             lines: { old: oldLines.map(storedLineSummary), new: lines.map(lineSummary) },
             purchase_total: {
@@ -601,12 +628,51 @@ export class PurchasesService {
             },
           },
           note: input.notes?.trim() || null,
-          related: { purchase_id: id, company_id: purchase.company_id },
+          related: { purchase_id: id, company_id: purchase.company_id, ...(driver ? { driver_id: driver.id } : {}) },
         },
         tx,
       );
     });
 
+    return this.get(id);
+  }
+
+  /**
+   * Who brought it in, changed on its own (D-106): a purchase has no edit form, and a driver is no
+   * reason to rewrite its lines, stock and account. The same people may do it as may edit it.
+   */
+  async setDriver(
+    context: RequestContext,
+    id: string,
+    input: { driver_id: string | null; version: number },
+  ): Promise<PurchaseDto> {
+    const existing = await this.requirePurchase(id);
+    if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { purchase_id: id });
+    await this.assertMayEdit(context, existing);
+
+    await this.database.transaction(async (tx) => {
+      const purchase = await this.purchases.lock(id, tx);
+      if (!purchase) throw ApiError.notFound();
+      if (purchase.version !== input.version) throw await this.versionConflict(id);
+      if (purchase.driver_id === input.driver_id) return;
+
+      const driver = await this.drivers.requireForDocument(tx, input.driver_id, purchase.driver_id);
+      const before = await this.drivers.nameOf(purchase.driver_id, tx);
+      const updated = await this.purchases.updatePurchase(id, input.version, { driver_id: driver?.id ?? null }, context.userId, tx);
+      if (!updated) throw await this.versionConflict(id);
+      await this.audit.record(
+        context,
+        {
+          action: 'update',
+          entity_type: 'purchase',
+          entity_id: id,
+          entity_label: `Purchase #${purchase.number}`,
+          changes: { driver: { old: before, new: driver?.name ?? null } },
+          related: { purchase_id: id, company_id: purchase.company_id, ...(driver ? { driver_id: driver.id } : {}) },
+        },
+        tx,
+      );
+    });
     return this.get(id);
   }
 
@@ -1330,6 +1396,8 @@ function toPurchaseDto(row: PurchaseListRow, lines: readonly PurchaseLineRow[]):
     acting_user_id: row.acting_user_id,
     acting_user_name: row.acting_user_name,
     notes: row.notes,
+    driver_id: row.driver_id,
+    driver_name: row.driver_name,
     rate_iqd_per_usd: row.rate_iqd_per_usd,
     rate_source: row.rate_source,
     doc_status: row.status,

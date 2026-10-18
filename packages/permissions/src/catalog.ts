@@ -52,11 +52,16 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
   {
     key: 'purchases.create',
     page: 'purchases',
-    // A purchase cannot be typed without its prices (spec 1.5.2).
-    implies: ['purchases.view', 'materials.view', 'fields.see_bought_price'],
+    // A purchase cannot be typed without its prices (spec 1.5.2); its driver is picked on the form (D-106).
+    implies: ['purchases.view', 'materials.view', 'fields.see_bought_price', 'drivers.view'],
     labelKey: 'permissions.purchases.create',
   },
-  { key: 'purchases.edit', page: 'purchases', implies: ['purchases.view'], labelKey: 'permissions.purchases.edit' },
+  {
+    key: 'purchases.edit',
+    page: 'purchases',
+    implies: ['purchases.view', 'drivers.view'],
+    labelKey: 'permissions.purchases.edit',
+  },
   { key: 'purchases.void', page: 'purchases', implies: ['purchases.view'], labelKey: 'permissions.purchases.void' },
   // The accountant page (D-062): the period's sold, bought, cost, profit, damage and expenses.
   // Its whole subject is money, so it carries the two money flags with it.

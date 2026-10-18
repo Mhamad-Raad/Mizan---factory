@@ -37,6 +37,8 @@ const baseSchema = z.object({
   company_id: z.string().uuid().nullish(),
   purchase_date: isoDate,
   notes: z.string().max(2000).nullish(),
+  /** Who brought it in (D-106): null for nobody; left out of an edit, the purchase keeps its driver. */
+  driver_id: z.string().uuid().nullish(),
   rate_iqd_per_usd: rateString.nullish(),
   discount: price.nullish(),
   lines: z.array(lineSchema).min(1).max(200),
@@ -47,6 +49,8 @@ const createSchema = baseSchema.extend({ paid: paidNow.nullish() });
 
 const replaceSchema = baseSchema.extend({ version: z.number().int().positive() });
 
+const driverSchema = z.object({ driver_id: z.string().uuid().nullable(), version: z.number().int().positive() });
+
 const voidSchema = z.object({
   reason: z.string().min(1).max(2000),
   version: z.number().int().positive().optional(),
@@ -56,6 +60,7 @@ const listSchema = z.object({
   company_id: z.string().uuid().optional(),
   item_id: z.string().uuid().optional(),
   company: z.literal('stock_only').optional(),
+  driver_id: z.string().uuid().optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),
   done_by: z.string().uuid().optional(),
@@ -163,6 +168,17 @@ export class PurchasesController {
     });
   }
 
+  /** Who brought it in, changed on its own (D-106); the edit rules of FR-405 apply in the service. */
+  @Put('purchases/:id/driver')
+  @RequirePermission('purchases.view')
+  async setDriver(
+    @Req() request: RequestWithContext,
+    @Param('id') id: string,
+    @Body(zodBody(driverSchema)) body: z.infer<typeof driverSchema>,
+  ) {
+    return this.purchases.setDriver(contextOf(request), id, body);
+  }
+
   @Post('purchases/:id/void')
   @RequirePermission('purchases.void')
   @HttpCode(200)
@@ -210,6 +226,8 @@ function toCreateInput(
     company_id: body.company_id ?? null,
     purchase_date: body.purchase_date,
     notes: body.notes ?? null,
+    // `undefined` and `null` differ: an edit that does not mention the driver keeps them.
+    driver_id: body.driver_id,
     rate_iqd_per_usd: body.rate_iqd_per_usd ?? null,
     discount: body.discount ?? null,
     lines: body.lines.map((line) => ({

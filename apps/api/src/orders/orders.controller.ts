@@ -51,6 +51,8 @@ const createSchema = z.object({
 
 const replaceSchema = createSchema.extend({ version: z.number().int().positive() });
 
+const driverSchema = z.object({ driver_id: z.string().uuid().nullable(), version: z.number().int().positive() });
+
 const voidSchema = z.object({
   reason: z.string().min(1).max(2000),
   version: z.number().int().positive().optional(),
@@ -176,6 +178,17 @@ export class OrdersController {
     @Body(zodBody(replaceSchema)) body: z.infer<typeof replaceSchema>,
   ) {
     return this.orders.replace(contextOf(request), id, { ...toCreateInput(body), version: body.version });
+  }
+
+  /** Who takes it, changed on its own (D-106); the edit rules of FR-610 apply in the service. */
+  @Put('orders/:id/driver')
+  @RequirePermission('orders.view')
+  async setDriver(
+    @Req() request: RequestWithContext,
+    @Param('id') id: string,
+    @Body(zodBody(driverSchema)) body: z.infer<typeof driverSchema>,
+  ) {
+    return this.orders.setDriver(contextOf(request), id, body);
   }
 
   @Post('orders/:id/void')

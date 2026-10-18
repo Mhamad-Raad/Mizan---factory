@@ -18,7 +18,7 @@ export interface DriverRow {
 }
 
 export interface DriverListRow extends DriverRow {
-  /** The date of the newest order that names this driver, or null before the first. */
+  /** The date of the newest sale or purchase that names this driver, or null before the first. */
   last_order_date: string | null;
 }
 
@@ -79,8 +79,8 @@ export class DriversRepository {
   }
 
   /**
-   * A driver an order is being saved with, held against a deactivation until the order commits.
-   * A share lock: two orders for the same driver do not wait for each other.
+   * A driver an order or a purchase is being saved with, held against a deactivation until the order commits.
+   * A share lock: two documents for the same driver do not wait for each other.
    */
   async holdForOrder(id: string, tx: Db): Promise<DriverRow | null> {
     const { rows } = await tx.query<DriverRow>(
@@ -92,7 +92,8 @@ export class DriversRepository {
 
   /**
    * A page of drivers by name. The search reads the name (trigram index), the phone and the car
-   * number; each row carries the date of its newest order, one probe of `orders_driver_idx`.
+   * number; each row carries the date of its newest sale or purchase, one probe each of
+   * `orders_driver_idx` and `purchases_driver_idx`.
    */
   async list(filters: DriverFilters): Promise<{ rows: DriverListRow[]; total: number }> {
     const conditions = ['d.deleted_at IS NULL'];
@@ -125,11 +126,14 @@ export class DriversRepository {
     const [list, count] = await Promise.all([
       this.database.query<DriverListRow>(
         `SELECT ${driverColumns('d')},
-                (SELECT to_char(o.order_date, 'YYYY-MM-DD')
-                   FROM orders o
-                  WHERE o.driver_id = d.id AND o.deleted_at IS NULL
-                  ORDER BY o.order_date DESC, o.number DESC
-                  LIMIT 1) AS last_order_date
+                to_char(greatest(
+                  (SELECT o.order_date FROM orders o
+                    WHERE o.driver_id = d.id AND o.deleted_at IS NULL
+                    ORDER BY o.order_date DESC, o.number DESC LIMIT 1),
+                  (SELECT p.purchase_date FROM purchases p
+                    WHERE p.driver_id = d.id AND p.deleted_at IS NULL
+                    ORDER BY p.purchase_date DESC, p.number DESC LIMIT 1)
+                ), 'YYYY-MM-DD') AS last_order_date
            FROM drivers d
            ${where}
           ORDER BY d.name_normalized ASC, d.id ASC

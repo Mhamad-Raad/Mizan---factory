@@ -184,7 +184,7 @@ export class OrdersService {
       if (!locked) throw ApiError.notFound();
       // The driver after the account and before the materials: held so it cannot be deactivated
       // between this check and the save (D-105).
-      const driver = await this.drivers.requireForOrder(tx, input.driver_id ?? null);
+      const driver = await this.drivers.requireForDocument(tx, input.driver_id ?? null);
 
       // Every material's lock up front, in one order, after the account's (review: deadlocks).
       await this.lots.lockItems(tx, input.lines.map((line) => line.item_id));
@@ -346,7 +346,7 @@ export class OrdersService {
       // The driver the edit names, or the one the order has when it names none (D-105); the order's
       // own driver may stay after being deactivated, a new choice must be active.
       const driverId = input.driver_id === undefined ? order.driver_id : input.driver_id;
-      const driver = await this.drivers.requireForOrder(tx, driverId, order.driver_id);
+      const driver = await this.drivers.requireForDocument(tx, driverId, order.driver_id);
       const driverBefore =
         order.driver_id === driver?.id ? (driver?.name ?? null) : await this.drivers.nameOf(order.driver_id, tx);
 
@@ -470,6 +470,45 @@ export class OrdersService {
     // The same warnings a new order carries: an edit can oversell or pass the limit too (review).
     const dto = await this.get(context, id);
     return { ...dto, stock_warnings: edited.warnings, credit_limit_warning: edited.creditWarning };
+  }
+
+  /**
+   * Who takes it, changed on its own (D-106): a driver is no reason to reverse and rewrite an
+   * order's lines, stock and account, as a full edit does. The same people may do it as may edit it.
+   */
+  async setDriver(
+    context: RequestContext,
+    id: string,
+    input: { driver_id: string | null; version: number },
+  ): Promise<OrderDto> {
+    const existing = await this.requireOrder(context, id);
+    if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { order_id: id });
+    await this.assertMayEdit(context, existing);
+
+    await this.database.transaction(async (tx) => {
+      const order = await this.orders.lock(id, tx);
+      if (!order) throw ApiError.notFound();
+      if (order.version !== input.version) throw await this.versionConflict(context, id);
+      if (order.driver_id === input.driver_id) return;
+
+      const driver = await this.drivers.requireForDocument(tx, input.driver_id, order.driver_id);
+      const before = await this.drivers.nameOf(order.driver_id, tx);
+      const updated = await this.orders.updateOrder(id, input.version, { driver_id: driver?.id ?? null }, context.userId, tx);
+      if (!updated) throw await this.versionConflict(context, id);
+      await this.audit.record(
+        context,
+        {
+          action: 'update',
+          entity_type: 'order',
+          entity_id: id,
+          entity_label: `Order #${order.number}`,
+          changes: { driver: { old: before, new: driver?.name ?? null } },
+          related: { order_id: id, customer_id: order.customer_id, ...(driver ? { driver_id: driver.id } : {}) },
+        },
+        tx,
+      );
+    });
+    return this.get(context, id);
   }
 
   /**

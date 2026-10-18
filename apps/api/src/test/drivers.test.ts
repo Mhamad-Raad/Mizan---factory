@@ -265,7 +265,7 @@ describe('drivers (D-105)', () => {
     expect(orders.body.items.map((row: { id: string }) => row.id)).toEqual([second.id, first.id]);
     expect(orders.body.totals).toMatchObject({ orders: 2, total_iqd: 14_000 });
 
-    // A driver is a sale's question: the purchases leave Buying & selling.
+    // Buying & selling narrowed to the driver: their sales (the stock purchase names no driver).
     const trade = await as(ctx.http, admin).get(`/api/v1/trade?driver_id=${azad.id}`).expect(200);
     expect(trade.body.total).toBe(2);
     expect(
@@ -274,7 +274,7 @@ describe('drivers (D-105)', () => {
           row.kind === 'sale' && row.driver_name === 'Azad',
       ),
     ).toBe(true);
-    expect(trade.body.totals.purchases).toBeUndefined();
+    expect(trade.body.totals.purchases).toMatchObject({ count: 0 });
 
     const list = await as(ctx.http, admin).get('/api/v1/drivers').expect(200);
     expect(list.body.items.find((row: { id: string }) => row.id === azad.id).last_order_date).toBe(
@@ -298,5 +298,108 @@ describe('drivers (D-105)', () => {
     expect(
       (await as(ctx.http, reader).get(`/api/v1/orders/${order.id}`).expect(200)).body.driver_name,
     ).toBe('Azad');
+  });
+
+  describe('on purchases, and changed on its own (D-106)', () => {
+    const today = () =>
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(new Date());
+    const buy = (body: Record<string, unknown> = {}) =>
+      as(ctx.http, admin)
+        .post('/api/v1/purchases')
+        .send({
+          company_id: kawa,
+          purchase_date: today(),
+          lines: [
+            { item_id: bolts, qty_count: 10, unit_price: { amount: 1_500, currency: 'IQD' } },
+          ],
+          ...body,
+        });
+
+    it('brings a purchase in with a driver, and lists it on the driver’s side of Buying & selling', async () => {
+      const azad = (await newDriver({ name: 'Azad', car_number: '12 A' }).expect(201)).body;
+      const purchase = (await buy({ driver_id: azad.id }).expect(201)).body;
+      expect(purchase).toMatchObject({
+        driver_id: azad.id,
+        driver_name: 'Azad',
+        driver: { name: 'Azad', car_number: '12 A' },
+      });
+      const order = (await sell({ driver_id: azad.id }).expect(201)).body;
+
+      // A driver is no longer a sale's question alone: both kinds stay on the list.
+      const trade = await as(ctx.http, admin).get(`/api/v1/trade?driver_id=${azad.id}`).expect(200);
+      expect(
+        trade.body.items.map((row: { kind: string; id: string }) => `${row.kind}:${row.id}`).sort(),
+      ).toEqual([`sale:${order.id}`, `purchase:${purchase.id}`].sort());
+      expect(trade.body.totals.purchases).toMatchObject({ count: 1 });
+      const own = await as(ctx.http, admin)
+        .get(`/api/v1/purchases?driver_id=${azad.id}`)
+        .expect(200);
+      expect(own.body.total).toBe(1);
+
+      const rows = await auditRows({ entityId: purchase.id });
+      expect(rows[0].changes.driver).toEqual({ old: null, new: 'Azad' });
+    });
+
+    it('changes the driver of an order and of a purchase without rewriting them, in History', async () => {
+      const azad = (await newDriver({ name: 'Azad' }).expect(201)).body;
+      const hemin = (await newDriver({ name: 'Hemin' }).expect(201)).body;
+      const order = (await sell({}, seller).expect(201)).body;
+      const purchase = (await buy().expect(201)).body;
+
+      const sent = await as(ctx.http, seller)
+        .put(`/api/v1/orders/${order.id}/driver`)
+        .send({ driver_id: azad.id, version: order.version })
+        .expect(200);
+      expect(sent.body).toMatchObject({ driver_name: 'Azad', total_iqd: order.total_iqd });
+      // The lines were not rewritten: no stock moved back and forth.
+      const moved = await as(ctx.http, seller)
+        .put(`/api/v1/orders/${order.id}/driver`)
+        .send({ driver_id: hemin.id, version: sent.body.version })
+        .expect(200);
+      expect(moved.body.driver_name).toBe('Hemin');
+      await as(ctx.http, seller)
+        .put(`/api/v1/orders/${order.id}/driver`)
+        .send({ driver_id: null, version: sent.body.version })
+        .expect(409);
+
+      const brought = await as(ctx.http, admin)
+        .put(`/api/v1/purchases/${purchase.id}/driver`)
+        .send({ driver_id: hemin.id, version: purchase.version })
+        .expect(200);
+      expect(brought.body.driver_name).toBe('Hemin');
+
+      const orderRows = await auditRows({ entityId: order.id });
+      expect(orderRows.slice(1).map((row) => row.changes)).toEqual([
+        { driver: { old: null, new: 'Azad' } },
+        { driver: { old: 'Azad', new: 'Hemin' } },
+      ]);
+      const purchaseRows = await auditRows({ entityId: purchase.id });
+      expect(purchaseRows[1].changes).toEqual({ driver: { old: null, new: 'Hemin' } });
+    });
+
+    it('lets only whoever may edit the document change its driver, and never a voided one', async () => {
+      const azad = (await newDriver({ name: 'Azad' }).expect(201)).body;
+      const order = (await sell().expect(201)).body;
+      // Reading orders is not editing them (FR-610: the creator, orders.edit, or an admin).
+      await as(ctx.http, reader)
+        .put(`/api/v1/orders/${order.id}/driver`)
+        .send({ driver_id: azad.id, version: order.version })
+        .expect(403);
+      const purchase = (await buy().expect(201)).body;
+      await as(ctx.http, seller)
+        .put(`/api/v1/purchases/${purchase.id}/driver`)
+        .send({ driver_id: azad.id, version: purchase.version })
+        .expect(403);
+
+      await as(ctx.http, admin)
+        .post(`/api/v1/orders/${order.id}/void`)
+        .send({ reason: 'typed twice' })
+        .expect(200);
+      const voided = (await as(ctx.http, admin).get(`/api/v1/orders/${order.id}`).expect(200)).body;
+      await as(ctx.http, admin)
+        .put(`/api/v1/orders/${order.id}/driver`)
+        .send({ driver_id: azad.id, version: voided.version })
+        .expect(409);
+    });
   });
 });

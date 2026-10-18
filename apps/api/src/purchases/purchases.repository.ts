@@ -16,6 +16,8 @@ export interface PurchaseRow {
   purchase_date: string;
   acting_user_id: string;
   notes: string | null;
+  /** Who brought it in (D-106); null when nobody was named. */
+  driver_id: string | null;
   rate_iqd_per_usd: string;
   rate_source: RateSource;
   status: 'active' | 'void';
@@ -37,6 +39,7 @@ export interface PurchaseListRow extends PurchaseRow {
   settlement_currency: Currency | null;
   acting_user_name: string | null;
   voided_by_name: string | null;
+  driver_name: string | null;
   line_count: string;
   item_names: string | null;
 }
@@ -87,6 +90,8 @@ export interface PurchaseFilters {
   item_id?: string;
   /** `stock_only` lists the purchases that name no company (FR-407). */
   company?: 'stock_only';
+  /** The purchases one driver brought in (D-106). */
+  driver_id?: string;
   from?: string;
   to?: string;
   done_by?: string;
@@ -107,6 +112,7 @@ function purchaseColumns(alias = 'purchases'): string {
     "to_char(purchase_date, 'YYYY-MM-DD') AS purchase_date",
     'acting_user_id',
     'notes',
+    'driver_id',
     'rate_iqd_per_usd::text AS rate_iqd_per_usd',
     'rate_source::text AS rate_source',
     'status::text AS status',
@@ -150,6 +156,7 @@ const LINE_COLUMNS = `l.id, l.purchase_id, l.line_no, l.item_id, l.qty_count, l.
  */
 const LIST_COLUMNS = `co.name AS company_name, co.settlement_currency::text AS settlement_currency,
                       u.display_name AS acting_user_name, v.display_name AS voided_by_name,
+                      (SELECT dr.name FROM drivers dr WHERE dr.id = p.driver_id) AS driver_name,
                       (SELECT count(*)::text FROM purchase_lines l
                         WHERE l.purchase_id = p.id AND l.deleted_at IS NULL) AS line_count,
                       -- What was bought, by name, so a list of buys says what they were (D-062).
@@ -194,6 +201,10 @@ export class PurchasesRepository {
       conditions.push(`p.company_id = $${values.length}::uuid`);
     }
     if (filters.company === 'stock_only') conditions.push('p.company_id IS NULL');
+    if (filters.driver_id) {
+      values.push(filters.driver_id);
+      conditions.push(`p.driver_id = $${values.length}::uuid`);
+    }
     if (filters.item_id) {
       values.push(filters.item_id);
       conditions.push(
@@ -352,6 +363,7 @@ export class PurchasesRepository {
       purchase_date: string;
       acting_user_id: string;
       notes: string | null;
+      driver_id: string | null;
       rate_iqd_per_usd: string;
       rate_source: RateSource;
       discount_iqd: number;
@@ -362,8 +374,8 @@ export class PurchasesRepository {
   ): Promise<PurchaseRow> {
     const { rows } = await tx.query<PurchaseRow>(
       `INSERT INTO purchases (company_id, purchase_date, acting_user_id, notes, rate_iqd_per_usd,
-                              rate_source, discount_iqd, discount_usd_cents, created_by, updated_by)
-       VALUES ($1, $2::date, $3, $4, $5::numeric, $6::rate_source, $7, $8, $9, $9)
+                              rate_source, discount_iqd, discount_usd_cents, created_by, updated_by, driver_id)
+       VALUES ($1, $2::date, $3, $4, $5::numeric, $6::rate_source, $7, $8, $9, $9, $10)
        RETURNING ${purchaseColumns()}`,
       [
         input.company_id,
@@ -375,6 +387,7 @@ export class PurchasesRepository {
         input.discount_iqd,
         input.discount_usd_cents,
         input.created_by,
+        input.driver_id,
       ],
     );
     return rows[0] as PurchaseRow;
@@ -435,6 +448,7 @@ export class PurchasesRepository {
     patch: Partial<{
       purchase_date: string;
       notes: string | null;
+      driver_id: string | null;
       rate_iqd_per_usd: string;
       rate_source: RateSource;
       discount_iqd: number;
