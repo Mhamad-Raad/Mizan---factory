@@ -1238,7 +1238,9 @@ a.mz-button {
   align-items: center;
 }
 
-.mz-number .mz-field__control {
+/* Room for the unit only when there is one: a bare number (a rate, an amount) reaches the edge
+   of its box like every other field's value. */
+.mz-number--unit .mz-field__control {
   padding-inline-end: 3.5rem;
 }
 

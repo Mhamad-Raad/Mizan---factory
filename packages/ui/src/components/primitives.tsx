@@ -741,7 +741,7 @@ export function NumberField({
       {(id) => (
         // Numbers read left-to-right in every language, so the field is an LTR island: the digits
         // run left to right and the unit sits at the right, even on an Arabic or Kurdish page.
-        <div className="mz-number" dir="ltr">
+        <div className={unit ? 'mz-number mz-number--unit' : 'mz-number'} dir="ltr">
           <input
             ref={input}
             id={id}
