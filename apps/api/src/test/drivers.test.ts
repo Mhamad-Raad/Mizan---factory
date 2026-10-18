@@ -131,8 +131,6 @@ describe('drivers (D-105)', () => {
     expect(rows[1].changes).toEqual({
       car_number: { old: '12 A 3456 Erbil', new: '99 B 1111 Erbil' },
     });
-    const history = await as(ctx.http, admin).get(`/api/v1/drivers/${id}/history`).expect(200);
-    expect(history.body.items).toHaveLength(3);
   });
 
   it('warns about a phone another driver has, and saves it once the warning was seen', async () => {

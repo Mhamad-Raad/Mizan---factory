@@ -4,7 +4,6 @@ import { ApiError } from '../common/errors.js';
 import type { RequestContext } from '../common/request-context.js';
 import { Database } from '../database/pool.js';
 import type { Db } from '../database/pool.js';
-import { HistoryRepository } from '../history/history.repository.js';
 import { DriversRepository } from './drivers.repository.js';
 import type { DriverFilters, DriverListRow, DriverPatch, DriverRow } from './drivers.repository.js';
 
@@ -41,7 +40,6 @@ export class DriversService {
     private readonly database: Database,
     private readonly drivers: DriversRepository,
     private readonly audit: AuditService,
-    private readonly history: HistoryRepository,
   ) {}
 
   async list(filters: DriverFilters): Promise<{ items: DriverDto[]; total: number }> {
@@ -167,11 +165,6 @@ export class DriversService {
       return row;
     });
     return toDriverDto(updated);
-  }
-
-  async historyOf(id: string, options: { cursor?: string; limit?: number }) {
-    if (!(await this.drivers.findById(id))) throw ApiError.notFound();
-    return this.history.list({ entity_type: 'driver', entity_id: id, ...options });
   }
 
   /**

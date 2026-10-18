@@ -2,17 +2,16 @@ import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet, Button, Card, Chip, Icon, SegmentedControl } from '@mizan/ui';
+import { BottomSheet, Button, Card, Icon } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { useIdempotencyKey } from '../lib/idempotency.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { errorMessage } from '../lib/errors.js';
 import { invalidateHistory } from '../lib/invalidate.js';
-import { useCursorPaging, useKeepPageInRange, usePaging } from '../lib/paging.js';
+import { useKeepPageInRange, usePaging } from '../lib/paging.js';
 import { presetPeriod } from '../lib/periods.js';
 import { useFormatter, usePermission } from '../lib/store.js';
 import type { DriverRow } from '../lib/drivers.js';
-import { AuditDiff } from '../components/AuditDiff.js';
 import { Can } from '../components/Can.js';
 import { DriverSheet } from '../components/DriverSheet.js';
 import { DualAmount } from '../components/DualAmount.js';
@@ -26,23 +25,13 @@ import { QueryStates } from '../components/states.js';
 import { SavedToast } from '../components/SavedToast.js';
 import type { SavedNotice } from '../components/SavedToast.js';
 
-type Tab = 'orders' | 'history';
 type Period = 'all' | 'today' | 'week' | 'month' | 'last_month' | 'year';
-
-interface HistoryRow {
-  id: string;
-  action: string;
-  occurred_at: string;
-  actor_display_name: string | null;
-  note: string | null;
-  changes: Record<string, unknown> | null;
-}
 
 /**
  * One driver (D-105, D-106): who they are — name, phone, car — with Edit and Deactivate beside the
  * name, and below it every sale they took and every purchase they brought in, newest first, for the
  * period chosen — the Buying & selling list narrowed to them, with its figures, each side for whoever
- * may see it. A History tab says who changed the driver and when (rule 3).
+ * may see it. Changes to the driver are in History (rule 3); the page has no tab of its own for them.
  */
 export function DriverDetailPage() {
   const { id = '' } = useParams();
@@ -52,7 +41,6 @@ export function DriverDetailPage() {
   const mayViewOrders = usePermission('orders.view');
   const mayViewPurchases = usePermission('purchases.view');
   const mayViewTrade = mayViewOrders || mayViewPurchases;
-  const [tab, setTab] = useState<Tab>(mayViewTrade ? 'orders' : 'history');
   const [period, setPeriod] = useState<Period>('all');
   const [editing, setEditing] = useState(false);
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
@@ -85,22 +73,11 @@ export function DriverDetailPage() {
           purchases?: { count: number; cost?: { total_iqd: number; total_usd_cents: number } };
         };
       }>(`/trade?${filter.toString()}&${ordersPaging.query}`),
-    enabled: mayViewTrade && tab === 'orders',
+    enabled: mayViewTrade,
     placeholderData: keepPreviousData,
   });
   useKeepPageInRange(ordersPaging, orders);
   const refreshing = orders.isFetching && orders.isPlaceholderData;
-
-  const historyPaging = useCursorPaging({ storageKey: 'driver-history', resetOn: [id] });
-  const history = useQuery({
-    queryKey: ['drivers', id, 'history', historyPaging.cursor, historyPaging.pageSize],
-    queryFn: () =>
-      apiRequest<{ items: HistoryRow[]; next_cursor: string | null }>(
-        `/drivers/${id}/history?${historyPaging.query}`,
-      ),
-    enabled: tab === 'history',
-    placeholderData: keepPreviousData,
-  });
 
   // The rows ticked to print again — a day's loads in one go (D-086).
   const selecting = usePrintSelection<TradeRow>(
@@ -211,18 +188,7 @@ export function DriverDetailPage() {
               </div>
             </Card>
 
-            <SegmentedControl
-              label={t('common:more')}
-              hideLabel
-              value={tab}
-              onChange={setTab}
-              options={[
-                ...(mayViewTrade ? [{ value: 'orders' as Tab, label: t('trade:title') }] : []),
-                { value: 'history', label: t('glossary:history') },
-              ]}
-            />
-
-            {tab === 'orders' ? (
+            {mayViewTrade ? (
               <>
                 <div className="mz-toolbar">
                   <div className="mz-toolbar__filters">
@@ -329,61 +295,6 @@ export function DriverDetailPage() {
               </>
             ) : null}
 
-            {tab === 'history' ? (
-              <QueryStates
-                query={history}
-                isEmpty={(history.data?.items.length ?? 0) === 0}
-                emptyTitle={t('history:empty')}
-              >
-                <ul className="mz-list">
-                  {(history.data?.items ?? []).map((row) => (
-                    <li key={row.id} className="mz-list__item mz-list__item--detail">
-                      <span className="mz-row-lead">
-                        <Icon
-                          name={
-                            row.action === 'create'
-                              ? 'plus'
-                              : row.action === 'update'
-                                ? 'edit'
-                                : 'clock'
-                          }
-                          size={18}
-                        />
-                      </span>
-                      <span className="mz-list__body">
-                        {/* Who did what, as on the History page: the name, then the action. */}
-                        <span
-                          className="mz-list__title mz-row"
-                          style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}
-                        >
-                          <bdi>{row.actor_display_name ?? t('history:system')}</bdi>
-                          <Chip>
-                            {t(`history:action.${row.action}`, { defaultValue: row.action })}
-                          </Chip>
-                        </span>
-                        <span className="mz-caption">
-                          {formatter.timestamp(new Date(row.occurred_at))}
-                        </span>
-                        {row.changes && Object.keys(row.changes).length > 0 ? (
-                          <AuditDiff changes={row.changes} note={row.note} />
-                        ) : null}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <Pager
-                  page={historyPaging.page}
-                  pageSize={historyPaging.pageSize}
-                  hasNext={Boolean(history.data?.next_cursor)}
-                  onPage={(next) => {
-                    const cursor = history.data?.next_cursor;
-                    if (next > historyPaging.page && cursor) historyPaging.next(cursor);
-                    else if (next < historyPaging.page) historyPaging.previous();
-                  }}
-                  onPageSize={historyPaging.setPageSize}
-                />
-              </QueryStates>
-            ) : null}
           </>
         ) : null}
       </QueryStates>

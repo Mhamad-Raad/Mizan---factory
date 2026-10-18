@@ -4,8 +4,7 @@ import { RequirePermission } from '../common/decorators.js';
 import { contextOf } from '../common/request-context.js';
 import type { RequestWithContext } from '../common/request-context.js';
 import { zodBody } from '../common/zod.pipe.js';
-import { stripHistory } from '../history/history-fields.js';
-import { cursorField, limitField, pageFields } from '../common/paging.js';
+import { pageFields } from '../common/paging.js';
 import { DriversService } from './drivers.service.js';
 
 const listSchema = z.object({
@@ -27,7 +26,6 @@ const statusSchema = z.object({
   version: z.number().int().positive(),
   note: z.string().max(2000).nullish(),
 });
-const historySchema = z.object({ cursor: cursorField, limit: limitField });
 
 /**
  * Drivers (D-105). Reading them is `drivers.view`, which writing an order brings with it (the
@@ -90,16 +88,5 @@ export class DriversController {
     @Body(zodBody(statusSchema)) body: z.infer<typeof statusSchema>,
   ) {
     return this.drivers.setActive(contextOf(request), id, true, body);
-  }
-
-  @Get('drivers/:id/history')
-  @RequirePermission('drivers.view')
-  async history(
-    @Req() request: RequestWithContext,
-    @Param('id') id: string,
-    @Query(zodBody(historySchema)) query: z.infer<typeof historySchema>,
-  ) {
-    const page = await this.drivers.historyOf(id, query);
-    return { ...page, items: stripHistory(contextOf(request), page.items) };
   }
 }

@@ -2109,7 +2109,7 @@ driver is edited and every order they took is listed, and a driver filter on the
   phones and plates). Presets: sales (v2) gets all three, accountant (v3) gets `drivers.view`.
 - **Screens:** Drivers in the sidebar under the records (truck icon, mirrored in RTL); the driver's
   page with Edit / Deactivate beside the name, their orders for a period with how many and what
-  they came to, ticked orders printable together, and a History tab; "New sale" there opens the
+  they came to, ticked orders printable together; "New sale" there opens the
   form with the driver chosen. The order form's driver picker offers "New driver" with what was
   typed. Buying & selling has a Driver filter; a driver is a sale's question, so purchases leave
   the list while it is set (said under the filters, like the payment states). The order page and
@@ -2136,3 +2136,6 @@ The business: purchases should have a driver as well — the one who brings the 
   & selling list narrowed to the driver, with each side's figures (never added together), "New
   purchase" and "New sale" opening with the driver chosen; the Drivers list's "Last trip" is the
   newest sale or purchase. The purchase receipt names the driver with the car and phone.
+- **Later the same day (business):** the driver's page has no History tab and no tab bar — only the
+  Buying & selling list under the driver's card. The driver's changes stay in History (the History
+  page's "Driver" record type); the unused `GET /drivers/:id/history` was removed.
