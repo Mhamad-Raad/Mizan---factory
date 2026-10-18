@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Button, TextField } from '@mizan/ui';
+import { Avatar, Button, TextField } from '@mizan/ui';
 import { apiRequest } from '../lib/api.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { useDebouncedValue } from '../lib/debounce.js';
@@ -108,41 +108,40 @@ export function DriversPage() {
             href={(row) => `/drivers/${row.id}`}
             columns={[
               {
+                // The driver as the Users list shows a person (business review): initials, the
+                // name, and the phone under it.
                 header: t('drivers:name'),
                 cell: (row) => (
-                  <span className="mz-cell__body">
-                    <strong>
-                      <bdi>{row.name}</bdi>
-                    </strong>
+                  <span className="mz-cell">
+                    <Avatar name={row.name} />
+                    <span className="mz-cell__body">
+                      <strong>
+                        <bdi>{row.name}</bdi>
+                      </strong>
+                      {row.phone ? (
+                        <span className="mz-caption">
+                          <bdi dir="ltr">{row.phone}</bdi>
+                        </span>
+                      ) : null}
+                    </span>
                     <InactiveChip row={row} />
                   </span>
                 ),
               },
               {
-                header: t('drivers:phone'),
-                cell: (row) =>
-                  row.phone ? (
-                    <bdi dir="ltr">{row.phone}</bdi>
-                  ) : (
-                    <span className="mz-muted">—</span>
-                  ),
-              },
-              {
                 header: t('drivers:car_number'),
-                cell: (row) =>
-                  row.car_number ? (
-                    <bdi>{row.car_number}</bdi>
-                  ) : (
-                    <span className="mz-muted">—</span>
-                  ),
+                cell: (row) => <Plate number={row.car_number} />,
               },
               { header: t('drivers:last_order'), cell: lastOrder },
             ]}
             card={(row) => (
               <span className="mz-rowcard">
                 <span className="mz-rowcard__head">
-                  <span className="mz-list__title">
-                    <bdi>{row.name}</bdi>
+                  <span className="mz-cell">
+                    <Avatar name={row.name} />
+                    <span className="mz-list__title">
+                      <bdi>{row.name}</bdi>
+                    </span>
                   </span>
                   <InactiveChip row={row} />
                 </span>
@@ -178,5 +177,15 @@ export function DriversPage() {
       ) : null}
       {notice ? <SavedToast notice={notice} onDone={dismissNotice} /> : null}
     </div>
+  );
+}
+
+/** A car number drawn like the plate it is, so a column of them reads at a glance. */
+function Plate({ number }: { number: string | null }) {
+  if (!number) return <span className="mz-muted">—</span>;
+  return (
+    <bdi className="mz-plate" dir="auto">
+      {number}
+    </bdi>
   );
 }
