@@ -2139,3 +2139,43 @@ The business: purchases should have a driver as well — the one who brings the 
 - **Later the same day (business):** the driver's page has no History tab and no tab bar — only the
   Buying & selling list under the driver's card. The driver's changes stay in History (the History
   page's "Driver" record type); the unused `GET /drivers/:id/history` was removed.
+
+## D-107 · 2026-10-18 · business request · A sale never takes more than is in stock, and never 0
+
+The business: when selling, the quantity must not go above what is in stock, nor be 0, and
+materials with nothing left must not be choosable.
+
+- **The rule** (migration 0039): `allow_negative_stock` now defaults to **false**, and a stored
+  value is removed so every installation follows it — overselling was a warning on the line
+  (A-34) and is now refused (`STOCK_INSUFFICIENT`, naming what is left). The setting stays in the
+  API for a test or an admin who must, one day, sell ahead of a delivery; it was never on a screen.
+  An edit counts what the order already holds: its own stock goes back before the new lines take.
+  A quantity of 0 was already refused by the server.
+- **The order form** checks before Save: each material's stock now (plus, on an edit, what this
+  order held), summed over every line of that material; a line over it says "Only N in stock" and
+  a line of 0 "Enter a quantity above 0" under the quantity, and Save stays off until they are
+  right. The server still decides — two people selling the last ten pieces at once.
+- **The material picker** of a sale lists a material with nothing left greyed out, "Out of stock",
+  and does not take it. A material whose measure cannot be summed (FR-303) has no figure to check
+  and stays choosable, as on the server.
+
+## D-108 · 2026-10-18 · business request · The business's own name, phone, address and logo on receipts
+
+The business asked for what the Pallet system has: their own name, phone number, address and logo
+on the receipts.
+
+- **Settings → Receipt details** (admin only, as Pallet's factory details): name, phone, address —
+  three settings, `null` when empty — and a logo. Left empty, a receipt says "Jiyan Management"
+  as before.
+- **The logo is kept in the database** (migration 0040, `business_logo`, one row) rather than in a
+  folder of uploads as Pallet does: the backups, the point-in-time recovery and a restore then
+  carry it with everything else, and the server needs no new volume or setting (DEPLOY.md is
+  unchanged). The browser makes the picture receipt-sized (480 px on its longer side, PNG to keep
+  a transparent background, else WebP or JPEG, at most 256 kB) before sending it; the server checks
+  it by its first bytes — PNG, JPEG or WebP, never SVG — and its size. It reaches the receipt as a
+  `data:` URL, which the CSP already allows for images.
+- **Every printed document** — receipts, vouchers, statements, list printouts — is headed with the
+  logo beside the name, phone and address. The print host reads them once per print and waits for
+  the logo to be decoded before the dialog opens, so a receipt never prints without it.
+- **History** records each change (`business_name: old → new`, `business_logo: no → yes`), never the
+  picture itself. `GET /settings/business` is open to anyone signed in, since anyone may print.

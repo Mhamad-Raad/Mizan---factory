@@ -891,7 +891,13 @@ go-live checklist in `ops/runbook/README.md`, run with the client on their own h
   kinds, the driver's page lists their sales and purchases. Migration 0038.
 - **Rate box alignment:** a number box keeps room for a unit only when it shows one, so a rate or
   an amount reaches its box's edge (it sat 56 px short in Kurdish).
-- **Tests:** `drivers.test.ts` (10, API); the permission matrix covers the seven new routes by
+- **Selling within stock (D-107):** a sale past the stock is refused (migration 0039), the order
+  form says "Only N in stock" or "Enter a quantity above 0" and keeps Save off, and the material
+  picker greys out what has nothing left.
+- **Receipt details (D-108):** Settings → Receipt details (admin) sets the name, phone, address and
+  logo every printed document is headed with; the logo is kept in the database (migration 0040).
+- **Tests:** `drivers.test.ts` (10, API), `business.test.ts` (5, API); the stock tests rewritten to
+  the new rule; the permission matrix covers the seven new routes by
   itself; `e2e/responsive.spec.ts` sweeps `/drivers` and a driver's page. 809 tests green.
 - **Known, not from this change:** `/reports` is 13 px too wide at 360 px with English text at
   1.25× (fails on `main` too).
