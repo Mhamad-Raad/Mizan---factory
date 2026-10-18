@@ -87,6 +87,15 @@ export function TradeTable({ rows, selection }: { rows: readonly TradeRow[]; sel
     ) : null;
   };
 
+  // Who took a sale (D-105), under the company it went to.
+  const driven = (row: TradeRow) =>
+    row.kind === 'sale' && row.driver_name ? (
+      <span className="mz-caption" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+        <Icon name="drivers" size={12} />
+        <bdi>{row.driver_name}</bdi>
+      </span>
+    ) : null;
+
   const total = (row: TradeRow) => {
     const s = shown(row);
     return s.total ? (
@@ -129,6 +138,7 @@ export function TradeTable({ rows, selection }: { rows: readonly TradeRow[]; sel
       cell: (row) => (
         <span className="mz-cell__body">
           {shown(row).company ? <bdi>{shown(row).company}</bdi> : <span className="mz-muted">{t('purchases:no_company')}</span>}
+          {driven(row)}
           {recorded(row)}
         </span>
       ),
@@ -166,6 +176,7 @@ export function TradeTable({ rows, selection }: { rows: readonly TradeRow[]; sel
             {' · '}
             {formatter.date(shown(row).date)}
           </span>
+          {driven(row)}
           {recorded(row)}
           <span className="mz-rowcard__foot">
             {total(row)}

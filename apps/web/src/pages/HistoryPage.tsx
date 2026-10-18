@@ -62,6 +62,7 @@ const ENTITY_TYPES = [
   'order',
   'purchase',
   'customer',
+  'driver',
   'item',
   'damage',
   'expense',
@@ -99,6 +100,8 @@ function linkOf(entry: AuditRow): string | null {
     case 'customer':
     case 'company':
       return `/customers/${id}`;
+    case 'driver':
+      return `/drivers/${id}`;
     case 'item':
       return `/materials/${id}`;
     case 'damage':

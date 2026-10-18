@@ -83,5 +83,7 @@
   "item": "Item",
   "amount": "Amount",
   "customer": "Company",
-  "customer_rate": "the company rate"
+  "customer_rate": "the company rate",
+  "driver": "Driver",
+  "drivers": "Drivers"
 }

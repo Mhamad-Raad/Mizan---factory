@@ -97,5 +97,9 @@
   "fields_row": "What they can see",
   "permissions.accounts.view": "See the accountant page",
   "permissions.expenses.create": "Add an expense",
-  "permissions.expenses.void": "Void an expense"
+  "permissions.expenses.void": "Void an expense",
+  "permissions.drivers.view": "See drivers",
+  "permissions.drivers.create": "Add a driver",
+  "permissions.drivers.edit": "Edit a driver",
+  "page.drivers": "Drivers"
 }

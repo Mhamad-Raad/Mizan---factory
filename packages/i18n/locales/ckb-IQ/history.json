@@ -139,5 +139,8 @@
   "value.not_returnable": "ناگەڕێندرێتەوە",
   "value.admin": "بەڕێوەبەر",
   "value.employee": "کارمەند",
-  "field.rounding": "نزیککردنەوە"
+  "field.rounding": "نزیککردنەوە",
+  "entity.driver": "شۆفێر",
+  "field.car_number": "ژمارەی ئۆتۆمبێل",
+  "field.driver": "شۆفێر"
 }

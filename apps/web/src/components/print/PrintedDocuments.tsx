@@ -125,7 +125,7 @@ function Signatures({ left, right }: { left: string; right: string }) {
 function OrderReceipt({ data }: { data: OrderReceiptData }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
-  const { order, customer } = data;
+  const { order, customer, driver } = data;
   const primary = customer.settlement_currency;
   const subtotalIqd = order.lines.reduce((sum, line) => sum + line.line_total_iqd, 0);
   const subtotalUsd = order.lines.reduce((sum, line) => sum + line.line_total_usd_cents, 0);
@@ -143,7 +143,27 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
         <Party
           label={t('glossary:customer')}
           name={<bdi>{customerName({ name: customer.name, is_system: customer.is_system }, t)}</bdi>}
-          lines={[customer.phone ? <bdi dir="ltr">{customer.phone}</bdi> : null]}
+          lines={[
+            customer.phone ? <bdi dir="ltr">{customer.phone}</bdi> : null,
+            // The driver beside the company, with the car the goods came in (D-105).
+            driver ? (
+              <>
+                {t('glossary:driver')}: <bdi>{driver.name}</bdi>
+                {driver.car_number ? (
+                  <>
+                    {' · '}
+                    <bdi>{driver.car_number}</bdi>
+                  </>
+                ) : null}
+                {driver.phone ? (
+                  <>
+                    {' · '}
+                    <bdi dir="ltr">{driver.phone}</bdi>
+                  </>
+                ) : null}
+              </>
+            ) : null,
+          ]}
         />
         <Party
           end

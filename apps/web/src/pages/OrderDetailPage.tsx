@@ -50,6 +50,7 @@ export function OrderDetailPage() {
   const mayChangeType = usePermission('orders.change_payment_type');
   const mayVoid = usePermission('orders.void');
   const maySeeBalance = usePermission('fields.see_customer_balances');
+  const maySeeDrivers = usePermission('drivers.view');
 
   const [tab, setTab] = useState<Tab>('lines');
   const [paying, setPaying] = useState(false);
@@ -213,6 +214,20 @@ export function OrderDetailPage() {
                       {formatter.date(data.order_date)}
                       {data.acting_user_name ? ` · ${t('glossary:done_by')}: ${data.acting_user_name}` : ''}
                     </span>
+                    {/* Who takes it (D-105): a way to the driver's page for whoever may open it. */}
+                    {data.driver_id && data.driver_name ? (
+                      <span className="mz-caption" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <Icon name="drivers" size={14} />
+                        {t('glossary:driver')}:{' '}
+                        {maySeeDrivers ? (
+                          <Link to={`/drivers/${data.driver_id}`} className="mz-tap-link">
+                            <bdi>{data.driver_name}</bdi>
+                          </Link>
+                        ) : (
+                          <bdi>{data.driver_name}</bdi>
+                        )}
+                      </span>
+                    ) : null}
                   </div>
                   <span
                     className="mz-row"

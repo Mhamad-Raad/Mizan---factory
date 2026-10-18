@@ -78,6 +78,12 @@ input[type='tel'] {
   text-align: end;
 }
 
+/* A field that takes its direction from what is typed — a car's plate (D-105) — still sits where
+   the page starts reading, whichever script the plate is written in. */
+input[dir='auto'] {
+  text-align: match-parent;
+}
+
 html[dir='ltr'] input[inputmode='decimal'],
 html[dir='ltr'] input[inputmode='numeric'],
 html[dir='ltr'] input[type='tel'] {

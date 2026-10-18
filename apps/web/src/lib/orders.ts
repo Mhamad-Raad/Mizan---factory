@@ -12,6 +12,9 @@ export interface OrderRow {
   payment_type: 'cash' | 'borrowed';
   acting_user_name: string | null;
   notes: string | null;
+  /** Who takes it to the company (D-105). */
+  driver_id: string | null;
+  driver_name: string | null;
   rate_iqd_per_usd: Rate;
   rate_source: RateSource;
   discount_iqd: number;

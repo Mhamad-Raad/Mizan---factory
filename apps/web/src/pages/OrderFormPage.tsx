@@ -12,6 +12,9 @@ import { DualAmount } from '../components/DualAmount.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { PickerSheet } from '../components/PickerSheet.js';
+import { DriverSheet } from '../components/DriverSheet.js';
+import { driverCaption } from '../lib/drivers.js';
+import type { DriverRow } from '../lib/drivers.js';
 import { BuyRateField, useBuyRate } from '../components/BuyFields.js';
 import { QuantityInput } from '../components/QuantityInput.js';
 import { FieldsSkeleton, QueryStates } from '../components/states.js';
@@ -53,6 +56,9 @@ interface FormState {
   order_date: string;
   payment_type: 'cash' | 'borrowed';
   received_currency: Currency;
+  /** Who takes it to the company (D-105); optional. */
+  driver_id: string | null;
+  driver_name: string | null;
   notes: string;
   rate_override: string;
   /** An edited order's own rate and its source, which the rate box opens on (D-101); null when new. */
@@ -128,6 +134,9 @@ export function OrderFormPage({ mode }: { mode: 'create' | 'edit' }) {
           order_date: formatter.today(),
           payment_type: 'borrowed',
           received_currency: 'IQD',
+          // A new sale from a driver's page opens with that driver (D-105).
+          driver_id: searchParams.get('driver'),
+          driver_name: null,
           notes: '',
           rate_override: '',
           acting_user_id: '',
@@ -149,6 +158,8 @@ function fromOrder(order: OrderDetail): FormState {
     order_date: order.order_date,
     payment_type: order.payment_type,
     received_currency: order.received_currency ?? 'IQD',
+    driver_id: order.driver_id,
+    driver_name: order.driver_name,
     notes: order.notes ?? '',
     // The box opens on the order's own rate (D-101): sent only when changed, else the server keeps it.
     rate_override: '',
@@ -204,7 +215,11 @@ function OrderForm({
   const [draftFound, setDraftFound] = useState(() => readDraft<FormState>('order', draftId));
 
   const [form, setForm] = useState<FormState>(initial);
-  const [picking, setPicking] = useState<'customer' | 'material' | null>(null);
+  const [picking, setPicking] = useState<'customer' | 'material' | 'driver' | null>(null);
+  /** "New driver" from the driver picker, with what was typed in its search (D-105). */
+  const [namingDriver, setNamingDriver] = useState<string | null>(null);
+  const mayPickDriver = usePermission('drivers.view');
+  const mayCreateDriver = usePermission('drivers.create');
 
   /**
    * The customer behind an id that came from a link or from the order being edited. What it
@@ -216,6 +231,14 @@ function OrderForm({
     queryFn: () => apiRequest<CustomerRow>(`/customers/${form.customer_id}`),
     enabled: Boolean(form.customer_id),
   });
+
+  // The driver behind an id that came from a driver's page, whose name the form does not have yet.
+  const linkedDriver = useQuery({
+    queryKey: ['drivers', form.driver_id],
+    queryFn: () => apiRequest<DriverRow>(`/drivers/${form.driver_id}`),
+    enabled: Boolean(form.driver_id) && form.driver_name === null && mayPickDriver,
+  });
+  const driverLabel = form.driver_name ?? linkedDriver.data?.name ?? null;
 
   const isSystemCustomer = customer.data?.is_system ?? form.customer_is_system;
   const settlementCurrency = customer.data?.settlement_currency ?? form.settlement_currency;
@@ -328,6 +351,7 @@ function OrderForm({
         order_date: form.order_date,
         payment_type: paymentType,
         received_currency: paymentType === 'cash' ? form.received_currency : null,
+        driver_id: form.driver_id,
         notes: form.notes.trim() === '' ? null : form.notes.trim(),
         rate_iqd_per_usd: orderRate.body,
         acting_user_id: form.acting_user_id === '' ? null : form.acting_user_id,
@@ -507,6 +531,32 @@ function OrderForm({
                     { value: 'USD', label: t('glossary:usd') },
                   ]}
                 />
+              </div>
+            ) : null}
+
+            {/* Who takes it to the company (D-105): optional, chosen like the company. */}
+            {mayPickDriver || form.driver_id ? (
+              <div className="mz-field">
+                <span className="mz-field__label">{t('glossary:driver')}</span>
+                <span className="mz-filter-panel__company">
+                  <Button
+                    variant="secondary"
+                    icon="drivers"
+                    disabled={!mayPickDriver}
+                    onClick={() => setPicking('driver')}
+                  >
+                    <bdi>{form.driver_id ? (driverLabel ?? '…') : t('orders:choose_driver')}</bdi>
+                  </Button>
+                  {form.driver_id ? (
+                    <Button
+                      variant="ghost"
+                      onClick={() => setForm((current) => ({ ...current, driver_id: null, driver_name: null }))}
+                    >
+                      {t('orders:remove_driver')}
+                    </Button>
+                  ) : null}
+                </span>
+                <span className="mz-field__hint">{t('orders:driver_hint')}</span>
               </div>
             ) : null}
 
@@ -780,6 +830,62 @@ function OrderForm({
         />
       ) : null}
 
+      {picking === 'driver' ? (
+        <PickerSheet
+          title={t('orders:choose_driver')}
+          open
+          onClose={() => setPicking(null)}
+          path="/drivers"
+          icon="drivers"
+          searchLabel={t('drivers:search_placeholder')}
+          emptyTitle={t('drivers:empty')}
+          toItem={(row: never) => {
+            const driverRow = row as unknown as DriverRow;
+            return { id: driverRow.id, title: driverRow.name, subtitle: driverCaption(driverRow) };
+          }}
+          onPick={(pickedId, row) => {
+            setPicking(null);
+            setForm((current) => ({
+              ...current,
+              driver_id: pickedId,
+              driver_name: (row as unknown as DriverRow).name,
+            }));
+          }}
+          footer={
+            mayCreateDriver
+              ? (typed) => (
+                  <Button
+                    variant="secondary"
+                    icon="plus"
+                    block
+                    onClick={() => {
+                      setPicking(null);
+                      setNamingDriver(typed);
+                    }}
+                  >
+                    {t('drivers:new_driver')}
+                  </Button>
+                )
+              : undefined
+          }
+        />
+      ) : null}
+
+      {namingDriver !== null ? (
+        <DriverSheet
+          initialName={namingDriver}
+          onClose={() => setNamingDriver(null)}
+          onSaved={(driver) => {
+            setNamingDriver(null);
+            setForm((current) => ({ ...current, driver_id: driver.id, driver_name: driver.name }));
+          }}
+          onUseExisting={(driver) => {
+            setNamingDriver(null);
+            setForm((current) => ({ ...current, driver_id: driver.id, driver_name: driver.name }));
+          }}
+        />
+      ) : null}
+
       {picking === 'material' ? (
         <PickerSheet
           title={t('orders:choose_material')}
@@ -833,6 +939,8 @@ export interface OrderDetail {
   payment_type: 'cash' | 'borrowed';
   acting_user_name: string | null;
   notes: string | null;
+  driver_id: string | null;
+  driver_name: string | null;
   rate_iqd_per_usd: string;
   rate_source: 'global' | 'manual' | 'company';
   discount_iqd: number;

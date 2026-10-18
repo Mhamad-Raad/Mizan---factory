@@ -14,6 +14,8 @@ export interface OrderReceiptData {
   kind: 'order';
   order: OrderDetail;
   customer: { name: string; is_system: boolean; phone: string | null; settlement_currency: Currency };
+  /** Who takes it (D-105), so whoever receives the goods knows who brought them. */
+  driver?: { name: string; phone: string | null; car_number: string | null } | null;
   balance_after: number | null;
 }
 

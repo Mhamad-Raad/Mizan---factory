@@ -139,5 +139,8 @@
   "value.not_returnable": "لا يُرجَع",
   "value.admin": "مدير",
   "value.employee": "موظف",
-  "field.rounding": "التقريب"
+  "field.rounding": "التقريب",
+  "entity.driver": "سائق",
+  "field.car_number": "رقم السيارة",
+  "field.driver": "السائق"
 }

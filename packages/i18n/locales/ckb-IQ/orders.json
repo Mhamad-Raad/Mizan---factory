@@ -57,5 +57,8 @@
   "rounding": "نزیککردنەوە",
   "save_order_one": "پاشەکەوتکردنی فرۆشتن ({{count}} هێڵ)",
   "empty_search": "هیچ ئەنجامێک بۆ «{{query}}» نییە",
-  "they_paid_for_order": "پارەی ئەم فرۆشتنەیان دا"
+  "they_paid_for_order": "پارەی ئەم فرۆشتنەیان دا",
+  "choose_driver": "شۆفێرێک هەڵبژێرە",
+  "remove_driver": "لابردن",
+  "driver_hint": "کێ دەیبات بۆ کۆمپانیاکە. ئارەزوومەندانە."
 }

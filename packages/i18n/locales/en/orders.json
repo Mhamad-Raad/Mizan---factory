@@ -57,5 +57,8 @@
   "rounding": "Rounding",
   "save_order_one": "Save order ({{count}} line)",
   "empty_search": "No match for '{{query}}'",
-  "they_paid_for_order": "They paid for this order"
+  "they_paid_for_order": "They paid for this order",
+  "choose_driver": "Choose a driver",
+  "remove_driver": "Remove",
+  "driver_hint": "Who takes it to the company. Optional."
 }

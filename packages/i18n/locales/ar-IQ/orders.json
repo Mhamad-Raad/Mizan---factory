@@ -57,5 +57,8 @@
   "rounding": "التقريب",
   "save_order_one": "حفظ الطلب ({{count}} سطر)",
   "empty_search": "لا نتائج لـ ‏«{{query}}»",
-  "they_paid_for_order": "دفعوا ثمن هذا الطلب"
+  "they_paid_for_order": "دفعوا ثمن هذا الطلب",
+  "choose_driver": "اختر سائقاً",
+  "remove_driver": "إزالة",
+  "driver_hint": "من يوصله إلى الشركة. اختياري."
 }
