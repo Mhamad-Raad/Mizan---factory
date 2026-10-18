@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Chip, DateField, EmptyState, Icon, IconButton, NumberField, SegmentedControl, TextAreaField, Toggle } from '@mizan/ui';
 import { ORDER_ROUNDING_IQD, computeLineTotals, convert, documentTotals, roundOrderTotals } from '@mizan/money';
 import type { Currency, Measure, Rate, RateSource } from '@mizan/money';
@@ -262,6 +262,59 @@ function OrderForm({
     const timer = window.setTimeout(() => drafts.write(form, idempotencyKey), 300);
     return () => window.clearTimeout(timer);
   }, [form, drafts, idempotencyKey]);
+
+  /**
+   * What each material on the form may still sell (D-107): its stock now, plus — on an edit — what
+   * this order already holds of it, which the save gives back before taking again. A material on
+   * several lines is checked on their total, as the server does.
+   */
+  const itemIds = useMemo(() => [...new Set(form.lines.map((line) => line.item_id))], [form.lines]);
+  const stockQueries = useQueries({
+    queries: itemIds.map((itemId) => ({
+      queryKey: ['items', itemId],
+      queryFn: () => apiRequest<ItemRow>(`/items/${itemId}`),
+      staleTime: 15_000,
+    })),
+  });
+  const held = useMemo(() => {
+    const byItem = new Map<string, number>();
+    if (mode === 'edit') {
+      for (const line of initial.lines) {
+        byItem.set(line.item_id, (byItem.get(line.item_id) ?? 0) + Number(quantityOf(line) ?? 0));
+      }
+    }
+    return byItem;
+  }, [mode, initial.lines]);
+  const stockCheck = useMemo(() => {
+    const requested = new Map<string, number>();
+    for (const line of form.lines) {
+      requested.set(line.item_id, (requested.get(line.item_id) ?? 0) + Number(quantityOf(line) ?? 0));
+    }
+    const available = new Map<string, number>();
+    itemIds.forEach((itemId, index) => {
+      const stock = stockQueries[index]?.data?.stock;
+      // A measure that cannot be summed for the material has no figure to check (FR-303).
+      if (stock && stock.priced_complete) available.set(itemId, Number(stock.priced_quantity) + (held.get(itemId) ?? 0));
+    });
+    // Whole thousandths, so 0.1 + 0.2 kg is not a hair over 0.3 kg.
+    const over = (itemId: string) => {
+      const left = available.get(itemId);
+      return left !== undefined && Math.round((requested.get(itemId) ?? 0) * 1000) > Math.round(left * 1000);
+    };
+    return { available, over };
+  }, [form.lines, itemIds, stockQueries, held]);
+  const lineProblem = (line: FormLine): string | null => {
+    const quantity = quantityOf(line);
+    if (quantity === null || Number(quantity) <= 0) return t('orders:quantity_above_zero');
+    if (stockCheck.over(line.item_id)) {
+      return t('orders:over_stock', {
+        quantity: formatter.quantity(String(Math.max(stockCheck.available.get(line.item_id) ?? 0, 0))),
+        unit: t(`common:${line.priced_measure}_symbol`),
+      });
+    }
+    return null;
+  };
+  const stockBlocks = form.lines.some((line) => lineProblem(line) !== null);
 
   const totals = useMemo(() => {
     // One entry per line, aligned to `form.lines` (null where the line is not yet complete), so a
@@ -626,10 +679,11 @@ function OrderForm({
             value={{ qty_count: line.qty_count, qty_kg: line.qty_kg }}
             onChange={(value) => updateLine(line.key, value)}
             error={
-              error?.fieldError(`lines.${index}.qty_kg`) ||
-              error?.fieldError(`lines.${index}.qty_count`)
+              // Not before anything is typed: an empty new line is not yet a mistake.
+              (quantityOf(line) !== null ? lineProblem(line) : null) ??
+              (error?.fieldError(`lines.${index}.qty_kg`) || error?.fieldError(`lines.${index}.qty_count`)
                 ? t('errors:field.required')
-                : undefined
+                : undefined)
             }
           />
 
@@ -755,7 +809,7 @@ function OrderForm({
         primary={settlementCurrency}
         lineCount={form.lines.length}
         saving={save.isPending}
-        disabled={!form.customer_id || form.lines.length === 0 || rateTypedBadly}
+        disabled={!form.customer_id || form.lines.length === 0 || rateTypedBadly || stockBlocks}
         onSave={() => save.mutate()}
         saveLabel={mode === 'edit' ? t('common:save') : undefined}
       />
@@ -811,9 +865,12 @@ function OrderForm({
           emptyTitle={t('materials:empty')}
           toItem={(row: never) => {
             const item = row as unknown as ItemRow;
+            // Nothing left of it: listed, so nobody wonders where it went, but not choosable (D-107).
+            const soldOut = item.stock.priced_complete && Number(item.stock.priced_quantity) <= 0;
             return {
               id: item.id,
               title: item.name,
+              disabledReason: soldOut ? t('orders:out_of_stock') : undefined,
               subtitle: item.sale
                 ? formatter.money(item.sale.amount_iqd, 'IQD')
                 : t('materials:no_price_yet'),

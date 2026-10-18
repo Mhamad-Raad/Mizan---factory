@@ -1,3 +1,4 @@
+import { useBusiness } from '../../lib/business.js';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Currency } from '@mizan/money';
@@ -40,11 +41,29 @@ export function PrintedDocument({ data }: { data: PrintData }) {
 function DocumentHead({ type, title, date }: { type: string; title: ReactNode; date?: string | null }) {
   const { t } = useTranslation();
   const formatter = useFormatter();
+  // The business's own name, phone, address and logo, as an admin set them (D-108); the product's
+  // name until a name is set.
+  const business = useBusiness();
   return (
     <header className="mz-invoice__head">
-      <div className="mz-invoice__brand">
-        <strong className="mz-invoice__name">{t('common:app_name')}</strong>
-        <span className="mz-invoice__muted">{t('common:app_tagline')}</span>
+      <div className={business.logo ? 'mz-invoice__brand mz-invoice__brand--logo' : 'mz-invoice__brand'}>
+        {business.logo ? <img className="mz-invoice__logo" src={business.logo} alt="" /> : null}
+        <div className="mz-invoice__brand">
+          <strong className="mz-invoice__name">
+            <bdi>{business.name ?? t('common:app_name')}</bdi>
+          </strong>
+          {business.name ? null : <span className="mz-invoice__muted">{t('common:app_tagline')}</span>}
+          {business.phone ? (
+            <span className="mz-invoice__muted">
+              <bdi dir="ltr">{business.phone}</bdi>
+            </span>
+          ) : null}
+          {business.address ? (
+            <span className="mz-invoice__muted">
+              <bdi>{business.address}</bdi>
+            </span>
+          ) : null}
+        </div>
       </div>
       <div className="mz-invoice__doc">
         <span className="mz-invoice__doctype">{type}</span>

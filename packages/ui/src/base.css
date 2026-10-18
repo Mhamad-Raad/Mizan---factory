@@ -807,6 +807,16 @@ a.mz-button {
   background: var(--color-surface-2);
 }
 
+/* A row that is listed but cannot be chosen — a material with nothing left on a sale (D-107). */
+.mz-list__item--interactive:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mz-list__item--interactive:disabled:hover {
+  background: none;
+}
+
 .mz-list__body {
   flex: 1;
   min-inline-size: 0;
@@ -1507,6 +1517,19 @@ a.mz-button {
 .mz-invoice__brand {
   display: flex;
   flex-direction: column;
+}
+
+/* With the business's logo (D-108): the picture, then the name and its details beside it. */
+.mz-invoice__brand--logo {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.mz-invoice__logo {
+  max-block-size: 18mm;
+  max-inline-size: 32mm;
+  object-fit: contain;
 }
 
 .mz-invoice__name {

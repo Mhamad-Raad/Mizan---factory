@@ -79,5 +79,7 @@
   "company_required": "Choose the company it was bought from",
   "driver_phone_duplicate": "Another driver already has this phone number.",
   "driver_not_found": "That driver no longer exists.",
-  "driver_inactive": "{{name}} is deactivated and cannot be chosen for a new order."
+  "driver_inactive": "{{name}} is deactivated and cannot be chosen for a new order.",
+  "logo_not_a_picture": "That is not a PNG, JPEG or WebP picture.",
+  "logo_too_large": "That logo is too large. Choose a smaller picture."
 }

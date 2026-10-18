@@ -12,6 +12,11 @@ export interface PickerItem {
   title: string;
   subtitle?: string;
   detail?: React.ReactNode;
+  /**
+   * Shown but not choosable — a material with nothing left, on a sale (D-107) — with the reason
+   * in place of the detail, so the row says why it does not open.
+   */
+  disabledReason?: string;
 }
 
 export interface PickerSheetProps {
@@ -78,7 +83,13 @@ export function PickerSheet({
 
   const row = (item: PickerItem, onClick: () => void) => (
     <li key={item.id}>
-      <button type="button" className="mz-list__item mz-list__item--interactive" onClick={onClick}>
+      <button
+        type="button"
+        className="mz-list__item mz-list__item--interactive"
+        onClick={onClick}
+        disabled={item.disabledReason !== undefined}
+        aria-disabled={item.disabledReason !== undefined}
+      >
         {icon ? (
           <span className="mz-picker__icon">
             <Icon name={icon} size={18} />
@@ -94,8 +105,14 @@ export function PickerSheet({
             </span>
           ) : null}
         </span>
-        {item.detail}
-        <Icon name="next" size={18} className="mz-picker__chevron" />
+        {item.disabledReason !== undefined ? (
+          <span className="mz-caption mz-owed">{item.disabledReason}</span>
+        ) : (
+          <>
+            {item.detail}
+            <Icon name="next" size={18} className="mz-picker__chevron" />
+          </>
+        )}
       </button>
     </li>
   );

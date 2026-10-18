@@ -61,5 +61,8 @@
   "choose_driver": "اختر سائقاً",
   "remove_driver": "إزالة",
   "driver_hint": "من يوصله إلى الشركة. اختياري.",
-  "change_driver": "تغيير"
+  "change_driver": "تغيير",
+  "quantity_above_zero": "أدخل كمية أكبر من 0",
+  "over_stock": "المتوفر في المخزن {{quantity}} {{unit}} فقط",
+  "out_of_stock": "نفد من المخزن"
 }

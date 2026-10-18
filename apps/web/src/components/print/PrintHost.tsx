@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import { apiRequest } from '../../lib/api.js';
+import { BUSINESS_QUERY_KEY, BusinessContext, NO_BUSINESS } from '../../lib/business.js';
+import type { Business } from '../../lib/business.js';
 import { Toast } from '@mizan/ui';
 import { usePrintQueue } from '../../lib/print.js';
 import type { PrintJob } from '../../lib/print.js';
@@ -46,8 +49,18 @@ function PrintRun({ job }: { job: PrintJob }) {
     })),
   });
 
+  // The business every document is headed with (D-108). A failure to read it prints without it
+  // rather than not at all.
+  const business = useQuery({
+    queryKey: BUSINESS_QUERY_KEY,
+    queryFn: () => apiRequest<Business>('/settings/business'),
+    staleTime: 60_000,
+    retry: false,
+  });
+
   const failed = results.find((result) => result.isError);
-  const ready = results.length > 0 && results.every((result) => result.isSuccess);
+  const ready =
+    results.length > 0 && results.every((result) => result.isSuccess) && !business.isPending;
   const printed = useRef(false);
   const host = useRef<HTMLDivElement>(null);
 
@@ -62,13 +75,15 @@ function PrintRun({ job }: { job: PrintJob }) {
       {ready
         ? createPortal(
             <div ref={host} className="mz-print-host" aria-hidden="true">
-              {results.map((result, index) =>
-                result.data ? (
-                  <div key={index} className="mz-print-page">
-                    <PrintedDocument data={result.data as PrintData} />
-                  </div>
-                ) : null,
-              )}
+              <BusinessContext.Provider value={business.data ?? NO_BUSINESS}>
+                {results.map((result, index) =>
+                  result.data ? (
+                    <div key={index} className="mz-print-page">
+                      <PrintedDocument data={result.data as PrintData} />
+                    </div>
+                  ) : null,
+                )}
+              </BusinessContext.Provider>
             </div>,
             document.body,
           )
@@ -159,7 +174,9 @@ function printInFrame(source: HTMLElement, done: () => void): () => void {
     .then(() => {
       // Laid out first, so the fonts its text needs are asked for before they are waited on.
       void sheet.body.offsetHeight;
-      return sheet.fonts.ready;
+      // The logo too (D-108): a page printed before its picture is decoded prints without it.
+      const pictures = Array.from(sheet.images).map((image) => image.decode().catch(() => undefined));
+      return Promise.all([sheet.fonts.ready, ...pictures]);
     })
     .then(() => {
       if (finished) return;

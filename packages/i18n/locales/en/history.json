@@ -142,5 +142,9 @@
   "field.rounding": "Rounding",
   "entity.driver": "Driver",
   "field.car_number": "Car number",
-  "field.driver": "Driver"
+  "field.driver": "Driver",
+  "field.business_name": "Business name",
+  "field.business_phone": "Business phone",
+  "field.business_address": "Business address",
+  "field.business_logo": "Logo on receipts"
 }

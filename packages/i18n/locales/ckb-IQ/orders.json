@@ -61,5 +61,8 @@
   "choose_driver": "شۆفێرێک هەڵبژێرە",
   "remove_driver": "لابردن",
   "driver_hint": "کێ دەیبات بۆ کۆمپانیاکە. ئارەزوومەندانە.",
-  "change_driver": "گۆڕین"
+  "change_driver": "گۆڕین",
+  "quantity_above_zero": "بڕێک لە 0 زیاتر بنووسە",
+  "over_stock": "تەنها {{quantity}} {{unit}} لە کۆگادا هەیە",
+  "out_of_stock": "لە کۆگادا نەماوە"
 }

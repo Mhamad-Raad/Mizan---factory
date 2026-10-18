@@ -79,5 +79,7 @@
   "company_required": "اختر الشركة التي اشتُري منها",
   "driver_phone_duplicate": "لدى سائق آخر رقم الهاتف نفسه.",
   "driver_not_found": "هذا السائق لم يعد موجوداً.",
-  "driver_inactive": "{{name}} معطّل ولا يمكن اختياره لطلب بيع جديد."
+  "driver_inactive": "{{name}} معطّل ولا يمكن اختياره لطلب بيع جديد.",
+  "logo_not_a_picture": "هذه ليست صورة PNG أو JPEG أو WebP.",
+  "logo_too_large": "هذا الشعار كبير جداً. اختر صورة أصغر."
 }

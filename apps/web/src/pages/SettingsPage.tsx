@@ -8,6 +8,7 @@ import { errorMessage } from '../lib/errors.js';
 import { usePageTitle } from '../lib/page-title.js';
 import { useApp, useFormatter, usePermission } from '../lib/store.js';
 import { AppearanceCards } from '../components/Appearance.js';
+import { BusinessCard } from '../components/BusinessCard.js';
 import { Pager } from '../components/Pager.js';
 import { QueryStates } from '../components/states.js';
 import { useKeepPageInRange, usePaging } from '../lib/paging.js';
@@ -45,6 +46,9 @@ export function SettingsPage() {
          * choice is per device (FR-1103), and the app bar offers the same three lists.
          */}
         <AppearanceCards />
+
+        {/* What every receipt is headed with (D-108): the admin's, as in the Pallet system. */}
+        {user?.role === 'admin' ? <BusinessCard /> : null}
 
         {/* A user who may set the rate sees that card even without the rest (spec 3.3). */}
         {user?.role === 'admin' || maySetRate ? <GlobalRateCard /> : null}

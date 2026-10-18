@@ -61,5 +61,8 @@
   "choose_driver": "Choose a driver",
   "remove_driver": "Remove",
   "driver_hint": "Who takes it to the company. Optional.",
-  "change_driver": "Change"
+  "change_driver": "Change",
+  "quantity_above_zero": "Enter a quantity above 0",
+  "over_stock": "Only {{quantity}} {{unit}} in stock",
+  "out_of_stock": "Out of stock"
 }
