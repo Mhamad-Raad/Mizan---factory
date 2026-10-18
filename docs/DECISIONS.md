@@ -2117,3 +2117,22 @@ driver is edited and every order they took is listed, and a driver filter on the
 - **Speed at ten years:** `orders_driver_idx (driver_id, order_date DESC, number DESC)` serves a
   driver's page and the filter; a driver filter counts as a narrowing, so the list's figures are
   computed over the matching orders rather than read from the per-account sums.
+
+## D-106 · 2026-10-18 · business request · Drivers on purchases too, and "Change driver" on its own
+
+The business: purchases should have a driver as well — the one who brings the goods in.
+
+- **On the purchase** (migration 0038): `purchases.driver_id`, optional, the same rules as an
+  order's (D-105): a new choice must be active, a purchase may keep a driver deactivated since,
+  History names the driver, the driver is held while the purchase saves. `purchases.create` and
+  `purchases.edit` imply `drivers.view`.
+- **Changed on its own:** a purchase has no edit form, and a driver is no reason to reverse and
+  rewrite a document's lines, stock and account. So both kinds get `PUT /orders/:id/driver` and
+  `PUT /purchases/:id/driver` — the document's own edit rules (the creator, `*.edit`, an admin; not
+  a void document; the version), one audited `driver: old → new`. The order and purchase pages show
+  the driver with "Change" beside the name for whoever holds `orders.edit` / `purchases.edit`.
+- **Lists:** the driver filter on Buying & selling is no longer a sale's question — both kinds are
+  filtered by it (D-105's "purchases leave the list" is withdrawn). The driver's page is the Buying
+  & selling list narrowed to the driver, with each side's figures (never added together), "New
+  purchase" and "New sale" opening with the driver chosen; the Drivers list's "Last trip" is the
+  newest sale or purchase. The purchase receipt names the driver with the car and phone.

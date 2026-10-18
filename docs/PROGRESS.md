@@ -886,7 +886,12 @@ go-live checklist in `ops/runbook/README.md`, run with the client on their own h
   driver with their details and every order they took (for a period, with the count and the total,
   printable), a driver picker on the new and edit order forms with "New driver", a Driver filter on
   Buying & selling, and the driver on the order page and the printed receipt. Migration 0037.
-- **Tests:** `drivers.test.ts` (7, API); the permission matrix covers the seven new routes by
+- **Drivers on purchases (D-106):** the purchase form has a Driver field, the order and purchase
+  pages show the driver with "Change" (no full edit), Buying & selling's Driver filter keeps both
+  kinds, the driver's page lists their sales and purchases. Migration 0038.
+- **Rate box alignment:** a number box keeps room for a unit only when it shows one, so a rate or
+  an amount reaches its box's edge (it sat 56 px short in Kurdish).
+- **Tests:** `drivers.test.ts` (10, API); the permission matrix covers the seven new routes by
   itself; `e2e/responsive.spec.ts` sweeps `/drivers` and a driver's page. 809 tests green.
 - **Known, not from this change:** `/reports` is 13 px too wide at 360 px with English text at
   1.25× (fails on `main` too).
