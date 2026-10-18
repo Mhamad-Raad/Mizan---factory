@@ -168,6 +168,8 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
   const formatter = useFormatter();
   const { order, customer, driver } = data;
   const primary = customer.settlement_currency;
+  const earlier = data.earlier_owing ?? null;
+  const earlierOwed = earlier?.remaining ?? 0;
   const subtotalIqd = order.lines.reduce((sum, line) => sum + line.line_total_iqd, 0);
   const subtotalUsd = order.lines.reduce((sum, line) => sum + line.line_total_usd_cents, 0);
 
@@ -231,6 +233,42 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
         </tbody>
       </table>
 
+      {/* What they still owe for earlier orders, order by order (D-109) — the Pallet system's
+          earlier pallets still out, in money: shaded apart from this order's own lines. */}
+      {earlier && earlier.count > 0 ? (
+        <table className="mz-invoice__table mz-invoice__table--earlier">
+          <thead>
+            <tr>
+              <th>{t('print:earlier_title')}</th>
+              <th>{t('common:date')}</th>
+              <th className="mz-invoice__num">{t('glossary:total')}</th>
+              <th className="mz-invoice__num">{t('orders:remaining')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {earlier.orders.map((row) => (
+              <tr key={row.id}>
+                <td>{t('orders:number', { number: formatter.identifier(row.number) })}</td>
+                <td data-tabular>{formatter.date(row.order_date)}</td>
+                <td className="mz-invoice__num">
+                  <DualAmount {...bothOf(row.total, primary, order.rate_iqd_per_usd)} primary={primary} kind="derived" />
+                </td>
+                <td className="mz-invoice__num">
+                  <DualAmount {...bothOf(row.remaining, primary, order.rate_iqd_per_usd)} primary={primary} kind="derived" />
+                </td>
+              </tr>
+            ))}
+            {earlier.count > earlier.orders.length ? (
+              <tr>
+                <td colSpan={4} className="mz-invoice__muted">
+                  {t('print:earlier_more', { count: earlier.count - earlier.orders.length })}
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      ) : null}
+
       <div className="mz-invoice__totals">
         <TotalRow label={t('orders:subtotal')}>
           <DualAmount amount_iqd={subtotalIqd} amount_usd_cents={subtotalUsd} primary={primary} />
@@ -258,12 +296,29 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
         <TotalRow label={t('glossary:total')} grand>
           <DualAmount amount_iqd={order.total_iqd} amount_usd_cents={order.total_usd_cents} primary={primary} />
         </TotalRow>
-        <TotalRow label={t('orders:remaining')}>
+        <TotalRow label={earlierOwed > 0 ? t('print:this_order_owes') : t('orders:remaining')}>
           <DualAmount {...bothOf(order.remaining, primary, order.rate_iqd_per_usd)} primary={primary} kind="derived" />
         </TotalRow>
+        {earlierOwed > 0 ? (
+          <>
+            <TotalRow label={t('print:earlier_owe', { count: earlier?.count ?? 0 })}>
+              <DualAmount {...bothOf(earlierOwed, primary, order.rate_iqd_per_usd)} primary={primary} kind="derived" />
+            </TotalRow>
+            {/* The two added: what this order and the earlier ones still come to (D-109). */}
+            <TotalRow label={t('print:total_owed')} grand>
+              <DualAmount
+                {...bothOf(Math.max(order.remaining, 0) + earlierOwed, primary, order.rate_iqd_per_usd)}
+                primary={primary}
+                kind="derived"
+              />
+            </TotalRow>
+          </>
+        ) : null}
         {/* Their account after this order, said in words rather than by a sign (D-104): "They owe
-            us", "In credit" or "Settled", the figure always positive — as on a payment's voucher. */}
-        {data.balance_after !== null ? (
+            us", "In credit" or "Settled", the figure always positive — as on a payment's voucher.
+            Beside the orders' own figures it is said only when it differs from them — an opening
+            debt, a credit or a payment not made against an order (D-109). */}
+        {data.balance_after !== null && (earlierOwed === 0 || data.balance_after !== Math.max(order.remaining, 0) + earlierOwed) ? (
           <TotalRow label={balanceLabel('sales', data.balance_after, t)}>
             <DualAmount
               {...bothOf(Math.abs(data.balance_after), primary, order.rate_iqd_per_usd)}

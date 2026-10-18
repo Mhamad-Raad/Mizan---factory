@@ -813,6 +813,14 @@ export class OrdersService {
     const balance = customer ? await this.customers.balanceOf(order.customer_id) : 0;
     // The driver as the paper shows them, so whoever receives the goods knows who brought them (D-105).
     const driver = order.driver_id ? await this.drivers.get(order.driver_id) : null;
+    const seesBalances = can(context, 'fields.see_customer_balances');
+    // What the company still owes for earlier orders, order by order, under this one's lines (D-109),
+    // as the Pallet system lists the earlier pallets still out. Behind the balances flag, as the
+    // balance is. Never on a void order's paper, nor the walk-in's, who owes nothing.
+    const earlier =
+      seesBalances && order.status === 'active' && !order.customer_is_system
+        ? await this.orders.earlierOwing(order.customer_id, Number(order.number), order.settlement_currency)
+        : null;
 
     return {
       order: toOrderDto(order, lines),
@@ -824,7 +832,8 @@ export class OrdersService {
         settlement_currency: order.settlement_currency,
       },
       driver: driver ? { name: driver.name, phone: driver.phone, car_number: driver.car_number } : null,
-      balance_after: can(context, 'fields.see_customer_balances') ? balance : null,
+      earlier_owing: earlier,
+      balance_after: seesBalances ? balance : null,
       printed_at: new Date().toISOString(),
     };
   }

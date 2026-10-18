@@ -38,5 +38,10 @@
   "net_they_owe_us": "Altogether, they owe us",
   "net_we_owe_them": "Altogether, we owe them",
   "print_selected": "Print ({{count}})",
-  "select_all_page": "Select everything on this page"
+  "select_all_page": "Select everything on this page",
+  "earlier_title": "Still owed from earlier orders",
+  "earlier_more": "…and {{count}} more earlier orders",
+  "this_order_owes": "This order still owes",
+  "earlier_owe": "Earlier orders still owe ({{count}})",
+  "total_owed": "Total owed"
 }

@@ -558,6 +558,46 @@ export class OrdersRepository {
     return { owing: setOf('owing'), unpaid: setOf('unpaid') };
   }
 
+  /**
+   * The account's earlier orders still owed (D-109): placed before this one (by number), not void,
+   * something left in the account's own currency — the oldest twenty-five, and the count and what is
+   * left on all of them. One range of the partial index of owing orders.
+   */
+  async earlierOwing(customerId: string, number: number, currency: 'IQD' | 'USD') {
+    const remaining = currency === 'IQD' ? 'r.remaining_iqd' : 'r.remaining_usd_cents';
+    const total = currency === 'IQD' ? 'o.total_iqd' : 'o.total_usd_cents';
+    const where = `o.customer_id = $1 AND o.number < $2 AND o.status = 'active' AND o.deleted_at IS NULL
+                   AND ${MAY_OWE} AND ${remaining} > 0`;
+    const [rows, all] = await Promise.all([
+      this.database.query<{ id: string; number: string; order_date: string; total: string; remaining: string }>(
+        `SELECT o.id, o.number::text AS number, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
+                ${total}::text AS total, ${remaining}::text AS remaining
+           FROM order_remaining r JOIN orders o ON o.id = r.order_id
+          WHERE ${where}
+          ORDER BY o.order_date, o.number
+          LIMIT 25`,
+        [customerId, number],
+      ),
+      this.database.query<{ orders: string; remaining: string }>(
+        `SELECT count(*)::text AS orders, coalesce(sum(${remaining}), 0)::text AS remaining
+           FROM order_remaining r JOIN orders o ON o.id = r.order_id
+          WHERE ${where}`,
+        [customerId, number],
+      ),
+    ]);
+    return {
+      orders: rows.rows.map((row) => ({
+        id: row.id,
+        number: Number(row.number),
+        order_date: row.order_date,
+        total: Number(row.total),
+        remaining: Number(row.remaining),
+      })),
+      count: Number(all.rows[0]?.orders ?? 0),
+      remaining: Number(all.rows[0]?.remaining ?? 0),
+    };
+  }
+
   /** What the ledger says is still owed on one order, in one currency (0 before any entry). */
   async remainingOf(orderId: string, currency: 'IQD' | 'USD', tx: Db): Promise<number> {
     const column = currency === 'IQD' ? 'remaining_iqd' : 'remaining_usd_cents';

@@ -38,5 +38,10 @@
   "net_they_owe_us": "بالمجمل، لنا عليهم",
   "net_we_owe_them": "بالمجمل، علينا لهم",
   "print_selected": "طباعة ({{count}})",
-  "select_all_page": "تحديد كل ما في هذه الصفحة"
+  "select_all_page": "تحديد كل ما في هذه الصفحة",
+  "earlier_title": "المتبقي من طلبات البيع السابقة",
+  "earlier_more": "…و{{count}} طلبات سابقة أخرى",
+  "this_order_owes": "المتبقي على هذا الطلب",
+  "earlier_owe": "المتبقي على الطلبات السابقة ({{count}})",
+  "total_owed": "مجموع الدين"
 }

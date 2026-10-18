@@ -2179,3 +2179,21 @@ on the receipts.
   the logo to be decoded before the dialog opens, so a receipt never prints without it.
 - **History** records each change (`business_name: old → new`, `business_logo: no → yes`), never the
   picture itself. `GET /settings/business` is open to anyone signed in, since anyone may print.
+
+## D-109 · 2026-10-18 · business request · A receipt says what they still owe for earlier orders, and the total
+
+The business: when a company still owes us, the receipt should say for which orders, and then the
+total of both — as the Pallet system's hand-over receipt lists the earlier pallets still out.
+
+- Under the order's lines, shaded apart, **Still owed from earlier orders**: each of the company's
+  earlier orders (by number) that is not void and still owes in the account's currency — its number,
+  date, total and what is left — the oldest twenty-five, then "…and N more". Then **This order still
+  owes**, **Earlier orders still owe (N)** and **Total owed**, the two added.
+- The account balance ("They owe us", D-104) stays, but beside the orders' figures only when it
+  differs from their total — an opening debt, a credit, or a payment not made against an order
+  (Q-B-03: a general payment changes no order's status) — so the paper never shows the same figure
+  twice under two names.
+- Behind `fields.see_customer_balances`, as the balance is; never on the walk-in's or a void order's.
+
+**Also (business, same day):** a company's Edit button moved from the action row into the top
+corner of its info card, beside the name, as on a material's and a driver's page.

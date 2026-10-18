@@ -16,6 +16,15 @@ export interface OrderReceiptData {
   customer: { name: string; is_system: boolean; phone: string | null; settlement_currency: Currency };
   /** Who takes it (D-105), so whoever receives the goods knows who brought them. */
   driver?: { name: string; phone: string | null; car_number: string | null } | null;
+  /**
+   * The company's earlier orders still owed (D-109): the oldest twenty-five, and the count and what
+   * is left on all of them, in the account's currency. Null without the balances flag.
+   */
+  earlier_owing?: {
+    orders: { id: string; number: number; order_date: string; total: number; remaining: number }[];
+    count: number;
+    remaining: number;
+  } | null;
   balance_after: number | null;
 }
 
