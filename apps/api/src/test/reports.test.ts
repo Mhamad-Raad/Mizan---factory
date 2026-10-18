@@ -66,6 +66,9 @@ describe('the reports (FR-1001 to FR-1013)', () => {
     sara = await signIn(ctx.http, saraUser);
 
     await as(ctx.http, admin).post('/api/v1/settings/global-rates').send({ rate_iqd_per_usd: '1300' }).expect(201);
+    // These tests sell without buying first; selling past stock is refused by default since D-107,
+    // and what they test is not the stock, so they keep the old rule.
+    await as(ctx.http, admin).patch('/api/v1/settings').send({ allow_negative_stock: true }).expect(200);
 
     copper = await createMaterial('Copper wire 2 mm', 'per_kg', { sale: 850, bought: 700 });
     plates = await createMaterial('Steel plate 10 mm', 'per_piece', { sale: 18_000, bought: 15_000 });

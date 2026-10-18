@@ -16,6 +16,10 @@ export const SETTING_SCHEMAS = {
   settle_tolerance_iqd: z.number().int().min(0),
   settle_tolerance_usd_cents: z.number().int().min(0),
   go_live_date: isoDate.nullable(),
+  // What every receipt is headed with (D-108); the logo is kept beside them in `business_logo`.
+  business_name: z.string().trim().min(1).max(200).nullable(),
+  business_phone: z.string().trim().min(1).max(40).nullable(),
+  business_address: z.string().trim().min(1).max(500).nullable(),
 } as const;
 
 export type SettingKey = keyof typeof SETTING_SCHEMAS;
@@ -33,6 +37,10 @@ export const EDITABLE_KEYS: readonly SettingKey[] = [
   'default_customer_currency',
   'settle_tolerance_iqd',
   'settle_tolerance_usd_cents',
+  // Settings → Receipt details (D-108).
+  'business_name',
+  'business_phone',
+  'business_address',
 ];
 
 /**
@@ -58,9 +66,13 @@ export const DEFAULT_SETTINGS: Settings = {
   date_format: 'dd/MM/yyyy',
   idle_lock_shared_minutes: 5,
   idle_lock_default_minutes: 30,
-  allow_negative_stock: true,
+  // A sale never takes more than is in stock (D-107); it was a warning before (A-34).
+  allow_negative_stock: false,
   default_customer_currency: 'IQD',
   settle_tolerance_iqd: 250,
   settle_tolerance_usd_cents: 25,
   go_live_date: null,
+  business_name: null,
+  business_phone: null,
+  business_address: null,
 };
