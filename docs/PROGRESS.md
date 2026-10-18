@@ -879,3 +879,14 @@ go-live checklist in `ops/runbook/README.md`, run with the client on their own h
   reader's language and direction. Receipts are offered the moment something is saved, can be
   printed again from any row or page, and old ones can be ticked and printed together (up to 50).
 - **Tests:** `buying-from-companies.test.ts` (11, API), `print.test.ts` (10, web). No migration.
+
+## Final business comments (2026-10-18) · branch `feat/final-business-edits`
+
+- **Drivers (D-105):** a Drivers page (name, phone, car number; add, edit, deactivate), a page per
+  driver with their details and every order they took (for a period, with the count and the total,
+  printable), a driver picker on the new and edit order forms with "New driver", a Driver filter on
+  Buying & selling, and the driver on the order page and the printed receipt. Migration 0037.
+- **Tests:** `drivers.test.ts` (7, API); the permission matrix covers the seven new routes by
+  itself; `e2e/responsive.spec.ts` sweeps `/drivers` and a driver's page. 809 tests green.
+- **Known, not from this change:** `/reports` is 13 px too wide at 360 px with English text at
+  1.25× (fails on `main` too).

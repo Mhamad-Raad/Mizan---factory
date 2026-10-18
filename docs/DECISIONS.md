@@ -2081,3 +2081,39 @@ Read over the branch's changes after D-104; two defects found and fixed, nothing
    sent the prices again under the same idempotency key with a different body — refused as
    `IDEMPOTENCY_MISMATCH` — and with the version they had replaced. A saved price now renews its
    key and reloads the month before the details are sent.
+
+## D-105 · 2026-10-18 · business request · Drivers, as in the Pallet system, with a page of their own
+
+The business asked for the Pallet system's drivers — a list of drivers, and a driver chosen on an
+order and changed by editing it — plus what Pallet does not have: a page per driver where the
+driver is edited and every order they took is listed, and a driver filter on the orders.
+
+- **The record** (migration 0037): `drivers` — name, phone, car number (free text: plate formats
+  differ between governorates), notes, active. Never deleted, only deactivated: the orders that
+  name a driver keep naming them. A phone another driver has is a warning answered with "Save
+  anyway" (`confirm_duplicate_phone`), as in Pallet (its Q135), not a refusal.
+- **On the order:** `orders.driver_id`, **optional** — chosen by default because walk-in sales and
+  companies that collect their own goods have no driver (spec 1.10: no field is required that the
+  business did not ask to require). Orders only, not purchases: the request was about orders, and
+  we receive purchases rather than send them. A new choice must be an active driver; an order may
+  keep the driver it has after that driver is deactivated. An edit that does not mention the driver
+  keeps it (an older open form cannot clear it by accident). The driver is held with a share lock
+  while the order saves, after the account and before the materials, so a deactivation cannot slip
+  in between and orders for the same driver never wait for each other.
+- **History:** creating, editing and deactivating a driver are logged under `driver`; an order's
+  History says the driver by name when it is set or changed (`driver: old → new`).
+- **Permissions:** `drivers.view`, `drivers.create`, `drivers.edit` (deactivating is an edit, as for
+  a company). `orders.create` and `orders.edit` imply `drivers.view` — the form picks a driver —
+  so every employee who writes orders can choose one without an admin touching their permissions.
+  `orders.view` alone shows the driver's name on an order but does not open the Drivers page (its
+  phones and plates). Presets: sales (v2) gets all three, accountant (v3) gets `drivers.view`.
+- **Screens:** Drivers in the sidebar under the records (truck icon, mirrored in RTL); the driver's
+  page with Edit / Deactivate beside the name, their orders for a period with how many and what
+  they came to, ticked orders printable together, and a History tab; "New sale" there opens the
+  form with the driver chosen. The order form's driver picker offers "New driver" with what was
+  typed. Buying & selling has a Driver filter; a driver is a sale's question, so purchases leave
+  the list while it is set (said under the filters, like the payment states). The order page and
+  the printed receipt name the driver, the receipt with the car and phone.
+- **Speed at ten years:** `orders_driver_idx (driver_id, order_date DESC, number DESC)` serves a
+  driver's page and the filter; a driver filter counts as a narrowing, so the list's figures are
+  computed over the matching orders rather than read from the per-account sums.
