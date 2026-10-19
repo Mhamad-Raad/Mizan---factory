@@ -896,7 +896,10 @@ go-live checklist in `ops/runbook/README.md`, run with the client on their own h
   picker greys out what has nothing left.
 - **Receipt details (D-108):** Settings → Receipt details (admin) sets the name, phone, address and
   logo every printed document is headed with; the logo is kept in the database (migration 0040).
-- **Tests:** `drivers.test.ts` (10, API), `business.test.ts` (5, API); the stock tests rewritten to
+- **Earlier debt on receipts (D-109) and the chosen receipt design (D-110):** a sale receipt counts
+  what the company still owes for earlier sales and adds it to this one; every printed document is
+  in the business's red design (number 2 of the ten), without the list of earlier sales.
+- **Tests:** `drivers.test.ts` (10, API), `business.test.ts` (5, API), `receipt-earlier-owing.test.ts` (2, API); the stock tests rewritten to
   the new rule; the permission matrix covers the seven new routes by
   itself; `e2e/responsive.spec.ts` sweeps `/drivers` and a driver's page. 809 tests green.
 - **Known, not from this change:** `/reports` is 13 px too wide at 360 px with English text at

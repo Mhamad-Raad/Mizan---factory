@@ -2197,3 +2197,23 @@ total of both — as the Pallet system's hand-over receipt lists the earlier pal
 
 **Also (business, same day):** a company's Edit button moved from the action row into the top
 corner of its info card, beside the name, as on a material's and a driver's page.
+
+## D-110 · 2026-10-19 · business choice · Receipts in the red design, without the list of earlier sales
+
+Of the ten A4 designs (Desktop/Jiyan receipt designs), the business chose **number 2**, the one in
+the business's colour, but **without the list of earlier sales** ("قەرزی فرۆشتنەکانی پێشوو").
+
+- Every printed document — sale and purchase receipts, payment vouchers, statements — now has the
+  wine-red band across the top (the logo on a white disc, the business's name, phone and address, the
+  document's kind, number and date), who it is about in titled cards (company, driver, payment), the
+  lines under a red heading with striped rows, the money worked down to the total, and a grey strip
+  at the foot with the rate and the day it was printed. The band reaches the paper's edges on a
+  document's first page (`@page :first` has no top margin); a statement that runs on keeps a 12 mm
+  margin at the top and bottom of each later page. Paper colours are the invoice's own, not the theme's.
+- A sale receipt ends with the figures of what is still owed: **this sale**, **earlier sales (N)**
+  and **total owed** in red — or, with nothing earlier, what is left on this sale in red — and the
+  account's balance as a fourth figure when it differs (D-109). The earlier sales are counted, not
+  listed: `earlier_owing` on the receipt is now `{ count, remaining }`, one query instead of two.
+  "Paid" is a line of the worked-down money when anything was paid.
+- The amount column is **کۆ** in Kurdish (`print:line_amount`): the glossary has بڕ for both
+  "quantity" and "amount", so the two columns read alike.

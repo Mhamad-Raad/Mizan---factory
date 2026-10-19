@@ -814,9 +814,9 @@ export class OrdersService {
     // The driver as the paper shows them, so whoever receives the goods knows who brought them (D-105).
     const driver = order.driver_id ? await this.drivers.get(order.driver_id) : null;
     const seesBalances = can(context, 'fields.see_customer_balances');
-    // What the company still owes for earlier orders, order by order, under this one's lines (D-109),
-    // as the Pallet system lists the earlier pallets still out. Behind the balances flag, as the
-    // balance is. Never on a void order's paper, nor the walk-in's, who owes nothing.
+    // What the company still owes for earlier orders (D-109) — how many and how much; the business
+    // chose the figure over the list (D-110). Behind the balances flag, as the balance is. Never on
+    // a void order's paper, nor the walk-in's, who owes nothing.
     const earlier =
       seesBalances && order.status === 'active' && !order.customer_is_system
         ? await this.orders.earlierOwing(order.customer_id, Number(order.number), order.settlement_currency)

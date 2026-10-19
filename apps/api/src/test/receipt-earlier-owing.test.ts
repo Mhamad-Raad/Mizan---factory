@@ -76,8 +76,8 @@ describe('earlier orders still owed, on an order’s receipt (D-109)', () => {
       .expect(201)
       .then((response) => response.body as { id: string; number: number; version: number });
 
-  it('lists the company’s earlier orders still owed, with what is left on each and on all of them', async () => {
-    const first = await sell(kawa, 10); // 20,000
+  it('counts the company’s earlier orders still owed, and what is left on them', async () => {
+    await sell(kawa, 10); // 20,000, nothing paid
     const paid = await sell(kawa, 5); // 10,000, paid below
     const partly = await sell(kawa, 20); // 40,000, 15,000 paid below
     const voided = await sell(kawa, 3);
@@ -101,26 +101,7 @@ describe('earlier orders still owed, on an order’s receipt (D-109)', () => {
     const receipt = await as(ctx.http, admin)
       .get(`/api/v1/orders/${current.id}/receipt`)
       .expect(200);
-    expect(receipt.body.earlier_owing).toEqual({
-      orders: [
-        {
-          id: first.id,
-          number: first.number,
-          order_date: today(),
-          total: 20_000,
-          remaining: 20_000,
-        },
-        {
-          id: partly.id,
-          number: partly.number,
-          order_date: today(),
-          total: 40_000,
-          remaining: 25_000,
-        },
-      ],
-      count: 2,
-      remaining: 45_000,
-    });
+    expect(receipt.body.earlier_owing).toEqual({ count: 2, remaining: 45_000 });
     // The account: 20,000 + 25,000 + this order's 8,000 + the later 12,000.
     expect(receipt.body.balance_after).toBe(65_000);
   });
@@ -131,11 +112,7 @@ describe('earlier orders still owed, on an order’s receipt (D-109)', () => {
     expect(
       (await as(ctx.http, admin).get(`/api/v1/orders/${first.id}/receipt`).expect(200)).body
         .earlier_owing,
-    ).toMatchObject({
-      orders: [],
-      count: 0,
-      remaining: 0,
-    });
+    ).toEqual({ count: 0, remaining: 0 });
     const hidden = await as(ctx.http, plain).get(`/api/v1/orders/${second.id}/receipt`).expect(200);
     expect(hidden.body.earlier_owing).toBeNull();
     // Stripped from the answer altogether, as before (2.6.2).

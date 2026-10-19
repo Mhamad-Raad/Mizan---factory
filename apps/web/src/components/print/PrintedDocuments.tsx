@@ -119,19 +119,10 @@ function VoidBanner({ reason }: { reason: string | null }) {
   );
 }
 
-function Party({
-  label,
-  name,
-  lines,
-  end,
-}: {
-  label: string;
-  name: ReactNode;
-  lines?: ReactNode[];
-  end?: boolean;
-}) {
+/** One titled card of who the document is about (D-110). */
+function Party({ label, name, lines }: { label: string; name: ReactNode; lines?: ReactNode[] }) {
   return (
-    <div className={end ? 'mz-invoice__party mz-invoice__party--end' : 'mz-invoice__party'}>
+    <div className="mz-invoice__party">
       <span className="mz-invoice__label">{label}</span>
       <strong>{name}</strong>
       {(lines ?? []).filter(Boolean).map((line, index) => (
@@ -140,32 +131,6 @@ function Party({
         </span>
       ))}
     </div>
-  );
-}
-
-/** "Driver: Azad · 21 A 45871 · 0750 412 3344", the plate and the phone each in their own direction. */
-function DriverLine({
-  driver,
-}: {
-  driver: { name: string; phone: string | null; car_number: string | null };
-}) {
-  const { t } = useTranslation();
-  return (
-    <>
-      {t('glossary:driver')}: <bdi>{driver.name}</bdi>
-      {driver.car_number ? (
-        <>
-          {' · '}
-          <bdi>{driver.car_number}</bdi>
-        </>
-      ) : null}
-      {driver.phone ? (
-        <>
-          {' · '}
-          <bdi dir="ltr">{driver.phone}</bdi>
-        </>
-      ) : null}
-    </>
   );
 }
 
@@ -190,6 +155,32 @@ function TotalRow({
   );
 }
 
+/** One of a sale's figures of what is still owed; `strong` is the one in the business's colour. */
+function Figure({
+  label,
+  amount,
+  primary,
+  rate,
+  strong,
+}: {
+  label: string;
+  amount: number;
+  primary: Currency;
+  rate: string;
+  strong?: boolean;
+}) {
+  return (
+    <div
+      className={strong ? 'mz-invoice__figure mz-invoice__figure--strong' : 'mz-invoice__figure'}
+    >
+      <span>{label}</span>
+      <strong>
+        <DualAmount {...bothOf(amount, primary, rate)} primary={primary} kind="derived" />
+      </strong>
+    </div>
+  );
+}
+
 /** Two lines to sign on, for a document money changed hands over. */
 function Signatures({ left, right }: { left: string; right: string }) {
   return (
@@ -210,6 +201,10 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
   const primary = customer.settlement_currency;
   const earlier = data.earlier_owing ?? null;
   const earlierOwed = earlier?.remaining ?? 0;
+  const owesNow = Math.max(order.remaining, 0);
+  // What was paid against this order: its total less what it still owes, in the account's currency.
+  const settlementTotal = primary === 'IQD' ? order.total_iqd : order.total_usd_cents;
+  const paid = order.doc_status === 'active' ? Math.max(settlementTotal - owesNow, 0) : 0;
   const subtotalIqd = order.lines.reduce((sum, line) => sum + line.line_total_iqd, 0);
   const subtotalUsd = order.lines.reduce((sum, line) => sum + line.line_total_usd_cents, 0);
 
@@ -228,14 +223,20 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
           name={
             <bdi>{customerName({ name: customer.name, is_system: customer.is_system }, t)}</bdi>
           }
-          lines={[
-            customer.phone ? <bdi dir="ltr">{customer.phone}</bdi> : null,
-            // The driver beside the company, with the car the goods went in (D-105).
-            driver ? <DriverLine driver={driver} /> : null,
-          ]}
+          lines={[customer.phone ? <bdi dir="ltr">{customer.phone}</bdi> : null]}
         />
+        {/* The driver in a card of their own, with the car the goods went in (D-105, D-110). */}
+        {driver ? (
+          <Party
+            label={t('glossary:driver')}
+            name={<bdi>{driver.name}</bdi>}
+            lines={[
+              driver.car_number ? <bdi>{driver.car_number}</bdi> : null,
+              driver.phone ? <bdi dir="ltr">{driver.phone}</bdi> : null,
+            ]}
+          />
+        ) : null}
         <Party
-          end
           label={t('glossary:payment_type')}
           name={`${t(`glossary:${order.payment_type}`)} · ${t(`glossary:${order.status}`)}`}
           lines={[
@@ -250,7 +251,8 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
             <th>{t('glossary:item')}</th>
             <th className="mz-invoice__num">{t('glossary:quantity')}</th>
             <th className="mz-invoice__num">{t('glossary:unit_price')}</th>
-            <th className="mz-invoice__num">{t('glossary:amount')}</th>
+            {/* A line's own word: in Kurdish "amount" and "quantity" are both بڕ in the glossary. */}
+            <th className="mz-invoice__num">{t('print:line_amount')}</th>
           </tr>
         </thead>
         <tbody>
@@ -280,50 +282,6 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
           ))}
         </tbody>
       </table>
-
-      {/* What they still owe for earlier orders, order by order (D-109) — the Pallet system's
-          earlier pallets still out, in money: shaded apart from this order's own lines. */}
-      {earlier && earlier.count > 0 ? (
-        <table className="mz-invoice__table mz-invoice__table--earlier">
-          <thead>
-            <tr>
-              <th>{t('print:earlier_title')}</th>
-              <th>{t('common:date')}</th>
-              <th className="mz-invoice__num">{t('glossary:total')}</th>
-              <th className="mz-invoice__num">{t('orders:remaining')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {earlier.orders.map((row) => (
-              <tr key={row.id}>
-                <td>{t('orders:number', { number: formatter.identifier(row.number) })}</td>
-                <td data-tabular>{formatter.date(row.order_date)}</td>
-                <td className="mz-invoice__num">
-                  <DualAmount
-                    {...bothOf(row.total, primary, order.rate_iqd_per_usd)}
-                    primary={primary}
-                    kind="derived"
-                  />
-                </td>
-                <td className="mz-invoice__num">
-                  <DualAmount
-                    {...bothOf(row.remaining, primary, order.rate_iqd_per_usd)}
-                    primary={primary}
-                    kind="derived"
-                  />
-                </td>
-              </tr>
-            ))}
-            {earlier.count > earlier.orders.length ? (
-              <tr>
-                <td colSpan={4} className="mz-invoice__muted">
-                  {t('print:earlier_more', { count: earlier.count - earlier.orders.length })}
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      ) : null}
 
       <div className="mz-invoice__totals">
         <TotalRow label={t('orders:subtotal')}>
@@ -360,51 +318,60 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
             primary={primary}
           />
         </TotalRow>
-        <TotalRow label={earlierOwed > 0 ? t('print:this_order_owes') : t('orders:remaining')}>
-          <DualAmount
-            {...bothOf(order.remaining, primary, order.rate_iqd_per_usd)}
-            primary={primary}
-            kind="derived"
-          />
-        </TotalRow>
-        {earlierOwed > 0 ? (
-          <>
-            <TotalRow label={t('print:earlier_owe', { count: earlier?.count ?? 0 })}>
+        {paid > 0 ? (
+          <TotalRow label={t('print:paid_so_far')}>
+            <span>
+              −
               <DualAmount
-                {...bothOf(earlierOwed, primary, order.rate_iqd_per_usd)}
+                {...bothOf(paid, primary, order.rate_iqd_per_usd)}
                 primary={primary}
                 kind="derived"
               />
-            </TotalRow>
-            {/* The two added: what this order and the earlier ones still come to (D-109). */}
-            <TotalRow label={t('print:total_owed')} grand>
-              <DualAmount
-                {...bothOf(
-                  Math.max(order.remaining, 0) + earlierOwed,
-                  primary,
-                  order.rate_iqd_per_usd,
-                )}
-                primary={primary}
-                kind="derived"
-              />
-            </TotalRow>
-          </>
-        ) : null}
-        {/* Their account after this order, said in words rather than by a sign (D-104): "They owe
-            us", "In credit" or "Settled", the figure always positive — as on a payment's voucher.
-            Beside the orders' own figures it is said only when it differs from them — an opening
-            debt, a credit or a payment not made against an order (D-109). */}
-        {data.balance_after !== null &&
-        (earlierOwed === 0 || data.balance_after !== Math.max(order.remaining, 0) + earlierOwed) ? (
-          <TotalRow label={balanceLabel('sales', data.balance_after, t)}>
-            <DualAmount
-              {...bothOf(Math.abs(data.balance_after), primary, order.rate_iqd_per_usd)}
-              primary={primary}
-              kind="derived"
-            />
+            </span>
           </TotalRow>
         ) : null}
       </div>
+
+      {/* What is still owed, in figures (D-109, D-110): this order, the earlier ones — counted, not
+          listed, as the business chose — and the two added, in the business's colour. Their
+          account is said as well when it differs: an opening debt, a credit, a payment not made
+          against an order. Not on a void order: it owes nothing. */}
+      {order.doc_status === 'active' ? (
+        <div className="mz-invoice__figures">
+          <Figure
+            label={earlierOwed > 0 ? t('print:this_order_owes') : t('orders:remaining')}
+            amount={owesNow}
+            primary={primary}
+            rate={order.rate_iqd_per_usd}
+            strong={earlierOwed === 0}
+          />
+          {earlierOwed > 0 ? (
+            <>
+              <Figure
+                label={t('print:earlier_owe', { count: earlier?.count ?? 0 })}
+                amount={earlierOwed}
+                primary={primary}
+                rate={order.rate_iqd_per_usd}
+              />
+              <Figure
+                label={t('print:total_owed')}
+                amount={owesNow + earlierOwed}
+                primary={primary}
+                rate={order.rate_iqd_per_usd}
+                strong
+              />
+            </>
+          ) : null}
+          {data.balance_after !== null && data.balance_after !== owesNow + earlierOwed ? (
+            <Figure
+              label={balanceLabel('sales', data.balance_after, t)}
+              amount={Math.abs(data.balance_after)}
+              primary={primary}
+              rate={order.rate_iqd_per_usd}
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       <DocumentFoot rate={order.rate_iqd_per_usd} closing={t('orders:thank_you')} />
     </div>
@@ -450,11 +417,19 @@ function PurchaseReceipt({ data }: { data: PurchaseReceiptData }) {
           name={
             purchase.company_name ? <bdi>{purchase.company_name}</bdi> : t('purchases:no_company')
           }
-          // Who brought it in, with the car (D-106).
-          lines={[purchase.driver ? <DriverLine driver={purchase.driver} /> : null]}
         />
+        {/* Who brought it in, with the car (D-106), in a card of their own (D-110). */}
+        {purchase.driver ? (
+          <Party
+            label={t('glossary:driver')}
+            name={<bdi>{purchase.driver.name}</bdi>}
+            lines={[
+              purchase.driver.car_number ? <bdi>{purchase.driver.car_number}</bdi> : null,
+              purchase.driver.phone ? <bdi dir="ltr">{purchase.driver.phone}</bdi> : null,
+            ]}
+          />
+        ) : null}
         <Party
-          end
           label={t('glossary:done_by')}
           name={purchase.acting_user_name ?? '—'}
           lines={[purchase.notes ? <bdi>{purchase.notes}</bdi> : null]}
@@ -467,7 +442,8 @@ function PurchaseReceipt({ data }: { data: PurchaseReceiptData }) {
             <th>{t('glossary:material')}</th>
             <th className="mz-invoice__num">{t('glossary:quantity')}</th>
             <th className="mz-invoice__num">{t('glossary:unit_price')}</th>
-            <th className="mz-invoice__num">{t('glossary:amount')}</th>
+            {/* A line's own word: in Kurdish "amount" and "quantity" are both بڕ in the glossary. */}
+            <th className="mz-invoice__num">{t('print:line_amount')}</th>
           </tr>
         </thead>
         <tbody>
@@ -612,7 +588,6 @@ function PaymentVoucher({ data }: { data: VoucherData }) {
           lines={[data.account.phone ? <bdi dir="ltr">{data.account.phone}</bdi> : null]}
         />
         <Party
-          end
           label={t('glossary:done_by')}
           name={data.performed_by_name ?? '—'}
           lines={[

@@ -1503,95 +1503,139 @@ a.mz-button {
   font-size: 0.875rem;
 }
 
-/* ── a printed document (D-086): receipts, vouchers, statements and lists ────────────────────
-   Who issued it, who it is about, a table, the money worked down to the total and balance, and
-   the rate it was valued at. Built from design tokens so it also reads on screen if ever shown,
-   and forced to black-on-white by the print block below. */
+/* ── a printed document (D-086, D-110): receipts, vouchers, statements ───────────────────────
+   The design the business chose (D-110): the business's colour across the top with its logo,
+   name and contacts and the document's number; who it is about in titled cards; the lines under a
+   coloured heading; the money worked down to the total; and — on a sale — the three figures of
+   what is still owed, the last one in the business's colour. Paper is white in either theme, so
+   these colours are the paper's own, not the app's theme tokens. */
 .mz-invoice {
+  --invoice-accent: #8f1430;
+  --invoice-accent-soft: #f8ecef;
+  --invoice-ink: #15181d;
+  --invoice-muted: #555b64;
+  --invoice-line: #dfe2e6;
+  --invoice-wash: #f4f5f7;
+  --invoice-zebra: #fbf7f8;
+  --invoice-gutter: 14mm;
+
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-5);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-size: 0.9375rem;
+  gap: 7mm;
+  background: #fff;
+  color: var(--invoice-ink);
+  font-size: 10pt;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  print-color-adjust: exact;
+}
+
+/* Everything but the band and the footer strip keeps a margin from the paper's sides. */
+.mz-invoice > :not(.mz-invoice__head, .mz-invoice__foot) {
+  margin-inline: var(--invoice-gutter);
+}
+
+/* A table's width is its box's, so its share of the gutter is taken off it as well. */
+.mz-invoice > .mz-invoice__table {
+  inline-size: calc(100% - 2 * var(--invoice-gutter));
 }
 
 .mz-invoice__head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--space-4);
-  border-block-end: 2px solid var(--color-text);
-  padding-block-end: var(--space-3);
+  align-items: center;
+  gap: 8mm;
+  background: var(--invoice-accent);
+  padding-block: 10mm 9mm;
+  padding-inline: var(--invoice-gutter);
+  color: #fff;
 }
 
 .mz-invoice__brand {
   display: flex;
   flex-direction: column;
+  min-inline-size: 0;
 }
 
-/* With the business's logo (D-108): the picture, then the name and its details beside it. */
+/* With the business's logo (D-108): the picture on a white disc, then the name beside it. */
 .mz-invoice__brand--logo {
   flex-direction: row;
   align-items: center;
-  gap: var(--space-4);
+  gap: 5mm;
 }
 
 .mz-invoice__logo {
-  max-block-size: 18mm;
-  max-inline-size: 32mm;
+  flex: none;
+  border-radius: 50%;
+  background: #fff;
+  padding: 2mm;
+  inline-size: 19mm;
+  block-size: 19mm;
   object-fit: contain;
 }
 
 .mz-invoice__name {
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: 18pt;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.mz-invoice__head .mz-invoice__muted {
+  color: #fff;
+  opacity: 0.88;
+  font-size: 8.5pt;
 }
 
 .mz-invoice__doc {
   display: flex;
+  flex: none;
   flex-direction: column;
   text-align: end;
 }
 
+.mz-invoice__doc strong {
+  font-size: 20pt;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
 .mz-invoice__doctype {
-  color: var(--color-text-muted);
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  opacity: 0.88;
+  font-size: 9pt;
 }
 
 .mz-invoice__muted {
-  color: var(--color-text-muted);
-  font-size: 0.875rem;
+  color: var(--invoice-muted);
+  font-size: 8.8pt;
 }
 
+/* Who the document is about, in titled cards side by side. */
 .mz-invoice__parties {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-4);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-auto-flow: column;
+  gap: 4mm;
 }
 
 .mz-invoice__party {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0.5mm;
+  border: 0.3mm solid var(--invoice-line);
+  border-radius: 2.5mm;
+  padding-block: 3.5mm;
+  padding-inline: 4mm;
+  min-inline-size: 0;
 }
 
-.mz-invoice__party--end {
-  align-items: flex-end;
-  text-align: end;
+.mz-invoice__party strong {
+  font-size: 10.5pt;
 }
 
 .mz-invoice__label {
-  color: var(--color-text-muted);
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  color: var(--invoice-accent);
+  font-size: 8pt;
+  font-weight: 700;
 }
 
 .mz-invoice__table {
@@ -1601,39 +1645,38 @@ a.mz-button {
 
 .mz-invoice__table th,
 .mz-invoice__table td {
-  border-block-end: 1px solid var(--color-border);
-  padding-block: var(--space-2);
-  padding-inline: var(--space-2);
+  border-block-end: 0.2mm solid var(--invoice-line);
+  padding-block: 2.4mm;
+  padding-inline: 3mm;
   text-align: start;
 }
 
-/* Earlier orders still owed (D-109): shaded apart from this order's own lines. */
-.mz-invoice__table--earlier {
-  margin-block-start: var(--space-3);
-  background: var(--color-surface-2);
-  print-color-adjust: exact;
+.mz-invoice__table th {
+  border-block-end: 0;
+  background: var(--invoice-accent);
+  color: #fff;
+  font-size: 8.5pt;
+  font-weight: 600;
 }
 
-.mz-invoice__table th {
-  color: var(--color-text-muted);
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.mz-invoice__table th:first-child {
+  border-start-start-radius: 1.5mm;
+  border-end-start-radius: 1.5mm;
+}
+
+.mz-invoice__table th:last-child {
+  border-start-end-radius: 1.5mm;
+  border-end-end-radius: 1.5mm;
+}
+
+.mz-invoice__table tbody tr:nth-child(even) td {
+  background: var(--invoice-zebra);
 }
 
 .mz-invoice__num {
   font-variant-numeric: tabular-nums;
   text-align: end;
   white-space: nowrap;
-}
-
-.mz-invoice__totals {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-inline-start: auto;
-  inline-size: min(30rem, 100%);
 }
 
 /* A figure in a money column sits at the column's end, and so does its heading: the table's own
@@ -1646,47 +1689,115 @@ a.mz-button {
   display: inline-block;
 }
 
-.mz-invoice__total-row > :last-child {
-  text-align: end;
+/* A table's and the worked-down money's amounts at the text's own size, as in the chosen design;
+   `DualAmount` sets a larger size inline for the screens. */
+.mz-invoice__table .mz-dual > bdi:first-child,
+.mz-invoice__total-row .mz-dual > bdi:first-child {
+  font-size: 10pt !important;
+}
+
+/* The money worked down, at the reading end of the page. */
+.mz-invoice__totals {
+  display: flex;
+  flex-direction: column;
+  gap: 1.6mm;
+  margin-inline-start: auto !important;
+  inline-size: min(78mm, 100%);
 }
 
 .mz-invoice__total-row {
   display: flex;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: 4mm;
+}
+
+.mz-invoice__total-row > :last-child {
+  text-align: end;
 }
 
 .mz-invoice__total-row--grand {
-  border-block-start: 1px solid var(--color-border);
-  padding-block-start: var(--space-2);
-  font-size: 1.05rem;
+  border-block-start: 0.2mm solid var(--invoice-line);
+  padding-block-start: 1.6mm;
+  font-weight: 700;
 }
 
+/* A sale's three figures of what is still owed (D-109, D-110); the last, in the business's
+   colour, is the one that matters. */
+.mz-invoice__figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-auto-flow: column;
+  gap: 4mm;
+}
+
+.mz-invoice__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5mm;
+  border: 0.3mm solid var(--invoice-line);
+  border-radius: 2.5mm;
+  padding-block: 3.5mm;
+  padding-inline: 4.5mm;
+}
+
+.mz-invoice__figure > span {
+  color: var(--invoice-muted);
+  font-size: 8.5pt;
+}
+
+.mz-invoice__figure strong {
+  font-size: 13pt;
+}
+
+.mz-invoice__figure--strong {
+  border-color: var(--invoice-accent);
+  background: var(--invoice-accent);
+  color: #fff;
+}
+
+.mz-invoice__figure--strong > span,
+.mz-invoice__figure--strong .mz-caption {
+  color: #fff;
+  opacity: 0.9;
+}
+
+.mz-invoice__figure--strong strong {
+  font-size: 16pt;
+}
+
+/* The grey strip at the foot: the rate it was valued at, and the day it was printed. */
 .mz-invoice__foot {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: var(--space-3);
-  border-block-start: 1px solid var(--color-border);
-  padding-block-start: var(--space-3);
-  color: var(--color-text-muted);
-  font-size: 0.8125rem;
+  gap: 4mm;
+  margin-block-start: 2mm;
+  background: var(--invoice-wash);
+  padding-block: 4mm;
+  padding-inline: var(--invoice-gutter);
+  color: var(--invoice-muted);
+  font-size: 8pt;
 }
 
 /* A voided document says so above everything else on the page. */
 .mz-invoice__void {
-  border: 2px solid currentcolor;
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  font-weight: 600;
+  border: 0.5mm solid var(--invoice-accent);
+  border-radius: 2mm;
+  padding-block: 2mm;
+  padding-inline: 3mm;
+  color: var(--invoice-accent);
+  font-weight: 700;
 }
 
 /* A voucher's one amount, large, where the eye lands first. */
 .mz-invoice__amount {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  padding-block: var(--space-2);
+  gap: 1mm;
+  border-radius: 2.5mm;
+  background: var(--invoice-accent-soft);
+  padding-block: 4mm;
+  padding-inline: 5mm;
 }
 
 .mz-invoice__note {
@@ -1696,28 +1807,29 @@ a.mz-button {
 .mz-invoice__section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 2mm;
 }
 
 /* A statement's two sides — what they owe us, what we owe them — stand clearly apart (D-104). */
 .mz-invoice__section + .mz-invoice__section {
-  margin-block-start: var(--space-6);
+  margin-block-start: 6mm;
 }
 
 /* The statement's closing figures, a line of air between each. */
 .mz-invoice__totals--spaced {
-  gap: var(--space-3);
-  margin-block-start: var(--space-4);
+  gap: 3mm;
+  margin-block-start: 3mm;
 }
 
 .mz-invoice__section-title {
   margin: 0;
-  font-size: 1rem;
+  color: var(--invoice-accent);
+  font-size: 11pt;
   font-weight: 700;
 }
 
 .mz-invoice__row--quiet td {
-  color: var(--color-text-muted);
+  color: var(--invoice-muted);
 }
 
 .mz-invoice__row--strong td {
@@ -1725,23 +1837,25 @@ a.mz-button {
 }
 
 .mz-invoice__row--void td {
-  color: var(--color-text-muted);
+  color: var(--invoice-muted);
   text-decoration: line-through;
 }
 
-/* Two lines to sign on, at the foot of a document money changed hands over. */
+/* Lines to sign on, at the foot of a document money or goods changed hands over. */
 .mz-invoice__signatures {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-6);
-  padding-block-start: var(--space-6);
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-auto-flow: column;
+  gap: 12mm;
+  padding-block-start: 10mm;
 }
 
 .mz-invoice__signatures span {
-  border-block-start: 1px solid var(--color-text);
-  padding-block-start: var(--space-1);
-  color: var(--color-text-muted);
-  font-size: 0.8125rem;
+  border-block-start: 0.3mm solid var(--invoice-ink);
+  padding-block-start: 1mm;
+  color: var(--invoice-muted);
+  font-size: 8.5pt;
+  text-align: center;
 }
 
 /*
@@ -1754,13 +1868,23 @@ a.mz-button {
   display: none;
 }
 
+/* The band runs to the paper's edges on a document's first page (D-110); a statement that runs on
+   keeps a margin at the top and bottom of each later page, and its own gutter at the sides. */
 @page {
-  margin: 12mm;
+  margin: 12mm 0;
+}
+
+@page :first {
+  margin: 0 0 12mm;
 }
 
 @media print {
   body.mz-printing > *:not(.mz-print-host) {
     display: none !important;
+  }
+
+  body.mz-printing {
+    background: #fff;
   }
 
   body.mz-printing > .mz-print-host {
@@ -1778,36 +1902,7 @@ a.mz-button {
   }
 
   .mz-print-host .mz-invoice {
-    border: 0;
-    border-radius: 0;
-    padding: 0;
-    background: #fff;
-    color: #000;
     print-color-adjust: exact;
-  }
-
-  .mz-print-host .mz-invoice__muted,
-  .mz-print-host .mz-invoice__label,
-  .mz-print-host .mz-invoice__doctype,
-  .mz-print-host .mz-invoice__table th,
-  .mz-print-host .mz-invoice__foot,
-  .mz-print-host .mz-caption,
-  .mz-print-host .mz-invoice__row--quiet td,
-  .mz-print-host .mz-invoice__row--void td,
-  .mz-print-host .mz-invoice__signatures span {
-    color: #333;
-  }
-
-  .mz-print-host .mz-invoice__head,
-  .mz-print-host .mz-invoice__signatures span {
-    border-color: #000;
-  }
-
-  .mz-print-host .mz-invoice__table th,
-  .mz-print-host .mz-invoice__table td,
-  .mz-print-host .mz-invoice__foot,
-  .mz-print-host .mz-invoice__total-row--grand {
-    border-color: #999;
   }
 
   /* A table row is never split across two sheets; its header repeats on each. */
