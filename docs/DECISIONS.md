@@ -2325,3 +2325,56 @@ Reviewed and kept as they are:
   two paths take these in opposite orders, so they wait for each other but never deadlock.
 - **Later, if a material ever has tens of thousands of purchases:** the order form reads each
   material's full page (`GET /items/:id`) for its stock; a slim stock-only read would be lighter.
+
+## D-115 · 2026-10-19 · operations · Five years unattended: a lost connection, a full disk, unbounded logs, a frozen API
+
+The system was load-tested at the volumes of NFR-13 over five years (913,000 sales, 913,000
+purchases, 10,500 customers, 5,000 materials, about 913,000 History rows, 3 GB). Five users
+working normally, and 5 and 25 users with no pauses at all, gave no server errors; screens
+answered in 0.2 s or less (p95) and the API's memory stayed flat at about 500 MB. The slowest
+screen is the stock report over the whole five years, 1.3–2.5 s; it is left as it is. The test
+then asked what stops a factory that nobody looks after for years (section 2.14, NFR-08), and
+five things were changed:
+
+- **A lost connection no longer stops the API.** The connection pool listened for errors only on
+  idle connections. A connection the database ended while it was in use inside a transaction — a
+  database restart, or the 60 s idle-in-transaction timeout — raised an error nobody listened for,
+  and that stopped the whole API. `transaction()` now listens on its own connection, fails just that
+  write, and hands the connection back with the error so it is thrown away
+  (`apps/api/src/database/pool.ts`). Test: `connection-loss.test.ts`, which fails on the old code
+  with "Connection terminated unexpectedly".
+- **A full disk when off-site backups stop.** If uploads stop (an expired key, an unpaid bucket),
+  the local WAL in the `wal-archive` volume is never pruned — `wal-sync.sh` only deletes WAL that
+  was uploaded and is older than the newest base backup — and `archive_timeout=600` keeps adding
+  segments, so in weeks the disk is full and PostgreSQL stops. A new `ops/backup/disk-check.sh`
+  runs every loop of `cron.sh` (five minutes):
+  - at 80 % used (`BACKUP_DISK_WARN_PERCENT`) it logs a `WARNING` and pings the heartbeat URL with
+    `/fail` added (healthchecks.io's failure address), so somebody is told;
+  - at 90 % (`BACKUP_DISK_RELIEF_PERCENT`) it deletes the oldest local WAL files, oldest first and
+    including ones not yet uploaded, until the disk is back under the warning level, logs loudly
+    how many it dropped, and clears `last-base` so the next good night takes a fresh base backup
+    and starts a new point-in-time chain.
+
+  The trade-off, plainly: the factory keeps working; point-in-time recovery has a gap until that
+  next base backup; the nightly dumps are not touched. A full disk would stop the factory *and*
+  the backups, so losing some WAL is the smaller harm.
+- **`BACKUP_HEARTBEAT_URL` is required.** `compose.yml` refuses to start without it
+  (`${BACKUP_HEARTBEAT_URL:?}`): it is how both stopped backups and a filling disk reach a person.
+  Section 2.14 asks for a dead-man's switch, and an empty one is the same as none.
+- **Logs have a ceiling.** Every service uses Docker's `local` log driver, at most 10 MB × 5 files,
+  so years of request logs cannot fill the disk (section 2.14, "structured logs with retention").
+- **A frozen API is restarted.** Docker never restarts a container that is only unhealthy. The api
+  healthcheck now ends the process (kills PID 1) after three failures in a row, about 90 s, and
+  `restart: unless-stopped` brings it back. No autoheal sidecar: it needs the Docker socket, which
+  is root on the host.
+
+Found and deliberately not fixed (the business's choice):
+
+- **Many sales saved at the same instant can freeze the API for 60 s.** A sale's stock check reads
+  a setting through the pool while it still holds its transaction's connection
+  (`stock/stock.service.ts:214`); so do order settlement (`settlementPair` in `orders.service.ts`)
+  when called from inside a transaction, and two purchase and material paths. With a pool of 10,
+  about ten or more sales saved at the same moment each hold one connection and wait for a second
+  that never comes, until the 60 s timeout ends them. The factory's 5 users never reach this
+  (the 25-user test did not). Revisit if the staff grows toward NFR-13's 30 concurrent users
+  (section 1.10, Q-02): read the setting on the transaction's own connection.

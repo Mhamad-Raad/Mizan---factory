@@ -12,7 +12,7 @@ day-to-day operation afterwards — updates, restores, incidents — see
 | **A server** | Ubuntu 22.04 or 24.04 (any Linux with Docker works). 2 CPU, 4 GB RAM, 40 GB disk is plenty for years of one factory's data. Ports 80 and 443 reachable from the internet (or from the factory network). |
 | **A domain** | e.g. `jiyan.example.com`, whose DNS you can edit. |
 | **Off-site storage** | An S3-compatible bucket for backups: AWS S3, Backblaze B2 or Wasabi (a few dollars a month). |
-| **Optional** | A free [healthchecks.io](https://healthchecks.io) check, so you are e-mailed if backups ever stop. |
+| **A monitor** | A free [healthchecks.io](https://healthchecks.io) check, so you are e-mailed if backups ever stop or the disk fills. Required: the system will not start without it. |
 
 The system runs as five Docker containers from this repository's `compose.yml`: **web** (Caddy:
 HTTPS and the app), **api**, **db** (PostgreSQL), **backup**, and a one-off **migrate** job.
@@ -66,7 +66,8 @@ Fill in every `CHANGE_ME`:
 | `BACKUP_DB_PASSWORD` | `openssl rand -hex 24`. |
 | `FIRST_ADMIN_PASSWORD` | A temporary password; you replace it at the first sign-in. |
 | `BACKUP_BUCKET`, `AWS_*` | The bucket and the upload-only key from step 3. For B2 or Wasabi also set `AWS_ENDPOINT_URL`. |
-| `BACKUP_HEARTBEAT_URL` | The healthchecks.io ping URL, if you made one. |
+| `BACKUP_HEARTBEAT_URL` | The healthchecks.io ping URL. **Required**: `docker compose` refuses to start without it, because it is how you hear that backups stopped or the disk is filling. |
+| `BACKUP_DISK_WARN_PERCENT`, `BACKUP_DISK_RELIEF_PERCENT` | Optional; leave them out for 80 and 90. At the first the backup job warns you; at the second it drops the oldest local WAL so the database never stops on a full disk. |
 
 Fill everything in **before** the next step: the database's first start reads
 `BACKUP_DB_PASSWORD` to create the backup job's login.
@@ -145,7 +146,9 @@ update cannot serve anyone.
 | The site does not load, Caddy logs certificate errors | The domain does not point at this server yet, or ports 80/443 are closed. Fix DNS or the firewall, then `docker compose restart web`. |
 | `api` keeps restarting, logs mention migrations | Run `docker compose --profile tools run --rm migrate`, then `docker compose up -d`. |
 | `api` logs "password authentication failed for user mizan_app" | Step 6's first command was not run, or its password differs from `DATABASE_URL`. |
-| The backup log says `WARNING … heartbeat` | Only a reminder that `BACKUP_HEARTBEAT_URL` is empty; set it to be told if backups stop. |
+| `docker compose` says `BACKUP_HEARTBEAT_URL` is required | Put the healthchecks.io ping URL in `.env`, then `docker compose up -d`. |
+| The backup log says `[disk] WARNING: the disk is N% full` | WAL is piling up because it cannot leave the server. Fix the off-site uploads first (the bucket, the key, an unpaid account — see the upload-errors row). Then look for anything else filling the disk: `docker system df` and `df -h`. |
+| The backup log says `[disk] ERROR: the disk was N% full — dropped N WAL file(s)` | The disk reached 90 % and the oldest local WAL was deleted so the database could keep running. Point-in-time recovery has a gap until the next good night, which takes a fresh base backup by itself; the nightly dumps are untouched. Fix the uploads as above. |
 | The backup log shows upload errors | Check the bucket name, the key and `AWS_ENDPOINT_URL` in `.env`, then `docker compose up -d backup`. |
 | Forgot the admin password | `docker compose exec api node apps/api/dist/database/reset-password.js admin` prints a temporary one (it must be changed at sign-in). |
 

@@ -159,6 +159,14 @@ first segment. The newest base backup (encrypted) also stays in `backup-staging/
 disk holds at most about a week of WAL; if uploads stop, WAL is kept, the heartbeat stops, and
 the disk alert (80 %) is the second warning.
 
+**The disk guard** (`disk-check.sh`, every loop, D-115). At 80 % used (`BACKUP_DISK_WARN_PERCENT`)
+it logs `[disk] WARNING: the disk is N% full` and pings `BACKUP_HEARTBEAT_URL` with `/fail` added.
+At 90 % (`BACKUP_DISK_RELIEF_PERCENT`) it deletes the oldest local WAL, uploaded or not, until the
+disk is back under 80 %, logs `[disk] ERROR: the disk was N% full — dropped N WAL file(s)`, and clears `state/last-base`
+so the next good night takes a fresh base backup. The database keeps running; point-in-time
+recovery has a gap until that base backup; the nightly dumps are untouched. Fix the uploads, then
+check `docker system df` for anything else filling the disk.
+
 **The backup role.** The container connects as `mizan_backup` — `LOGIN REPLICATION`, member of
 `pg_read_all_data` — which can read every table and take a base backup and **cannot write
 anything**; it never holds the schema owner's password. `ops/docker/db-init/10-backup-role.sh`
@@ -183,7 +191,8 @@ the run fails with a `FAILED:` line naming the cause and sends **no** heartbeat,
 
 Set `BACKUP_HEARTBEAT_URL` to a dead-man's-switch monitor that expects one ping a day. **Silence
 is the alert**: a backup that quietly stopped working is otherwise discovered on the day it is
-needed. When it is empty the container prints a boxed `WARNING` at every start and every night.
+needed. It is required: `compose.yml` refuses to start without it (D-115), since the disk guard
+reports through it too.
 
 Check it is working:
 
@@ -332,9 +341,18 @@ path A step 2 into a fresh database.
 |---|---|---|
 | Uptime | external check on `/api/v1/health` every minute from outside the host | on-call, after 2 failures |
 | Backups | dead-man's switch on `BACKUP_HEARTBEAT_URL` | on-call, after a missed night |
-| Disk | host alert at 80 % — WAL piles up locally whenever it cannot leave the host | on-call |
+| Disk | host alert at 80 %; the backup container's disk guard also pings `BACKUP_HEARTBEAT_URL/fail` at 80 % and drops old WAL at 90 % | on-call |
 | Errors | `docker compose logs api`; one JSON object per line with `request_id` | weekly 5xx summary |
 | Slow queries | PostgreSQL `log_min_duration_statement=500` | weekly review |
+
+**A frozen API restarts itself.** Docker never restarts a container that is only unhealthy, so the
+api healthcheck ends the process after three failures in a row (about 90 s) and
+`restart: unless-stopped` brings it back. Several restarts in a short time mean the database or the
+host is the problem: start at step 2 of Incidents.
+
+**Logs are capped.** Every service uses Docker's `local` log driver, at most 10 MB × 5 files each,
+so `docker compose logs` reaches back days to weeks, not years. Copy out what an incident needs
+straight away.
 
 A user reporting a problem can read a **reference** off the error screen. That is the
 `request_id`: it appears in the API log line and on every audit row the request wrote, so the
