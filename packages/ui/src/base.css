@@ -1813,7 +1813,9 @@ a.mz-button {
   gap: 4mm;
   margin-block-start: auto;
   background: var(--invoice-wash);
-  padding-block: 4mm;
+
+  /* Little below: the grey of the page's bottom margin carries the strip on, with the number. */
+  padding-block: 4mm 1mm;
   padding-inline: var(--invoice-gutter);
   color: var(--invoice-muted);
   font-size: 8pt;
@@ -1914,13 +1916,26 @@ a.mz-button {
 @page {
   margin: 0 0 8mm;
 
-  /* The page number under the grey strip, so the sheets of a long receipt can be put back in
-     order (D-113). */
+  /* The page number inside the grey strip (D-113): a browser numbers pages only in the page's
+     margin, so the bottom margin is painted the strip's grey and the strip's own text sits right
+     above it — one band, the rate and the date, and the number under them in the middle. */
+  @bottom-left {
+    background: #f4f5f7;
+    content: "";
+  }
+
   @bottom-center {
     direction: ltr;
-    color: #666;
+    vertical-align: top;
+    background: #f4f5f7;
+    color: #555b64;
     font-size: 8pt;
     content: counter(page) " / " counter(pages);
+  }
+
+  @bottom-right {
+    background: #f4f5f7;
+    content: "";
   }
 }
 
@@ -1972,12 +1987,20 @@ a.mz-button {
     margin-block-start: -12mm;
   }
 
+  /* Several printed together keep the strip in the flow, each document a page of its own (D-111).
+     Each document is the page less 1 mm, so its strip is drawn that millimetre lower — moved, not
+     laid out again — to meet the painted margin without a white line (D-113). */
+  .mz-print-host .mz-invoice__foot {
+    position: relative;
+    inset-block-start: 1.2mm;
+  }
+
   /* One document printed: its grey strip is drawn at the foot of every page (D-113) — a fixed box
-     repeats on each printed page — and the table and the document leave it room. Several printed
-     together keep the strip in the flow, each document a page of its own (D-111). */
+     repeats on each printed page — and the table and the document leave it room. It reaches a hair
+     into the painted margin, so the two greys meet without a seam. */
   .mz-print-host--single .mz-invoice__foot {
     position: fixed;
-    inset-block-end: 0;
+    inset-block: auto -0.5mm;
     inset-inline: 0;
   }
 

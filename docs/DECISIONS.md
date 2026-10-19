@@ -2268,3 +2268,10 @@ Shown a receipt of 50 and of 20 items, the business asked for three of four prop
 - **Page numbers:** "1 / 4" in an 8 mm margin under the strip on every page (an `@page` margin box),
   written left to right in every language. Printed together, documents are numbered through the
   whole print.
+- **The page number in the grey strip (business, same day):** a browser numbers pages only in the
+  page's margin, so the 8 mm bottom margin is painted the strip's grey (`@bottom-left`, `-center`,
+  `-right` with a background) and the strip's text sits right above it — one grey band, the rate and
+  the date, and "1 / 4" centred under them. The strip reaches into the painted margin (a fixed strip by
+  half a millimetre; in a print of several documents, each strip drawn 1.2 mm lower) so the greys meet
+  without a white line.
+
