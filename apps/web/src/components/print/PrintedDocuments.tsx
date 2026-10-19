@@ -117,6 +117,29 @@ function VoidBanner({ reason }: { reason: string | null }) {
   );
 }
 
+/**
+ * Air above a table's heading. The heading repeats on every page a long table runs onto, and this
+ * row with it, so a continuation page does not start at the paper's edge (D-113).
+ */
+function TableGap() {
+  return (
+    <tr className="mz-invoice__gap" aria-hidden="true">
+      <td colSpan={4} />
+    </tr>
+  );
+}
+
+/** Room at the foot of each page a table runs over, for the grey strip printed there (D-113). */
+function TableRoom() {
+  return (
+    <tfoot aria-hidden="true">
+      <tr className="mz-invoice__room">
+        <td colSpan={4} />
+      </tr>
+    </tfoot>
+  );
+}
+
 /** One titled card of who the document is about (D-110). */
 function Party({ label, name, lines }: { label: string; name: ReactNode; lines?: ReactNode[] }) {
   return (
@@ -249,6 +272,7 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
 
       <table className="mz-invoice__table">
         <thead>
+          <TableGap />
           <tr>
             <th>{t('glossary:item')}</th>
             <th className="mz-invoice__num">{t('glossary:quantity')}</th>
@@ -283,115 +307,119 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
             </tr>
           ))}
         </tbody>
+        <TableRoom />
       </table>
 
-      <div className="mz-invoice__totals">
-        <TotalRow label={t('orders:subtotal')}>
-          <DualAmount amount_iqd={subtotalIqd} amount_usd_cents={subtotalUsd} primary={primary} />
-        </TotalRow>
-        {order.discount_iqd > 0 ? (
-          <TotalRow label={t('glossary:discount')}>
-            <span>
-              −
-              <DualAmount
-                amount_iqd={order.discount_iqd}
-                amount_usd_cents={order.discount_usd_cents}
-                primary={primary}
-              />
-            </span>
+      {/* The money, the figures and the signatures stay together on one page (D-113). */}
+      <div className="mz-invoice__closing">
+        <div className="mz-invoice__totals">
+          <TotalRow label={t('orders:subtotal')}>
+            <DualAmount amount_iqd={subtotalIqd} amount_usd_cents={subtotalUsd} primary={primary} />
           </TotalRow>
-        ) : null}
-        {(order.rounding_iqd ?? 0) > 0 ? (
-          <TotalRow label={t('orders:rounding')}>
-            <span>
-              +
-              <DualAmount
-                amount_iqd={order.rounding_iqd ?? 0}
-                amount_usd_cents={order.rounding_usd_cents ?? 0}
-                primary={primary}
-              />
-            </span>
+          {order.discount_iqd > 0 ? (
+            <TotalRow label={t('glossary:discount')}>
+              <span>
+                −
+                <DualAmount
+                  amount_iqd={order.discount_iqd}
+                  amount_usd_cents={order.discount_usd_cents}
+                  primary={primary}
+                />
+              </span>
+            </TotalRow>
+          ) : null}
+          {(order.rounding_iqd ?? 0) > 0 ? (
+            <TotalRow label={t('orders:rounding')}>
+              <span>
+                +
+                <DualAmount
+                  amount_iqd={order.rounding_iqd ?? 0}
+                  amount_usd_cents={order.rounding_usd_cents ?? 0}
+                  primary={primary}
+                />
+              </span>
+            </TotalRow>
+          ) : null}
+          <TotalRow label={t('glossary:total')} grand>
+            <DualAmount
+              amount_iqd={order.total_iqd}
+              amount_usd_cents={order.total_usd_cents}
+              primary={primary}
+            />
           </TotalRow>
-        ) : null}
-        <TotalRow label={t('glossary:total')} grand>
-          <DualAmount
-            amount_iqd={order.total_iqd}
-            amount_usd_cents={order.total_usd_cents}
-            primary={primary}
-          />
-        </TotalRow>
-        {paid > 0 ? (
-          <TotalRow label={t('print:paid_amount')}>
-            <span>
-              −
-              <DualAmount
-                {...bothOf(paid, primary, order.rate_iqd_per_usd)}
-                primary={primary}
-                kind="derived"
-              />
-            </span>
-          </TotalRow>
-        ) : null}
-      </div>
+          {paid > 0 ? (
+            <TotalRow label={t('print:paid_amount')}>
+              <span>
+                −
+                <DualAmount
+                  {...bothOf(paid, primary, order.rate_iqd_per_usd)}
+                  primary={primary}
+                  kind="derived"
+                />
+              </span>
+            </TotalRow>
+          ) : null}
+        </div>
 
-      {/* What is still owed, in figures (D-109, D-110): this order, the earlier ones — counted, not
+        {/* What is still owed, in figures (D-109, D-110): this order, the earlier ones — counted, not
           listed, as the business chose — and the two added, in the business's colour. Their
           account is said as well when it differs: an opening debt, a credit, a payment not made
           against an order. Not on a void order: it owes nothing. */}
-      {order.doc_status === 'active' ? (
-        <div className="mz-invoice__figures">
-          {/* Always three, as in the chosen design (D-110): what is left on this order, what was
+        {order.doc_status === 'active' ? (
+          <div className="mz-invoice__figures">
+            {/* Always three, as in the chosen design (D-110): what is left on this order, what was
               owed before it, and what they owe now — the account itself, so the red figure is the
               truth even with an opening debt, a credit or a payment not made against an order.
               "Before" names the earlier orders when they are the whole of it. */}
-          {balance !== null ? (
-            <>
+            {balance !== null ? (
+              <>
+                <Figure
+                  label={t('print:this_order_owes')}
+                  amount={owesNow}
+                  primary={primary}
+                  rate={order.rate_iqd_per_usd}
+                />
+                <Figure
+                  label={
+                    before < 0
+                      ? t('print:credit_before')
+                      : before === earlierOwed && (earlier?.count ?? 0) > 0
+                        ? t('print:earlier_owe', { count: earlier?.count ?? 0 })
+                        : t('print:owed_before')
+                  }
+                  amount={Math.abs(before)}
+                  primary={primary}
+                  rate={order.rate_iqd_per_usd}
+                />
+                <Figure
+                  label={balance >= 0 ? t('print:total_owed') : balanceLabel('sales', balance, t)}
+                  amount={Math.abs(balance)}
+                  primary={primary}
+                  rate={order.rate_iqd_per_usd}
+                  strong
+                />
+              </>
+            ) : (
+              // Whoever may not see balances, and the walk-in, see what is left on this order alone.
               <Figure
-                label={t('print:this_order_owes')}
+                label={t('orders:remaining')}
                 amount={owesNow}
-                primary={primary}
-                rate={order.rate_iqd_per_usd}
-              />
-              <Figure
-                label={
-                  before < 0
-                    ? t('print:credit_before')
-                    : before === earlierOwed && (earlier?.count ?? 0) > 0
-                      ? t('print:earlier_owe', { count: earlier?.count ?? 0 })
-                      : t('print:owed_before')
-                }
-                amount={Math.abs(before)}
-                primary={primary}
-                rate={order.rate_iqd_per_usd}
-              />
-              <Figure
-                label={balance >= 0 ? t('print:total_owed') : balanceLabel('sales', balance, t)}
-                amount={Math.abs(balance)}
                 primary={primary}
                 rate={order.rate_iqd_per_usd}
                 strong
               />
-            </>
-          ) : (
-            // Whoever may not see balances, and the walk-in, see what is left on this order alone.
-            <Figure
-              label={t('orders:remaining')}
-              amount={owesNow}
-              primary={primary}
-              rate={order.rate_iqd_per_usd}
-              strong
-            />
-          )}
-        </div>
-      ) : null}
+            )}
+          </div>
+        ) : null}
 
-      {/* Lines to sign on, as a purchase has (D-112): the company that received the goods, the
+        {/* Lines to sign on, as a purchase has (D-112): the company that received the goods, the
           driver who took them when there was one, and us who handed them over. */}
-      <Signatures
-        left={t('print:sign_received_by')}
-        also={driver ? t('glossary:driver') : null}
-        right={t('print:sign_delivered_by')}
-      />
+        <Signatures
+          left={t('print:sign_received_by')}
+          also={driver ? t('glossary:driver') : null}
+          right={t('print:sign_delivered_by')}
+        />
+      </div>
       <DocumentFoot rate={order.rate_iqd_per_usd} closing={t('orders:thank_you')} />
     </div>
   );
@@ -458,6 +486,7 @@ function PurchaseReceipt({ data }: { data: PurchaseReceiptData }) {
 
       <table className="mz-invoice__table">
         <thead>
+          <TableGap />
           <tr>
             <th>{t('glossary:material')}</th>
             <th className="mz-invoice__num">{t('glossary:quantity')}</th>
@@ -500,90 +529,93 @@ function PurchaseReceipt({ data }: { data: PurchaseReceiptData }) {
             </tr>
           ))}
         </tbody>
+        <TableRoom />
       </table>
 
-      {purchase.cost ? (
-        <div className="mz-invoice__totals">
-          {purchase.cost.discount_iqd > 0 ? (
-            <>
-              <TotalRow label={t('orders:subtotal')}>
-                <DualAmount
-                  amount_iqd={subtotalIqd}
-                  amount_usd_cents={subtotalUsd}
-                  primary={primary}
-                />
-              </TotalRow>
-              <TotalRow label={t('glossary:discount')}>
+      <div className="mz-invoice__closing">
+        {purchase.cost ? (
+          <div className="mz-invoice__totals">
+            {purchase.cost.discount_iqd > 0 ? (
+              <>
+                <TotalRow label={t('orders:subtotal')}>
+                  <DualAmount
+                    amount_iqd={subtotalIqd}
+                    amount_usd_cents={subtotalUsd}
+                    primary={primary}
+                  />
+                </TotalRow>
+                <TotalRow label={t('glossary:discount')}>
+                  <span>
+                    −
+                    <DualAmount
+                      amount_iqd={purchase.cost.discount_iqd}
+                      amount_usd_cents={purchase.cost.discount_usd_cents}
+                      primary={primary}
+                    />
+                  </span>
+                </TotalRow>
+              </>
+            ) : null}
+            <TotalRow label={t('glossary:total')} grand>
+              <DualAmount
+                amount_iqd={purchase.cost.total_iqd}
+                amount_usd_cents={purchase.cost.total_usd_cents}
+                primary={primary}
+              />
+            </TotalRow>
+            {total !== null &&
+            remaining !== null &&
+            purchase.doc_status === 'active' &&
+            total - remaining > 0 ? (
+              <TotalRow label={t('print:paid_amount')}>
                 <span>
                   −
                   <DualAmount
-                    amount_iqd={purchase.cost.discount_iqd}
-                    amount_usd_cents={purchase.cost.discount_usd_cents}
+                    {...bothOf(total - remaining, primary, rate)}
                     primary={primary}
+                    kind="derived"
                   />
                 </span>
               </TotalRow>
-            </>
-          ) : null}
-          <TotalRow label={t('glossary:total')} grand>
-            <DualAmount
-              amount_iqd={purchase.cost.total_iqd}
-              amount_usd_cents={purchase.cost.total_usd_cents}
-              primary={primary}
-            />
-          </TotalRow>
-          {total !== null &&
-          remaining !== null &&
-          purchase.doc_status === 'active' &&
-          total - remaining > 0 ? (
-            <TotalRow label={t('print:paid_amount')}>
-              <span>
-                −
-                <DualAmount
-                  {...bothOf(total - remaining, primary, rate)}
-                  primary={primary}
-                  kind="derived"
-                />
-              </span>
-            </TotalRow>
-          ) : null}
-        </div>
-      ) : null}
+            ) : null}
+          </div>
+        ) : null}
 
-      {/* The three figures of a sale receipt, from our side (D-111): what is left to pay on this
+        {/* The three figures of a sale receipt, from our side (D-111): what is left to pay on this
           purchase, what we owed the company before it, and what we owe them now, in red — the
           company's account itself, so the red figure is the truth whatever else is on it. */}
-      {remaining !== null && owedNow !== null && purchase.doc_status === 'active' ? (
-        <div className="mz-invoice__figures">
-          <Figure
-            label={t('print:this_purchase_owes')}
-            amount={remaining}
-            primary={primary}
-            rate={rate}
-          />
-          <Figure
-            label={owedNow - remaining < 0 ? t('print:paid_ahead') : t('print:we_owed_before')}
-            amount={Math.abs(owedNow - remaining)}
-            primary={primary}
-            rate={rate}
-          />
-          <Figure
-            label={owedNow >= 0 ? t('print:we_owe_total') : balanceLabel('buying', owedNow, t)}
-            amount={Math.abs(owedNow)}
-            primary={primary}
-            rate={rate}
-            strong
-          />
-        </div>
-      ) : null}
+        {remaining !== null && owedNow !== null && purchase.doc_status === 'active' ? (
+          <div className="mz-invoice__figures">
+            <Figure
+              label={t('print:this_purchase_owes')}
+              amount={remaining}
+              primary={primary}
+              rate={rate}
+            />
+            <Figure
+              label={owedNow - remaining < 0 ? t('print:paid_ahead') : t('print:we_owed_before')}
+              amount={Math.abs(owedNow - remaining)}
+              primary={primary}
+              rate={rate}
+            />
+            <Figure
+              label={owedNow >= 0 ? t('print:we_owe_total') : balanceLabel('buying', owedNow, t)}
+              amount={Math.abs(owedNow)}
+              primary={primary}
+              rate={rate}
+              strong
+            />
+          </div>
+        ) : null}
 
-      {purchase.company_name ? (
-        <Signatures
-          left={t('print:sign_received_by')}
-          also={purchase.driver ? t('glossary:driver') : null}
-          right={t('print:sign_delivered_by')}
-        />
-      ) : null}
+        {purchase.company_name ? (
+          <Signatures
+            left={t('print:sign_received_by')}
+            also={purchase.driver ? t('glossary:driver') : null}
+            right={t('print:sign_delivered_by')}
+          />
+        ) : null}
+      </div>
       <DocumentFoot rate={rate} />
     </div>
   );
@@ -782,6 +814,7 @@ function StatementTable({ section }: { section: StatementSection }) {
       ) : null}
       <table className="mz-invoice__table">
         <thead>
+          <TableGap />
           <tr>
             <th>{t('common:date')}</th>
             <th>{t('customers:ledger_entry')}</th>
@@ -835,6 +868,7 @@ function StatementTable({ section }: { section: StatementSection }) {
             </td>
           </tr>
         </tbody>
+        <TableRoom />
       </table>
     </section>
   );

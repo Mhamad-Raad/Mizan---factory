@@ -2252,3 +2252,19 @@ the business's colour, but **without the list of earlier sales** ("قەرزی ف
 A sale receipt has lines to sign on, as a purchase receipt already had: **وەرگر** (the company that
 received the goods), **شۆفێر** when the sale went with a driver, and **ڕادەستکەر** (us, who handed
 them over). A purchase with a driver gets the driver's line too.
+
+## D-113 · 2026-10-19 · business request · A long receipt over several pages
+
+Shown a receipt of 50 and of 20 items, the business asked for three of four proposed changes
+(rows stay as tall as they are):
+
+- **No page starts at the paper's edge:** a table's heading repeats on every page it runs onto with
+  12 mm of air above it (a spacer row in `thead`), and the money, figures and signatures — one block
+  that never splits — start below the same air when they begin a page; on the table's own page the
+  air is drawn back, so a one-page document does not move.
+- **The grey strip at the foot of every page:** with one document printed, the strip is a fixed box,
+  which a browser prints at the foot of each page, and the table leaves it room (a spacer row in
+  `tfoot`). Several documents printed together keep the strip in the flow, each a page of its own (D-111).
+- **Page numbers:** "1 / 4" in an 8 mm margin under the strip on every page (an `@page` margin box),
+  written left to right in every language. Printed together, documents are numbered through the
+  whole print.

@@ -1753,6 +1753,13 @@ a.mz-button {
   font-weight: 700;
 }
 
+/* The money worked down, the figures and the signatures: one block, kept together in print. */
+.mz-invoice__closing {
+  display: flex;
+  flex-direction: column;
+  gap: 7mm;
+}
+
 /* A sale's three figures of what is still owed (D-109, D-110); the last, in the business's
    colour, is the one that matters. */
 .mz-invoice__figures {
@@ -1905,7 +1912,16 @@ a.mz-button {
    every page has the same height (D-110, D-111). With a margin on all but the first page, the second
    document of a print was a page tall on a shorter page, and its grey strip ran onto a page of its own. */
 @page {
-  margin: 0;
+  margin: 0 0 8mm;
+
+  /* The page number under the grey strip, so the sheets of a long receipt can be put back in
+     order (D-113). */
+  @bottom-center {
+    direction: ltr;
+    color: #666;
+    font-size: 8pt;
+    content: counter(page) " / " counter(pages);
+  }
 }
 
 @media print {
@@ -1936,8 +1952,53 @@ a.mz-button {
      margins the browser or the printer settles on — a fixed 297 mm overflowed onto a second page
      wherever the page kept a margin. */
   .mz-print-host .mz-invoice {
+    box-sizing: border-box;
     min-block-size: calc(100vh - 1mm);
     print-color-adjust: exact;
+  }
+
+  /* A row of air above the table's heading. The heading repeats on every page a long table runs
+     onto, and the air with it, so a continuation page does not start at the paper's edge (D-113);
+     on the first page the table is drawn up by as much, so nothing moves there. */
+  .mz-print-host .mz-invoice__gap td {
+    border: 0;
+    background: none !important;
+    padding: 0;
+    block-size: 12mm;
+  }
+
+  .mz-print-host .mz-invoice > .mz-invoice__table,
+  .mz-print-host .mz-invoice__section > .mz-invoice__table {
+    margin-block-start: -12mm;
+  }
+
+  /* One document printed: its grey strip is drawn at the foot of every page (D-113) — a fixed box
+     repeats on each printed page — and the table and the document leave it room. Several printed
+     together keep the strip in the flow, each document a page of its own (D-111). */
+  .mz-print-host--single .mz-invoice__foot {
+    position: fixed;
+    inset-block-end: 0;
+    inset-inline: 0;
+  }
+
+  .mz-print-host--single .mz-invoice {
+    padding-block-end: 16mm;
+  }
+
+  .mz-print-host .mz-invoice__room td {
+    border: 0;
+    background: none !important;
+    padding: 0;
+    block-size: 0;
+  }
+
+  .mz-print-host--single .mz-invoice__room td {
+    block-size: 16mm;
+  }
+
+  /* The room row's 16 mm and the closing block's 12 mm of air, both drawn back on the table's page. */
+  .mz-print-host.mz-print-host--single .mz-invoice > .mz-invoice__table + .mz-invoice__closing {
+    margin-block-start: -28mm;
   }
 
   /* A table row is never split across two sheets; its header repeats on each. */
@@ -1947,6 +2008,23 @@ a.mz-button {
 
   .mz-print-host .mz-invoice__table thead {
     display: table-header-group;
+  }
+
+  .mz-print-host .mz-invoice__table tfoot {
+    display: table-footer-group;
+  }
+
+  /* The money, the figures and the signatures stay together on one page, and when they start a
+     page of their own they start below the same air as a continuation of the table (D-113). On
+     the table's page the air is drawn back, so nothing moves there: a margin at a page break is
+     dropped, the padding is not. */
+  .mz-print-host .mz-invoice__closing {
+    break-inside: avoid;
+    padding-block-start: 12mm;
+  }
+
+  .mz-print-host .mz-invoice > .mz-invoice__table + .mz-invoice__closing {
+    margin-block-start: -12mm;
   }
 }
 

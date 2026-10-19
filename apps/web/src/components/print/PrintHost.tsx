@@ -74,7 +74,14 @@ function PrintRun({ job }: { job: PrintJob }) {
     <>
       {ready
         ? createPortal(
-            <div ref={host} className="mz-print-host" aria-hidden="true">
+            <div
+              ref={host}
+              // One document prints its grey strip at the foot of every page (D-113).
+              className={
+                results.length === 1 ? 'mz-print-host mz-print-host--single' : 'mz-print-host'
+              }
+              aria-hidden="true"
+            >
               <BusinessContext.Provider value={business.data ?? NO_BUSINESS}>
                 {results.map((result, index) =>
                   result.data ? (
@@ -169,13 +176,18 @@ function printInFrame(source: HTMLElement, done: () => void): () => void {
     { once: true },
   );
   // A stylesheet that never answers must not hold the print for ever.
-  const styled = Promise.race([Promise.all(loading), new Promise((resolve) => setTimeout(resolve, 3000))]);
+  const styled = Promise.race([
+    Promise.all(loading),
+    new Promise((resolve) => setTimeout(resolve, 3000)),
+  ]);
   void styled
     .then(() => {
       // Laid out first, so the fonts its text needs are asked for before they are waited on.
       void sheet.body.offsetHeight;
       // The logo too (D-108): a page printed before its picture is decoded prints without it.
-      const pictures = Array.from(sheet.images).map((image) => image.decode().catch(() => undefined));
+      const pictures = Array.from(sheet.images).map((image) =>
+        image.decode().catch(() => undefined),
+      );
       return Promise.all([sheet.fonts.ready, ...pictures]);
     })
     .then(() => {
