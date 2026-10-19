@@ -2246,3 +2246,9 @@ the business's colour, but **without the list of earlier sales** ("قەرزی ف
   the company's account itself (`account_owed` on `GET /purchases/:id/balance`, behind
   `fields.see_company_balances` as the route is). "Paid" stays a line of the worked-down money; the
   "still owed on this purchase" line went, as the first figure says it.
+
+## D-112 · 2026-10-19 · business request · Signature lines on a sale receipt
+
+A sale receipt has lines to sign on, as a purchase receipt already had: **وەرگر** (the company that
+received the goods), **شۆفێر** when the sale went with a driver, and **ڕادەستکەر** (us, who handed
+them over). A purchase with a driver gets the driver's line too.

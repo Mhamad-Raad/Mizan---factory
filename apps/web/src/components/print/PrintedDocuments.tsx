@@ -180,10 +180,11 @@ function Figure({
 }
 
 /** Two lines to sign on, for a document money changed hands over. */
-function Signatures({ left, right }: { left: string; right: string }) {
+function Signatures({ left, right, also }: { left: string; right: string; also?: string | null }) {
   return (
     <div className="mz-invoice__signatures">
       <span>{left}</span>
+      {also ? <span>{also}</span> : null}
       <span>{right}</span>
     </div>
   );
@@ -384,6 +385,13 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
         </div>
       ) : null}
 
+      {/* Lines to sign on, as a purchase has (D-112): the company that received the goods, the
+          driver who took them when there was one, and us who handed them over. */}
+      <Signatures
+        left={t('print:sign_received_by')}
+        also={driver ? t('glossary:driver') : null}
+        right={t('print:sign_delivered_by')}
+      />
       <DocumentFoot rate={order.rate_iqd_per_usd} closing={t('orders:thank_you')} />
     </div>
   );
@@ -570,7 +578,11 @@ function PurchaseReceipt({ data }: { data: PurchaseReceiptData }) {
       ) : null}
 
       {purchase.company_name ? (
-        <Signatures left={t('print:sign_received_by')} right={t('print:sign_delivered_by')} />
+        <Signatures
+          left={t('print:sign_received_by')}
+          also={purchase.driver ? t('glossary:driver') : null}
+          right={t('print:sign_delivered_by')}
+        />
       ) : null}
       <DocumentFoot rate={rate} />
     </div>
