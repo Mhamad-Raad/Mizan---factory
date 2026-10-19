@@ -386,6 +386,7 @@ export class OrdersService {
           priced_measure: line.priced_measure,
           quantity: pricedQuantityOf(line),
         })),
+        heldBy(oldLines),
       );
 
       await this.orders.softDeleteLines(id, tx);
@@ -1329,6 +1330,16 @@ function pricedQuantityOf(
   line: Pick<NewOrderLine, 'priced_measure' | 'qty_count' | 'qty_kg'>,
 ): string {
   return line.priced_measure === 'count' ? String(line.qty_count ?? 0) : String(line.qty_kg ?? '0');
+}
+
+/** What an order's lines took from stock, per material and measure, for an edit's check. */
+function heldBy(lines: readonly Pick<NewOrderLine, 'item_id' | 'priced_measure' | 'qty_count' | 'qty_kg'>[]) {
+  const held = new Map<string, Decimal>();
+  for (const line of lines) {
+    const key = `${line.item_id}:${line.priced_measure}`;
+    held.set(key, (held.get(key) ?? new Decimal(0)).plus(pricedQuantityOf(line)));
+  }
+  return held;
 }
 
 function lineSummary(line: PreparedLine) {

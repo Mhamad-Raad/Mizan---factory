@@ -266,21 +266,28 @@ function OrderForm({
   /**
    * What each material on the form may still sell (D-107): its stock now, plus — on an edit — what
    * this order already holds of it, which the save gives back before taking again. A material on
-   * several lines is checked on their total, as the server does.
+   * several lines is checked on their total, as the server does, and only in the measure the
+   * material is priced by now: an older line in another measure is left to the server. An edit
+   * never asks for less than the order already took, so an order that oversold before D-107 can
+   * still be corrected (review D-114).
    */
   const itemIds = useMemo(() => [...new Set(form.lines.map((line) => line.item_id))], [form.lines]);
-  const stockQueries = useQueries({
+  const stocks = useQueries({
     queries: itemIds.map((itemId) => ({
       queryKey: ['items', itemId],
       queryFn: () => apiRequest<ItemRow>(`/items/${itemId}`),
       staleTime: 15_000,
     })),
+    combine: (results) => results.map((result) => result.data?.stock),
   });
+  // In thousandths, so 0.1 + 0.2 kg is exactly 0.3 kg.
+  const thousandths = (quantity: string | number | null) => Math.round(Number(quantity ?? 0) * 1000);
   const held = useMemo(() => {
     const byItem = new Map<string, number>();
     if (mode === 'edit') {
       for (const line of initial.lines) {
-        byItem.set(line.item_id, (byItem.get(line.item_id) ?? 0) + Number(quantityOf(line) ?? 0));
+        const key = `${line.item_id}:${line.priced_measure}`;
+        byItem.set(key, (byItem.get(key) ?? 0) + thousandths(quantityOf(line)));
       }
     }
     return byItem;
@@ -288,27 +295,34 @@ function OrderForm({
   const stockCheck = useMemo(() => {
     const requested = new Map<string, number>();
     for (const line of form.lines) {
-      requested.set(line.item_id, (requested.get(line.item_id) ?? 0) + Number(quantityOf(line) ?? 0));
+      const key = `${line.item_id}:${line.priced_measure}`;
+      requested.set(key, (requested.get(key) ?? 0) + thousandths(quantityOf(line)));
     }
     const available = new Map<string, number>();
     itemIds.forEach((itemId, index) => {
-      const stock = stockQueries[index]?.data?.stock;
+      const stock = stocks[index];
       // A measure that cannot be summed for the material has no figure to check (FR-303).
-      if (stock && stock.priced_complete) available.set(itemId, Number(stock.priced_quantity) + (held.get(itemId) ?? 0));
+      if (!stock || !stock.priced_complete) return;
+      const key = `${itemId}:${stock.priced_measure}`;
+      available.set(key, thousandths(stock.priced_quantity) + (held.get(key) ?? 0));
     });
-    // Whole thousandths, so 0.1 + 0.2 kg is not a hair over 0.3 kg.
-    const over = (itemId: string) => {
-      const left = available.get(itemId);
-      return left !== undefined && Math.round((requested.get(itemId) ?? 0) * 1000) > Math.round(left * 1000);
+    const over = (line: FormLine) => {
+      const key = `${line.item_id}:${line.priced_measure}`;
+      const left = available.get(key);
+      const asked = requested.get(key) ?? 0;
+      return left !== undefined && asked > left && asked > (held.get(key) ?? 0);
     };
-    return { available, over };
-  }, [form.lines, itemIds, stockQueries, held]);
+    const left = (line: FormLine) => (available.get(`${line.item_id}:${line.priced_measure}`) ?? 0) / 1000;
+    return { over, left };
+  }, [form.lines, itemIds, held, stocks]);
   const lineProblem = (line: FormLine): string | null => {
     const quantity = quantityOf(line);
     if (quantity === null || Number(quantity) <= 0) return t('orders:quantity_above_zero');
-    if (stockCheck.over(line.item_id)) {
+    if (stockCheck.over(line)) {
       return t('orders:over_stock', {
-        quantity: formatter.quantity(String(Math.max(stockCheck.available.get(line.item_id) ?? 0, 0))),
+        quantity: formatter.quantity(
+          Math.max(stockCheck.left(line), 0).toFixed(line.priced_measure === 'count' ? 0 : 3),
+        ),
         unit: t(`common:${line.priced_measure}_symbol`),
       });
     }
@@ -427,6 +441,7 @@ function OrderForm({
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
       await queryClient.invalidateQueries({ queryKey: ['customers'] });
       await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await queryClient.invalidateQueries({ queryKey: ['drivers'] });
       await invalidateMoneyViews(queryClient);
       // The stock and credit-limit warnings of the save travel with it: this form is gone the
       // moment it navigates, so the page it lands on is the one that shows them.
@@ -866,7 +881,9 @@ function OrderForm({
           toItem={(row: never) => {
             const item = row as unknown as ItemRow;
             // Nothing left of it: listed, so nobody wonders where it went, but not choosable (D-107).
-            const soldOut = item.stock.priced_complete && Number(item.stock.priced_quantity) <= 0;
+            // An edit may take back what this order itself holds of it (review D-114).
+            const holds = mode === 'edit' && initial.lines.some((line) => line.item_id === item.id);
+            const soldOut = !holds && item.stock.priced_complete && Number(item.stock.priced_quantity) <= 0;
             return {
               id: item.id,
               title: item.name,

@@ -148,6 +148,7 @@ export function PurchaseFormPage() {
       await queryClient.invalidateQueries({ queryKey: ['purchases'] });
       await queryClient.invalidateQueries({ queryKey: ['items'] });
       await queryClient.invalidateQueries({ queryKey: ['customers'] });
+      await queryClient.invalidateQueries({ queryKey: ['drivers'] });
       await invalidateMoneyViews(queryClient);
       // The purchase's own page offers its receipt the moment it opens (D-086).
       navigate(`/purchases/${purchase.id}`, { replace: true, state: { justSaved: true } });

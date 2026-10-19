@@ -2275,3 +2275,53 @@ Shown a receipt of 50 and of 20 items, the business asked for three of four prop
   half a millimetre; in a print of several documents, each strip drawn 1.2 mm lower) so the greys meet
   without a white line.
 
+
+## D-114 · 2026-10-19 · review · The final business edits, reviewed for bugs, loopholes, five users and ten years
+
+A senior review of everything since `main` (D-105 … D-113): the API, the screens and print, and
+how each new read grows over ten years. Changed:
+
+- **An order that oversold before D-107 can still be edited.** The edit gives back what the order
+  held and takes again, so an order that sold 10 when 5 were in stock was refused even for a new
+  date. An edit is now refused only for taking *more* of a material than the order already held
+  (per material and measure); taking the same or less saves with the shortfall as a warning. The
+  order form follows the same rule, compares only in the measure the material is priced by now,
+  and lets the picker offer a sold-out material back to the order that holds it. Test in
+  `orders.test.ts`.
+- **Indexes for ten years (migration 0041).** The receipt's earlier debt (D-109) read every order
+  the account ever placed; `orders_customer_number_idx (customer_id, number)` over active orders
+  makes it one range. A driver's page sums every document the driver carried; the driver indexes
+  now carry status and totals, so the sum is an index-only pass.
+- **Changing a driver on a document** closes the picker on the choice, shows the save and any
+  refusal on the page, and reloads the document after a refusal, so a second try is not refused
+  for the same stale version.
+- **Page numbers only on a document printed alone.** A browser counts the pages of the whole print,
+  so the second of ten receipts read "4 / 12"; several printed together keep the grey band without
+  a number. The print pages are named (`@page mz-document`, `mz-documents`), so an ordinary Ctrl+P
+  of a screen keeps the browser's margins.
+- **Smaller:** saving an order or purchase refreshes the drivers list's "Last trip"; a new or renamed
+  driver reaches the Buying & selling filter at once; a print after a failed read of the receipt
+  details waits for the new try instead of printing without the logo; a statement's closing totals
+  never part across sheets.
+
+Reviewed and kept as they are:
+
+- **The driver's phone and car number on receipts** reach whoever may print the document, without
+  `drivers.view`: the receipt is handed to the customer with them on it, so hiding them from the
+  clerk who prints it protects nothing. `drivers.view` still guards the Drivers pages and the list.
+- **The duplicate-phone check** is a warning, not a rule; two people adding the same phone at the
+  same second both save. Nothing depends on phones being unique.
+- **Replacing the logo** is recorded as "yes → yes" in History: the row says who changed it and when,
+  which is what an admin looks for; the picture itself is never kept in History.
+- **Migration 0039** changes the stock default without a History row, as every migration does;
+  D-107 records when and why.
+- **A single printed statement** keeps 16 mm of air after each section's table; drawing it back
+  needs the negative-margin trick that split documents onto extra pages before.
+- **Print in Safari and older Firefox:** margin boxes (the page number and the grey margin) are
+  Chromium features; elsewhere a receipt prints without the number and with a white bottom margin.
+  The business prints from Chrome or Edge.
+- **Five users at once:** sales and purchases lock account → driver (shared) → materials; a driver
+  edit locks only the driver; changing a document's driver locks the document, then the driver. No
+  two paths take these in opposite orders, so they wait for each other but never deadlock.
+- **Later, if a material ever has tens of thousands of purchases:** the order form reads each
+  material's full page (`GET /items/:id`) for its stock; a slim stock-only read would be lighter.

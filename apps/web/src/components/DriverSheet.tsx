@@ -60,7 +60,10 @@ export function DriverSheet({
     onSuccess: async (saved) => {
       saveKey.renew();
       await queryClient.invalidateQueries({ queryKey: ['drivers'] });
-      await queryClient.invalidateQueries({ queryKey: ['/drivers'] });
+      // Every driver picker, the Trade filter's (`/drivers?status=all`) among them.
+      await queryClient.invalidateQueries({
+        predicate: (query) => String(query.queryKey[0]).startsWith('/drivers'),
+      });
       await invalidateHistory(queryClient);
       onSaved(saved);
     },

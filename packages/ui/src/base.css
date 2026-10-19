@@ -1908,17 +1908,39 @@ a.mz-button {
  */
 .mz-print-host {
   display: none;
+  page: mz-documents;
 }
 
 /* Every page without a margin, so each document's band and grey strip reach the paper's edges and
    every page has the same height (D-110, D-111). With a margin on all but the first page, the second
-   document of a print was a page tall on a shorter page, and its grey strip ran onto a page of its own. */
-@page {
+   document of a print was a page tall on a shorter page, and its grey strip ran onto a page of its own.
+   Named, so an ordinary Ctrl+P of a screen keeps the browser's own margins (review D-114). A browser numbers pages only in the page's margin, so the bottom
+   margin is painted the strip's grey and the strip's own text sits right above it — one band. */
+@page mz-documents {
   margin: 0 0 8mm;
 
-  /* The page number inside the grey strip (D-113): a browser numbers pages only in the page's
-     margin, so the bottom margin is painted the strip's grey and the strip's own text sits right
-     above it — one band, the rate and the date, and the number under them in the middle. */
+  @bottom-left {
+    background: #f4f5f7;
+    content: "";
+  }
+
+  @bottom-center {
+    background: #f4f5f7;
+    content: "";
+  }
+
+  @bottom-right {
+    background: #f4f5f7;
+    content: "";
+  }
+}
+
+/* One document printed alone carries its page number in the strip (D-113). Several printed
+   together do not: the browser counts the pages of the whole print, not of each receipt, so
+   the second of ten would read "4 / 12" (review D-114). */
+@page mz-document {
+  margin: 0 0 8mm;
+
   @bottom-left {
     background: #f4f5f7;
     content: "";
@@ -1937,6 +1959,10 @@ a.mz-button {
     background: #f4f5f7;
     content: "";
   }
+}
+
+.mz-print-host.mz-print-host--single {
+  page: mz-document;
 }
 
 @media print {
@@ -2048,6 +2074,11 @@ a.mz-button {
 
   .mz-print-host .mz-invoice > .mz-invoice__table + .mz-invoice__closing {
     margin-block-start: -12mm;
+  }
+
+  /* A statement's two closing balances and their sum never part across sheets (review D-114). */
+  .mz-print-host .mz-invoice__totals--spaced {
+    break-inside: avoid;
   }
 }
 

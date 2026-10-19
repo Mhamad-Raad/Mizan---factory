@@ -50,7 +50,7 @@ function PrintRun({ job }: { job: PrintJob }) {
   });
 
   // The business every document is headed with (D-108). A failure to read it prints without it
-  // rather than not at all.
+  // rather than not at all; after an earlier failure, the print waits for the new try (review).
   const business = useQuery({
     queryKey: BUSINESS_QUERY_KEY,
     queryFn: () => apiRequest<Business>('/settings/business'),
@@ -60,7 +60,10 @@ function PrintRun({ job }: { job: PrintJob }) {
 
   const failed = results.find((result) => result.isError);
   const ready =
-    results.length > 0 && results.every((result) => result.isSuccess) && !business.isPending;
+    results.length > 0 &&
+    results.every((result) => result.isSuccess) &&
+    !business.isPending &&
+    !(business.isFetching && !business.data);
   const printed = useRef(false);
   const host = useRef<HTMLDivElement>(null);
 

@@ -902,5 +902,10 @@ go-live checklist in `ops/runbook/README.md`, run with the client on their own h
 - **Tests:** `drivers.test.ts` (10, API), `business.test.ts` (5, API), `receipt-earlier-owing.test.ts` (2, API); the stock tests rewritten to
   the new rule; the permission matrix covers the seven new routes by
   itself; `e2e/responsive.spec.ts` sweeps `/drivers` and a driver's page. 809 tests green.
+- **Review (D-114):** three reviewers (API, screens and print, ten-year scale). Fixed: an order
+  that oversold before D-107 could not be edited at all; the receipt's earlier-debt read and a
+  driver's totals had no index fit for ten years (migration 0041); changing a driver showed no
+  progress or refusal; a print of several receipts numbered pages across the whole print; the
+  print page rules reached an ordinary Ctrl+P. Kept, with reasons, in D-114.
 - **Known, not from this change:** `/reports` is 13 px too wide at 360 px with English text at
   1.25× (fails on `main` too).

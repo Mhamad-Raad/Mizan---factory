@@ -49,7 +49,6 @@ export function DocumentDriver({
       }),
     onSuccess: async () => {
       key.renew();
-      setPicking(false);
       await queryClient.invalidateQueries({
         queryKey: [kind === 'order' ? 'orders' : 'purchases'],
       });
@@ -57,7 +56,16 @@ export function DocumentDriver({
       await queryClient.invalidateQueries({ queryKey: ['drivers'] });
       await invalidateHistory(queryClient);
     },
+    // Someone else changed the document meanwhile, or the driver was just deactivated: the page
+    // reloads it, so a second try carries the current version (review D-114).
+    onError: () =>
+      queryClient.invalidateQueries({ queryKey: [kind === 'order' ? 'orders' : 'purchases'] }),
   });
+  // The sheet closes on a choice; the line shows the save and any refusal where it can be seen.
+  const choose = (driver: PickedDriver | null) => {
+    setPicking(false);
+    change.mutate(driver);
+  };
   const error = errorMessage(t, change.error);
 
   if (!driverId && !mayChange) return null;
@@ -86,6 +94,8 @@ export function DocumentDriver({
             type="button"
             className="mz-link-button"
             style={{ marginInlineStart: 'var(--space-2)' }}
+            disabled={change.isPending}
+            aria-busy={change.isPending}
             onClick={() => {
               change.reset();
               setPicking(true);
@@ -103,8 +113,8 @@ export function DocumentDriver({
       {picking ? (
         <DriverPickerSheet
           onClose={() => setPicking(false)}
-          onPicked={(driver) => change.mutate(driver)}
-          onClear={driverId ? () => change.mutate(null) : undefined}
+          onPicked={choose}
+          onClear={driverId ? () => choose(null) : undefined}
         />
       ) : null}
     </>
