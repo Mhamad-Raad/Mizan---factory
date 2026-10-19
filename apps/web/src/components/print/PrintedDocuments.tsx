@@ -38,7 +38,15 @@ export function PrintedDocument({ data }: { data: PrintData }) {
 }
 
 /** Who issued it, and what this document is. */
-function DocumentHead({ type, title, date }: { type: string; title: ReactNode; date?: string | null }) {
+function DocumentHead({
+  type,
+  title,
+  date,
+}: {
+  type: string;
+  title: ReactNode;
+  date?: string | null;
+}) {
   const { t } = useTranslation();
   const formatter = useFormatter();
   // The business's own name, phone, address and logo, as an admin set them (D-108); the product's
@@ -46,13 +54,19 @@ function DocumentHead({ type, title, date }: { type: string; title: ReactNode; d
   const business = useBusiness();
   return (
     <header className="mz-invoice__head">
-      <div className={business.logo ? 'mz-invoice__brand mz-invoice__brand--logo' : 'mz-invoice__brand'}>
+      <div
+        className={
+          business.logo ? 'mz-invoice__brand mz-invoice__brand--logo' : 'mz-invoice__brand'
+        }
+      >
         {business.logo ? <img className="mz-invoice__logo" src={business.logo} alt="" /> : null}
         <div className="mz-invoice__brand">
           <strong className="mz-invoice__name">
             <bdi>{business.name ?? t('common:app_name')}</bdi>
           </strong>
-          {business.name ? null : <span className="mz-invoice__muted">{t('common:app_tagline')}</span>}
+          {business.name ? null : (
+            <span className="mz-invoice__muted">{t('common:app_tagline')}</span>
+          )}
           {business.phone ? (
             <span className="mz-invoice__muted">
               <bdi dir="ltr">{business.phone}</bdi>
@@ -105,7 +119,17 @@ function VoidBanner({ reason }: { reason: string | null }) {
   );
 }
 
-function Party({ label, name, lines, end }: { label: string; name: ReactNode; lines?: ReactNode[]; end?: boolean }) {
+function Party({
+  label,
+  name,
+  lines,
+  end,
+}: {
+  label: string;
+  name: ReactNode;
+  lines?: ReactNode[];
+  end?: boolean;
+}) {
   return (
     <div className={end ? 'mz-invoice__party mz-invoice__party--end' : 'mz-invoice__party'}>
       <span className="mz-invoice__label">{label}</span>
@@ -120,7 +144,11 @@ function Party({ label, name, lines, end }: { label: string; name: ReactNode; li
 }
 
 /** "Driver: Azad · 21 A 45871 · 0750 412 3344", the plate and the phone each in their own direction. */
-function DriverLine({ driver }: { driver: { name: string; phone: string | null; car_number: string | null } }) {
+function DriverLine({
+  driver,
+}: {
+  driver: { name: string; phone: string | null; car_number: string | null };
+}) {
   const { t } = useTranslation();
   return (
     <>
@@ -141,9 +169,21 @@ function DriverLine({ driver }: { driver: { name: string; phone: string | null; 
   );
 }
 
-function TotalRow({ label, children, grand }: { label: string; children: ReactNode; grand?: boolean }) {
+function TotalRow({
+  label,
+  children,
+  grand,
+}: {
+  label: string;
+  children: ReactNode;
+  grand?: boolean;
+}) {
   return (
-    <div className={grand ? 'mz-invoice__total-row mz-invoice__total-row--grand' : 'mz-invoice__total-row'}>
+    <div
+      className={
+        grand ? 'mz-invoice__total-row mz-invoice__total-row--grand' : 'mz-invoice__total-row'
+      }
+    >
       <span>{label}</span>
       {grand ? <strong>{children}</strong> : children}
     </div>
@@ -185,7 +225,9 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
       <div className="mz-invoice__parties">
         <Party
           label={t('glossary:customer')}
-          name={<bdi>{customerName({ name: customer.name, is_system: customer.is_system }, t)}</bdi>}
+          name={
+            <bdi>{customerName({ name: customer.name, is_system: customer.is_system }, t)}</bdi>
+          }
           lines={[
             customer.phone ? <bdi dir="ltr">{customer.phone}</bdi> : null,
             // The driver beside the company, with the car the goods went in (D-105).
@@ -196,7 +238,9 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
           end
           label={t('glossary:payment_type')}
           name={`${t(`glossary:${order.payment_type}`)} · ${t(`glossary:${order.status}`)}`}
-          lines={[order.acting_user_name ? `${t('glossary:done_by')}: ${order.acting_user_name}` : null]}
+          lines={[
+            order.acting_user_name ? `${t('glossary:done_by')}: ${order.acting_user_name}` : null,
+          ]}
         />
       </div>
 
@@ -226,7 +270,11 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
                 />
               </td>
               <td className="mz-invoice__num">
-                <DualAmount amount_iqd={line.line_total_iqd} amount_usd_cents={line.line_total_usd_cents} primary={primary} />
+                <DualAmount
+                  amount_iqd={line.line_total_iqd}
+                  amount_usd_cents={line.line_total_usd_cents}
+                  primary={primary}
+                />
               </td>
             </tr>
           ))}
@@ -251,10 +299,18 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
                 <td>{t('orders:number', { number: formatter.identifier(row.number) })}</td>
                 <td data-tabular>{formatter.date(row.order_date)}</td>
                 <td className="mz-invoice__num">
-                  <DualAmount {...bothOf(row.total, primary, order.rate_iqd_per_usd)} primary={primary} kind="derived" />
+                  <DualAmount
+                    {...bothOf(row.total, primary, order.rate_iqd_per_usd)}
+                    primary={primary}
+                    kind="derived"
+                  />
                 </td>
                 <td className="mz-invoice__num">
-                  <DualAmount {...bothOf(row.remaining, primary, order.rate_iqd_per_usd)} primary={primary} kind="derived" />
+                  <DualAmount
+                    {...bothOf(row.remaining, primary, order.rate_iqd_per_usd)}
+                    primary={primary}
+                    kind="derived"
+                  />
                 </td>
               </tr>
             ))}
@@ -277,7 +333,11 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
           <TotalRow label={t('glossary:discount')}>
             <span>
               −
-              <DualAmount amount_iqd={order.discount_iqd} amount_usd_cents={order.discount_usd_cents} primary={primary} />
+              <DualAmount
+                amount_iqd={order.discount_iqd}
+                amount_usd_cents={order.discount_usd_cents}
+                primary={primary}
+              />
             </span>
           </TotalRow>
         ) : null}
@@ -294,20 +354,36 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
           </TotalRow>
         ) : null}
         <TotalRow label={t('glossary:total')} grand>
-          <DualAmount amount_iqd={order.total_iqd} amount_usd_cents={order.total_usd_cents} primary={primary} />
+          <DualAmount
+            amount_iqd={order.total_iqd}
+            amount_usd_cents={order.total_usd_cents}
+            primary={primary}
+          />
         </TotalRow>
         <TotalRow label={earlierOwed > 0 ? t('print:this_order_owes') : t('orders:remaining')}>
-          <DualAmount {...bothOf(order.remaining, primary, order.rate_iqd_per_usd)} primary={primary} kind="derived" />
+          <DualAmount
+            {...bothOf(order.remaining, primary, order.rate_iqd_per_usd)}
+            primary={primary}
+            kind="derived"
+          />
         </TotalRow>
         {earlierOwed > 0 ? (
           <>
             <TotalRow label={t('print:earlier_owe', { count: earlier?.count ?? 0 })}>
-              <DualAmount {...bothOf(earlierOwed, primary, order.rate_iqd_per_usd)} primary={primary} kind="derived" />
+              <DualAmount
+                {...bothOf(earlierOwed, primary, order.rate_iqd_per_usd)}
+                primary={primary}
+                kind="derived"
+              />
             </TotalRow>
             {/* The two added: what this order and the earlier ones still come to (D-109). */}
             <TotalRow label={t('print:total_owed')} grand>
               <DualAmount
-                {...bothOf(Math.max(order.remaining, 0) + earlierOwed, primary, order.rate_iqd_per_usd)}
+                {...bothOf(
+                  Math.max(order.remaining, 0) + earlierOwed,
+                  primary,
+                  order.rate_iqd_per_usd,
+                )}
                 primary={primary}
                 kind="derived"
               />
@@ -318,7 +394,8 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
             us", "In credit" or "Settled", the figure always positive — as on a payment's voucher.
             Beside the orders' own figures it is said only when it differs from them — an opening
             debt, a credit or a payment not made against an order (D-109). */}
-        {data.balance_after !== null && (earlierOwed === 0 || data.balance_after !== Math.max(order.remaining, 0) + earlierOwed) ? (
+        {data.balance_after !== null &&
+        (earlierOwed === 0 || data.balance_after !== Math.max(order.remaining, 0) + earlierOwed) ? (
           <TotalRow label={balanceLabel('sales', data.balance_after, t)}>
             <DualAmount
               {...bothOf(Math.abs(data.balance_after), primary, order.rate_iqd_per_usd)}
@@ -347,8 +424,14 @@ function PurchaseReceipt({ data }: { data: PurchaseReceiptData }) {
   const { purchase, balance } = data;
   const primary: Currency = purchase.settlement_currency ?? 'IQD';
   const rate = purchase.rate_iqd_per_usd;
-  const subtotalIqd = purchase.lines.reduce((sum, line) => sum + (line.cost?.line_total_iqd ?? 0), 0);
-  const subtotalUsd = purchase.lines.reduce((sum, line) => sum + (line.cost?.line_total_usd_cents ?? 0), 0);
+  const subtotalIqd = purchase.lines.reduce(
+    (sum, line) => sum + (line.cost?.line_total_iqd ?? 0),
+    0,
+  );
+  const subtotalUsd = purchase.lines.reduce(
+    (sum, line) => sum + (line.cost?.line_total_usd_cents ?? 0),
+    0,
+  );
   const total = balance?.cost.total ?? null;
   const remaining = balance?.cost.remaining ?? null;
 
@@ -364,7 +447,9 @@ function PurchaseReceipt({ data }: { data: PurchaseReceiptData }) {
       <div className="mz-invoice__parties">
         <Party
           label={t('print:bought_from')}
-          name={purchase.company_name ? <bdi>{purchase.company_name}</bdi> : t('purchases:no_company')}
+          name={
+            purchase.company_name ? <bdi>{purchase.company_name}</bdi> : t('purchases:no_company')
+          }
           // Who brought it in, with the car (D-106).
           lines={[purchase.driver ? <DriverLine driver={purchase.driver} /> : null]}
         />
@@ -426,7 +511,11 @@ function PurchaseReceipt({ data }: { data: PurchaseReceiptData }) {
           {purchase.cost.discount_iqd > 0 ? (
             <>
               <TotalRow label={t('orders:subtotal')}>
-                <DualAmount amount_iqd={subtotalIqd} amount_usd_cents={subtotalUsd} primary={primary} />
+                <DualAmount
+                  amount_iqd={subtotalIqd}
+                  amount_usd_cents={subtotalUsd}
+                  primary={primary}
+                />
               </TotalRow>
               <TotalRow label={t('glossary:discount')}>
                 <span>
@@ -441,22 +530,36 @@ function PurchaseReceipt({ data }: { data: PurchaseReceiptData }) {
             </>
           ) : null}
           <TotalRow label={t('glossary:total')} grand>
-            <DualAmount amount_iqd={purchase.cost.total_iqd} amount_usd_cents={purchase.cost.total_usd_cents} primary={primary} />
+            <DualAmount
+              amount_iqd={purchase.cost.total_iqd}
+              amount_usd_cents={purchase.cost.total_usd_cents}
+              primary={primary}
+            />
           </TotalRow>
           {total !== null && remaining !== null && purchase.doc_status === 'active' ? (
             <>
               <TotalRow label={t('print:paid_so_far')}>
-                <DualAmount {...bothOf(total - remaining, primary, rate)} primary={primary} kind="derived" />
+                <DualAmount
+                  {...bothOf(total - remaining, primary, rate)}
+                  primary={primary}
+                  kind="derived"
+                />
               </TotalRow>
               <TotalRow label={t('print:still_owed_on_purchase')}>
-                <DualAmount {...bothOf(remaining, primary, rate)} primary={primary} kind="derived" />
+                <DualAmount
+                  {...bothOf(remaining, primary, rate)}
+                  primary={primary}
+                  kind="derived"
+                />
               </TotalRow>
             </>
           ) : null}
         </div>
       ) : null}
 
-      {purchase.company_name ? <Signatures left={t('print:sign_received_by')} right={t('print:sign_delivered_by')} /> : null}
+      {purchase.company_name ? (
+        <Signatures left={t('print:sign_received_by')} right={t('print:sign_delivered_by')} />
+      ) : null}
       <DocumentFoot rate={rate} />
     </div>
   );
@@ -498,7 +601,13 @@ function PaymentVoucher({ data }: { data: VoucherData }) {
 
       <div className="mz-invoice__parties">
         <Party
-          label={t(isPayment ? (data.side === 'sales' ? 'print:received_from' : 'print:paid_to') : 'glossary:company')}
+          label={t(
+            isPayment
+              ? data.side === 'sales'
+                ? 'print:received_from'
+                : 'print:paid_to'
+              : 'glossary:company',
+          )}
           name={<bdi>{data.account.name}</bdi>}
           lines={[data.account.phone ? <bdi dir="ltr">{data.account.phone}</bdi> : null]}
         />
@@ -506,7 +615,9 @@ function PaymentVoucher({ data }: { data: VoucherData }) {
           end
           label={t('glossary:done_by')}
           name={data.performed_by_name ?? '—'}
-          lines={[data.method ? t(`print:method.${data.method}`, { defaultValue: data.method }) : null]}
+          lines={[
+            data.method ? t(`print:method.${data.method}`, { defaultValue: data.method }) : null,
+          ]}
         />
       </div>
 
@@ -549,7 +660,11 @@ function PaymentVoucher({ data }: { data: VoucherData }) {
 }
 
 /** What a balance after a row means, on each side and for each sign. */
-function balanceLabel(side: VoucherData['side'], balance: number, t: (key: string) => string): string {
+function balanceLabel(
+  side: VoucherData['side'],
+  balance: number,
+  t: (key: string) => string,
+): string {
   if (balance === 0) return t('companies:settled');
   if (side === 'sales') return t(balance > 0 ? 'companies:they_owe_us' : 'customers:in_credit');
   return t(balance > 0 ? 'companies:we_owe_them' : 'print:paid_ahead');
@@ -579,7 +694,10 @@ function AccountStatement({ data }: { data: StatementData }) {
       <div className="mz-invoice__parties">
         <Party
           label={t('print:period')}
-          name={t('companies:statement_range', { from: formatter.date(data.from), to: formatter.date(data.to) })}
+          name={t('companies:statement_range', {
+            from: formatter.date(data.from),
+            to: formatter.date(data.to),
+          })}
           lines={[account?.phone ? <bdi dir="ltr">{account.phone}</bdi> : null]}
         />
       </div>
@@ -592,14 +710,21 @@ function AccountStatement({ data }: { data: StatementData }) {
       {sales && buying ? (
         <div className="mz-invoice__totals mz-invoice__totals--spaced">
           <TotalRow label={t('companies:they_owe_us')}>
-            <span data-tabular>{formatter.money(sales.closing_balance, sales.account.settlement_currency)}</span>
+            <span data-tabular>
+              {formatter.money(sales.closing_balance, sales.account.settlement_currency)}
+            </span>
           </TotalRow>
           <TotalRow label={t('companies:we_owe_them')}>
-            <span data-tabular>{formatter.money(buying.closing_balance, buying.account.settlement_currency)}</span>
+            <span data-tabular>
+              {formatter.money(buying.closing_balance, buying.account.settlement_currency)}
+            </span>
           </TotalRow>
           <TotalRow label={netLabel(sales.closing_balance - buying.closing_balance, t)} grand>
             <span data-tabular>
-              {formatter.money(Math.abs(sales.closing_balance - buying.closing_balance), sales.account.settlement_currency)}
+              {formatter.money(
+                Math.abs(sales.closing_balance - buying.closing_balance),
+                sales.account.settlement_currency,
+              )}
             </span>
           </TotalRow>
         </div>
@@ -665,7 +790,11 @@ function StatementTable({ section }: { section: StatementSection }) {
                 ) : null}
               </td>
               <td className="mz-invoice__num">
-                <DualAmount amount_iqd={row.amount_iqd} amount_usd_cents={row.amount_usd_cents} primary={currency} />
+                <DualAmount
+                  amount_iqd={row.amount_iqd}
+                  amount_usd_cents={row.amount_usd_cents}
+                  primary={currency}
+                />
               </td>
               <td className="mz-invoice__num" data-tabular>
                 {row.kind === 'rebase' ? '' : money(row.balance_after)}
@@ -674,7 +803,9 @@ function StatementTable({ section }: { section: StatementSection }) {
           ))}
           <tr className="mz-invoice__row--strong">
             <td />
-            <td>{t(section.side === 'sales' ? 'companies:they_owe_us' : 'companies:we_owe_them')}</td>
+            <td>
+              {t(section.side === 'sales' ? 'companies:they_owe_us' : 'companies:we_owe_them')}
+            </td>
             <td />
             <td className="mz-invoice__num" data-tabular>
               {money(section.closing_balance)}
