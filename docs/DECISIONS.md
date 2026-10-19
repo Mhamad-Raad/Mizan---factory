@@ -2217,3 +2217,11 @@ the business's colour, but **without the list of earlier sales** ("قەرزی ف
   "Paid" is a line of the worked-down money when anything was paid.
 - The amount column is **کۆ** in Kurdish (`print:line_amount`): the glossary has بڕ for both
   "quantity" and "amount", so the two columns read alike.
+- **Matched to the PDF (same day, business):** the first version missed parts of design 2. Now: the
+  three-tone strip under the band; the corner says "پسوولەی فرۆشتن" over a large "#1042"; the phone
+  and address share one line; the payment card is "پارەدان" with the type alone; the paid line is
+  "پارەی دراو"; table and worked-down amounts at text weight; the red figure is always the last; and
+  the grey strip sits at the foot of the page (a printed document is a page tall; the first page has
+  no margin, so the band and the strip reach the paper's edges). The dollar figure stays beside each
+  amount, smaller and grey (rule 7), where the sample PDF showed it only in the red figure.
+

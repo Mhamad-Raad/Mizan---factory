@@ -42,5 +42,8 @@
   "this_order_owes": "ماوەی ئەم فرۆشتنە",
   "earlier_owe": "ماوەی فرۆشتنەکانی پێشوو ({{count}})",
   "total_owed": "کۆی قەرز",
-  "line_amount": "کۆ"
+  "line_amount": "کۆ",
+  "sale_receipt": "پسوولەی فرۆشتن",
+  "payment": "پارەدان",
+  "paid_amount": "پارەی دراو"
 }

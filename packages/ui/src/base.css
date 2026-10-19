@@ -1542,13 +1542,30 @@ a.mz-button {
 
 .mz-invoice__head {
   display: flex;
+  position: relative;
   justify-content: space-between;
   align-items: center;
   gap: 8mm;
+  margin-block-end: 4mm;
   background: var(--invoice-accent);
-  padding-block: 10mm 9mm;
+  padding-block: 12mm 10mm;
   padding-inline: var(--invoice-gutter);
   color: #fff;
+}
+
+/* The three-tone strip under the band, darkest at the far end from where the name is, as in the
+   chosen design. */
+.mz-invoice__head::after {
+  position: absolute;
+  inset-block-end: -4mm;
+  inset-inline: 0;
+  block-size: 4mm;
+  background: linear-gradient(to right, var(--invoice-accent) 0 30%, #b8475f 30% 60%, #d98a9b 60%);
+  content: "";
+}
+
+[dir='ltr'] .mz-invoice__head::after {
+  background: linear-gradient(to left, var(--invoice-accent) 0 30%, #b8475f 30% 60%, #d98a9b 60%);
 }
 
 .mz-invoice__brand {
@@ -1575,7 +1592,7 @@ a.mz-button {
 }
 
 .mz-invoice__name {
-  font-size: 18pt;
+  font-size: 20pt;
   font-weight: 800;
   line-height: 1.3;
 }
@@ -1594,7 +1611,7 @@ a.mz-button {
 }
 
 .mz-invoice__doc strong {
-  font-size: 20pt;
+  font-size: 26pt;
   font-weight: 800;
   line-height: 1.2;
 }
@@ -1694,6 +1711,21 @@ a.mz-button {
 .mz-invoice__table .mz-dual > bdi:first-child,
 .mz-invoice__total-row .mz-dual > bdi:first-child {
   font-size: 10pt !important;
+  font-weight: 400 !important;
+}
+
+.mz-invoice__total-row--grand .mz-dual > bdi:first-child {
+  font-weight: 700 !important;
+}
+
+/* A figure's amount, large and bold. */
+.mz-invoice__figure .mz-dual > bdi:first-child {
+  font-size: 14pt !important;
+  font-weight: 800 !important;
+}
+
+.mz-invoice__figure--strong .mz-dual > bdi:first-child {
+  font-size: 17pt !important;
 }
 
 /* The money worked down, at the reading end of the page. */
@@ -1750,6 +1782,7 @@ a.mz-button {
 }
 
 .mz-invoice__figure--strong {
+  order: 1;
   border-color: var(--invoice-accent);
   background: var(--invoice-accent);
   color: #fff;
@@ -1771,7 +1804,7 @@ a.mz-button {
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 4mm;
-  margin-block-start: 2mm;
+  margin-block-start: auto;
   background: var(--invoice-wash);
   padding-block: 4mm;
   padding-inline: var(--invoice-gutter);
@@ -1875,7 +1908,7 @@ a.mz-button {
 }
 
 @page :first {
-  margin: 0 0 12mm;
+  margin: 0;
 }
 
 @media print {
@@ -1901,7 +1934,9 @@ a.mz-button {
     break-after: auto;
   }
 
+  /* A page tall, so the grey strip sits at the foot of the paper as in the chosen design (D-110). */
   .mz-print-host .mz-invoice {
+    min-block-size: 296mm;
     print-color-adjust: exact;
   }
 

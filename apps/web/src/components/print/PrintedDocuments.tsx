@@ -67,14 +67,12 @@ function DocumentHead({
           {business.name ? null : (
             <span className="mz-invoice__muted">{t('common:app_tagline')}</span>
           )}
-          {business.phone ? (
+          {/* The phone and the address on one line under the name, as in the chosen design (D-110). */}
+          {business.phone || business.address ? (
             <span className="mz-invoice__muted">
-              <bdi dir="ltr">{business.phone}</bdi>
-            </span>
-          ) : null}
-          {business.address ? (
-            <span className="mz-invoice__muted">
-              <bdi>{business.address}</bdi>
+              {business.phone ? <bdi dir="ltr">{business.phone}</bdi> : null}
+              {business.phone && business.address ? ' · ' : null}
+              {business.address ? <bdi>{business.address}</bdi> : null}
             </span>
           ) : null}
         </div>
@@ -211,8 +209,8 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
   return (
     <div className="mz-invoice">
       <DocumentHead
-        type={t('glossary:receipt')}
-        title={t('orders:number', { number: formatter.identifier(order.number) })}
+        type={t('print:sale_receipt')}
+        title={`#${formatter.identifier(order.number)}`}
         date={order.order_date}
       />
       {order.doc_status === 'void' ? <VoidBanner reason={order.void_reason} /> : null}
@@ -237,8 +235,8 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
           />
         ) : null}
         <Party
-          label={t('glossary:payment_type')}
-          name={`${t(`glossary:${order.payment_type}`)} · ${t(`glossary:${order.status}`)}`}
+          label={t('print:payment')}
+          name={t(`glossary:${order.payment_type}`)}
           lines={[
             order.acting_user_name ? `${t('glossary:done_by')}: ${order.acting_user_name}` : null,
           ]}
@@ -319,7 +317,7 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
           />
         </TotalRow>
         {paid > 0 ? (
-          <TotalRow label={t('print:paid_so_far')}>
+          <TotalRow label={t('print:paid_amount')}>
             <span>
               −
               <DualAmount
@@ -406,7 +404,7 @@ function PurchaseReceipt({ data }: { data: PurchaseReceiptData }) {
     <div className="mz-invoice">
       <DocumentHead
         type={t('print:purchase_receipt')}
-        title={t('purchases:number', { number: formatter.identifier(purchase.number) })}
+        title={`#${formatter.identifier(purchase.number)}`}
         date={purchase.purchase_date}
       />
       {purchase.doc_status === 'void' ? <VoidBanner reason={purchase.void_reason} /> : null}

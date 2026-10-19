@@ -42,5 +42,8 @@
   "this_order_owes": "This order still owes",
   "earlier_owe": "Earlier orders still owe ({{count}})",
   "total_owed": "Total owed",
-  "line_amount": "Amount"
+  "line_amount": "Amount",
+  "sale_receipt": "Sales receipt",
+  "payment": "Payment",
+  "paid_amount": "Paid"
 }
