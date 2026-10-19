@@ -3,7 +3,6 @@
   "failed": "Could not get this ready to print — try again",
   "print_receipt": "Print receipt",
   "select_row": "Select {{name}}",
-  "clear_selection": "Clear selection",
   "limit_reached": "Up to {{count}} at a time — print these, then choose more",
   "print_list": "Print list",
   "tick_to_print": "Tick the rows to print",

@@ -57,14 +57,13 @@ export function usePrintSelection<Row>(documentOf: (row: Row) => PrintDocument, 
     count: selected.size,
     full: selected.size >= PRINT_LIMIT,
     selection,
-    clear: () => setSelected(new Map()),
     print: () => print([...selected.values()]),
   };
 }
 
 /**
- * A list's one Print button. With rows ticked it prints them — "Print (3)", a page each
- * — and offers to clear the ticks. With none, a list's button waits, greyed out, for a tick (the
+ * A list's one Print button. With rows ticked it prints them — "Print (3)", a page each.
+ * With none, a list's button waits, greyed out, for a tick (the
  * business: a list prints what is chosen, never the whole of it unasked); an account's prints
  * what printing it means there, its statement for the dates chosen.
  */
@@ -91,13 +90,8 @@ export function PrintButton({
       >
         {ticked ? t('print:print_selected', { count: state.count }) : whole ? wholeLabel : t('print:print_list')}
       </Button>
-      {ticked ? (
-        <Button variant="ghost" onClick={state.clear}>
-          {t('print:clear_selection')}
-        </Button>
-      ) : !whole ? (
-        <span className="mz-caption">{t('print:tick_to_print')}</span>
-      ) : null}
+      {/* No "Clear selection" (business request): unticking is done on the rows themselves. */}
+      {!ticked && !whole ? <span className="mz-caption">{t('print:tick_to_print')}</span> : null}
       {state.full ? (
         <span className="mz-caption" role="status">
           {t('print:limit_reached', { count: PRINT_LIMIT })}
