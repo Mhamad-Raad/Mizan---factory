@@ -33,6 +33,8 @@ export interface PurchaseReceiptData {
   balance: {
     settlement_currency: Currency;
     cost: { total: number | null; remaining: number | null };
+    /** What we owe the company altogether now (D-111). */
+    account_owed: number | null;
   } | null;
 }
 

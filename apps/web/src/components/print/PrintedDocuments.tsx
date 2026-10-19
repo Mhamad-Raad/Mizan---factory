@@ -412,6 +412,7 @@ function PurchaseReceipt({ data }: { data: PurchaseReceiptData }) {
   );
   const total = balance?.cost.total ?? null;
   const remaining = balance?.cost.remaining ?? null;
+  const owedNow = balance?.account_owed ?? null;
 
   return (
     <div className="mz-invoice">
@@ -523,24 +524,48 @@ function PurchaseReceipt({ data }: { data: PurchaseReceiptData }) {
               primary={primary}
             />
           </TotalRow>
-          {total !== null && remaining !== null && purchase.doc_status === 'active' ? (
-            <>
-              <TotalRow label={t('print:paid_so_far')}>
+          {total !== null &&
+          remaining !== null &&
+          purchase.doc_status === 'active' &&
+          total - remaining > 0 ? (
+            <TotalRow label={t('print:paid_amount')}>
+              <span>
+                −
                 <DualAmount
                   {...bothOf(total - remaining, primary, rate)}
                   primary={primary}
                   kind="derived"
                 />
-              </TotalRow>
-              <TotalRow label={t('print:still_owed_on_purchase')}>
-                <DualAmount
-                  {...bothOf(remaining, primary, rate)}
-                  primary={primary}
-                  kind="derived"
-                />
-              </TotalRow>
-            </>
+              </span>
+            </TotalRow>
           ) : null}
+        </div>
+      ) : null}
+
+      {/* The three figures of a sale receipt, from our side (D-111): what is left to pay on this
+          purchase, what we owed the company before it, and what we owe them now, in red — the
+          company's account itself, so the red figure is the truth whatever else is on it. */}
+      {remaining !== null && owedNow !== null && purchase.doc_status === 'active' ? (
+        <div className="mz-invoice__figures">
+          <Figure
+            label={t('print:this_purchase_owes')}
+            amount={remaining}
+            primary={primary}
+            rate={rate}
+          />
+          <Figure
+            label={owedNow - remaining < 0 ? t('print:paid_ahead') : t('print:we_owed_before')}
+            amount={Math.abs(owedNow - remaining)}
+            primary={primary}
+            rate={rate}
+          />
+          <Figure
+            label={owedNow >= 0 ? t('print:we_owe_total') : balanceLabel('buying', owedNow, t)}
+            amount={Math.abs(owedNow)}
+            primary={primary}
+            rate={rate}
+            strong
+          />
         </div>
       ) : null}
 

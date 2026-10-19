@@ -47,5 +47,8 @@
   "payment": "الدفع",
   "paid_amount": "المدفوع",
   "owed_before": "الدين السابق",
-  "credit_before": "دفعة مقدمة سابقة"
+  "credit_before": "دفعة مقدمة سابقة",
+  "this_purchase_owes": "المتبقي على هذا الشراء",
+  "we_owed_before": "ديننا السابق لهم",
+  "we_owe_total": "مجموع ديننا لهم"
 }

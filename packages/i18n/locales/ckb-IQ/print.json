@@ -47,5 +47,8 @@
   "payment": "پارەدان",
   "paid_amount": "پارەی دراو",
   "owed_before": "قەرزی پێشوو",
-  "credit_before": "پارەی پێشوەختی پێشوو"
+  "credit_before": "پارەی پێشوەختی پێشوو",
+  "this_purchase_owes": "ماوەی ئەم کڕینە",
+  "we_owed_before": "قەرزی پێشووی ئێمە بۆیان",
+  "we_owe_total": "کۆی قەرزی ئێمە بۆیان"
 }

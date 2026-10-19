@@ -823,6 +823,8 @@ export class PurchasesService {
       allocated: number | null;
       remaining: number | null;
     };
+    /** What we owe the company altogether now, in its currency (D-111): the purchase receipt's red figure. */
+    account_owed: number | null;
   }> {
     const purchase = await this.requirePurchase(id);
     if (!purchase.company_id || !purchase.settlement_currency) {
@@ -830,11 +832,15 @@ export class PurchasesService {
         purchase_id: id,
         settlement_currency: null,
         cost: { total: null, linked: null, allocated: null, remaining: null },
+        account_owed: null,
       };
     }
 
     const settlement = purchase.settlement_currency;
-    const { allocation } = await this.companiesService.allocationOf(this.database, purchase.company_id, settlement);
+    const [{ allocation }, accountOwed] = await Promise.all([
+      this.companiesService.allocationOf(this.database, purchase.company_id, settlement),
+      this.companies.balanceOf(purchase.company_id),
+    ]);
 
     const mine = allocation.purchases.find((row) => row.purchase_id === id);
     return {
@@ -847,6 +853,7 @@ export class PurchasesService {
         allocated: mine?.allocated ?? 0,
         remaining: mine?.remaining ?? 0,
       },
+      account_owed: accountOwed,
     };
   }
 

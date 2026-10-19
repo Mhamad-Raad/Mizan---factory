@@ -1901,13 +1901,10 @@ a.mz-button {
   display: none;
 }
 
-/* The band runs to the paper's edges on a document's first page (D-110); a statement that runs on
-   keeps a margin at the top and bottom of each later page, and its own gutter at the sides. */
+/* Every page without a margin, so each document's band and grey strip reach the paper's edges and
+   every page has the same height (D-110, D-111). With a margin on all but the first page, the second
+   document of a print was a page tall on a shorter page, and its grey strip ran onto a page of its own. */
 @page {
-  margin: 12mm 0;
-}
-
-@page :first {
   margin: 0;
 }
 
@@ -1939,7 +1936,7 @@ a.mz-button {
      margins the browser or the printer settles on — a fixed 297 mm overflowed onto a second page
      wherever the page kept a margin. */
   .mz-print-host .mz-invoice {
-    min-block-size: 100vh;
+    min-block-size: calc(100vh - 1mm);
     print-color-adjust: exact;
   }
 

@@ -2234,3 +2234,15 @@ the business's colour, but **without the list of earlier sales** ("قەرزی ف
   left on the sale alone. A printed document is at least `100vh` tall — in print, the page's printable
   area — so the grey strip is at the paper's foot whatever margins the browser or printer keeps
   (a fixed 296 mm ran onto a second page wherever a margin was kept).
+
+## D-111 · 2026-10-19 · business request · Several documents in one print, and the purchase's three figures
+
+- **Several in one print:** only the first page had no margin, so every later document was a page
+  tall on a shorter page and its grey strip ran onto a page of its own. Every page now has no margin
+  (`@page { margin: 0 }`), and a document is at least the page's printable height less 1 mm, so each
+  ends at its own page's foot. Tested with three receipts ticked on Buying & selling: three pages.
+- **A purchase receipt has the three figures too**, from our side: **left to pay on this purchase**,
+  **we owed them before** (or "paid ahead" when it is a credit), and **we owe them in total** in red —
+  the company's account itself (`account_owed` on `GET /purchases/:id/balance`, behind
+  `fields.see_company_balances` as the route is). "Paid" stays a line of the worked-down money; the
+  "still owed on this purchase" line went, as the first figure says it.

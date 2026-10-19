@@ -47,5 +47,8 @@
   "payment": "Payment",
   "paid_amount": "Paid",
   "owed_before": "Owed from before",
-  "credit_before": "Paid ahead before"
+  "credit_before": "Paid ahead before",
+  "this_purchase_owes": "Left to pay on this purchase",
+  "we_owed_before": "We owed them before",
+  "we_owe_total": "We owe them in total"
 }
