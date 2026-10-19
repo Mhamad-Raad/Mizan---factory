@@ -112,6 +112,18 @@ wal_before() {
     }'
 }
 
+# The percentage used of the filesystem that holds <path> (D-115).
+disk_percent() {
+  df -P "$1" | awk 'NR == 2 { sub("%", "", $5); print $5 }'
+}
+
+# Tells the dead-man's switch something is wrong now, rather than waiting for its silence:
+# healthchecks.io reads <ping URL>/fail as a failure. Never fails the caller.
+alert_failure() {
+  [ -n "${BACKUP_HEARTBEAT_URL:-}" ] || return 0
+  wget -q -O /dev/null "${BACKUP_HEARTBEAT_URL%/}/fail" || echo "[disk] $(date -Iseconds) WARNING: the failure ping did not go through"
+}
+
 state_read() { cat "$STATE_DIR/$1" 2> /dev/null || true; }
 state_write() {
   mkdir -p "$STATE_DIR"
