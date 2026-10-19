@@ -7,6 +7,12 @@
 
 name: mizan
 
+# Docker's default json-file logs grow without end on the disk the database lives on; five
+# years unattended would fill it. Every service rotates at 5 x 10 MB (D-115).
+x-logging: &logging
+  driver: local
+  options: { max-size: '10m', max-file: '5' }
+
 services:
   web:
     build:
@@ -21,6 +27,7 @@ services:
     depends_on:
       api: { condition: service_healthy }
     restart: unless-stopped
+    logging: *logging
 
   api:
     # One tag for the API and the migrate job, so the migrations that run are the ones the API
@@ -45,13 +52,45 @@ services:
       ERROR_TRACKING_DSN: ${ERROR_TRACKING_DSN:-}
     depends_on:
       db: { condition: service_healthy }
+    # A small init as PID 1 with the API as its child: the kernel drops a signal sent from inside
+    # the container to a PID 1 that has no handler for it, and the API installs none, so the
+    # healthcheck below could not otherwise end it (D-115).
+    init: true
+    # Docker never restarts a container that is only unhealthy, and a hung API is exactly that.
+    # So the check ends the API itself: three failures in a row (about ninety seconds without an
+    # answer) send it SIGTERM, a fourth SIGKILL, and `restart` brings it back. No autoheal
+    # sidecar: that needs the Docker socket, which is root on the host (D-115). The image has
+    # node but no curl or wget. The count lives in /tmp, keyed to this start of the container,
+    # and failures in the first two minutes are not counted so a slow start is never killed.
     healthcheck:
-      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+      test:
+        - CMD
+        - node
+        - -e
+        - |
+          const fs = require('fs'), F = '/tmp/mizan-health-failures';
+          const start = fs.readFileSync('/proc/1/stat', 'utf8').split(') ')[1].split(' ')[19];
+          const age = parseFloat(fs.readFileSync('/proc/uptime', 'utf8')) - start / 100;
+          let n = 0;
+          try { const [s, c] = fs.readFileSync(F, 'utf8').split(' '); if (s === start) n = +c; } catch {}
+          const done = (ok) => {
+            n = ok || age < 120 ? 0 : n + 1;
+            fs.writeFileSync(F, start + ' ' + n);
+            if (n >= 3) for (const p of fs.readdirSync('/proc')) if (/^\d/.test(p)) try {
+              if (fs.readFileSync('/proc/' + p + '/cmdline', 'utf8') === 'node\0apps/api/dist/main.js\0')
+                process.kill(+p, n > 3 ? 'SIGKILL' : 'SIGTERM');
+            } catch {}
+            process.exit(ok ? 0 : 1);
+          };
+          fetch('http://127.0.0.1:3000/api/v1/health', { signal: AbortSignal.timeout(8000) })
+            .then((r) => done(r.ok), () => done(false));
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+      start_interval: 5s
     restart: unless-stopped
+    logging: *logging
 
   # The one-off migration job (runbook, "Ordinary deployment"): the same image as the API, the
   # only container that is handed the migrate role. `docker compose run --rm migrate`; the
@@ -70,6 +109,7 @@ services:
     depends_on:
       db: { condition: service_healthy }
     restart: 'no'
+    logging: *logging
 
   db:
     image: postgres:15-alpine
@@ -119,6 +159,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *logging
 
   backup:
     # pg_dump plus `openssl` and the `aws` client: the stock postgres image has neither, and a
@@ -137,8 +178,9 @@ services:
       PGPASSWORD: ${BACKUP_DB_PASSWORD:?the password of the mizan_backup role}
       BACKUP_BUCKET: ${BACKUP_BUCKET:?}
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:?}
-      # The dead-man's switch. Empty is allowed but shouted about at every start and every night.
-      BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
+      # The dead-man's switch. Required: it is also how a filling disk is reported, and with no
+      # one watching the server an unset alert is a failure nobody hears of (D-115).
+      BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:?set BACKUP_HEARTBEAT_URL to a dead-man's-switch ping URL (runbook, "Backups")}
       # Off-site retention is the bucket's lifecycle rules (runbook); 1 prunes from here instead,
       # which needs a key that may list and delete.
       BACKUP_PRUNE_OFFSITE: ${BACKUP_PRUNE_OFFSITE:-0}
@@ -157,6 +199,7 @@ services:
     depends_on:
       db: { condition: service_healthy }
     restart: unless-stopped
+    logging: *logging
 
 volumes:
   db-data:

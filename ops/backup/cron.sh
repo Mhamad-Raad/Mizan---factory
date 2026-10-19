@@ -35,6 +35,8 @@ ATTEMPT=0
 NEXT_TRY=0
 ATTEMPT_DAY=""
 while true; do
+  # First, so a filling disk is reported, and relieved, even on a pass that does nothing else.
+  sh "$HERE/disk-check.sh" || log "ERROR: the disk check failed — see the [disk] lines above"
   TODAY="$(date +%F)"
   if [ "$TODAY" != "$ATTEMPT_DAY" ]; then
     ATTEMPT=0

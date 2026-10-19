@@ -909,3 +909,18 @@ go-live checklist in `ops/runbook/README.md`, run with the client on their own h
   print page rules reached an ordinary Ctrl+P. Kept, with reasons, in D-114.
 - **Known, not from this change:** `/reports` is 13 px too wide at 360 px with English text at
   1.25× (fails on `main` too).
+
+## Load test and running unattended (2026-10-19) · branch `fix/load-and-operations`
+
+- **Load test at five years of NFR-13:** 913,000 sales, 913,000 purchases, 10,500 customers, 5,000
+  materials, about 913,000 History rows, 3 GB (`scripts/seed-volume.mjs`).
+  Five users working normally, and 5 and 25 users with no pauses: no server errors, screens
+  p95 ≤ 0.2 s, memory flat at about 500 MB. The stock report over five years is the slowest
+  (1.3–2.5 s), left as it is.
+- **Running for years unattended (D-115):** a connection lost mid-write fails only that write
+  instead of stopping the API (`connection-loss.test.ts`); a disk guard in the backup container
+  warns at 80 % and, at 90 %, drops the oldest local WAL so PostgreSQL never stops on a full disk;
+  `BACKUP_HEARTBEAT_URL` is required; every container's logs are capped at 10 MB × 5; an API that
+  fails its health check three times in a row is restarted.
+- **Known, kept:** ten or more sales saved at the same instant can hold the pool for 60 s (D-115);
+  out of reach at five users, to revisit if the staff grows toward thirty.
