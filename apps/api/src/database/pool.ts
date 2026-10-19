@@ -45,6 +45,16 @@ export class Database implements Db, OnModuleDestroy {
    */
   async transaction<T>(work: (tx: Db & { client: PoolClient }) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
+    // The pool listens for errors on idle connections only. A connection the server ends while it
+    // is checked out (a database restart, the idle-in-transaction timeout) would otherwise raise
+    // an unhandled 'error' event and stop the whole API (D-115); it fails this write instead, and
+    // is discarded rather than handed to the next request.
+    let broken: Error | undefined;
+    const onError = (error: Error) => {
+      broken = error;
+      this.logger.error(`connection lost inside a transaction: ${error.message}`);
+    };
+    client.on('error', onError);
     try {
       await client.query('BEGIN');
       const scoped = {
@@ -56,10 +66,15 @@ export class Database implements Db, OnModuleDestroy {
       await client.query('COMMIT');
       return result;
     } catch (error) {
-      await client.query('ROLLBACK');
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        broken ??= rollbackError as Error;
+      }
       throw error;
     } finally {
-      client.release();
+      client.off('error', onError);
+      client.release(broken);
     }
   }
 
