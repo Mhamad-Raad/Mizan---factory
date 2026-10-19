@@ -45,5 +45,7 @@
   "line_amount": "Amount",
   "sale_receipt": "Sales receipt",
   "payment": "Payment",
-  "paid_amount": "Paid"
+  "paid_amount": "Paid",
+  "owed_before": "Owed from before",
+  "credit_before": "Paid ahead before"
 }

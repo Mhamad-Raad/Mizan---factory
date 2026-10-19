@@ -2225,3 +2225,12 @@ the business's colour, but **without the list of earlier sales** ("قەرزی ف
   no margin, so the band and the strip reach the paper's edges). The dollar figure stays beside each
   amount, smaller and grey (rule 7), where the sample PDF showed it only in the red figure.
 
+- **Three figures always, the footer always at the foot (business, same day):** a sale receipt always
+  shows the three of the design — **this sale still owes**, **owed from before**, **total owed** in
+  red. "Total owed" is the account's balance after this sale, so it is the truth even with an opening
+  debt, a credit or a payment not made against an order; "before" is that balance less this sale,
+  named "earlier sales (N)" when the earlier sales are the whole of it, "owed from before" otherwise,
+  "paid ahead before" when it is a credit. Whoever may not see balances, and the walk-in, see what is
+  left on the sale alone. A printed document is at least `100vh` tall — in print, the page's printable
+  area — so the grey strip is at the paper's foot whatever margins the browser or printer keeps
+  (a fixed 296 mm ran onto a second page wherever a margin was kept).

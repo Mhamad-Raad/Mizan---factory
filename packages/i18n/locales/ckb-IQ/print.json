@@ -45,5 +45,7 @@
   "line_amount": "کۆ",
   "sale_receipt": "پسوولەی فرۆشتن",
   "payment": "پارەدان",
-  "paid_amount": "پارەی دراو"
+  "paid_amount": "پارەی دراو",
+  "owed_before": "قەرزی پێشوو",
+  "credit_before": "پارەی پێشوەختی پێشوو"
 }

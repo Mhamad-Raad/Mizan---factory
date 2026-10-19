@@ -45,5 +45,7 @@
   "line_amount": "المبلغ",
   "sale_receipt": "وصل بيع",
   "payment": "الدفع",
-  "paid_amount": "المدفوع"
+  "paid_amount": "المدفوع",
+  "owed_before": "الدين السابق",
+  "credit_before": "دفعة مقدمة سابقة"
 }

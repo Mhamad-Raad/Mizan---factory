@@ -1934,9 +1934,12 @@ a.mz-button {
     break-after: auto;
   }
 
-  /* A page tall, so the grey strip sits at the foot of the paper as in the chosen design (D-110). */
+  /* At least a page tall, so the grey strip sits at the foot of the paper as in the chosen design
+     (D-110). In print the viewport is the page's printable area, so `100vh` is right whatever
+     margins the browser or the printer settles on — a fixed 297 mm overflowed onto a second page
+     wherever the page kept a margin. */
   .mz-print-host .mz-invoice {
-    min-block-size: 296mm;
+    min-block-size: 100vh;
     print-color-adjust: exact;
   }
 

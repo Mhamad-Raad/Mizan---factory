@@ -200,6 +200,9 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
   const earlier = data.earlier_owing ?? null;
   const earlierOwed = earlier?.remaining ?? 0;
   const owesNow = Math.max(order.remaining, 0);
+  // The account after this order, and what of it was owed before this order (D-110).
+  const balance = customer.is_system ? null : data.balance_after;
+  const before = balance === null ? 0 : balance - owesNow;
   // What was paid against this order: its total less what it still owes, in the account's currency.
   const settlementTotal = primary === 'IQD' ? order.total_iqd : order.total_usd_cents;
   const paid = order.doc_status === 'active' ? Math.max(settlementTotal - owesNow, 0) : 0;
@@ -336,38 +339,48 @@ function OrderReceipt({ data }: { data: OrderReceiptData }) {
           against an order. Not on a void order: it owes nothing. */}
       {order.doc_status === 'active' ? (
         <div className="mz-invoice__figures">
-          <Figure
-            label={earlierOwed > 0 ? t('print:this_order_owes') : t('orders:remaining')}
-            amount={owesNow}
-            primary={primary}
-            rate={order.rate_iqd_per_usd}
-            strong={earlierOwed === 0}
-          />
-          {earlierOwed > 0 ? (
+          {/* Always three, as in the chosen design (D-110): what is left on this order, what was
+              owed before it, and what they owe now — the account itself, so the red figure is the
+              truth even with an opening debt, a credit or a payment not made against an order.
+              "Before" names the earlier orders when they are the whole of it. */}
+          {balance !== null ? (
             <>
               <Figure
-                label={t('print:earlier_owe', { count: earlier?.count ?? 0 })}
-                amount={earlierOwed}
+                label={t('print:this_order_owes')}
+                amount={owesNow}
                 primary={primary}
                 rate={order.rate_iqd_per_usd}
               />
               <Figure
-                label={t('print:total_owed')}
-                amount={owesNow + earlierOwed}
+                label={
+                  before < 0
+                    ? t('print:credit_before')
+                    : before === earlierOwed && (earlier?.count ?? 0) > 0
+                      ? t('print:earlier_owe', { count: earlier?.count ?? 0 })
+                      : t('print:owed_before')
+                }
+                amount={Math.abs(before)}
+                primary={primary}
+                rate={order.rate_iqd_per_usd}
+              />
+              <Figure
+                label={balance >= 0 ? t('print:total_owed') : balanceLabel('sales', balance, t)}
+                amount={Math.abs(balance)}
                 primary={primary}
                 rate={order.rate_iqd_per_usd}
                 strong
               />
             </>
-          ) : null}
-          {data.balance_after !== null && data.balance_after !== owesNow + earlierOwed ? (
+          ) : (
+            // Whoever may not see balances, and the walk-in, see what is left on this order alone.
             <Figure
-              label={balanceLabel('sales', data.balance_after, t)}
-              amount={Math.abs(data.balance_after)}
+              label={t('orders:remaining')}
+              amount={owesNow}
               primary={primary}
               rate={order.rate_iqd_per_usd}
+              strong
             />
-          ) : null}
+          )}
         </div>
       ) : null}
 
