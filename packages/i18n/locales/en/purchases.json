@@ -98,7 +98,7 @@
   "save_purchase": "Save purchase",
   "rate_for_purchase": "Rate for this purchase",
   "owed_before": "We already owe them",
-  "notes_hint": "Optional — their invoice number, the driver, anything worth keeping",
+  "notes_hint": "Optional — their invoice number, anything worth keeping",
   "add_first_line": "Add the first material you bought.",
   "choose_company_first": "Choose who you bought from to save",
   "paid_now": "Did you pay them now?",
@@ -124,5 +124,6 @@
   "rate_badge_saved": "Saved rate",
   "rate_was_saved": "The saved rate is {{rate}}",
   "rate_was_company": "The company rate is {{rate}}",
-  "rate_was_system": "The system rate is {{rate}}"
+  "rate_was_system": "The system rate is {{rate}}",
+  "driver_hint": "Who brought it in. Optional."
 }

@@ -25,6 +25,9 @@ import { CompaniesRepository } from './companies/companies.repository.js';
 import { CompaniesService } from './companies/companies.service.js';
 import { CustomersController } from './customers/customers.controller.js';
 import { DamagesController } from './damages/damages.controller.js';
+import { DriversController } from './drivers/drivers.controller.js';
+import { DriversRepository } from './drivers/drivers.repository.js';
+import { DriversService } from './drivers/drivers.service.js';
 import { DamagesRepository } from './damages/damages.repository.js';
 import { DamagesService } from './damages/damages.service.js';
 import { CustomersRepository } from './customers/customers.repository.js';
@@ -79,6 +82,7 @@ import { UsersService } from './users/users.service.js';
     CompaniesController,
     PurchasesController,
     DamagesController,
+    DriversController,
     ReportsController,
     DashboardController,
     ImportsController,
@@ -112,6 +116,8 @@ import { UsersService } from './users/users.service.js';
     ItemsService,
     CustomersRepository,
     CustomersService,
+    DriversRepository,
+    DriversService,
     OrdersRepository,
     OrdersService,
     CompaniesRepository,

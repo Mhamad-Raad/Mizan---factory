@@ -38,6 +38,7 @@ import {
   BanknoteArrowUp,
   Sun,
   Trash2,
+  Truck,
   Type,
   Unlock,
   User,
@@ -87,6 +88,7 @@ export type IconName =
   | 'materials'
   | 'customers'
   | 'companies'
+  | 'drivers'
   | 'purchases'
   | 'accounts'
   | 'money-in'
@@ -102,6 +104,8 @@ export const MIRRORED_ICONS: ReadonlySet<IconName> = new Set<IconName>([
   'chevron',
   'next',
   'logout',
+  // A truck drives forward, which is the reading direction (D-105).
+  'drivers',
 ]);
 
 const ICONS: Record<IconName, LucideIcon> = {
@@ -138,6 +142,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   materials: Package,
   customers: Contact,
   companies: Building2,
+  drivers: Truck,
   purchases: ShoppingCart,
   // The accountant's page (D-085): the cart belongs to Purchases now.
   accounts: Wallet,

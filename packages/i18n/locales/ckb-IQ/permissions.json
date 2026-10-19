@@ -97,5 +97,9 @@
   "fields_row": "چی دەبینێت",
   "permissions.accounts.view": "بینینی پەڕەی ژمێریار",
   "permissions.expenses.create": "زیادکردنی خەرجی",
-  "permissions.expenses.void": "هەڵوەشاندنەوەی خەرجی"
+  "permissions.expenses.void": "هەڵوەشاندنەوەی خەرجی",
+  "permissions.drivers.view": "بینینی شۆفێرەکان",
+  "permissions.drivers.create": "زیادکردنی شۆفێر",
+  "permissions.drivers.edit": "دەستکاریی شۆفێر",
+  "page.drivers": "شۆفێرەکان"
 }

@@ -76,5 +76,10 @@
   "paid_exceeds_buy": "That is more than this purchase came to — record money paid ahead on the company's page",
   "purchase_below_paid": "This would make the purchase less than what has already been paid on it — reverse the payment on the company's page first",
   "PAID_WITH_PURCHASE": "This purchase was paid when it was entered. Voiding it takes that money back, which only an administrator — or whoever paid it, on the same day — may do",
-  "company_required": "Choose the company it was bought from"
+  "company_required": "Choose the company it was bought from",
+  "driver_phone_duplicate": "Another driver already has this phone number.",
+  "driver_not_found": "That driver no longer exists.",
+  "driver_inactive": "{{name}} is deactivated and cannot be chosen for a new order.",
+  "logo_not_a_picture": "That is not a PNG, JPEG or WebP picture.",
+  "logo_too_large": "That logo is too large. Choose a smaller picture."
 }

@@ -71,6 +71,7 @@ const DESTINATIONS: Destination[] = [
   },
   { to: '/damages', labelKey: 'damages:tab_label', icon: 'warning', group: 'records', permission: 'damages.view' },
   { to: '/customers', labelKey: 'customers:title', icon: 'companies', group: 'records', permission: 'customers.view' },
+  { to: '/drivers', labelKey: 'drivers:title', icon: 'drivers', group: 'records', permission: 'drivers.view' },
   // Looking back over all of it.
   { to: '/reports', labelKey: 'reports:title', icon: 'chart', group: 'insight', permission: 'reports.view' },
   { to: '/history', labelKey: 'glossary:history', icon: 'history', group: 'insight', permission: 'history.view' },

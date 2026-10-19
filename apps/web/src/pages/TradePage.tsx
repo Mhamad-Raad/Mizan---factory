@@ -27,6 +27,8 @@ import type { TradeRow } from '../components/TradeTable.js';
 import { OrderSaveWarningsNotice } from '../components/OrderSaveWarnings.js';
 import type { OrderSaveWarnings } from '../components/OrderSaveWarnings.js';
 import type { CustomerRow } from './CustomersPage.js';
+import { driverCaption } from '../lib/drivers.js';
+import type { DriverRow } from '../lib/drivers.js';
 
 type Kind = 'all' | 'sale' | 'purchase';
 type DatePreset = 'all' | 'since_yesterday' | 'today' | 'week' | 'month' | 'last_month' | 'year' | 'custom';
@@ -77,6 +79,8 @@ export function TradePage() {
   const companiesPath =
     isAdmin || permissions.has('customers.view') ? '/customers' : permissions.has('companies.view') ? '/companies' : null;
   const mayPurchases = isAdmin || permissions.has('purchases.view');
+  // The driver filter (D-105, D-106): sales and purchases alike, picked from the drivers.
+  const mayDrivers = isAdmin || permissions.has('drivers.view');
 
   // The side is in the address, so /orders and /purchases open this page on theirs.
   const asked = params.get('kind') as Kind | null;
@@ -136,6 +140,9 @@ export function TradePage() {
   const [companyId, setCompanyId] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [pickingCompany, setPickingCompany] = useState(false);
+  const [driverId, setDriverId] = useState('');
+  const [driverName, setDriverName] = useState('');
+  const [pickingDriver, setPickingDriver] = useState(false);
   const [doneBy, setDoneBy] = useState('');
   const [status, setStatus] = useState<Status>('');
   const [paymentType, setPaymentType] = useState<'' | 'cash' | 'borrowed'>('');
@@ -149,6 +156,7 @@ export function TradePage() {
   const activeFilters = [
     datePreset !== OPENING_PERIOD,
     companyId !== '',
+    driverId !== '',
     doneBy !== '',
     status !== '',
     paymentType !== '',
@@ -159,6 +167,8 @@ export function TradePage() {
     setCustomTo('');
     setCompanyId('');
     setCompanyName('');
+    setDriverId('');
+    setDriverName('');
     setDoneBy('');
     setStatus('');
     setPaymentType('');
@@ -170,6 +180,7 @@ export function TradePage() {
   if (range.to) filters.set('to', range.to);
   if (query) filters.set('q', query);
   if (companyId) filters.set('company_id', companyId);
+  if (driverId) filters.set('driver_id', driverId);
   if (doneBy) filters.set('done_by', doneBy);
   if (status) filters.set('status', status);
   if (paymentType) filters.set('payment_type', paymentType);
@@ -310,6 +321,21 @@ export function TradePage() {
                   ) : null}
                 </span>
               </div>
+              ) : null}
+              {mayDrivers ? (
+                <div className="mz-field">
+                  <span className="mz-field__label">{t('glossary:driver')}</span>
+                  <span className="mz-filter-panel__company">
+                    <Button variant="secondary" icon="drivers" onClick={() => setPickingDriver(true)}>
+                      <bdi>{driverId ? driverName : t('trade:any_driver')}</bdi>
+                    </Button>
+                    {driverId ? (
+                      <Button variant="ghost" onClick={() => setDriverId('')}>
+                        {t('trade:remove_company')}
+                      </Button>
+                    ) : null}
+                  </span>
+                </div>
               ) : null}
               <label className="mz-field">
                 <span className="mz-field__label">{t('trade:recorded_by')}</span>
@@ -495,6 +521,28 @@ export function TradePage() {
             setPickingCompany(false);
             setCompanyId(id);
             setCompanyName((row as unknown as CustomerRow).name);
+          }}
+        />
+      ) : null}
+
+      {pickingDriver ? (
+        <PickerSheet
+          title={t('orders:choose_driver')}
+          open
+          onClose={() => setPickingDriver(false)}
+          // Deactivated drivers too: their old sales are still worth finding.
+          path="/drivers?status=all"
+          icon="drivers"
+          searchLabel={t('drivers:search_placeholder')}
+          emptyTitle={t('drivers:empty')}
+          toItem={(row: never) => {
+            const driver = row as unknown as DriverRow;
+            return { id: driver.id, title: driver.name, subtitle: driverCaption(driver) };
+          }}
+          onPick={(id, row) => {
+            setPickingDriver(false);
+            setDriverId(id);
+            setDriverName((row as unknown as DriverRow).name);
           }}
         />
       ) : null}

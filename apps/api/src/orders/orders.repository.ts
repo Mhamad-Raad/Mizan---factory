@@ -18,6 +18,7 @@ function orderColumns(alias = 'orders'): string {
     'acting_user_id',
     'payment_type::text AS payment_type',
     'notes',
+    'driver_id',
     'rate_iqd_per_usd::text AS rate_iqd_per_usd',
     'rate_source::text AS rate_source',
     'status::text AS status',
@@ -98,6 +99,7 @@ const STATUS_EXPRESSION = `
 const LIST_COLUMNS = `c.name AS customer_name, c.is_system AS customer_is_system,
                       c.settlement_currency::text AS settlement_currency,
                       u.display_name AS acting_user_name, v.display_name AS voided_by_name,
+                      (SELECT dr.name FROM drivers dr WHERE dr.id = o.driver_id) AS driver_name,
                       ${REMAINING}::text AS remaining, ${STATUS_EXPRESSION} AS derived_status,
                       settle.entered_currency::text AS received_currency,
                       (SELECT count(*)::text FROM order_lines l
@@ -107,6 +109,8 @@ export interface OrderFilters {
   /** FR-802: the damage pickers show only the documents that carried the material. */
   item_id?: string;
   customer_id?: string;
+  /** The orders one driver took (D-105): the driver's page and the Buying & selling filter. */
+  driver_id?: string;
   from?: string;
   to?: string;
   done_by?: string;
@@ -128,6 +132,7 @@ export interface OrderListRow extends OrderRow {
   settlement_currency: Currency;
   acting_user_name: string | null;
   voided_by_name: string | null;
+  driver_name: string | null;
   remaining: string;
   derived_status: string;
   received_currency: Currency | null;
@@ -234,6 +239,10 @@ export class OrdersRepository {
     if (filters.customer_id) {
       values.push(filters.customer_id);
       conditions.push(`o.customer_id = $${values.length}::uuid`);
+    }
+    if (filters.driver_id) {
+      values.push(filters.driver_id);
+      conditions.push(`o.driver_id = $${values.length}::uuid`);
     }
     // FR-802: "which order did these come back from?" is asked of the orders that carried the
     // material, through `order_lines_item_idx` rather than a scan of the lines.
@@ -431,7 +440,13 @@ export class OrdersRepository {
     // per-account sum of migration 0035, one row per account instead of every owing order
     // (430–480 ms at ten years, when two orders in three were still owed).
     const unnarrowed =
-      !filters.item_id && !filters.from && !filters.to && !filters.done_by && !filters.payment_type && !query;
+      !filters.item_id &&
+      !filters.driver_id &&
+      !filters.from &&
+      !filters.to &&
+      !filters.done_by &&
+      !filters.payment_type &&
+      !query;
     if (unnarrowed && filters.status !== 'void') {
       const status = filters.status;
       const owingNow = this.owingOf(filters.customer_id);
@@ -543,6 +558,23 @@ export class OrdersRepository {
     return { owing: setOf('owing'), unpaid: setOf('unpaid') };
   }
 
+  /**
+   * What the account still owes for its earlier orders (D-109): placed before this one (by number),
+   * not void, something left in the account's own currency — how many, and what is left on them.
+   * The receipt says the figure, not the list (D-110). One range of the partial index of owing orders.
+   */
+  async earlierOwing(customerId: string, number: number, currency: 'IQD' | 'USD') {
+    const remaining = currency === 'IQD' ? 'r.remaining_iqd' : 'r.remaining_usd_cents';
+    const { rows } = await this.database.query<{ orders: string; remaining: string }>(
+      `SELECT count(*)::text AS orders, coalesce(sum(${remaining}), 0)::text AS remaining
+         FROM order_remaining r JOIN orders o ON o.id = r.order_id
+        WHERE o.customer_id = $1 AND o.number < $2 AND o.status = 'active' AND o.deleted_at IS NULL
+          AND ${MAY_OWE} AND ${remaining} > 0`,
+      [customerId, number],
+    );
+    return { count: Number(rows[0]?.orders ?? 0), remaining: Number(rows[0]?.remaining ?? 0) };
+  }
+
   /** What the ledger says is still owed on one order, in one currency (0 before any entry). */
   async remainingOf(orderId: string, currency: 'IQD' | 'USD', tx: Db): Promise<number> {
     const column = currency === 'IQD' ? 'remaining_iqd' : 'remaining_usd_cents';
@@ -574,6 +606,7 @@ export class OrdersRepository {
       acting_user_id: string;
       payment_type: PaymentType;
       notes: string | null;
+      driver_id: string | null;
       rate_iqd_per_usd: string;
       rate_source: RateSource;
       discount_iqd: number;
@@ -585,8 +618,8 @@ export class OrdersRepository {
     const { rows } = await tx.query<OrderRow>(
       `INSERT INTO orders (customer_id, order_date, acting_user_id, payment_type, notes,
                            rate_iqd_per_usd, rate_source, discount_iqd, discount_usd_cents,
-                           created_by, updated_by)
-       VALUES ($1, $2::date, $3, $4::payment_type, $5, $6::numeric, $7::rate_source, $8, $9, $10, $10)
+                           created_by, updated_by, driver_id)
+       VALUES ($1, $2::date, $3, $4::payment_type, $5, $6::numeric, $7::rate_source, $8, $9, $10, $10, $11)
        RETURNING ${orderColumns()}`,
       [
         input.customer_id,
@@ -599,6 +632,7 @@ export class OrdersRepository {
         input.discount_iqd,
         input.discount_usd_cents,
         input.created_by,
+        input.driver_id,
       ],
     );
     return rows[0] as OrderRow;
@@ -680,6 +714,7 @@ export class OrdersRepository {
       order_date: string;
       payment_type: PaymentType;
       notes: string | null;
+      driver_id: string | null;
       rate_iqd_per_usd: string;
       rate_source: RateSource;
       discount_iqd: number;

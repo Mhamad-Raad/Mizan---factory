@@ -22,6 +22,7 @@ import ckbPrint from '@mizan/i18n/locales/ckb-IQ/print.json';
 import ckbTrade from '@mizan/i18n/locales/ckb-IQ/trade.json';
 import ckbDashboard from '@mizan/i18n/locales/ckb-IQ/dashboard.json';
 import ckbImports from '@mizan/i18n/locales/ckb-IQ/imports.json';
+import ckbDrivers from '@mizan/i18n/locales/ckb-IQ/drivers.json';
 
 import arCommon from '@mizan/i18n/locales/ar-IQ/common.json';
 import arGlossary from '@mizan/i18n/locales/ar-IQ/glossary.json';
@@ -42,6 +43,7 @@ import arPrint from '@mizan/i18n/locales/ar-IQ/print.json';
 import arTrade from '@mizan/i18n/locales/ar-IQ/trade.json';
 import arDashboard from '@mizan/i18n/locales/ar-IQ/dashboard.json';
 import arImports from '@mizan/i18n/locales/ar-IQ/imports.json';
+import arDrivers from '@mizan/i18n/locales/ar-IQ/drivers.json';
 
 import enCommon from '@mizan/i18n/locales/en/common.json';
 import enGlossary from '@mizan/i18n/locales/en/glossary.json';
@@ -62,6 +64,7 @@ import enPrint from '@mizan/i18n/locales/en/print.json';
 import enTrade from '@mizan/i18n/locales/en/trade.json';
 import enDashboard from '@mizan/i18n/locales/en/dashboard.json';
 import enImports from '@mizan/i18n/locales/en/imports.json';
+import enDrivers from '@mizan/i18n/locales/en/drivers.json';
 
 /**
  * The catalogs are bundled, not fetched: a floor tablet on a bad connection must not be able
@@ -86,6 +89,7 @@ const resources = {
     reports: ckbReports,
     dashboard: ckbDashboard,
     imports: ckbImports,
+    drivers: ckbDrivers,
     print: ckbPrint,
     trade: ckbTrade,
   },
@@ -107,6 +111,7 @@ const resources = {
     reports: arReports,
     dashboard: arDashboard,
     imports: arImports,
+    drivers: arDrivers,
     print: arPrint,
     trade: arTrade,
   },
@@ -128,6 +133,7 @@ const resources = {
     reports: enReports,
     dashboard: enDashboard,
     imports: enImports,
+    drivers: enDrivers,
     print: enPrint,
     trade: enTrade,
   },

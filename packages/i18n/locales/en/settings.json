@@ -95,5 +95,17 @@
   "me_saved": "Saved",
   "me_save": "Save",
   "me_password": "Password",
-  "me_password_hint": "Your current password first, then the new one twice"
+  "me_password_hint": "Your current password first, then the new one twice",
+  "business_title": "Receipt details",
+  "business_hint": "The name, phone, address and logo at the top of every receipt and statement.",
+  "business_name": "Business name",
+  "business_name_hint": "Left empty, receipts say Jiyan Management.",
+  "business_saved": "Receipt details saved",
+  "logo": "Logo",
+  "no_logo": "No logo yet",
+  "logo_add": "Add logo",
+  "logo_change": "Change logo",
+  "logo_remove": "Remove logo",
+  "logo_too_large": "That picture is too detailed to fit. Try a smaller or simpler one.",
+  "logo_unreadable": "That file is not a picture we can open. Use a PNG, JPEG or WebP."
 }

@@ -49,6 +49,9 @@ describe('maintained totals and the ten-year review (D-075)', () => {
     admin = await signIn(ctx.http, adminUser);
     plain = await signIn(ctx.http, plainUser);
     await as(ctx.http, admin).post('/api/v1/settings/global-rates').send({ rate_iqd_per_usd: '1310' }).expect(201);
+    // These tests sell without buying first; selling past stock is refused by default since D-107,
+    // and what they test is not the stock, so they keep the old rule.
+    await as(ctx.http, admin).patch('/api/v1/settings').send({ allow_negative_stock: true }).expect(200);
 
     // 100 bottles bought at 1,310 د.ع each: the material and its first buy.
     bottles = (

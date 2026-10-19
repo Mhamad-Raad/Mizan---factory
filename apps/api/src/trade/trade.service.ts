@@ -24,6 +24,8 @@ export interface TradeFilters {
   q?: string;
   /** The company: the customer of a sale, the supplier of a purchase. */
   company_id?: string;
+  /** The driver who took a sale or brought a purchase in (D-105, D-106). */
+  driver_id?: string;
   done_by?: string;
   /** Paid states are a sale's alone; `void` is either kind's. */
   status?: 'unpaid' | 'partially_paid' | 'paid' | 'owing' | 'void';
@@ -79,6 +81,7 @@ export class TradeService {
 
     const saleFilters: OrderFilters = {
       customer_id: filters.company_id,
+      driver_id: filters.driver_id,
       from: filters.from,
       to: filters.to,
       done_by: filters.done_by,
@@ -88,6 +91,7 @@ export class TradeService {
     };
     const purchaseFilters: PurchaseFilters = {
       company_id: filters.company_id,
+      driver_id: filters.driver_id,
       from: filters.from,
       to: filters.to,
       done_by: filters.done_by,

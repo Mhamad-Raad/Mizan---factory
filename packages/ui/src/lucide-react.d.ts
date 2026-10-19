@@ -24,6 +24,7 @@ declare module 'lucide-react' {
   export const Unlock: LucideIcon;
   export const User: LucideIcon;
   export const Users: LucideIcon;
+  export const Truck: LucideIcon;
   export const History: LucideIcon;
   export const Settings: LucideIcon;
   export const Eye: LucideIcon;

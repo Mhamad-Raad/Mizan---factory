@@ -139,5 +139,12 @@
   "value.not_returnable": "لا يُرجَع",
   "value.admin": "مدير",
   "value.employee": "موظف",
-  "field.rounding": "التقريب"
+  "field.rounding": "التقريب",
+  "entity.driver": "سائق",
+  "field.car_number": "رقم السيارة",
+  "field.driver": "السائق",
+  "field.business_name": "اسم العمل",
+  "field.business_phone": "هاتف العمل",
+  "field.business_address": "عنوان العمل",
+  "field.business_logo": "الشعار على الوصولات"
 }

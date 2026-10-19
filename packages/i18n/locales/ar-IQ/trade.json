@@ -25,5 +25,6 @@
   "tile_owed_to_us": "ما زال لنا على الشركات",
   "empty": "لا مبيعات ولا مشتريات في هذه الفترة",
   "period_since_yesterday": "اليوم والأمس",
-  "remove_company": "إزالة"
+  "remove_company": "إزالة",
+  "any_driver": "الكل"
 }

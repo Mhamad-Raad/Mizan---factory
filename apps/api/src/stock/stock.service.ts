@@ -201,10 +201,15 @@ export class StockService {
    * "Stock is 12, you are selling 15" (FR-303). Selling below stock warns by default and is
    * refused when the admin set `allow_negative_stock = false`, naming the item and what is
    * left so the employee can correct the line rather than guess (A-34, spec 2.5.1).
+   *
+   * `held` is what an edited order already took, per material and measure: an edit is refused
+   * only for selling more than that, so an order that sold beyond stock before D-107 can still
+   * have its date or payment corrected (review D-114) — it only warns.
    */
   async assertSellable(
     tx: Db,
     lines: readonly { item_id: string; item_name: string; priced_measure: Measure; quantity: string }[],
+    held: ReadonlyMap<string, Decimal> = new Map(),
   ): Promise<{ item_id: string; item_name: string; available: string; requested: string; measure: Measure }[]> {
     const allowNegative = await this.settings.get('allow_negative_stock');
     const warnings: {
@@ -237,7 +242,8 @@ export class StockService {
         complete: priced.complete,
       });
 
-      if (check.kind === 'refuse') {
+      const keepsWhatItHeld = quantity.lte(held.get(`${itemId}:${line.priced_measure}`) ?? -1);
+      if (check.kind === 'refuse' && !keepsWhatItHeld) {
         throw ApiError.validation([
           {
             path: `lines.${lines.indexOf(line)}.quantity`,
@@ -252,7 +258,7 @@ export class StockService {
           },
         ]);
       }
-      if (check.kind === 'warn') {
+      if (check.kind === 'warn' || check.kind === 'refuse') {
         warnings.push({
           item_id: itemId,
           item_name: line.item_name,

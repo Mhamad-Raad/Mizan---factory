@@ -35,6 +35,7 @@ import { RatesService } from '../rates/rates.service.js';
 import { PeriodService } from '../settings/period.service.js';
 import { SettingsService } from '../settings/settings.service.js';
 import { StockService } from '../stock/stock.service.js';
+import { DriversService } from '../drivers/drivers.service.js';
 import { LotsService } from '../lots/lots.service.js';
 import type { Plan } from '../lots/lots.service.js';
 import { OrdersRepository } from './orders.repository.js';
@@ -62,6 +63,11 @@ export interface CreateOrderInput {
   /** What was handed over, when it differs from the exact total (a rounded note, say). */
   received_amount?: number | null;
   notes?: string | null;
+  /**
+   * Who takes the order (D-105). Null names nobody; on an edit, left out (`undefined`) keeps the
+   * driver the order has.
+   */
+  driver_id?: string | null;
   /** "Rate for this order" (2.3.3); the global rate when absent. */
   rate_iqd_per_usd?: string | null;
   /** Proposed — not requested (FR-616). */
@@ -102,6 +108,7 @@ export class OrdersService {
     private readonly audit: AuditService,
     private readonly history: HistoryRepository,
     private readonly lots: LotsService,
+    private readonly drivers: DriversService,
   ) {}
 
   async list(
@@ -175,6 +182,9 @@ export class OrdersService {
     const created = await this.database.transaction(async (tx) => {
       const locked = await this.ledger.lockOwner(tx, customer.id);
       if (!locked) throw ApiError.notFound();
+      // The driver after the account and before the materials: held so it cannot be deactivated
+      // between this check and the save (D-105).
+      const driver = await this.drivers.requireForDocument(tx, input.driver_id ?? null);
 
       // Every material's lock up front, in one order, after the account's (review: deadlocks).
       await this.lots.lockItems(tx, input.lines.map((line) => line.item_id));
@@ -199,6 +209,7 @@ export class OrdersService {
           acting_user_id: actingUserId,
           payment_type: input.payment_type,
           notes: input.notes?.trim() || null,
+          driver_id: driver?.id ?? null,
           rate_iqd_per_usd: rate,
           rate_source: rateSource,
           discount_iqd: discount.amount_iqd,
@@ -247,6 +258,7 @@ export class OrdersService {
             customer_id: { old: null, new: customer.id },
             order_date: { old: null, new: input.order_date },
             payment_type: { old: null, new: input.payment_type },
+            ...(driver ? { driver: { old: null, new: driver.name } } : {}),
             rate_iqd_per_usd: { old: null, new: rate },
             lines: { old: null, new: lines.map(lineSummary) },
             total: {
@@ -263,6 +275,7 @@ export class OrdersService {
           related: {
             order_id: order.id,
             customer_id: customer.id,
+            ...(driver ? { driver_id: driver.id } : {}),
           },
         },
         tx,
@@ -330,6 +343,12 @@ export class OrdersService {
       if (!customerRow) throw ApiError.notFound();
       const locked = await this.ledger.lockOwner(tx, order.customer_id);
       if (!locked) throw ApiError.notFound();
+      // The driver the edit names, or the one the order has when it names none (D-105); the order's
+      // own driver may stay after being deactivated, a new choice must be active.
+      const driverId = input.driver_id === undefined ? order.driver_id : input.driver_id;
+      const driver = await this.drivers.requireForDocument(tx, driverId, order.driver_id);
+      const driverBefore =
+        order.driver_id === driver?.id ? (driver?.name ?? null) : await this.drivers.nameOf(order.driver_id, tx);
 
       const oldLines = await this.orders.linesOf(id, tx);
       // Every material the order had or will have, locked before any stock moves — the order
@@ -367,6 +386,7 @@ export class OrdersService {
           priced_measure: line.priced_measure,
           quantity: pricedQuantityOf(line),
         })),
+        heldBy(oldLines),
       );
 
       await this.orders.softDeleteLines(id, tx);
@@ -381,6 +401,7 @@ export class OrdersService {
           order_date: input.order_date,
           payment_type: input.payment_type,
           notes: input.notes?.trim() || null,
+          driver_id: driver?.id ?? null,
           rate_iqd_per_usd: rate,
           rate_source: rateSource,
           discount_iqd: discount.amount_iqd,
@@ -421,6 +442,9 @@ export class OrdersService {
           changes: {
             order_date: { old: order.order_date, new: input.order_date },
             payment_type: { old: order.payment_type, new: input.payment_type },
+            ...(order.driver_id !== (driver?.id ?? null)
+              ? { driver: { old: driverBefore, new: driver?.name ?? null } }
+              : {}),
             rate_iqd_per_usd: { old: order.rate_iqd_per_usd, new: rate },
             lines: { old: oldLines.map(storedLineSummary), new: lines.map(lineSummary) },
             total: {
@@ -433,7 +457,11 @@ export class OrdersService {
             },
           },
           note: input.notes?.trim() || null,
-          related: { order_id: id, customer_id: order.customer_id },
+          related: {
+            order_id: id,
+            customer_id: order.customer_id,
+            ...(driver ? { driver_id: driver.id } : {}),
+          },
         },
         tx,
       );
@@ -443,6 +471,45 @@ export class OrdersService {
     // The same warnings a new order carries: an edit can oversell or pass the limit too (review).
     const dto = await this.get(context, id);
     return { ...dto, stock_warnings: edited.warnings, credit_limit_warning: edited.creditWarning };
+  }
+
+  /**
+   * Who takes it, changed on its own (D-106): a driver is no reason to reverse and rewrite an
+   * order's lines, stock and account, as a full edit does. The same people may do it as may edit it.
+   */
+  async setDriver(
+    context: RequestContext,
+    id: string,
+    input: { driver_id: string | null; version: number },
+  ): Promise<OrderDto> {
+    const existing = await this.requireOrder(context, id);
+    if (existing.status === 'void') throw new ApiError('DOCUMENT_VOID', { order_id: id });
+    await this.assertMayEdit(context, existing);
+
+    await this.database.transaction(async (tx) => {
+      const order = await this.orders.lock(id, tx);
+      if (!order) throw ApiError.notFound();
+      if (order.version !== input.version) throw await this.versionConflict(context, id);
+      if (order.driver_id === input.driver_id) return;
+
+      const driver = await this.drivers.requireForDocument(tx, input.driver_id, order.driver_id);
+      const before = await this.drivers.nameOf(order.driver_id, tx);
+      const updated = await this.orders.updateOrder(id, input.version, { driver_id: driver?.id ?? null }, context.userId, tx);
+      if (!updated) throw await this.versionConflict(context, id);
+      await this.audit.record(
+        context,
+        {
+          action: 'update',
+          entity_type: 'order',
+          entity_id: id,
+          entity_label: `Order #${order.number}`,
+          changes: { driver: { old: before, new: driver?.name ?? null } },
+          related: { order_id: id, customer_id: order.customer_id, ...(driver ? { driver_id: driver.id } : {}) },
+        },
+        tx,
+      );
+    });
+    return this.get(context, id);
   }
 
   /**
@@ -745,6 +812,16 @@ export class OrdersService {
     const lines = await this.orders.linesOf(id);
     const customer = await this.customers.findById(order.customer_id);
     const balance = customer ? await this.customers.balanceOf(order.customer_id) : 0;
+    // The driver as the paper shows them, so whoever receives the goods knows who brought them (D-105).
+    const driver = order.driver_id ? await this.drivers.get(order.driver_id) : null;
+    const seesBalances = can(context, 'fields.see_customer_balances');
+    // What the company still owes for earlier orders (D-109) — how many and how much; the business
+    // chose the figure over the list (D-110). Behind the balances flag, as the balance is. Never on
+    // a void order's paper, nor the walk-in's, who owes nothing.
+    const earlier =
+      seesBalances && order.status === 'active' && !order.customer_is_system
+        ? await this.orders.earlierOwing(order.customer_id, Number(order.number), order.settlement_currency)
+        : null;
 
     return {
       order: toOrderDto(order, lines),
@@ -755,7 +832,9 @@ export class OrdersService {
         phone: customer?.phone ?? null,
         settlement_currency: order.settlement_currency,
       },
-      balance_after: can(context, 'fields.see_customer_balances') ? balance : null,
+      driver: driver ? { name: driver.name, phone: driver.phone, car_number: driver.car_number } : null,
+      earlier_owing: earlier,
+      balance_after: seesBalances ? balance : null,
       printed_at: new Date().toISOString(),
     };
   }
@@ -1253,6 +1332,16 @@ function pricedQuantityOf(
   return line.priced_measure === 'count' ? String(line.qty_count ?? 0) : String(line.qty_kg ?? '0');
 }
 
+/** What an order's lines took from stock, per material and measure, for an edit's check. */
+function heldBy(lines: readonly Pick<NewOrderLine, 'item_id' | 'priced_measure' | 'qty_count' | 'qty_kg'>[]) {
+  const held = new Map<string, Decimal>();
+  for (const line of lines) {
+    const key = `${line.item_id}:${line.priced_measure}`;
+    held.set(key, (held.get(key) ?? new Decimal(0)).plus(pricedQuantityOf(line)));
+  }
+  return held;
+}
+
 function lineSummary(line: PreparedLine) {
   return {
     item_id: line.item_id,
@@ -1333,6 +1422,8 @@ function toOrderDto(row: OrderListRow, lines: readonly OrderLineRow[]): OrderDto
     acting_user_id: row.acting_user_id,
     acting_user_name: row.acting_user_name,
     notes: row.notes,
+    driver_id: row.driver_id,
+    driver_name: row.driver_name,
     rate_iqd_per_usd: row.rate_iqd_per_usd,
     rate_source: row.rate_source,
     discount_iqd: Number(row.discount_iqd),

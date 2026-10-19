@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Chip, DateField, EmptyState, Icon, IconButton, NumberField, SegmentedControl, TextAreaField, Toggle } from '@mizan/ui';
 import { ORDER_ROUNDING_IQD, computeLineTotals, convert, documentTotals, roundOrderTotals } from '@mizan/money';
 import type { Currency, Measure, Rate, RateSource } from '@mizan/money';
@@ -12,6 +12,7 @@ import { DualAmount } from '../components/DualAmount.js';
 import { MoneyInput } from '../components/MoneyInput.js';
 import type { MoneyValue } from '../components/MoneyInput.js';
 import { PickerSheet } from '../components/PickerSheet.js';
+import { DriverField } from '../components/DriverPicker.js';
 import { BuyRateField, useBuyRate } from '../components/BuyFields.js';
 import { QuantityInput } from '../components/QuantityInput.js';
 import { FieldsSkeleton, QueryStates } from '../components/states.js';
@@ -53,6 +54,9 @@ interface FormState {
   order_date: string;
   payment_type: 'cash' | 'borrowed';
   received_currency: Currency;
+  /** Who takes it to the company (D-105); optional. */
+  driver_id: string | null;
+  driver_name: string | null;
   notes: string;
   rate_override: string;
   /** An edited order's own rate and its source, which the rate box opens on (D-101); null when new. */
@@ -128,6 +132,9 @@ export function OrderFormPage({ mode }: { mode: 'create' | 'edit' }) {
           order_date: formatter.today(),
           payment_type: 'borrowed',
           received_currency: 'IQD',
+          // A new sale from a driver's page opens with that driver (D-105).
+          driver_id: searchParams.get('driver'),
+          driver_name: null,
           notes: '',
           rate_override: '',
           acting_user_id: '',
@@ -149,6 +156,8 @@ function fromOrder(order: OrderDetail): FormState {
     order_date: order.order_date,
     payment_type: order.payment_type,
     received_currency: order.received_currency ?? 'IQD',
+    driver_id: order.driver_id,
+    driver_name: order.driver_name,
     notes: order.notes ?? '',
     // The box opens on the order's own rate (D-101): sent only when changed, else the server keeps it.
     rate_override: '',
@@ -254,6 +263,73 @@ function OrderForm({
     return () => window.clearTimeout(timer);
   }, [form, drafts, idempotencyKey]);
 
+  /**
+   * What each material on the form may still sell (D-107): its stock now, plus — on an edit — what
+   * this order already holds of it, which the save gives back before taking again. A material on
+   * several lines is checked on their total, as the server does, and only in the measure the
+   * material is priced by now: an older line in another measure is left to the server. An edit
+   * never asks for less than the order already took, so an order that oversold before D-107 can
+   * still be corrected (review D-114).
+   */
+  const itemIds = useMemo(() => [...new Set(form.lines.map((line) => line.item_id))], [form.lines]);
+  const stocks = useQueries({
+    queries: itemIds.map((itemId) => ({
+      queryKey: ['items', itemId],
+      queryFn: () => apiRequest<ItemRow>(`/items/${itemId}`),
+      staleTime: 15_000,
+    })),
+    combine: (results) => results.map((result) => result.data?.stock),
+  });
+  // In thousandths, so 0.1 + 0.2 kg is exactly 0.3 kg.
+  const thousandths = (quantity: string | number | null) => Math.round(Number(quantity ?? 0) * 1000);
+  const held = useMemo(() => {
+    const byItem = new Map<string, number>();
+    if (mode === 'edit') {
+      for (const line of initial.lines) {
+        const key = `${line.item_id}:${line.priced_measure}`;
+        byItem.set(key, (byItem.get(key) ?? 0) + thousandths(quantityOf(line)));
+      }
+    }
+    return byItem;
+  }, [mode, initial.lines]);
+  const stockCheck = useMemo(() => {
+    const requested = new Map<string, number>();
+    for (const line of form.lines) {
+      const key = `${line.item_id}:${line.priced_measure}`;
+      requested.set(key, (requested.get(key) ?? 0) + thousandths(quantityOf(line)));
+    }
+    const available = new Map<string, number>();
+    itemIds.forEach((itemId, index) => {
+      const stock = stocks[index];
+      // A measure that cannot be summed for the material has no figure to check (FR-303).
+      if (!stock || !stock.priced_complete) return;
+      const key = `${itemId}:${stock.priced_measure}`;
+      available.set(key, thousandths(stock.priced_quantity) + (held.get(key) ?? 0));
+    });
+    const over = (line: FormLine) => {
+      const key = `${line.item_id}:${line.priced_measure}`;
+      const left = available.get(key);
+      const asked = requested.get(key) ?? 0;
+      return left !== undefined && asked > left && asked > (held.get(key) ?? 0);
+    };
+    const left = (line: FormLine) => (available.get(`${line.item_id}:${line.priced_measure}`) ?? 0) / 1000;
+    return { over, left };
+  }, [form.lines, itemIds, held, stocks]);
+  const lineProblem = (line: FormLine): string | null => {
+    const quantity = quantityOf(line);
+    if (quantity === null || Number(quantity) <= 0) return t('orders:quantity_above_zero');
+    if (stockCheck.over(line)) {
+      return t('orders:over_stock', {
+        quantity: formatter.quantity(
+          Math.max(stockCheck.left(line), 0).toFixed(line.priced_measure === 'count' ? 0 : 3),
+        ),
+        unit: t(`common:${line.priced_measure}_symbol`),
+      });
+    }
+    return null;
+  };
+  const stockBlocks = form.lines.some((line) => lineProblem(line) !== null);
+
   const totals = useMemo(() => {
     // One entry per line, aligned to `form.lines` (null where the line is not yet complete), so a
     // line card can show its own net and the footer can sum them.
@@ -328,6 +404,7 @@ function OrderForm({
         order_date: form.order_date,
         payment_type: paymentType,
         received_currency: paymentType === 'cash' ? form.received_currency : null,
+        driver_id: form.driver_id,
         notes: form.notes.trim() === '' ? null : form.notes.trim(),
         rate_iqd_per_usd: orderRate.body,
         acting_user_id: form.acting_user_id === '' ? null : form.acting_user_id,
@@ -364,6 +441,7 @@ function OrderForm({
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
       await queryClient.invalidateQueries({ queryKey: ['customers'] });
       await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await queryClient.invalidateQueries({ queryKey: ['drivers'] });
       await invalidateMoneyViews(queryClient);
       // The stock and credit-limit warnings of the save travel with it: this form is gone the
       // moment it navigates, so the page it lands on is the one that shows them.
@@ -510,6 +588,16 @@ function OrderForm({
               </div>
             ) : null}
 
+            {/* Who takes it to the company (D-105): optional, chosen like the company. */}
+            <DriverField
+              driverId={form.driver_id}
+              driverName={form.driver_name}
+              hint={t('orders:driver_hint')}
+              onChange={(driver) =>
+                setForm((current) => ({ ...current, driver_id: driver?.id ?? null, driver_name: driver?.name ?? null }))
+              }
+            />
+
             {/* The rate this order is valued at — the customer's or the system's, tagged with
                 which, and changeable here for this one order (D-101, as a purchase's D-092). */}
             <BuyRateField state={orderRate} label={t('orders:rate_for_order')} />
@@ -606,10 +694,11 @@ function OrderForm({
             value={{ qty_count: line.qty_count, qty_kg: line.qty_kg }}
             onChange={(value) => updateLine(line.key, value)}
             error={
-              error?.fieldError(`lines.${index}.qty_kg`) ||
-              error?.fieldError(`lines.${index}.qty_count`)
+              // Not before anything is typed: an empty new line is not yet a mistake.
+              (quantityOf(line) !== null ? lineProblem(line) : null) ??
+              (error?.fieldError(`lines.${index}.qty_kg`) || error?.fieldError(`lines.${index}.qty_count`)
                 ? t('errors:field.required')
-                : undefined
+                : undefined)
             }
           />
 
@@ -735,7 +824,7 @@ function OrderForm({
         primary={settlementCurrency}
         lineCount={form.lines.length}
         saving={save.isPending}
-        disabled={!form.customer_id || form.lines.length === 0 || rateTypedBadly}
+        disabled={!form.customer_id || form.lines.length === 0 || rateTypedBadly || stockBlocks}
         onSave={() => save.mutate()}
         saveLabel={mode === 'edit' ? t('common:save') : undefined}
       />
@@ -791,9 +880,14 @@ function OrderForm({
           emptyTitle={t('materials:empty')}
           toItem={(row: never) => {
             const item = row as unknown as ItemRow;
+            // Nothing left of it: listed, so nobody wonders where it went, but not choosable (D-107).
+            // An edit may take back what this order itself holds of it (review D-114).
+            const holds = mode === 'edit' && initial.lines.some((line) => line.item_id === item.id);
+            const soldOut = !holds && item.stock.priced_complete && Number(item.stock.priced_quantity) <= 0;
             return {
               id: item.id,
               title: item.name,
+              disabledReason: soldOut ? t('orders:out_of_stock') : undefined,
               subtitle: item.sale
                 ? formatter.money(item.sale.amount_iqd, 'IQD')
                 : t('materials:no_price_yet'),
@@ -833,6 +927,8 @@ export interface OrderDetail {
   payment_type: 'cash' | 'borrowed';
   acting_user_name: string | null;
   notes: string | null;
+  driver_id: string | null;
+  driver_name: string | null;
   rate_iqd_per_usd: string;
   rate_source: 'global' | 'manual' | 'company';
   discount_iqd: number;

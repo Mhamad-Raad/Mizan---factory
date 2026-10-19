@@ -83,5 +83,7 @@
   "item": "الصنف",
   "amount": "المبلغ",
   "customer": "شركة",
-  "customer_rate": "سعر الشركة"
+  "customer_rate": "سعر الشركة",
+  "driver": "السائق",
+  "drivers": "السائقون"
 }

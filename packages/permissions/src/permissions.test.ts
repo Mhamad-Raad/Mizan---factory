@@ -181,7 +181,8 @@ describe('setKey (spec 2.6.5)', () => {
   it('turning on an action turns on its page view, with a note', () => {
     const result = setKey([], 'orders.create', true);
     expect(result.keys.has('orders.view')).toBe(true);
-    expect(result.alsoGranted).toEqual(['customers.view', 'materials.view', 'orders.view']);
+    // Picking the driver is part of writing an order (D-105).
+    expect(result.alsoGranted).toEqual(['customers.view', 'drivers.view', 'materials.view', 'orders.view']);
   });
 
   it('turning off a page view turns off that page actions', () => {

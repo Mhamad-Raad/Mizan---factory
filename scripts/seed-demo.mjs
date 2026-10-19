@@ -14,7 +14,8 @@
  *   · three employees (sales, warehouse, accountant) with passwords printed at the end;
  *   · eight materials, each bought when it was created and some bought again at a new price;
  *   · seven companies that buy from us, some with their own rate;
- *   · six weeks of cash and borrowed orders, payments received and an opening balance;
+ *   · three drivers; six weeks of cash and borrowed orders, two in three sent with a driver;
+ *     payments received and an opening balance;
  *   · damage of our own, one a company still owes for, and two a company paid back;
  *   · five of the accountant's own expenses (D-062).
  */
@@ -196,6 +197,14 @@ console.log(`✓ ${MATERIALS.length} materials bought, ${laterBuys} of them boug
 
 // ── six weeks of selling ────────────────────────────────────────────────────────────────
 
+// The drivers who take the orders (D-105); every third order goes without one, collected at the gate.
+const azadDriver = (await post(admin, '/drivers', { name: 'Azad Omar', phone: '0750 412 3344', car_number: '21 A 45871 Erbil' })).id;
+const heminDriver = (await post(admin, '/drivers', { name: 'Hemin Karim', phone: '0770 655 1020', car_number: '18 B 30244 Slemani' })).id;
+await post(admin, '/drivers', { name: 'Shvan Ali', phone: '0751 300 9090', car_number: '11 C 77310 Duhok' });
+const driverRota = [azadDriver, heminDriver, null];
+let sent = 0;
+console.log('✓ three drivers');
+
 const sold = (name, qty) => ({ item_id: item[name].id, ...quantity(item[name].unit, qty) });
 async function order(customerId, daysBack, lines, payment = 'borrowed', received = 'IQD', notes = null) {
   return post(admin, '/orders', {
@@ -204,6 +213,7 @@ async function order(customerId, daysBack, lines, payment = 'borrowed', received
     payment_type: payment,
     received_currency: payment === 'cash' ? received : null,
     acting_user_id: rebaz,
+    driver_id: driverRota[sent++ % driverRota.length],
     notes,
     lines,
   });

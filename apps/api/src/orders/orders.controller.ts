@@ -41,6 +41,8 @@ const createSchema = z.object({
   received_currency: z.enum(['IQD', 'USD']).nullish(),
   received_amount: z.number().int().positive().nullish(),
   notes: z.string().max(2000).nullish(),
+  /** Who takes it (D-105): null for nobody; left out of an edit, the order keeps its driver. */
+  driver_id: z.string().uuid().nullish(),
   rate_iqd_per_usd: rateString.nullish(),
   discount: price.nullish(),
   lines: z.array(lineSchema).min(1).max(200),
@@ -48,6 +50,8 @@ const createSchema = z.object({
 });
 
 const replaceSchema = createSchema.extend({ version: z.number().int().positive() });
+
+const driverSchema = z.object({ driver_id: z.string().uuid().nullable(), version: z.number().int().positive() });
 
 const voidSchema = z.object({
   reason: z.string().min(1).max(2000),
@@ -74,6 +78,7 @@ const paymentSchema = money.extend({
 
 const listSchema = z.object({
   customer_id: z.string().uuid().optional(),
+  driver_id: z.string().uuid().optional(),
   item_id: z.string().uuid().optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),
@@ -175,6 +180,17 @@ export class OrdersController {
     return this.orders.replace(contextOf(request), id, { ...toCreateInput(body), version: body.version });
   }
 
+  /** Who takes it, changed on its own (D-106); the edit rules of FR-610 apply in the service. */
+  @Put('orders/:id/driver')
+  @RequirePermission('orders.view')
+  async setDriver(
+    @Req() request: RequestWithContext,
+    @Param('id') id: string,
+    @Body(zodBody(driverSchema)) body: z.infer<typeof driverSchema>,
+  ) {
+    return this.orders.setDriver(contextOf(request), id, body);
+  }
+
   @Post('orders/:id/void')
   @RequirePermission('orders.void')
   @HttpCode(200)
@@ -274,6 +290,8 @@ function toCreateInput(body: z.infer<typeof createSchema>) {
     received_currency: body.received_currency ?? null,
     received_amount: body.received_amount ?? null,
     notes: body.notes ?? null,
+    // `undefined` and `null` differ here: an edit that does not mention the driver keeps them.
+    driver_id: body.driver_id,
     rate_iqd_per_usd: body.rate_iqd_per_usd ?? null,
     discount: body.discount ?? null,
     lines: body.lines.map((line) => ({

@@ -1,3 +1,4 @@
+import { DocumentDriver } from '../components/DocumentDriver.js';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -200,6 +201,15 @@ export function PurchaseDetailPage() {
                       {formatter.date(data.purchase_date)}
                       {data.acting_user_name ? ` · ${t('glossary:done_by')}: ${data.acting_user_name}` : ''}
                     </span>
+                    {/* Who brought it in (D-106), changed here on its own. */}
+                    <DocumentDriver
+                      kind="purchase"
+                      id={data.id}
+                      version={data.version}
+                      driverId={data.driver_id}
+                      driverName={data.driver_name}
+                      editable={data.doc_status === 'active'}
+                    />
                     {data.notes ? (
                       <span className="mz-caption" style={{ display: 'block' }}>
                         <bdi>{data.notes}</bdi>

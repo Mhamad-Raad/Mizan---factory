@@ -97,5 +97,9 @@
   "fields_row": "ما يمكنه رؤيته",
   "permissions.accounts.view": "رؤية صفحة المحاسب",
   "permissions.expenses.create": "إضافة مصروف",
-  "permissions.expenses.void": "إلغاء مصروف"
+  "permissions.expenses.void": "إلغاء مصروف",
+  "permissions.drivers.view": "عرض السائقين",
+  "permissions.drivers.create": "إضافة سائق",
+  "permissions.drivers.edit": "تعديل سائق",
+  "page.drivers": "السائقون"
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
 import { rateString } from '../common/schemas.js';
 import { AdminOnly, RequirePermission, SessionOnly } from '../common/decorators.js';
@@ -21,10 +21,17 @@ const patchSchema = z
     default_customer_currency: z.enum(['IQD', 'USD']).optional(),
     settle_tolerance_iqd: z.number().int().min(0).max(100_000).optional(),
     settle_tolerance_usd_cents: z.number().int().min(0).max(10_000).optional(),
+    // Settings → Receipt details (D-108); null clears one.
+    business_name: z.string().trim().min(1).max(200).nullable().optional(),
+    business_phone: z.string().trim().min(1).max(40).nullable().optional(),
+    business_address: z.string().trim().min(1).max(500).nullable().optional(),
   })
   // Unknown keys are refused rather than dropped: an admin who types a setting this
   // iteration does not own must be told, not quietly ignored.
   .strict();
+
+/** A picture as a `data:` URL; 256 kB of picture is about 350 kB of base64 (D-108). */
+const logoSchema = z.object({ data_url: z.string().max(360_000) });
 
 const rateSchema = z.object({
   rate_iqd_per_usd: z.union([rateString, z.number().positive()]),
@@ -87,6 +94,31 @@ export class SettingsController {
       page: paging.page,
       page_size: paging.page_size,
     };
+  }
+
+  /**
+   * What every receipt is headed with (D-108). Anyone signed in prints receipts, so anyone signed
+   * in reads it; only an admin changes it (`PATCH /settings` for the words, the routes below for
+   * the logo).
+   */
+  @Get('business')
+  @SessionOnly()
+  async business() {
+    return this.settings.business();
+  }
+
+  @Put('business/logo')
+  @AdminOnly()
+  @HttpCode(204)
+  async setLogo(@Req() request: RequestWithContext, @Body(zodBody(logoSchema)) body: z.infer<typeof logoSchema>) {
+    await this.settings.setLogo(contextOf(request), body.data_url);
+  }
+
+  @Delete('business/logo')
+  @AdminOnly()
+  @HttpCode(204)
+  async removeLogo(@Req() request: RequestWithContext) {
+    await this.settings.removeLogo(contextOf(request));
   }
 
   @Post('global-rates')

@@ -1,3 +1,4 @@
+import { DocumentDriver } from '../components/DocumentDriver.js';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -213,6 +214,15 @@ export function OrderDetailPage() {
                       {formatter.date(data.order_date)}
                       {data.acting_user_name ? ` · ${t('glossary:done_by')}: ${data.acting_user_name}` : ''}
                     </span>
+                    {/* Who takes it (D-105), changed here on its own (D-106). */}
+                    <DocumentDriver
+                      kind="order"
+                      id={data.id}
+                      version={data.version}
+                      driverId={data.driver_id}
+                      driverName={data.driver_name}
+                      editable={data.doc_status === 'active'}
+                    />
                   </div>
                   <span
                     className="mz-row"

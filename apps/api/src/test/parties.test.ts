@@ -64,6 +64,9 @@ describe('one kind of account (D-054, D-055)', () => {
       .post('/api/v1/settings/global-rates')
       .send({ rate_iqd_per_usd: '1300' })
       .expect(201);
+    // These tests sell without buying first; selling past stock is refused by default since D-107,
+    // and what they test is not the stock, so they keep the old rule.
+    await as(ctx.http, admin).patch('/api/v1/settings').send({ allow_negative_stock: true }).expect(200);
 
     const item = await as(ctx.http, admin)
       .post('/api/v1/items')

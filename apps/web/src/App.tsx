@@ -54,6 +54,8 @@ const CustomerDetailPage = chunk(
   () => import('./pages/CustomerDetailPage.js'),
   'CustomerDetailPage',
 );
+const DriversPage = chunk(() => import('./pages/DriversPage.js'), 'DriversPage');
+const DriverDetailPage = chunk(() => import('./pages/DriverDetailPage.js'), 'DriverDetailPage');
 const NewCustomerPage = chunk(() => import('./pages/NewCustomerPage.js'), 'NewCustomerPage');
 const AccountsPage = chunk(() => import('./pages/AccountsPage.js'), 'AccountsPage');
 const TradePage = chunk(() => import('./pages/TradePage.js'), 'TradePage');
@@ -298,6 +300,9 @@ export function App() {
               element={gate(may('customers.create') || may('companies.create'), <NewCustomerPage />)}
             />
             <Route path="/customers/:id" element={gate(may('customers.view'), <CustomerDetailPage />)} />
+            {/* Who takes the orders to the companies (D-105). */}
+            <Route path="/drivers" element={gate(may('drivers.view'), <DriversPage />)} />
+            <Route path="/drivers/:id" element={gate(may('drivers.view'), <DriverDetailPage />)} />
             {/* Companies are businesses on the Customers page now (D-054); old links still land. */}
             <Route path="/companies" element={<Navigate to="/customers" replace />} />
             <Route path="/companies/new" element={<Navigate to="/customers/new" replace />} />

@@ -2081,3 +2081,247 @@ Read over the branch's changes after D-104; two defects found and fixed, nothing
    sent the prices again under the same idempotency key with a different body — refused as
    `IDEMPOTENCY_MISMATCH` — and with the version they had replaced. A saved price now renews its
    key and reloads the month before the details are sent.
+
+## D-105 · 2026-10-18 · business request · Drivers, as in the Pallet system, with a page of their own
+
+The business asked for the Pallet system's drivers — a list of drivers, and a driver chosen on an
+order and changed by editing it — plus what Pallet does not have: a page per driver where the
+driver is edited and every order they took is listed, and a driver filter on the orders.
+
+- **The record** (migration 0037): `drivers` — name, phone, car number (free text: plate formats
+  differ between governorates), notes, active. Never deleted, only deactivated: the orders that
+  name a driver keep naming them. A phone another driver has is a warning answered with "Save
+  anyway" (`confirm_duplicate_phone`), as in Pallet (its Q135), not a refusal.
+- **On the order:** `orders.driver_id`, **optional** — chosen by default because walk-in sales and
+  companies that collect their own goods have no driver (spec 1.10: no field is required that the
+  business did not ask to require). Orders only, not purchases: the request was about orders, and
+  we receive purchases rather than send them. A new choice must be an active driver; an order may
+  keep the driver it has after that driver is deactivated. An edit that does not mention the driver
+  keeps it (an older open form cannot clear it by accident). The driver is held with a share lock
+  while the order saves, after the account and before the materials, so a deactivation cannot slip
+  in between and orders for the same driver never wait for each other.
+- **History:** creating, editing and deactivating a driver are logged under `driver`; an order's
+  History says the driver by name when it is set or changed (`driver: old → new`).
+- **Permissions:** `drivers.view`, `drivers.create`, `drivers.edit` (deactivating is an edit, as for
+  a company). `orders.create` and `orders.edit` imply `drivers.view` — the form picks a driver —
+  so every employee who writes orders can choose one without an admin touching their permissions.
+  `orders.view` alone shows the driver's name on an order but does not open the Drivers page (its
+  phones and plates). Presets: sales (v2) gets all three, accountant (v3) gets `drivers.view`.
+- **Screens:** Drivers in the sidebar under the records (truck icon, mirrored in RTL); the driver's
+  page with Edit / Deactivate beside the name, their orders for a period with how many and what
+  they came to, ticked orders printable together; "New sale" there opens the
+  form with the driver chosen. The order form's driver picker offers "New driver" with what was
+  typed. Buying & selling has a Driver filter; a driver is a sale's question, so purchases leave
+  the list while it is set (said under the filters, like the payment states). The order page and
+  the printed receipt name the driver, the receipt with the car and phone.
+- **Speed at ten years:** `orders_driver_idx (driver_id, order_date DESC, number DESC)` serves a
+  driver's page and the filter; a driver filter counts as a narrowing, so the list's figures are
+  computed over the matching orders rather than read from the per-account sums.
+
+## D-106 · 2026-10-18 · business request · Drivers on purchases too, and "Change driver" on its own
+
+The business: purchases should have a driver as well — the one who brings the goods in.
+
+- **On the purchase** (migration 0038): `purchases.driver_id`, optional, the same rules as an
+  order's (D-105): a new choice must be active, a purchase may keep a driver deactivated since,
+  History names the driver, the driver is held while the purchase saves. `purchases.create` and
+  `purchases.edit` imply `drivers.view`.
+- **Changed on its own:** a purchase has no edit form, and a driver is no reason to reverse and
+  rewrite a document's lines, stock and account. So both kinds get `PUT /orders/:id/driver` and
+  `PUT /purchases/:id/driver` — the document's own edit rules (the creator, `*.edit`, an admin; not
+  a void document; the version), one audited `driver: old → new`. The order and purchase pages show
+  the driver with "Change" beside the name for whoever holds `orders.edit` / `purchases.edit`.
+- **Lists:** the driver filter on Buying & selling is no longer a sale's question — both kinds are
+  filtered by it (D-105's "purchases leave the list" is withdrawn). The driver's page is the Buying
+  & selling list narrowed to the driver, with each side's figures (never added together), "New
+  purchase" and "New sale" opening with the driver chosen; the Drivers list's "Last trip" is the
+  newest sale or purchase. The purchase receipt names the driver with the car and phone.
+- **Later the same day (business):** the driver's page has no History tab and no tab bar — only the
+  Buying & selling list under the driver's card. The driver's changes stay in History (the History
+  page's "Driver" record type); the unused `GET /drivers/:id/history` was removed.
+
+## D-107 · 2026-10-18 · business request · A sale never takes more than is in stock, and never 0
+
+The business: when selling, the quantity must not go above what is in stock, nor be 0, and
+materials with nothing left must not be choosable.
+
+- **The rule** (migration 0039): `allow_negative_stock` now defaults to **false**, and a stored
+  value is removed so every installation follows it — overselling was a warning on the line
+  (A-34) and is now refused (`STOCK_INSUFFICIENT`, naming what is left). The setting stays in the
+  API for a test or an admin who must, one day, sell ahead of a delivery; it was never on a screen.
+  An edit counts what the order already holds: its own stock goes back before the new lines take.
+  A quantity of 0 was already refused by the server.
+- **The order form** checks before Save: each material's stock now (plus, on an edit, what this
+  order held), summed over every line of that material; a line over it says "Only N in stock" and
+  a line of 0 "Enter a quantity above 0" under the quantity, and Save stays off until they are
+  right. The server still decides — two people selling the last ten pieces at once.
+- **The material picker** of a sale lists a material with nothing left greyed out, "Out of stock",
+  and does not take it. A material whose measure cannot be summed (FR-303) has no figure to check
+  and stays choosable, as on the server.
+
+## D-108 · 2026-10-18 · business request · The business's own name, phone, address and logo on receipts
+
+The business asked for what the Pallet system has: their own name, phone number, address and logo
+on the receipts.
+
+- **Settings → Receipt details** (admin only, as Pallet's factory details): name, phone, address —
+  three settings, `null` when empty — and a logo. Left empty, a receipt says "Jiyan Management"
+  as before.
+- **The logo is kept in the database** (migration 0040, `business_logo`, one row) rather than in a
+  folder of uploads as Pallet does: the backups, the point-in-time recovery and a restore then
+  carry it with everything else, and the server needs no new volume or setting (DEPLOY.md is
+  unchanged). The browser makes the picture receipt-sized (480 px on its longer side, PNG to keep
+  a transparent background, else WebP or JPEG, at most 256 kB) before sending it; the server checks
+  it by its first bytes — PNG, JPEG or WebP, never SVG — and its size. It reaches the receipt as a
+  `data:` URL, which the CSP already allows for images.
+- **Every printed document** — receipts, vouchers, statements, list printouts — is headed with the
+  logo beside the name, phone and address. The print host reads them once per print and waits for
+  the logo to be decoded before the dialog opens, so a receipt never prints without it.
+- **History** records each change (`business_name: old → new`, `business_logo: no → yes`), never the
+  picture itself. `GET /settings/business` is open to anyone signed in, since anyone may print.
+
+## D-109 · 2026-10-18 · business request · A receipt says what they still owe for earlier orders, and the total
+
+The business: when a company still owes us, the receipt should say for which orders, and then the
+total of both — as the Pallet system's hand-over receipt lists the earlier pallets still out.
+
+- Under the order's lines, shaded apart, **Still owed from earlier orders**: each of the company's
+  earlier orders (by number) that is not void and still owes in the account's currency — its number,
+  date, total and what is left — the oldest twenty-five, then "…and N more". Then **This order still
+  owes**, **Earlier orders still owe (N)** and **Total owed**, the two added.
+- The account balance ("They owe us", D-104) stays, but beside the orders' figures only when it
+  differs from their total — an opening debt, a credit, or a payment not made against an order
+  (Q-B-03: a general payment changes no order's status) — so the paper never shows the same figure
+  twice under two names.
+- Behind `fields.see_customer_balances`, as the balance is; never on the walk-in's or a void order's.
+
+**Also (business, same day):** a company's Edit button moved from the action row into the top
+corner of its info card, beside the name, as on a material's and a driver's page.
+
+## D-110 · 2026-10-19 · business choice · Receipts in the red design, without the list of earlier sales
+
+Of the ten A4 designs (Desktop/Jiyan receipt designs), the business chose **number 2**, the one in
+the business's colour, but **without the list of earlier sales** ("قەرزی فرۆشتنەکانی پێشوو").
+
+- Every printed document — sale and purchase receipts, payment vouchers, statements — now has the
+  wine-red band across the top (the logo on a white disc, the business's name, phone and address, the
+  document's kind, number and date), who it is about in titled cards (company, driver, payment), the
+  lines under a red heading with striped rows, the money worked down to the total, and a grey strip
+  at the foot with the rate and the day it was printed. The band reaches the paper's edges on a
+  document's first page (`@page :first` has no top margin); a statement that runs on keeps a 12 mm
+  margin at the top and bottom of each later page. Paper colours are the invoice's own, not the theme's.
+- A sale receipt ends with the figures of what is still owed: **this sale**, **earlier sales (N)**
+  and **total owed** in red — or, with nothing earlier, what is left on this sale in red — and the
+  account's balance as a fourth figure when it differs (D-109). The earlier sales are counted, not
+  listed: `earlier_owing` on the receipt is now `{ count, remaining }`, one query instead of two.
+  "Paid" is a line of the worked-down money when anything was paid.
+- The amount column is **کۆ** in Kurdish (`print:line_amount`): the glossary has بڕ for both
+  "quantity" and "amount", so the two columns read alike.
+- **Matched to the PDF (same day, business):** the first version missed parts of design 2. Now: the
+  three-tone strip under the band; the corner says "پسوولەی فرۆشتن" over a large "#1042"; the phone
+  and address share one line; the payment card is "پارەدان" with the type alone; the paid line is
+  "پارەی دراو"; table and worked-down amounts at text weight; the red figure is always the last; and
+  the grey strip sits at the foot of the page (a printed document is a page tall; the first page has
+  no margin, so the band and the strip reach the paper's edges). The dollar figure stays beside each
+  amount, smaller and grey (rule 7), where the sample PDF showed it only in the red figure.
+
+- **Three figures always, the footer always at the foot (business, same day):** a sale receipt always
+  shows the three of the design — **this sale still owes**, **owed from before**, **total owed** in
+  red. "Total owed" is the account's balance after this sale, so it is the truth even with an opening
+  debt, a credit or a payment not made against an order; "before" is that balance less this sale,
+  named "earlier sales (N)" when the earlier sales are the whole of it, "owed from before" otherwise,
+  "paid ahead before" when it is a credit. Whoever may not see balances, and the walk-in, see what is
+  left on the sale alone. A printed document is at least `100vh` tall — in print, the page's printable
+  area — so the grey strip is at the paper's foot whatever margins the browser or printer keeps
+  (a fixed 296 mm ran onto a second page wherever a margin was kept).
+
+## D-111 · 2026-10-19 · business request · Several documents in one print, and the purchase's three figures
+
+- **Several in one print:** only the first page had no margin, so every later document was a page
+  tall on a shorter page and its grey strip ran onto a page of its own. Every page now has no margin
+  (`@page { margin: 0 }`), and a document is at least the page's printable height less 1 mm, so each
+  ends at its own page's foot. Tested with three receipts ticked on Buying & selling: three pages.
+- **A purchase receipt has the three figures too**, from our side: **left to pay on this purchase**,
+  **we owed them before** (or "paid ahead" when it is a credit), and **we owe them in total** in red —
+  the company's account itself (`account_owed` on `GET /purchases/:id/balance`, behind
+  `fields.see_company_balances` as the route is). "Paid" stays a line of the worked-down money; the
+  "still owed on this purchase" line went, as the first figure says it.
+
+## D-112 · 2026-10-19 · business request · Signature lines on a sale receipt
+
+A sale receipt has lines to sign on, as a purchase receipt already had: **وەرگر** (the company that
+received the goods), **شۆفێر** when the sale went with a driver, and **ڕادەستکەر** (us, who handed
+them over). A purchase with a driver gets the driver's line too.
+
+## D-113 · 2026-10-19 · business request · A long receipt over several pages
+
+Shown a receipt of 50 and of 20 items, the business asked for three of four proposed changes
+(rows stay as tall as they are):
+
+- **No page starts at the paper's edge:** a table's heading repeats on every page it runs onto with
+  12 mm of air above it (a spacer row in `thead`), and the money, figures and signatures — one block
+  that never splits — start below the same air when they begin a page; on the table's own page the
+  air is drawn back, so a one-page document does not move.
+- **The grey strip at the foot of every page:** with one document printed, the strip is a fixed box,
+  which a browser prints at the foot of each page, and the table leaves it room (a spacer row in
+  `tfoot`). Several documents printed together keep the strip in the flow, each a page of its own (D-111).
+- **Page numbers:** "1 / 4" in an 8 mm margin under the strip on every page (an `@page` margin box),
+  written left to right in every language. Printed together, documents are numbered through the
+  whole print.
+- **The page number in the grey strip (business, same day):** a browser numbers pages only in the
+  page's margin, so the 8 mm bottom margin is painted the strip's grey (`@bottom-left`, `-center`,
+  `-right` with a background) and the strip's text sits right above it — one grey band, the rate and
+  the date, and "1 / 4" centred under them. The strip reaches into the painted margin (a fixed strip by
+  half a millimetre; in a print of several documents, each strip drawn 1.2 mm lower) so the greys meet
+  without a white line.
+
+
+## D-114 · 2026-10-19 · review · The final business edits, reviewed for bugs, loopholes, five users and ten years
+
+A senior review of everything since `main` (D-105 … D-113): the API, the screens and print, and
+how each new read grows over ten years. Changed:
+
+- **An order that oversold before D-107 can still be edited.** The edit gives back what the order
+  held and takes again, so an order that sold 10 when 5 were in stock was refused even for a new
+  date. An edit is now refused only for taking *more* of a material than the order already held
+  (per material and measure); taking the same or less saves with the shortfall as a warning. The
+  order form follows the same rule, compares only in the measure the material is priced by now,
+  and lets the picker offer a sold-out material back to the order that holds it. Test in
+  `orders.test.ts`.
+- **Indexes for ten years (migration 0041).** The receipt's earlier debt (D-109) read every order
+  the account ever placed; `orders_customer_number_idx (customer_id, number)` over active orders
+  makes it one range. A driver's page sums every document the driver carried; the driver indexes
+  now carry status and totals, so the sum is an index-only pass.
+- **Changing a driver on a document** closes the picker on the choice, shows the save and any
+  refusal on the page, and reloads the document after a refusal, so a second try is not refused
+  for the same stale version.
+- **Page numbers only on a document printed alone.** A browser counts the pages of the whole print,
+  so the second of ten receipts read "4 / 12"; several printed together keep the grey band without
+  a number. The print pages are named (`@page mz-document`, `mz-documents`), so an ordinary Ctrl+P
+  of a screen keeps the browser's margins.
+- **Smaller:** saving an order or purchase refreshes the drivers list's "Last trip"; a new or renamed
+  driver reaches the Buying & selling filter at once; a print after a failed read of the receipt
+  details waits for the new try instead of printing without the logo; a statement's closing totals
+  never part across sheets.
+
+Reviewed and kept as they are:
+
+- **The driver's phone and car number on receipts** reach whoever may print the document, without
+  `drivers.view`: the receipt is handed to the customer with them on it, so hiding them from the
+  clerk who prints it protects nothing. `drivers.view` still guards the Drivers pages and the list.
+- **The duplicate-phone check** is a warning, not a rule; two people adding the same phone at the
+  same second both save. Nothing depends on phones being unique.
+- **Replacing the logo** is recorded as "yes → yes" in History: the row says who changed it and when,
+  which is what an admin looks for; the picture itself is never kept in History.
+- **Migration 0039** changes the stock default without a History row, as every migration does;
+  D-107 records when and why.
+- **A single printed statement** keeps 16 mm of air after each section's table; drawing it back
+  needs the negative-margin trick that split documents onto extra pages before.
+- **Print in Safari and older Firefox:** margin boxes (the page number and the grey margin) are
+  Chromium features; elsewhere a receipt prints without the number and with a white bottom margin.
+  The business prints from Chrome or Edge.
+- **Five users at once:** sales and purchases lock account → driver (shared) → materials; a driver
+  edit locks only the driver; changing a document's driver locks the document, then the driver. No
+  two paths take these in opposite orders, so they wait for each other but never deadlock.
+- **Later, if a material ever has tens of thousands of purchases:** the order form reads each
+  material's full page (`GET /items/:id`) for its stock; a slim stock-only read would be lighter.

@@ -353,6 +353,8 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
     });
 
     it('keeps the buys true to the stock after selling past every buy (review)', async () => {
+      // Possible only where negative stock is allowed again (D-107).
+      await as(ctx.http, admin).patch('/api/v1/settings').send({ allow_negative_stock: true }).expect(200);
       // 6,000 kg on hand; selling 6,500 leaves the stock 500 short (a warning, A-34).
       await createOrder(sales, { lines: [{ item_id: copper, qty_kg: '6500.000' }] }).expect(201);
       // A buy of 1,000 brings the stock to 500 — the other 500 filled what was already sold.
@@ -825,7 +827,17 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
       });
     });
 
-    it('warns when the line exceeds stock, and refuses it when negative stock is blocked', async () => {
+    it('refuses a sale past the stock (D-107), and only warns where negative stock is allowed again', async () => {
+      const refused = await createOrder(sales, {
+        lines: [{ item_id: copper, qty_kg: '9000.000' }],
+      }).expect(422);
+      expect(refused.body.error.fields[0]).toMatchObject({ code: 'STOCK_INSUFFICIENT' });
+      expect(refused.body.error.fields[0].params).toMatchObject({ available: '6000.000', requested: '9000.000' });
+      // Every kilo there is may be sold, and not one more.
+      await createOrder(sales, { lines: [{ item_id: copper, qty_kg: '6000.001' }] }).expect(422);
+      await createOrder(sales, { lines: [{ item_id: copper, qty_kg: '0.000' }] }).expect(422);
+
+      await as(ctx.http, admin).patch('/api/v1/settings').send({ allow_negative_stock: true }).expect(200);
       const warned = await createOrder(sales, {
         lines: [{ item_id: copper, qty_kg: '9000.000' }],
       }).expect(201);
@@ -834,33 +846,40 @@ describe('orders, payments and the customer ledger (FR-601 to FR-612)', () => {
         available: '6000.000',
         requested: '9000.000',
       });
-
-      await as(ctx.http, admin)
-        .patch('/api/v1/settings')
-        .send({ allow_negative_stock: false })
-        .expect(200);
-
-      const refused = await createOrder(sales, {
-        lines: [{ item_id: copper, qty_kg: '9000.000' }],
-      }).expect(422);
-      expect(refused.body.error.fields[0]).toMatchObject({ code: 'STOCK_INSUFFICIENT' });
     });
   });
 
   describe('editing and voiding (FR-610, spec 2.5.3)', () => {
-    it('returns the stock warning of an edit that oversells, as a new order does (review)', async () => {
+    it('refuses an edit that oversells, counting what the order already holds (D-107)', async () => {
       const order = await createOrder(sales, { lines: [{ item_id: copper, qty_kg: '100.000' }] }).expect(201);
-      const edited = await as(ctx.http, sales)
-        .put(`/api/v1/orders/${order.body.id}`)
-        .send({
-          customer_id: kawa,
-          order_date: today(),
-          payment_type: 'borrowed',
-          version: order.body.version,
-          lines: [{ item_id: copper, qty_kg: '9000.000' }],
-        })
-        .expect(200);
-      expect(edited.body.stock_warnings[0]).toMatchObject({ requested: '9000.000' });
+      const edit = (qtyKg: string, version: number) =>
+        as(ctx.http, sales)
+          .put(`/api/v1/orders/${order.body.id}`)
+          .send({ customer_id: kawa, order_date: today(), payment_type: 'borrowed', version, lines: [{ item_id: copper, qty_kg: qtyKg }] });
+      // 5,900 kg left in the warehouse and 100 on this order: the edit may take all 6,000.
+      const refused = await edit('6000.001', order.body.version).expect(422);
+      expect(refused.body.error.fields[0]).toMatchObject({ code: 'STOCK_INSUFFICIENT' });
+      const edited = await edit('6000.000', order.body.version).expect(200);
+      expect(edited.body.stock_warnings).toEqual([]);
+    });
+
+    it('still lets an order that oversold before D-107 be edited, but not sell more (review D-114)', async () => {
+      // An order saved while overselling was allowed: 9,000 kg out of 6,000.
+      await as(ctx.http, admin).patch('/api/v1/settings').send({ allow_negative_stock: true }).expect(200);
+      const order = await createOrder(sales, { lines: [{ item_id: copper, qty_kg: '9000.000' }] }).expect(201);
+      await as(ctx.http, admin).patch('/api/v1/settings').send({ allow_negative_stock: false }).expect(200);
+      const edit = (qtyKg: string, version: number) =>
+        as(ctx.http, sales)
+          .put(`/api/v1/orders/${order.body.id}`)
+          .send({ customer_id: kawa, order_date: today(), payment_type: 'borrowed', version, lines: [{ item_id: copper, qty_kg: qtyKg }] });
+      // Taking more than it already took is refused…
+      const refused = await edit('9000.001', order.body.version).expect(422);
+      expect(refused.body.error.fields[0]).toMatchObject({ code: 'STOCK_INSUFFICIENT' });
+      // …the same or less saves, with the shortfall as a warning.
+      const kept = await edit('9000.000', order.body.version).expect(200);
+      expect(kept.body.stock_warnings[0]).toMatchObject({ available: '6000.000', requested: '9000.000' });
+      const lowered = await edit('7000.000', kept.body.version).expect(200);
+      expect(lowered.body.stock_warnings[0]).toMatchObject({ requested: '7000.000' });
     });
 
     it('keeps a payment already made when an edit makes the order cash (review)', async () => {
@@ -1585,6 +1604,8 @@ describe('iteration 1 review regressions', () => {
   });
 
   it('marks a line whose price was carried forward from an earlier month (FR-306)', async () => {
+    // The zinc is never bought here: what this asks about is its price, not its stock (D-107).
+    await as(ctx.http, admin).patch('/api/v1/settings').send({ allow_negative_stock: true }).expect(200);
     const zinc = await as(ctx.http, admin)
       .post('/api/v1/items')
       .send({ name: 'Zinc bar', pricing_unit: 'per_kg' })

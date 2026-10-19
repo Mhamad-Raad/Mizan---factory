@@ -12,6 +12,8 @@ export interface OrderRow {
   acting_user_id: string;
   payment_type: PaymentType;
   notes: string | null;
+  /** Who takes the order to the company (D-105); null when nobody was named. */
+  driver_id: string | null;
   rate_iqd_per_usd: string;
   rate_source: RateSource;
   status: 'active' | 'void';
@@ -111,6 +113,9 @@ export interface OrderDto {
   acting_user_id: string;
   acting_user_name: string | null;
   notes: string | null;
+  /** Who takes the order to the company (D-105). */
+  driver_id: string | null;
+  driver_name: string | null;
   rate_iqd_per_usd: Rate;
   rate_source: RateSource;
   /** Proposed — not requested (FR-616). */

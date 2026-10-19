@@ -78,6 +78,12 @@ input[type='tel'] {
   text-align: end;
 }
 
+/* A field that takes its direction from what is typed — a car's plate (D-105) — still sits where
+   the page starts reading, whichever script the plate is written in. */
+input[dir='auto'] {
+  text-align: match-parent;
+}
+
 html[dir='ltr'] input[inputmode='decimal'],
 html[dir='ltr'] input[inputmode='numeric'],
 html[dir='ltr'] input[type='tel'] {
@@ -801,6 +807,16 @@ a.mz-button {
   background: var(--color-surface-2);
 }
 
+/* A row that is listed but cannot be chosen — a material with nothing left on a sale (D-107). */
+.mz-list__item--interactive:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mz-list__item--interactive:disabled:hover {
+  background: none;
+}
+
 .mz-list__body {
   flex: 1;
   min-inline-size: 0;
@@ -855,6 +871,20 @@ a.mz-button {
   flex: 0 0 auto;
   max-inline-size: 55%;
   text-align: end;
+}
+
+/* A car number as a number plate (D-105): a bordered strip, the characters spaced and steady. */
+.mz-plate {
+  display: inline-block;
+  border: 1.5px solid var(--color-text);
+  border-radius: 6px;
+  background: var(--color-surface);
+  padding-block: 2px;
+  padding-inline: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 .mz-avatar {
@@ -1232,7 +1262,9 @@ a.mz-button {
   align-items: center;
 }
 
-.mz-number .mz-field__control {
+/* Room for the unit only when there is one: a bare number (a rate, an amount) reaches the edge
+   of its box like every other field's value. */
+.mz-number--unit .mz-field__control {
   padding-inline-end: 3.5rem;
 }
 
@@ -1471,82 +1503,156 @@ a.mz-button {
   font-size: 0.875rem;
 }
 
-/* ── a printed document (D-086): receipts, vouchers, statements and lists ────────────────────
-   Who issued it, who it is about, a table, the money worked down to the total and balance, and
-   the rate it was valued at. Built from design tokens so it also reads on screen if ever shown,
-   and forced to black-on-white by the print block below. */
+/* ── a printed document (D-086, D-110): receipts, vouchers, statements ───────────────────────
+   The design the business chose (D-110): the business's colour across the top with its logo,
+   name and contacts and the document's number; who it is about in titled cards; the lines under a
+   coloured heading; the money worked down to the total; and — on a sale — the three figures of
+   what is still owed, the last one in the business's colour. Paper is white in either theme, so
+   these colours are the paper's own, not the app's theme tokens. */
 .mz-invoice {
+  --invoice-accent: #8f1430;
+  --invoice-accent-soft: #f8ecef;
+  --invoice-ink: #15181d;
+  --invoice-muted: #555b64;
+  --invoice-line: #dfe2e6;
+  --invoice-wash: #f4f5f7;
+  --invoice-zebra: #fbf7f8;
+  --invoice-gutter: 14mm;
+
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-5);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-size: 0.9375rem;
+  gap: 7mm;
+  background: #fff;
+  color: var(--invoice-ink);
+  font-size: 10pt;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  print-color-adjust: exact;
+}
+
+/* Everything but the band and the footer strip keeps a margin from the paper's sides. */
+.mz-invoice > :not(.mz-invoice__head, .mz-invoice__foot) {
+  margin-inline: var(--invoice-gutter);
+}
+
+/* A table's width is its box's, so its share of the gutter is taken off it as well. */
+.mz-invoice > .mz-invoice__table {
+  inline-size: calc(100% - 2 * var(--invoice-gutter));
 }
 
 .mz-invoice__head {
   display: flex;
+  position: relative;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--space-4);
-  border-block-end: 2px solid var(--color-text);
-  padding-block-end: var(--space-3);
+  align-items: center;
+  gap: 8mm;
+  margin-block-end: 4mm;
+  background: var(--invoice-accent);
+  padding-block: 12mm 10mm;
+  padding-inline: var(--invoice-gutter);
+  color: #fff;
+}
+
+/* The three-tone strip under the band, darkest at the far end from where the name is, as in the
+   chosen design. */
+.mz-invoice__head::after {
+  position: absolute;
+  inset-block-end: -4mm;
+  inset-inline: 0;
+  block-size: 4mm;
+  background: linear-gradient(to right, var(--invoice-accent) 0 30%, #b8475f 30% 60%, #d98a9b 60%);
+  content: "";
+}
+
+[dir='ltr'] .mz-invoice__head::after {
+  background: linear-gradient(to left, var(--invoice-accent) 0 30%, #b8475f 30% 60%, #d98a9b 60%);
 }
 
 .mz-invoice__brand {
   display: flex;
   flex-direction: column;
+  min-inline-size: 0;
+}
+
+/* With the business's logo (D-108): the picture on a white disc, then the name beside it. */
+.mz-invoice__brand--logo {
+  flex-direction: row;
+  align-items: center;
+  gap: 5mm;
+}
+
+.mz-invoice__logo {
+  flex: none;
+  border-radius: 50%;
+  background: #fff;
+  padding: 2mm;
+  inline-size: 19mm;
+  block-size: 19mm;
+  object-fit: contain;
 }
 
 .mz-invoice__name {
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: 20pt;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.mz-invoice__head .mz-invoice__muted {
+  color: #fff;
+  opacity: 0.88;
+  font-size: 8.5pt;
 }
 
 .mz-invoice__doc {
   display: flex;
+  flex: none;
   flex-direction: column;
   text-align: end;
 }
 
+.mz-invoice__doc strong {
+  font-size: 26pt;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
 .mz-invoice__doctype {
-  color: var(--color-text-muted);
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  opacity: 0.88;
+  font-size: 9pt;
 }
 
 .mz-invoice__muted {
-  color: var(--color-text-muted);
-  font-size: 0.875rem;
+  color: var(--invoice-muted);
+  font-size: 8.8pt;
 }
 
+/* Who the document is about, in titled cards side by side. */
 .mz-invoice__parties {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-4);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-auto-flow: column;
+  gap: 4mm;
 }
 
 .mz-invoice__party {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0.5mm;
+  border: 0.3mm solid var(--invoice-line);
+  border-radius: 2.5mm;
+  padding-block: 3.5mm;
+  padding-inline: 4mm;
+  min-inline-size: 0;
 }
 
-.mz-invoice__party--end {
-  align-items: flex-end;
-  text-align: end;
+.mz-invoice__party strong {
+  font-size: 10.5pt;
 }
 
 .mz-invoice__label {
-  color: var(--color-text-muted);
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  color: var(--invoice-accent);
+  font-size: 8pt;
+  font-weight: 700;
 }
 
 .mz-invoice__table {
@@ -1556,32 +1662,38 @@ a.mz-button {
 
 .mz-invoice__table th,
 .mz-invoice__table td {
-  border-block-end: 1px solid var(--color-border);
-  padding-block: var(--space-2);
-  padding-inline: var(--space-2);
+  border-block-end: 0.2mm solid var(--invoice-line);
+  padding-block: 2.4mm;
+  padding-inline: 3mm;
   text-align: start;
 }
 
 .mz-invoice__table th {
-  color: var(--color-text-muted);
-  font-size: 0.75rem;
+  border-block-end: 0;
+  background: var(--invoice-accent);
+  color: #fff;
+  font-size: 8.5pt;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+}
+
+.mz-invoice__table th:first-child {
+  border-start-start-radius: 1.5mm;
+  border-end-start-radius: 1.5mm;
+}
+
+.mz-invoice__table th:last-child {
+  border-start-end-radius: 1.5mm;
+  border-end-end-radius: 1.5mm;
+}
+
+.mz-invoice__table tbody tr:nth-child(even) td {
+  background: var(--invoice-zebra);
 }
 
 .mz-invoice__num {
   font-variant-numeric: tabular-nums;
   text-align: end;
   white-space: nowrap;
-}
-
-.mz-invoice__totals {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-inline-start: auto;
-  inline-size: min(30rem, 100%);
 }
 
 /* A figure in a money column sits at the column's end, and so does its heading: the table's own
@@ -1594,47 +1706,140 @@ a.mz-button {
   display: inline-block;
 }
 
-.mz-invoice__total-row > :last-child {
-  text-align: end;
+/* A table's and the worked-down money's amounts at the text's own size, as in the chosen design;
+   `DualAmount` sets a larger size inline for the screens. */
+.mz-invoice__table .mz-dual > bdi:first-child,
+.mz-invoice__total-row .mz-dual > bdi:first-child {
+  font-size: 10pt !important;
+  font-weight: 400 !important;
+}
+
+.mz-invoice__total-row--grand .mz-dual > bdi:first-child {
+  font-weight: 700 !important;
+}
+
+/* A figure's amount, large and bold. */
+.mz-invoice__figure .mz-dual > bdi:first-child {
+  font-size: 14pt !important;
+  font-weight: 800 !important;
+}
+
+.mz-invoice__figure--strong .mz-dual > bdi:first-child {
+  font-size: 17pt !important;
+}
+
+/* The money worked down, at the reading end of the page. */
+.mz-invoice__totals {
+  display: flex;
+  flex-direction: column;
+  gap: 1.6mm;
+  margin-inline-start: auto !important;
+  inline-size: min(78mm, 100%);
 }
 
 .mz-invoice__total-row {
   display: flex;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: 4mm;
+}
+
+.mz-invoice__total-row > :last-child {
+  text-align: end;
 }
 
 .mz-invoice__total-row--grand {
-  border-block-start: 1px solid var(--color-border);
-  padding-block-start: var(--space-2);
-  font-size: 1.05rem;
+  border-block-start: 0.2mm solid var(--invoice-line);
+  padding-block-start: 1.6mm;
+  font-weight: 700;
 }
 
+/* The money worked down, the figures and the signatures: one block, kept together in print. */
+.mz-invoice__closing {
+  display: flex;
+  flex-direction: column;
+  gap: 7mm;
+}
+
+/* A sale's three figures of what is still owed (D-109, D-110); the last, in the business's
+   colour, is the one that matters. */
+.mz-invoice__figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-auto-flow: column;
+  gap: 4mm;
+}
+
+.mz-invoice__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5mm;
+  border: 0.3mm solid var(--invoice-line);
+  border-radius: 2.5mm;
+  padding-block: 3.5mm;
+  padding-inline: 4.5mm;
+}
+
+.mz-invoice__figure > span {
+  color: var(--invoice-muted);
+  font-size: 8.5pt;
+}
+
+.mz-invoice__figure strong {
+  font-size: 13pt;
+}
+
+.mz-invoice__figure--strong {
+  order: 1;
+  border-color: var(--invoice-accent);
+  background: var(--invoice-accent);
+  color: #fff;
+}
+
+.mz-invoice__figure--strong > span,
+.mz-invoice__figure--strong .mz-caption {
+  color: #fff;
+  opacity: 0.9;
+}
+
+.mz-invoice__figure--strong strong {
+  font-size: 16pt;
+}
+
+/* The grey strip at the foot: the rate it was valued at, and the day it was printed. */
 .mz-invoice__foot {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: var(--space-3);
-  border-block-start: 1px solid var(--color-border);
-  padding-block-start: var(--space-3);
-  color: var(--color-text-muted);
-  font-size: 0.8125rem;
+  gap: 4mm;
+  margin-block-start: auto;
+  background: var(--invoice-wash);
+
+  /* Little below: the grey of the page's bottom margin carries the strip on, with the number. */
+  padding-block: 4mm 1mm;
+  padding-inline: var(--invoice-gutter);
+  color: var(--invoice-muted);
+  font-size: 8pt;
 }
 
 /* A voided document says so above everything else on the page. */
 .mz-invoice__void {
-  border: 2px solid currentcolor;
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  font-weight: 600;
+  border: 0.5mm solid var(--invoice-accent);
+  border-radius: 2mm;
+  padding-block: 2mm;
+  padding-inline: 3mm;
+  color: var(--invoice-accent);
+  font-weight: 700;
 }
 
 /* A voucher's one amount, large, where the eye lands first. */
 .mz-invoice__amount {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  padding-block: var(--space-2);
+  gap: 1mm;
+  border-radius: 2.5mm;
+  background: var(--invoice-accent-soft);
+  padding-block: 4mm;
+  padding-inline: 5mm;
 }
 
 .mz-invoice__note {
@@ -1644,28 +1849,29 @@ a.mz-button {
 .mz-invoice__section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 2mm;
 }
 
 /* A statement's two sides — what they owe us, what we owe them — stand clearly apart (D-104). */
 .mz-invoice__section + .mz-invoice__section {
-  margin-block-start: var(--space-6);
+  margin-block-start: 6mm;
 }
 
 /* The statement's closing figures, a line of air between each. */
 .mz-invoice__totals--spaced {
-  gap: var(--space-3);
-  margin-block-start: var(--space-4);
+  gap: 3mm;
+  margin-block-start: 3mm;
 }
 
 .mz-invoice__section-title {
   margin: 0;
-  font-size: 1rem;
+  color: var(--invoice-accent);
+  font-size: 11pt;
   font-weight: 700;
 }
 
 .mz-invoice__row--quiet td {
-  color: var(--color-text-muted);
+  color: var(--invoice-muted);
 }
 
 .mz-invoice__row--strong td {
@@ -1673,23 +1879,25 @@ a.mz-button {
 }
 
 .mz-invoice__row--void td {
-  color: var(--color-text-muted);
+  color: var(--invoice-muted);
   text-decoration: line-through;
 }
 
-/* Two lines to sign on, at the foot of a document money changed hands over. */
+/* Lines to sign on, at the foot of a document money or goods changed hands over. */
 .mz-invoice__signatures {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-6);
-  padding-block-start: var(--space-6);
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-auto-flow: column;
+  gap: 12mm;
+  padding-block-start: 10mm;
 }
 
 .mz-invoice__signatures span {
-  border-block-start: 1px solid var(--color-text);
-  padding-block-start: var(--space-1);
-  color: var(--color-text-muted);
-  font-size: 0.8125rem;
+  border-block-start: 0.3mm solid var(--invoice-ink);
+  padding-block-start: 1mm;
+  color: var(--invoice-muted);
+  font-size: 8.5pt;
+  text-align: center;
 }
 
 /*
@@ -1700,15 +1908,70 @@ a.mz-button {
  */
 .mz-print-host {
   display: none;
+  page: mz-documents;
 }
 
-@page {
-  margin: 12mm;
+/* Every page without a margin, so each document's band and grey strip reach the paper's edges and
+   every page has the same height (D-110, D-111). With a margin on all but the first page, the second
+   document of a print was a page tall on a shorter page, and its grey strip ran onto a page of its own.
+   Named, so an ordinary Ctrl+P of a screen keeps the browser's own margins (review D-114). A browser numbers pages only in the page's margin, so the bottom
+   margin is painted the strip's grey and the strip's own text sits right above it — one band. */
+@page mz-documents {
+  margin: 0 0 8mm;
+
+  @bottom-left {
+    background: #f4f5f7;
+    content: "";
+  }
+
+  @bottom-center {
+    background: #f4f5f7;
+    content: "";
+  }
+
+  @bottom-right {
+    background: #f4f5f7;
+    content: "";
+  }
+}
+
+/* One document printed alone carries its page number in the strip (D-113). Several printed
+   together do not: the browser counts the pages of the whole print, not of each receipt, so
+   the second of ten would read "4 / 12" (review D-114). */
+@page mz-document {
+  margin: 0 0 8mm;
+
+  @bottom-left {
+    background: #f4f5f7;
+    content: "";
+  }
+
+  @bottom-center {
+    direction: ltr;
+    vertical-align: top;
+    background: #f4f5f7;
+    color: #555b64;
+    font-size: 8pt;
+    content: counter(page) " / " counter(pages);
+  }
+
+  @bottom-right {
+    background: #f4f5f7;
+    content: "";
+  }
+}
+
+.mz-print-host.mz-print-host--single {
+  page: mz-document;
 }
 
 @media print {
   body.mz-printing > *:not(.mz-print-host) {
     display: none !important;
+  }
+
+  body.mz-printing {
+    background: #fff;
   }
 
   body.mz-printing > .mz-print-host {
@@ -1725,37 +1988,66 @@ a.mz-button {
     break-after: auto;
   }
 
+  /* At least a page tall, so the grey strip sits at the foot of the paper as in the chosen design
+     (D-110). In print the viewport is the page's printable area, so `100vh` is right whatever
+     margins the browser or the printer settles on — a fixed 297 mm overflowed onto a second page
+     wherever the page kept a margin. */
   .mz-print-host .mz-invoice {
-    border: 0;
-    border-radius: 0;
-    padding: 0;
-    background: #fff;
-    color: #000;
+    box-sizing: border-box;
+    min-block-size: calc(100vh - 1mm);
     print-color-adjust: exact;
   }
 
-  .mz-print-host .mz-invoice__muted,
-  .mz-print-host .mz-invoice__label,
-  .mz-print-host .mz-invoice__doctype,
-  .mz-print-host .mz-invoice__table th,
-  .mz-print-host .mz-invoice__foot,
-  .mz-print-host .mz-caption,
-  .mz-print-host .mz-invoice__row--quiet td,
-  .mz-print-host .mz-invoice__row--void td,
-  .mz-print-host .mz-invoice__signatures span {
-    color: #333;
+  /* A row of air above the table's heading. The heading repeats on every page a long table runs
+     onto, and the air with it, so a continuation page does not start at the paper's edge (D-113);
+     on the first page the table is drawn up by as much, so nothing moves there. */
+  .mz-print-host .mz-invoice__gap td {
+    border: 0;
+    background: none !important;
+    padding: 0;
+    block-size: 12mm;
   }
 
-  .mz-print-host .mz-invoice__head,
-  .mz-print-host .mz-invoice__signatures span {
-    border-color: #000;
+  .mz-print-host .mz-invoice > .mz-invoice__table,
+  .mz-print-host .mz-invoice__section > .mz-invoice__table {
+    margin-block-start: -12mm;
   }
 
-  .mz-print-host .mz-invoice__table th,
-  .mz-print-host .mz-invoice__table td,
-  .mz-print-host .mz-invoice__foot,
-  .mz-print-host .mz-invoice__total-row--grand {
-    border-color: #999;
+  /* Several printed together keep the strip in the flow, each document a page of its own (D-111).
+     Each document is the page less 1 mm, so its strip is drawn that millimetre lower — moved, not
+     laid out again — to meet the painted margin without a white line (D-113). */
+  .mz-print-host .mz-invoice__foot {
+    position: relative;
+    inset-block-start: 1.2mm;
+  }
+
+  /* One document printed: its grey strip is drawn at the foot of every page (D-113) — a fixed box
+     repeats on each printed page — and the table and the document leave it room. It reaches a hair
+     into the painted margin, so the two greys meet without a seam. */
+  .mz-print-host--single .mz-invoice__foot {
+    position: fixed;
+    inset-block: auto -0.5mm;
+    inset-inline: 0;
+  }
+
+  .mz-print-host--single .mz-invoice {
+    padding-block-end: 16mm;
+  }
+
+  .mz-print-host .mz-invoice__room td {
+    border: 0;
+    background: none !important;
+    padding: 0;
+    block-size: 0;
+  }
+
+  .mz-print-host--single .mz-invoice__room td {
+    block-size: 16mm;
+  }
+
+  /* The room row's 16 mm and the closing block's 12 mm of air, both drawn back on the table's page. */
+  .mz-print-host.mz-print-host--single .mz-invoice > .mz-invoice__table + .mz-invoice__closing {
+    margin-block-start: -28mm;
   }
 
   /* A table row is never split across two sheets; its header repeats on each. */
@@ -1765,6 +2057,28 @@ a.mz-button {
 
   .mz-print-host .mz-invoice__table thead {
     display: table-header-group;
+  }
+
+  .mz-print-host .mz-invoice__table tfoot {
+    display: table-footer-group;
+  }
+
+  /* The money, the figures and the signatures stay together on one page, and when they start a
+     page of their own they start below the same air as a continuation of the table (D-113). On
+     the table's page the air is drawn back, so nothing moves there: a margin at a page break is
+     dropped, the padding is not. */
+  .mz-print-host .mz-invoice__closing {
+    break-inside: avoid;
+    padding-block-start: 12mm;
+  }
+
+  .mz-print-host .mz-invoice > .mz-invoice__table + .mz-invoice__closing {
+    margin-block-start: -12mm;
+  }
+
+  /* A statement's two closing balances and their sum never part across sheets (review D-114). */
+  .mz-print-host .mz-invoice__totals--spaced {
+    break-inside: avoid;
   }
 }
 

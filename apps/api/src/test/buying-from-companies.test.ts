@@ -132,6 +132,8 @@ describe('buying from companies, and paying them on the spot (D-085)', () => {
 
     const balance = await as(ctx.http, buyer).get(`/api/v1/purchases/${created.body.id}/balance`).expect(200);
     expect(balance.body.cost.remaining).toBe(150_000);
+    // What we owe the company altogether, for the purchase receipt's figures (D-111).
+    expect(balance.body.account_owed).toBe(150_000);
   });
 
   it('pays all of it on the spot: the buy lands on exactly zero in both currencies', async () => {

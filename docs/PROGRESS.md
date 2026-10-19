@@ -879,3 +879,33 @@ go-live checklist in `ops/runbook/README.md`, run with the client on their own h
   reader's language and direction. Receipts are offered the moment something is saved, can be
   printed again from any row or page, and old ones can be ticked and printed together (up to 50).
 - **Tests:** `buying-from-companies.test.ts` (11, API), `print.test.ts` (10, web). No migration.
+
+## Final business comments (2026-10-18) · branch `feat/final-business-edits`
+
+- **Drivers (D-105):** a Drivers page (name, phone, car number; add, edit, deactivate), a page per
+  driver with their details and every order they took (for a period, with the count and the total,
+  printable), a driver picker on the new and edit order forms with "New driver", a Driver filter on
+  Buying & selling, and the driver on the order page and the printed receipt. Migration 0037.
+- **Drivers on purchases (D-106):** the purchase form has a Driver field, the order and purchase
+  pages show the driver with "Change" (no full edit), Buying & selling's Driver filter keeps both
+  kinds, the driver's page lists their sales and purchases. Migration 0038.
+- **Rate box alignment:** a number box keeps room for a unit only when it shows one, so a rate or
+  an amount reaches its box's edge (it sat 56 px short in Kurdish).
+- **Selling within stock (D-107):** a sale past the stock is refused (migration 0039), the order
+  form says "Only N in stock" or "Enter a quantity above 0" and keeps Save off, and the material
+  picker greys out what has nothing left.
+- **Receipt details (D-108):** Settings → Receipt details (admin) sets the name, phone, address and
+  logo every printed document is headed with; the logo is kept in the database (migration 0040).
+- **Earlier debt on receipts (D-109) and the chosen receipt design (D-110):** a sale receipt counts
+  what the company still owes for earlier sales and adds it to this one; every printed document is
+  in the business's red design (number 2 of the ten), without the list of earlier sales.
+- **Tests:** `drivers.test.ts` (10, API), `business.test.ts` (5, API), `receipt-earlier-owing.test.ts` (2, API); the stock tests rewritten to
+  the new rule; the permission matrix covers the seven new routes by
+  itself; `e2e/responsive.spec.ts` sweeps `/drivers` and a driver's page. 809 tests green.
+- **Review (D-114):** three reviewers (API, screens and print, ten-year scale). Fixed: an order
+  that oversold before D-107 could not be edited at all; the receipt's earlier-debt read and a
+  driver's totals had no index fit for ten years (migration 0041); changing a driver showed no
+  progress or refusal; a print of several receipts numbered pages across the whole print; the
+  print page rules reached an ordinary Ctrl+P. Kept, with reasons, in D-114.
+- **Known, not from this change:** `/reports` is 13 px too wide at 360 px with English text at
+  1.25× (fails on `main` too).

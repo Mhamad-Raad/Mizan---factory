@@ -342,7 +342,16 @@ export function CustomerDetailPage() {
                       </a>
                     ) : null}
                   </div>
-                  <InactiveChip row={data} />
+                  {/* The record's own Edit sits with its name, at the card's top corner (business
+                      review), as on a material's and a driver's page. */}
+                  <div className="mz-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <InactiveChip row={data} />
+                    {mayEdit ? (
+                      <Button variant="secondary" icon="edit" onClick={() => setSheet('edit')}>
+                        {t('common:edit')}
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
 
                 <hr className="mz-divider" />
@@ -390,11 +399,6 @@ export function CustomerDetailPage() {
                   {buying.primaryActions}
                 </div>
                 <div className="mz-actions__group">
-                  {mayEdit ? (
-                    <Button variant="secondary" icon="edit" onClick={() => setSheet('edit')}>
-                      {t('common:edit')}
-                    </Button>
-                  ) : null}
                   {/* On a desktop the list hangs from the button's own leading edge; on a phone the
                       button is at the row's end, and the list opens inward so it stays on screen. */}
                   {moreItems.length > 0 ? (

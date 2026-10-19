@@ -10,6 +10,7 @@ export type Page =
   | 'orders'
   | 'customers'
   | 'companies'
+  | 'drivers'
   | 'damages'
   | 'history'
   | 'reports'
@@ -51,11 +52,16 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
   {
     key: 'purchases.create',
     page: 'purchases',
-    // A purchase cannot be typed without its prices (spec 1.5.2).
-    implies: ['purchases.view', 'materials.view', 'fields.see_bought_price'],
+    // A purchase cannot be typed without its prices (spec 1.5.2); its driver is picked on the form (D-106).
+    implies: ['purchases.view', 'materials.view', 'fields.see_bought_price', 'drivers.view'],
     labelKey: 'permissions.purchases.create',
   },
-  { key: 'purchases.edit', page: 'purchases', implies: ['purchases.view'], labelKey: 'permissions.purchases.edit' },
+  {
+    key: 'purchases.edit',
+    page: 'purchases',
+    implies: ['purchases.view', 'drivers.view'],
+    labelKey: 'permissions.purchases.edit',
+  },
   { key: 'purchases.void', page: 'purchases', implies: ['purchases.view'], labelKey: 'permissions.purchases.void' },
   // The accountant page (D-062): the period's sold, bought, cost, profit, damage and expenses.
   // Its whole subject is money, so it carries the two money flags with it.
@@ -73,10 +79,16 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
   {
     key: 'orders.create',
     page: 'orders',
-    implies: ['orders.view', 'customers.view', 'materials.view'],
+    // The driver is chosen on the order form, so whoever writes an order may read the drivers (D-105).
+    implies: ['orders.view', 'customers.view', 'materials.view', 'drivers.view'],
     labelKey: 'permissions.orders.create',
   },
-  { key: 'orders.edit', page: 'orders', implies: ['orders.view'], labelKey: 'permissions.orders.edit' },
+  {
+    key: 'orders.edit',
+    page: 'orders',
+    implies: ['orders.view', 'drivers.view'],
+    labelKey: 'permissions.orders.edit',
+  },
   { key: 'orders.void', page: 'orders', implies: ['orders.view'], labelKey: 'permissions.orders.void' },
   {
     key: 'orders.change_payment_type',
@@ -155,6 +167,11 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
     implies: ['companies.view', 'fields.see_company_balances'],
     labelKey: 'permissions.companies.opening_balance',
   },
+
+  // Drivers (D-105): who takes an order to the company. Deactivating one is an edit, as for a company.
+  { key: 'drivers.view', page: 'drivers', implies: [], labelKey: 'permissions.drivers.view' },
+  { key: 'drivers.create', page: 'drivers', implies: ['drivers.view'], labelKey: 'permissions.drivers.create' },
+  { key: 'drivers.edit', page: 'drivers', implies: ['drivers.view'], labelKey: 'permissions.drivers.edit' },
 
   // Damaged items
   { key: 'damages.view', page: 'damages', implies: [], labelKey: 'permissions.damages.view' },
