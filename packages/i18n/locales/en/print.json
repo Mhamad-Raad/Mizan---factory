@@ -5,7 +5,6 @@
   "select_row": "Select {{name}}",
   "limit_reached": "Up to {{count}} at a time — print these, then choose more",
   "print_list": "Print list",
-  "tick_to_print": "Tick the rows to print",
   "print_statement": "Print account",
   "statement_title": "Print this company's account",
   "statement_hint": "Every sale, purchase and payment between the two dates, with the balance after each.",
